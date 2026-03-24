@@ -1,0 +1,56 @@
+# Docker Compose Override for TypeScript wallet-backend-server
+#
+# Use this to test with the original TypeScript implementation instead of go-wallet-backend.
+# The TypeScript backend does not support mode-based deployment or WebSocket transport.
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml -f docker-compose.ts-backend.yml up -d
+#   # or via Makefile:
+#   make up-ts-backend
+#
+# Note: WebSocket tests will be skipped when using this backend.
+
+services:
+  # Override wallet-backend to use TypeScript implementation
+  wallet-backend:
+    build:
+      context: ${TS_BACKEND_PATH:-../wallet-backend-server}
+      dockerfile: Dockerfile
+    image: wallet-backend-server-e2e-test:local
+    container_name: wallet-backend-server-e2e-test
+    network_mode: host
+    # No --mode flag for TypeScript backend
+    command: []
+    environment:
+      # TypeScript backend uses different env var names
+      - JWT_SECRET=test-secret-for-e2e-testing-minimum-32-chars
+      - WEBAUTHN_RPID=localhost
+      - WEBAUTHN_ORIGIN=http://localhost:3000
+      - PORT=8080
+      - ADMIN_PORT=8081
+      - ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
+      - LOG_LEVEL=debug
+      # Trust/PDP settings if supported
+      - TRUST_PDP_URL=http://localhost:9091
+    depends_on:
+      mock-issuer:
+        condition: service_healthy
+      mock-trust-pdp:
+        condition: service_healthy
+      mock-verifier:
+        condition: service_healthy
+
+  # Override frontend to not expect WebSocket
+  wallet-frontend:
+    build:
+      args:
+        - VITE_WALLET_BACKEND_URL=http://localhost:8080
+        # No separate engine URL for TypeScript backend
+        - VITE_WALLET_ENGINE_URL=http://localhost:8080
+        - VITE_WEBAUTHN_RPID=localhost
+        - VITE_OPENID4VCI_REDIRECT_URI=http://localhost:3000/
+        - VITE_STATIC_PUBLIC_URL=http://localhost:3000
+        - VITE_STATIC_NAME=E2E Test Wallet (TS Backend)
+        - VITE_VCT_REGISTRY_URL=http://localhost:8097/type-metadata
+        # HTTP only - TypeScript backend doesn't support WebSocket
+        - VITE_TRANSPORT_PREFERENCE=http

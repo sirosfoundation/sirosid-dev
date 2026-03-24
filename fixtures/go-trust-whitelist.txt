@@ -1,0 +1,15 @@
+{
+  "issuers": [
+    "http://localhost:9000",
+    "http://mock-issuer:9000"
+  ],
+  "verifiers": [
+    "http://localhost:9001",
+    "http://mock-verifier:9001"
+  ],
+  "trusted_subjects": [],
+  "allow_http": true,
+  "jwks_endpoint_pattern": "{entity}/.well-known/jwks.json",
+  "fetch_timeout": "10s",
+  "refresh_interval": "30s"
+}

@@ -1,0 +1,44 @@
+{
+  "test-user-001": {
+    "identity": {
+      "given_name": "Alice",
+      "family_name": "Wonderland",
+      "birthdate": "1990-01-15",
+      "age_over_18": true,
+      "age_over_21": true,
+      "nationality": "SE",
+      "resident_country": "SE",
+      "document_number": "TEST-001-SE"
+    },
+    "email": "alice@example.com",
+    "email_verified": true
+  },
+  "test-user-002": {
+    "identity": {
+      "given_name": "Bob",
+      "family_name": "Builder",
+      "birthdate": "1985-06-20",
+      "age_over_18": true,
+      "age_over_21": true,
+      "nationality": "DE",
+      "resident_country": "SE",
+      "document_number": "TEST-002-DE"
+    },
+    "email": "bob@example.com",
+    "email_verified": true
+  },
+  "test-user-003": {
+    "identity": {
+      "given_name": "Charlie",
+      "family_name": "Chaplin",
+      "birthdate": "2010-03-10",
+      "age_over_18": false,
+      "age_over_21": false,
+      "nationality": "GB",
+      "resident_country": "SE",
+      "document_number": "TEST-003-GB"
+    },
+    "email": "charlie@example.com",
+    "email_verified": false
+  }
+}

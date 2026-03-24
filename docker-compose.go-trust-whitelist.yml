@@ -1,0 +1,65 @@
+# Docker Compose override for credential flow tests with go-trust whitelist
+#
+# This configuration uses the go-trust whitelist registry as the PDP, which
+# means issuers and verifiers must be on the whitelist to be trusted.
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml -f docker-compose.go-trust-whitelist.yml up -d
+#   make test-credential-go-trust
+#
+# The whitelist at fixtures/go-trust-whitelist.txt includes:
+#   - http://localhost:9000 (mock issuer)
+#   - http://localhost:9001 (mock verifier)
+
+services:
+  # Go Trust PDP - Whitelist registry for credential flow tests
+  go-trust-whitelist:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: go-trust-whitelist-e2e-test
+    ports:
+      - "9093:6001"
+    command: ["--registry", "whitelist", "--whitelist", "/app/whitelist.txt", "--host", "0.0.0.0", "--port", "6001"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9093
+    volumes:
+      - ./fixtures/go-trust-whitelist.txt:/app/whitelist.txt:ro
+    # The distroless image doesn't have wget/curl, so we skip Docker healthcheck
+    # and rely on Makefile polling instead
+    networks:
+      - e2e-test-network
+
+  # Override mock-trust-pdp to use a different port (avoid conflict with whitelist)
+  mock-trust-pdp:
+    ports:
+      - "19091:9091"  # Remap to allow go-trust-whitelist to run alongside
+
+  # Override wallet-backend to use go-trust-whitelist as the PDP
+  # The whitelist contains the mock issuer/verifier, so they will be trusted
+  wallet-backend:
+    environment:
+      - WALLET_JWT_SECRET=test-secret-for-e2e-testing-minimum-32-chars
+      - WALLET_SERVER_WEBAUTHN_DISPLAY_NAME=E2E Test Wallet
+      - WALLET_SERVER_RP_ID=localhost
+      - WALLET_SERVER_RP_ORIGIN=http://localhost:3000
+      - WALLET_SERVER_PORT=8080
+      - WALLET_SERVER_ADMIN_PORT=8081
+      - WALLET_SERVER_ENGINE_PORT=8082
+      - WALLET_SERVER_ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
+      - WALLET_LOG_LEVEL=debug
+      # Use go-trust whitelist as PDP (internal Docker network address)
+      - WALLET_TRUST_PDP_URL=http://go-trust-whitelist:6001
+      - WALLET_TRUST_ENABLED=true
+    depends_on:
+      mock-issuer:
+        condition: service_healthy
+      go-trust-whitelist:
+        condition: service_started
+      mock-verifier:
+        condition: service_healthy
+
+networks:
+  e2e-test-network:
+    driver: bridge

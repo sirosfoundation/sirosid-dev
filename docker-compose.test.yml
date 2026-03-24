@@ -1,0 +1,188 @@
+# Docker Compose for E2E Tests
+#
+# All-in-one test environment: frontend, backend, and mock services.
+#
+# Usage:
+#   make up              # Build and start all services
+#   make run             # Run all E2E tests
+#   make down            # Stop all services
+#   make ci-docker       # Full cycle: up, run, down
+#
+# Or directly:
+#   docker-compose -f docker-compose.test.yml up -d --build
+#   npx playwright test
+#   docker-compose -f docker-compose.test.yml down
+#
+# Configuration (via environment variables):
+#   BACKEND_PATH  - Path to go-wallet-backend source
+#                   Local: ../go-wallet-backend (default)
+#                   CI:    ./go-wallet-backend
+#   FRONTEND_PATH - Path to wallet-frontend source
+#                   Local: ../wallet-frontend (default)
+#                   CI:    ./wallet-frontend
+
+services:
+  # Wallet Frontend - React app served via nginx
+  wallet-frontend:
+    build:
+      context: ${FRONTEND_PATH:-../wallet-frontend}
+      dockerfile: Dockerfile.e2e
+      args:
+        - VITE_WALLET_BACKEND_URL=http://localhost:8080
+        - VITE_WALLET_ENGINE_URL=http://localhost:8082
+        - VITE_WEBAUTHN_RPID=localhost
+        - VITE_OPENID4VCI_REDIRECT_URI=http://localhost:3000/
+        - VITE_STATIC_PUBLIC_URL=http://localhost:3000
+        - VITE_STATIC_NAME=E2E Test Wallet
+        - VITE_VCT_REGISTRY_URL=http://localhost:8097/type-metadata
+        # Transport preference: try WebSocket first, fallback to HTTP
+        - VITE_TRANSPORT_PREFERENCE=websocket,http
+    image: wallet-frontend-e2e-test:local
+    container_name: wallet-frontend-e2e-test
+    ports:
+      - "3000:80"
+    depends_on:
+      - wallet-backend
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - e2e-test-network
+
+  # Go Wallet Backend - built from local source
+  # Uses network_mode: host so that proxy requests to localhost:9000 (mock issuer)
+  # work correctly - the backend can reach all localhost ports on the host network
+  wallet-backend:
+    build:
+      context: ${BACKEND_PATH:-../go-wallet-backend}
+      dockerfile: Dockerfile
+    image: wallet-backend-e2e-test:local
+    container_name: wallet-backend-e2e-test
+    network_mode: host
+    # Run with all roles (backend + engine for WebSocket support)
+    command: ["--mode=all"]
+    environment:
+      - WALLET_JWT_SECRET=test-secret-for-e2e-testing-minimum-32-chars
+      - WALLET_SERVER_WEBAUTHN_DISPLAY_NAME=E2E Test Wallet
+      - WALLET_SERVER_RP_ID=localhost
+      - WALLET_SERVER_RP_ORIGIN=http://localhost:3000
+      - WALLET_SERVER_PORT=8080
+      - WALLET_SERVER_ADMIN_PORT=8081
+      - WALLET_SERVER_ENGINE_PORT=8082
+      - WALLET_SERVER_ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
+      - WALLET_LOG_LEVEL=debug
+      # With network_mode: host, use localhost for PDP too
+      - WALLET_TRUST_PDP_URL=http://localhost:9091
+      - WALLET_TRUST_ENABLED=true
+    depends_on:
+      mock-issuer:
+        condition: service_healthy
+      mock-trust-pdp:
+        condition: service_healthy
+      mock-verifier:
+        condition: service_healthy
+    # Note: distroless image has no shell/wget, healthcheck done by make up
+
+  # Mock OpenID4VCI Credential Issuer
+  mock-issuer:
+    build:
+      context: ./mocks/issuer
+      dockerfile: Dockerfile
+    image: mock-issuer-e2e-test:local
+    container_name: mock-issuer-e2e-test
+    ports:
+      - "9000:9000"
+    environment:
+      - PORT=9000
+      - ISSUER_ID=http://localhost:9000
+      - INCLUDE_IACA=true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9000/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # Mock AuthZEN Trust PDP
+  mock-trust-pdp:
+    build:
+      context: ./mocks/trust-pdp
+      dockerfile: Dockerfile
+    image: mock-trust-pdp-e2e-test:local
+    container_name: mock-trust-pdp-e2e-test
+    ports:
+      - "9091:9091"
+    environment:
+      - PORT=9091
+      - PDP_ID=http://localhost:9091
+      - TRUSTED_ISSUERS=http://localhost:9000,http://mock-issuer:9000
+      - TRUSTED_VERIFIERS=http://localhost:9001,http://mock-verifier:9001
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # Mock OpenID4VP Verifier
+  mock-verifier:
+    build:
+      context: ./mocks/verifier
+      dockerfile: Dockerfile
+    image: mock-verifier-e2e-test:local
+    container_name: mock-verifier-e2e-test
+    ports:
+      - "9001:9001"
+    environment:
+      - PORT=9001
+      - VERIFIER_ID=http://localhost:9001
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9001/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # VCTM Registry Server - serves credential type metadata
+  # Uses network_mode: host so it can fetch VCTMs from localhost mock services
+  vctm-registry:
+    build:
+      context: ${BACKEND_PATH:-../go-wallet-backend}
+      dockerfile: Dockerfile.registry
+    image: vctm-registry-e2e-test:local
+    container_name: vctm-registry-e2e-test
+    network_mode: host
+    environment:
+      # Use environment variables to override config
+      - REGISTRY_SERVER_HOST=0.0.0.0
+      - REGISTRY_SERVER_PORT=8097
+      - REGISTRY_SOURCE_URL=https://registry.siros.org/.well-known/vctm-registry.json
+      - REGISTRY_SOURCE_POLL_INTERVAL=5m
+      - REGISTRY_CACHE_PATH=/app/data/vctm-cache.json
+      # Enable dynamic fetching for E2E tests - VCTMs can be fetched from URLs
+      - REGISTRY_DYNAMIC_CACHE_ENABLED=true
+      - REGISTRY_DYNAMIC_CACHE_DEFAULT_TTL=1h
+      - REGISTRY_DYNAMIC_CACHE_MAX_TTL=24h
+      - REGISTRY_DYNAMIC_CACHE_MIN_TTL=1m
+      # Disable auth requirement for tests
+      - REGISTRY_JWT_REQUIRE_AUTH=false
+      # Increase rate limit for tests (default burst is only 5)
+      - REGISTRY_RATE_LIMIT_UNAUTHENTICATED_RPM=1000
+      - REGISTRY_RATE_LIMIT_BURST_MULTIPLIER=10
+      - REGISTRY_LOGGING_LEVEL=debug
+    volumes:
+      - registry-data:/app/data
+    # Note: distroless image has no shell/wget, healthcheck done by make up
+
+networks:
+  e2e-test-network:
+    driver: bridge
+
+volumes:
+  registry-data:

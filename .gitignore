@@ -1,0 +1,19 @@
+# Generated PKI
+fixtures/vc-pki/*.key
+fixtures/vc-pki/*.crt
+fixtures/vc-pki/*.pem
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Docker
+.docker/

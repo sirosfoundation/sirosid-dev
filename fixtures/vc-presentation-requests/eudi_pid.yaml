@@ -1,0 +1,91 @@
+# EUDI PID (Personal Identification Data) Presentation Request
+# Compliant with EU Digital Identity Wallet Architecture Reference Framework
+templates:
+  - id: "eudi_pid_basic"
+    name: "EUDI PID - Basic Profile"
+    description: "Request basic personal identification data from EUDI wallet"
+    version: "1.0"
+    oidc_scopes:
+      - "pid"
+      - "profile"
+    dcql:
+      credentials:
+        - id: "eudi_pid"
+          format: "vc+sd-jwt"
+          meta:
+            vct_values:
+              - "urn:eudi:pid:1"
+              - "urn:eu.europa.ec.eudi:pid:1"  # Alternative VCT format
+          claims:
+            - path: ["given_name"]
+            - path: ["family_name"]
+            - path: ["birthdate"]
+            - path: ["age_over_18"]
+            - path: ["nationality"]
+    claim_mappings:
+      given_name: "given_name"
+      family_name: "family_name"
+      birthdate: "birthdate"
+      age_over_18: "age_over_18"
+      nationality: "nationality"
+    enabled: true
+
+  - id: "eudi_pid_full"
+    name: "EUDI PID - Full Profile"
+    description: "Request complete personal identification data"
+    version: "1.0"
+    oidc_scopes:
+      - "pid_full"
+    dcql:
+      credentials:
+        - id: "eudi_pid"
+          format: "vc+sd-jwt"
+          meta:
+            vct_values:
+              - "urn:eudi:pid:1"
+              - "urn:eu.europa.ec.eudi:pid:1"
+          claims:
+            - path: ["given_name"]
+            - path: ["family_name"]
+            - path: ["birthdate"]
+            - path: ["place_of_birth"]
+            - path: ["age_over_18"]
+            - path: ["age_over_21"]
+            - path: ["nationality"]
+            - path: ["gender"]
+            - path: ["address"]
+            - path: ["issuing_country"]
+            - path: ["issuing_authority"]
+    claim_mappings:
+      "*": "*"  # Map all claims through unchanged
+    enabled: true
+
+  - id: "eudi_pid_age_verification"
+    name: "EUDI PID - Age Verification Only"
+    description: "Request only age verification attributes for privacy-preserving use cases"
+    version: "1.0"
+    oidc_scopes:
+      - "age_verification"
+    dcql:
+      credentials:
+        - id: "eudi_pid_age"
+          format: "vc+sd-jwt"
+          meta:
+            vct_values:
+              - "urn:eudi:pid:1"
+              - "urn:eu.europa.ec.eudi:pid:1"
+          claims:
+            - path: ["age_over_18"]
+            - path: ["age_over_21"]
+            - path: ["age_over_65"]
+    claim_mappings:
+      age_over_18: "age_over_18"
+      age_over_21: "age_over_21"
+      age_over_65: "age_over_65"
+    claim_transforms:
+      age_over_18:
+        type: "boolean_string"
+        params:
+          true_value: "yes"
+          false_value: "no"
+    enabled: true

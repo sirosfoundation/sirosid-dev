@@ -1,0 +1,153 @@
+{
+  "vct": "urn:eudi:diploma:1",
+  "name": "Diploma Credential",
+  "description": "European Learning Model Diploma Credential.",
+  "extends#integrity": "sha256-h0D1xX0uZ5r3O8b8h3T6lKXJ7Q1Q6f1Y5jv3F4y7gXU=",
+  "$comment": "",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "Diploma Credential",
+      "description": "Portable European Learning Model (ELM) Diploma Credential.",
+      "rendering": {
+         "simple": {
+          "logo": {
+            "uri": "https://raw.githubusercontent.com/dc4eu/vc/d5bcc09ad66fb8491d0694f48d60371fc6ac9e04/images/generic-diploma-card-svg-dc4eu-01.svg",
+            "uri#integrity": "sha256-wLet7Ra2LR80J8oXFR9aoB902q8va1eSRhO0JA6apG8"
+          }
+        },
+        "svg_templates": [
+          {
+            "uri": "https://raw.githubusercontent.com/dc4eu/vc/d5bcc09ad66fb8491d0694f48d60371fc6ac9e04/images/generic-diploma-card-svg-dc4eu-01.svg",
+            "uri#integrity": "sha256-wLet7Ra2LR80J8oXFR9aoB902q8va1eSRhO0JA6apG8=",
+            "properties": {
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "claims": [
+        {
+      "path": [
+        "credentialSubject",
+        "givenName",
+        "und"
+      ],
+      "sd": "never",
+      "svg_id": "givenName",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Given name",
+          "description": "The given name of the individual who holds the diploma."
+        }
+      ]
+    },
+        {
+      "path": [
+        "credentialSubject",
+        "familyName",
+        "und"
+      ],
+      "sd": "never",
+      "svg_id": "familyName",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Family name",
+          "description": "The family name of the individual who holds the diploma."
+        }
+      ]
+    },
+        {
+      "path": [
+        "credentialSubject",
+        "dateOfBirth"
+      ],
+      "sd": "never",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Date of birth",
+          "description": "The date of birth of the individual who holds the diploma."
+        }
+      ]
+    },
+        {
+      "path": [
+        "credentialSubject",
+          "hasClaim",
+          "title",
+          "nl"
+      ],
+      "sd": "never",
+      "svg_id": "title",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Title",
+          "description": "The title of the diploma awarded to the individual."
+        }
+      ]
+    },
+        {
+      "path": [
+        "credentialSubject",
+          "hasClaim",
+          "awardedBy",
+          "awardingBody",
+          "legalName",
+          "nl"
+      ],
+      "sd": "never",
+      "svg_id": "awardingInstitution",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Awarding institution",
+          "description": "The awarding institution of the diploma."
+        }
+      ]
+    },
+        {
+      "path": [
+        "credentialSubject",
+          "hasClaim",
+          "awardedBy",
+          "awardingDate"
+      ],
+      "sd": "never",
+      "svg_id": "awardingDate",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Awarding date",
+          "description": "The awarding date of the diploma."
+        }
+      ]
+    },
+        {
+      "path": [
+        "credentialSubject",
+          "hasClaim",
+          "awardedBy",
+         "awardingBody",
+         "location",
+         "address",
+         "countryCode",
+         "prefLabel",
+         "en"
+      ],
+      "sd": "never",
+      "svg_id": "country",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Country",
+          "description": "The country where the issuing institution is located."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+# Docker Compose override for testing with go-trust PDP
+#
+# Use this to test with the real go-trust AuthZEN PDP instead of the mock PDP.
+#
+# Usage:
+#   docker-compose -f docker-compose.test.yml -f docker-compose.go-trust.yml up -d
+#   make test-go-trust
+#
+# This adds go-trust services for direct API testing while keeping mock-trust-pdp
+# for wallet-backend compatibility.
+
+services:
+  # Go Trust PDP - AlwaysTrusted registry for testing
+  go-trust-allow:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: go-trust-allow-e2e-test
+    ports:
+      - "9094:6001"  # Use 9094 to avoid conflict with mock-trust-pdp on 9091
+    command: ["--registry", "always-trusted", "--host", "0.0.0.0", "--port", "6001"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9094
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # Go Trust PDP - NeverTrusted registry for testing rejection
+  go-trust-deny:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile  
+    image: go-trust-e2e-test:local
+    container_name: go-trust-deny-e2e-test
+    ports:
+      - "9092:6001"
+    command: ["--registry", "never-trusted", "--host", "0.0.0.0", "--port", "6001"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9092
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # Go Trust PDP - Whitelist registry for testing with specific issuers
+  go-trust-whitelist:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: go-trust-whitelist-e2e-test
+    ports:
+      - "9093:6001"
+    command: ["--registry", "whitelist", "--whitelist", "/app/whitelist.txt", "--host", "0.0.0.0", "--port", "6001", "--log-level", "debug"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9093
+    volumes:
+      - ./fixtures/go-trust-whitelist.txt:/app/whitelist.txt:ro
+    depends_on:
+      mock-issuer:
+        condition: service_healthy
+      mock-verifier:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+networks:
+  e2e-test-network:
+    driver: bridge
