@@ -1,0 +1,87 @@
+# Docker Compose overlay for VC services with go-trust PDP
+#
+# This overlay adds go-trust AuthZEN PDP services for trust evaluation
+# when running the VC stack. Supports two modes:
+#
+# 1. Allow-all mode (default): Trusts all issuers/verifiers
+# 2. Whitelist mode: Only trusts configured issuers/verifiers
+#
+# Usage:
+#   make up-vc-go-trust              # VC services + go-trust (allow-all)
+#   make up-vc-go-trust-whitelist    # VC services + go-trust (whitelist)
+#
+# Environment variables for whitelist mode:
+#   VC_ISSUER_URL   - Issuer URL to trust (default: http://localhost:9000)
+#   VC_VERIFIER_URL - Verifier URL to trust (default: http://localhost:9001)
+#   VC_APIGW_URL    - API Gateway URL to trust (default: http://localhost:9003)
+
+services:
+  # Go Trust PDP - AlwaysTrusted registry (allows all)
+  # Use this for development when you want to skip trust evaluation
+  go-trust-allow:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: vc-go-trust-allow
+    ports:
+      - "9095:6001"
+    command: ["--registry", "always-trusted", "--host", "0.0.0.0", "--port", "6001", "--log-level", "debug"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9095
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # Go Trust PDP - Whitelist registry (configurable trust)
+  # Use this for testing trust evaluation with specific issuers/verifiers
+  go-trust-whitelist:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: vc-go-trust-whitelist
+    ports:
+      - "9096:6001"
+    command: ["--registry", "whitelist", "--whitelist-config", "/config/whitelist.yaml", "--host", "0.0.0.0", "--port", "6001", "--log-level", "debug"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9096
+    volumes:
+      - ./fixtures/vc-go-trust-whitelist.yaml:/config/whitelist.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  # Go Trust PDP - NeverTrusted registry (denies all)
+  # Use this for testing trust rejection scenarios
+  go-trust-deny:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: vc-go-trust-deny
+    ports:
+      - "9097:6001"
+    command: ["--registry", "never-trusted", "--host", "0.0.0.0", "--port", "6001", "--log-level", "debug"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9097
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true

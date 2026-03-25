@@ -1,21 +1,21 @@
 # VC Services Docker Compose for E2E Testing
 #
-# This file provides production-grade VC issuer, verifier, and mockas services
-# as an alternative to the mock services in docker-compose.test.yml.
+# This file provides production-grade VC issuer, verifier, registry, apigw,
+# and mockas services as an alternative to the mock services in docker-compose.test.yml.
 #
 # Usage:
-#   make up-vc           # Start VC services
-#   make test-vc         # Run tests with VC services
-#   make down-vc         # Stop VC services
+#   make up-vc              # Start VC services
+#   make up-vc-go-trust     # Start VC services with go-trust PDP
+#   make test-vc            # Run tests with VC services
+#   make down-vc            # Stop VC services
 #
 # Note: This configuration is designed to work alongside docker-compose.test.yml
 # The VC services replace mock-issuer (9000), mock-verifier (9001).
-# The mock-trust-pdp (9091) is still used from the main compose file.
 #
 # Configuration (via environment variables):
-#   VC_PATH - Path to SUNET/vc source code
-#             Local: ../vc (default)
-#             CI:    ./vc
+#   VC_PATH     - Path to SUNET/vc source code (default: ../vc)
+#   VC_ISSUER_URL - External issuer URL for whitelist (default: http://localhost:9000)
+#   VC_VERIFIER_URL - External verifier URL for whitelist (default: http://localhost:9001)
 
 services:
   # MongoDB - persistent storage for VC services
@@ -34,8 +34,38 @@ services:
     networks:
       - e2e-test-network
 
+  # VC Registry - Token status lists and revocation
+  # Required by issuer for credential status management
+  vc-registry:
+    build:
+      context: ${VC_PATH:-../vc}
+      dockerfile: dockerfiles/worker
+      args:
+        SERVICE_NAME: registry
+    image: vc-registry-e2e-test:local
+    container_name: vc-registry-e2e
+    ports:
+      - "9004:8080"     # HTTP API
+      - "9094:8090"     # gRPC for inter-service communication
+    volumes:
+      - ./fixtures/vc-config.yaml:/config.yaml:ro
+      - ./fixtures/vc-pki:/pki:ro
+    environment:
+      - VC_CONFIG_YAML=/config.yaml
+      - SSL_CERT_FILE=/pki/rootCA.crt
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - e2e-test-network
+
   # VC Issuer - Production-grade OpenID4VCI credential issuer
-  # Built from local SUNET/vc source for config compatibility
   vc-issuer:
     build:
       context: ${VC_PATH:-../vc}
@@ -45,15 +75,19 @@ services:
     image: vc-issuer-e2e-test:local
     container_name: vc-issuer-e2e
     ports:
-      - "9000:8080"
+      - "9000:8080"     # HTTP API (OpenID4VCI endpoints)
+      - "9090:8090"     # gRPC for apigw communication
     volumes:
       - ./fixtures/vc-config.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/vc-metadata:/metadata:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
+      - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
       mongodb:
+        condition: service_healthy
+      vc-registry:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
@@ -65,7 +99,6 @@ services:
       - e2e-test-network
 
   # VC Verifier - Production-grade OpenID4VP verifier with OIDC Provider
-  # Built from local SUNET/vc source for config compatibility
   vc-verifier:
     build:
       context: ${VC_PATH:-../vc}
@@ -75,7 +108,8 @@ services:
     image: vc-verifier-e2e-test:local
     container_name: vc-verifier-e2e
     ports:
-      - "9001:8080"
+      - "9001:8080"     # HTTP API (OpenID4VP + OIDC endpoints)
+      - "9091:8090"     # gRPC
     volumes:
       - ./fixtures/vc-config.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
@@ -83,6 +117,7 @@ services:
       - ./fixtures/vc-presentation-requests:/presentation_requests:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
+      - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
       mongodb:
         condition: service_healthy
@@ -95,8 +130,42 @@ services:
     networks:
       - e2e-test-network
 
+  # VC API Gateway - OAuth2 Authorization Server for OpenID4VCI
+  # Handles user authentication (OIDC/SAML) and credential offer generation
+  vc-apigw:
+    build:
+      context: ${VC_PATH:-../vc}
+      dockerfile: dockerfiles/worker
+      args:
+        SERVICE_NAME: apigw
+    image: vc-apigw-e2e-test:local
+    container_name: vc-apigw-e2e
+    ports:
+      - "9003:8080"     # HTTP API (OAuth2/OpenID4VCI endpoints)
+    volumes:
+      - ./fixtures/vc-config.yaml:/config.yaml:ro
+      - ./fixtures/vc-pki:/pki:ro
+      - ./fixtures/vc-metadata:/metadata:ro
+    environment:
+      - VC_CONFIG_YAML=/config.yaml
+      - SSL_CERT_FILE=/pki/rootCA.crt
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      vc-issuer:
+        condition: service_healthy
+      vc-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - e2e-test-network
+
   # VC MockAS - Mock Authentication Server for simulating user authentication
-  # Built from local SUNET/vc source for config compatibility
   vc-mockas:
     build:
       context: ${VC_PATH:-../vc}
@@ -113,8 +182,11 @@ services:
       - ./fixtures/vc-users:/users:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
+      - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
       mongodb:
+        condition: service_healthy
+      vc-apigw:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]

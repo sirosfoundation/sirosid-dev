@@ -12,6 +12,8 @@
         up-go-trust down-go-trust \
         up-go-trust-whitelist down-go-trust-whitelist \
         up-vc down-vc \
+        up-vc-go-trust-allow up-vc-go-trust-whitelist up-vc-go-trust-deny \
+        down-vc-go-trust \
         up-ts-backend down-ts-backend \
         register-mocks clean
 
@@ -29,6 +31,7 @@ PRIMARY_COMPOSE := docker-compose.test.yml
 GO_TRUST_COMPOSE := docker-compose.go-trust.yml
 GO_TRUST_WHITELIST_COMPOSE := docker-compose.go-trust-whitelist.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
+VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 TS_BACKEND_COMPOSE := docker-compose.ts-backend.yml
 
 # Service URLs (published for use by sirosid-tests)
@@ -40,6 +43,17 @@ export MOCK_ISSUER_URL ?= http://localhost:9000
 export MOCK_VERIFIER_URL ?= http://localhost:9001
 export MOCK_PDP_URL ?= http://localhost:9091
 export VCTM_REGISTRY_URL ?= http://localhost:8097
+
+# VC Services URLs (when running up-vc or up-vc-go-trust)
+export VC_ISSUER_URL ?= http://localhost:9000
+export VC_VERIFIER_URL ?= http://localhost:9001
+export VC_MOCKAS_URL ?= http://localhost:9002
+export VC_APIGW_URL ?= http://localhost:9003
+export VC_REGISTRY_URL ?= http://localhost:9004
+export GO_TRUST_ALLOW_URL ?= http://localhost:9095
+export GO_TRUST_WHITELIST_URL ?= http://localhost:9096
+export GO_TRUST_DENY_URL ?= http://localhost:9097
+
 export ADMIN_TOKEN ?= e2e-test-admin-token-for-testing-purposes-only
 
 # Colors for output
@@ -62,6 +76,11 @@ help: ## Show this help
 	@echo "  make up-vc                 # Production-like VC services"
 	@echo "  make up-ts-backend         # TypeScript backend instead of Go"
 	@echo ""
+	@echo "$(GREEN)VC Services with go-trust:$(NC)"
+	@echo "  make up-vc-go-trust-allow     # VC + go-trust allow-all (dev)"
+	@echo "  make up-vc-go-trust-whitelist # VC + go-trust whitelist (staging)"
+	@echo "  make up-vc-go-trust-deny      # VC + go-trust deny-all (test failure)"
+	@echo ""
 	@echo "$(GREEN)Management:$(NC)"
 	@echo "  make status    # Check all service health"
 	@echo "  make logs      # View Docker logs"
@@ -76,6 +95,16 @@ help: ## Show this help
 	@echo "  Mock Verifier: $(MOCK_VERIFIER_URL)"
 	@echo "  Trust PDP:     $(MOCK_PDP_URL)"
 	@echo "  VCTM Registry: $(VCTM_REGISTRY_URL)"
+	@echo ""
+	@echo "$(GREEN)VC Service URLs (when running up-vc*):$(NC)"
+	@echo "  VC Issuer:     $(VC_ISSUER_URL)"
+	@echo "  VC Verifier:   $(VC_VERIFIER_URL)"
+	@echo "  VC MockAS:     $(VC_MOCKAS_URL)"
+	@echo "  VC API GW:     $(VC_APIGW_URL)"
+	@echo "  VC Registry:   $(VC_REGISTRY_URL)"
+	@echo "  go-trust Allow:     $(GO_TRUST_ALLOW_URL)"
+	@echo "  go-trust Whitelist: $(GO_TRUST_WHITELIST_URL)"
+	@echo "  go-trust Deny:      $(GO_TRUST_DENY_URL)"
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
@@ -102,6 +131,7 @@ down: ## Stop all services
 	-docker compose -f $(PRIMARY_COMPOSE) down
 	-docker compose -f $(GO_TRUST_COMPOSE) down 2>/dev/null
 	-docker compose -f $(VC_SERVICES_COMPOSE) down 2>/dev/null
+	-docker compose -f $(VC_GO_TRUST_COMPOSE) down 2>/dev/null
 	-docker compose -f $(TS_BACKEND_COMPOSE) down 2>/dev/null
 
 logs: ## View service logs
@@ -171,6 +201,74 @@ down-vc: ## Stop VC services environment
 	docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) down
 
 # =============================================================================
+# VC Services + go-trust Stack
+# =============================================================================
+
+up-vc-go-trust-allow: ## Start VC services with go-trust allow-all PDP
+	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (allow-all)...$(NC)"
+	@echo "  go-trust mode: ALLOW ALL (development)"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		GO_TRUST_MODE=allow \
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build go-trust-allow vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+	@$(MAKE) --no-print-directory status-vc
+	@echo ""
+	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_ALLOW_URL)$(NC)"
+
+up-vc-go-trust-whitelist: ## Start VC services with go-trust whitelist PDP
+	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (whitelist)...$(NC)"
+	@echo "  go-trust mode: WHITELIST (staging)"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		GO_TRUST_MODE=whitelist \
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build go-trust-whitelist vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+	@$(MAKE) --no-print-directory status-vc
+	@echo ""
+	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_WHITELIST_URL)$(NC)"
+
+up-vc-go-trust-deny: ## Start VC services with go-trust deny-all PDP (negative testing)
+	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (deny-all)...$(NC)"
+	@echo "  go-trust mode: DENY ALL (negative testing)"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		GO_TRUST_MODE=deny \
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build go-trust-deny vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+	@$(MAKE) --no-print-directory status-vc
+	@echo ""
+	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_DENY_URL)$(NC)"
+
+down-vc-go-trust: ## Stop VC + go-trust environment
+	docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) down
+
+status-vc: ## Check VC service health
+	@echo "$(GREEN)VC Service Status:$(NC)"
+	@echo ""
+	@printf "  %-20s %s\n" "Service" "Status"
+	@printf "  %-20s %s\n" "-------" "------"
+	@curl -sf $(VC_ISSUER_URL)/.well-known/openid-credential-issuer >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-issuer" "✓ running" || \
+		printf "  %-20s $(RED)%s$(NC)\n" "vc-issuer" "✗ not running"
+	@curl -sf $(VC_VERIFIER_URL)/.well-known/openid-configuration >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-verifier" "✓ running" || \
+		printf "  %-20s $(RED)%s$(NC)\n" "vc-verifier" "✗ not running"
+	@curl -sf $(VC_APIGW_URL)/.well-known/oauth-authorization-server >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-apigw" "✓ running" || \
+		printf "  %-20s $(RED)%s$(NC)\n" "vc-apigw" "✗ not running"
+	@curl -sf $(VC_REGISTRY_URL)/health >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-registry" "✓ running" || \
+		printf "  %-20s $(RED)%s$(NC)\n" "vc-registry" "✗ not running"
+	@curl -sf $(VC_MOCKAS_URL)/ >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-mockas" "✓ running" || \
+		printf "  %-20s $(RED)%s$(NC)\n" "vc-mockas" "✗ not running"
+	@curl -sf $(GO_TRUST_ALLOW_URL)/health >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-allow" "✓ running" || \
+		printf "  %-20s $(YELLOW)%s$(NC)\n" "go-trust-allow" "- not started"
+	@curl -sf $(GO_TRUST_WHITELIST_URL)/health >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-whitelist" "✓ running" || \
+		printf "  %-20s $(YELLOW)%s$(NC)\n" "go-trust-whitelist" "- not started"
+	@curl -sf $(GO_TRUST_DENY_URL)/health >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-deny" "✓ running" || \
+		printf "  %-20s $(YELLOW)%s$(NC)\n" "go-trust-deny" "- not started"
+	@echo ""
+
+# =============================================================================
 # TypeScript Backend Stack
 # =============================================================================
 
@@ -211,6 +309,7 @@ clean: ## Remove all containers and volumes
 	-docker compose -f $(PRIMARY_COMPOSE) down -v --remove-orphans
 	-docker compose -f $(GO_TRUST_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(VC_SERVICES_COMPOSE) down -v 2>/dev/null
+	-docker compose -f $(VC_GO_TRUST_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(TS_BACKEND_COMPOSE) down -v 2>/dev/null
 
 # =============================================================================

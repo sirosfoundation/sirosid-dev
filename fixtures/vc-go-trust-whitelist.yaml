@@ -1,0 +1,39 @@
+# Go-Trust Whitelist Configuration for VC Services
+#
+# This file configures which issuers and verifiers are trusted
+# by the go-trust whitelist registry when running with VC services.
+#
+# The registry will automatically reload this file when it changes
+# if file watching is enabled.
+
+# Trusted credential issuers
+# These URLs are trusted to issue credentials
+issuers:
+  # Local VC issuer (via apigw)
+  - http://localhost:9003
+  - http://localhost:9000
+  - http://vc-apigw:8080
+  - http://vc-issuer:8080
+  # Docker internal names
+  - http://vc-apigw-e2e:8080
+  - http://vc-issuer-e2e:8080
+  # Wildcard for localhost development
+  - http://localhost:*
+
+# Trusted verifiers (relying parties)
+# These URLs are trusted to request credential presentations
+verifiers:
+  # Local VC verifier
+  - http://localhost:9001
+  - http://vc-verifier:8080
+  # Docker internal names
+  - http://vc-verifier-e2e:8080
+  # Wildcard for localhost development
+  - http://localhost:*
+
+# Generic trusted subjects (matches any role)
+# Use this for subjects that should be trusted regardless of whether
+# they act as issuer or verifier
+trusted_subjects:
+  # Trust all localhost services during development
+  - http://localhost:*

@@ -1,19 +1,30 @@
 # VC Services Configuration for E2E Testing
 #
-# This configuration file is used by the VC issuer, verifier, and mockas services
-# when running end-to-end tests with production-grade credential services.
+# This configuration file is used by the VC issuer, verifier, apigw, registry,
+# and mockas services when running end-to-end tests with production-grade 
+# credential services.
 #
 # Key differences from production config:
 # - Uses localhost URLs (services run on local ports via Docker port mapping)
 # - Auto-approve mode enabled for mockas (no manual authentication required)
 # - Tracing disabled (no Jaeger in E2E environment)
+# - TLS disabled for simplicity
+#
+# Service Ports:
+#   - 9000: vc-issuer (OpenID4VCI)
+#   - 9001: vc-verifier (OpenID4VP + OIDC)
+#   - 9002: vc-mockas (Mock Auth Server)
+#   - 9003: vc-apigw (API Gateway / OAuth AS)
+#   - 9004: vc-registry (Status Lists)
 
 ---
 common:
+  production: false
+  ha:
+    enable: true    # Uses MongoDB for distributed cache
   mongo:
     uri: mongodb://mongodb:27017
-  production: false
-  # Tracing configuration (required but pointing to non-existent endpoint is OK)
+  # Tracing configuration (required but can point to non-existent endpoint)
   tracing:
     addr: "localhost:4318"
     timeout: 1
@@ -71,30 +82,90 @@ credential_constructor:
     auth_method: pid_auth
     format: "dc+sd-jwt"
 
-# Issuer service configuration
-issuer:
-  issuer_url: "http://vc-issuer:8080"
+# =============================================================================
+# API Gateway (apigw) - OAuth2 Authorization Server for OpenID4VCI
+# =============================================================================
+apigw:
   api_server:
     addr: ":8080"
-  grpc_server:
+    tls:
+      enable: false
+    cors:
+      allowed_origins:
+        - "http://localhost:3000"
+        - "http://localhost:*"
+      allowed_methods:
+        - "GET"
+        - "POST"
+        - "OPTIONS"
+      allowed_headers:
+        - "Authorization"
+        - "Content-Type"
+  key_config:
+    private_key_path: "/pki/signing_ec_private.pem"
+    chain_path: "/pki/signing_ec_chain.pem"
+  public_url: "http://localhost:9003"
+  registry_public_url: "http://localhost:9004"
+  issuer_client:
     addr: "vc-issuer:8090"
+  registry_client:
+    addr: "vc-registry:8090"
+  credential_offers:
+    issuer_url: "http://localhost:9003"
+    wallets:
+      local:
+        label: "Local Wallet"
+        redirect_uri: "http://localhost:3000/cb"
+      e2e_test:
+        label: "E2E Test Wallet"
+        redirect_uri: "http://localhost:3000/callback"
+  oauth_server:
+    authorization_endpoint: "http://localhost:9003/authorize"
+    token_endpoint: "http://localhost:9003/token"
+    clients:
+      "e2e-test-client":
+        type: "public"
+        redirect_uri: "http://localhost:3000/cb"
+        scopes:
+          - "pid"
+          - "diploma"
+          - "ehic"
+          - "eduid"
+
+# =============================================================================
+# Issuer Service - OpenID4VCI Credential Issuer
+# =============================================================================
+issuer:
+  api_server:
+    addr: ":8080"
+    tls:
+      enable: false
+  grpc_server:
+    addr: ":8090"
+  # issuer_url should match public URL for credential metadata
+  issuer_url: "http://localhost:9003"
   registry_client:
     addr: "vc-registry:8090"
   key_config:
     private_key_path: "/pki/signing_ec_private.pem"
     chain_path: "/pki/signing_ec_chain.pem"
   jwt_attribute:
-    issuer: "http://localhost:9000"
+    # JWT issuer claim - must match public issuer URL
+    issuer: "http://localhost:9003"
     enable_not_before: true
     valid_duration: 3600
     verifiable_credential_type: "https://credential.e2etest.local/identity_credential"
 
-# Verifier service configuration
+# =============================================================================
+# Verifier Service - OpenID4VP Verifier + OIDC Provider
+# =============================================================================
 verifier:
   api_server:
     addr: ":8080"
+    tls:
+      enable: false
   grpc_server:
-    addr: "vc-verifier:8090"
+    addr: ":8090"
   public_url: "http://localhost:9001"
   key_config:
     private_key_path: "/pki/signing_ec_private.pem"
@@ -138,28 +209,45 @@ verifier:
       - vct: "urn:credential:eduid:1"
         scopes:
           - "eduid"
+      - vct: "urn:eudi:ehic:1"
+        scopes:
+          - "ehic"
+      - vct: "urn:eudi:diploma:1"
+        scopes:
+          - "diploma"
 
-# Registry service configuration
+# =============================================================================
+# Registry Service - Token Status Lists and Revocation
+# =============================================================================
 registry:
   api_server:
     addr: ":8080"
-  public_url: "http://localhost:9002"
+    tls:
+      enable: false
   grpc_server:
-    addr: "vc-registry:8090"
+    addr: ":8090"
+  public_url: "http://localhost:9004"
   token_status_lists:
     key_config:
       private_key_path: "/pki/signing_ec_private.pem"
       chain_path: "/pki/signing_ec_chain.pem"
   admin_gui:
-    enabled: false
+    enabled: true
+    password: "e2e-admin-password"
 
-# Mock Authentication Server configuration
+# =============================================================================
+# Mock Authentication Server - Simulates User Authentication
+# =============================================================================
 mock_as:
   api_server:
     addr: ":8080"
-  datastore_url: "http://vc-issuer:8080"
+    tls:
+      enable: false
+  datastore_url: "http://vc-apigw:8080"
+  auto_approve: true
   bootstrap_users:
     - "test-user-001"
     - "test-user-002"
+    - "test-user-003"
     - "100"
     - "102"
