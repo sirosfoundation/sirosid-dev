@@ -198,7 +198,7 @@ wallet-frontend:
 | go-wallet-backend | `../go-wallet-backend` | `BACKEND_PATH` | `ghcr.io/sirosfoundation/go-wallet-backend:TAG` |
 | wallet-backend-server | `../wallet-backend-server` | `TS_BACKEND_PATH` | N/A (build from source) |
 | go-trust | `../go-trust` | `GO_TRUST_PATH` | `ghcr.io/sirosfoundation/go-trust:TAG` |
-| VC services | `../../vc` | `VC_PATH` | N/A (build from source) |
+| VC services | `../vc` | `VC_PATH` | N/A (build from source) |
 
 ### CI Environment
 
