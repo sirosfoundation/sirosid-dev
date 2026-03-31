@@ -59,7 +59,7 @@ services:
       - e2e-test-network
 
   # Go Wallet Backend - built from local source
-  # Uses network_mode: host so that proxy requests to localhost:9000 (mock issuer)
+  # Uses network_mode: host so that proxy requests to localhost:9010 (mock issuer)
   # work correctly - the backend can reach all localhost ports on the host network
   wallet-backend:
     build:
@@ -100,13 +100,13 @@ services:
     image: mock-issuer-e2e-test:local
     container_name: mock-issuer-e2e-test
     ports:
-      - "9000:9000"
+      - "9010:9010"
     environment:
-      - PORT=9000
-      - ISSUER_ID=http://localhost:9000
+      - PORT=9010
+      - ISSUER_ID=http://localhost:9010
       - INCLUDE_IACA=true
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9000/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9010/health"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -121,14 +121,14 @@ services:
     image: mock-trust-pdp-e2e-test:local
     container_name: mock-trust-pdp-e2e-test
     ports:
-      - "9091:9091"
+      - "9081:9081"
     environment:
-      - PORT=9091
-      - PDP_ID=http://localhost:9091
-      - TRUSTED_ISSUERS=http://localhost:9000,http://mock-issuer:9000
-      - TRUSTED_VERIFIERS=http://localhost:9001,http://mock-verifier:9001
+      - PORT=9081
+      - PDP_ID=http://localhost:9081
+      - TRUSTED_ISSUERS=http://localhost:9010,http://mock-issuer:9010
+      - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9091/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9081/health"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -143,12 +143,12 @@ services:
     image: mock-verifier-e2e-test:local
     container_name: mock-verifier-e2e-test
     ports:
-      - "9001:9001"
+      - "9011:9011"
     environment:
-      - PORT=9001
-      - VERIFIER_ID=http://localhost:9001
+      - PORT=9011
+      - VERIFIER_ID=http://localhost:9011
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9001/health"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9011/health"]
       interval: 3s
       timeout: 3s
       retries: 10

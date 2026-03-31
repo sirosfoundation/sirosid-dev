@@ -34,6 +34,34 @@ common:
     qr:
       recovery_level: 2
       size: 256
+  # Credential constructor definitions
+  # Each entry must have: vctm_file_path, vct, auth_method, format
+  credential_constructor:
+    pid_1_8:
+      vctm_file_path: "/metadata/vctm_pid_arf_1_8.json"
+      vct: "urn:eudi:pid:arf-1.8:1"
+      auth_method: basic
+      format: "dc+sd-jwt"
+    pid_1_5:
+      vctm_file_path: "/metadata/vctm_pid_arf_1_5.json"
+      vct: "urn:eudi:pid:arf-1.5:1"
+      auth_method: basic
+      format: "dc+sd-jwt"
+    ehic:
+      vctm_file_path: "/metadata/vctm_ehic.json"
+      vct: "urn:eudi:ehic:1"
+      auth_method: basic
+      format: "dc+sd-jwt"
+    diploma:
+      vctm_file_path: "/metadata/vctm_diploma.json"
+      vct: "urn:eudi:diploma:1"
+      auth_method: basic
+      format: "dc+sd-jwt"
+    eduid:
+      vctm_file_path: "/metadata/vctm_eduid.json"
+      vct: "urn:credential:eduid:1"
+      auth_method: basic
+      format: "dc+sd-jwt"
 
 # Kafka disabled for E2E tests
 kafka:
@@ -52,32 +80,6 @@ auth_methods:
       - "given_name"
       - "birthdate"
       - "family_name"
-
-# Credential constructor definitions
-# Each entry must have: vctm_file_path, vct, auth_method, format
-credential_constructor:
-  pid_1_8:
-    vctm_file_path: "/metadata/vctm_pid_arf_1_8.json"
-    vct: "urn:eudi:pid:arf-1.8:1"
-    auth_method: basic
-    format: "dc+sd-jwt"
-  pid_1_5:
-    vctm_file_path: "/metadata/vctm_pid_arf_1_5.json"
-    vct: "urn:eudi:pid:arf-1.5:1"
-    auth_method: basic
-    format: "dc+sd-jwt"
-  ehic:
-    vctm_file_path: "/metadata/vctm_ehic.json"
-    vct: "urn:eudi:ehic:1"
-    auth_method: pid_auth
-    format: "dc+sd-jwt"
-  diploma:
-    vctm_file_path: "/metadata/vctm_diploma.json"
-    vct: "urn:eudi:diploma:1"
-    auth_method: pid_auth
-    format: "dc+sd-jwt"
-  eduid:
-    vctm_file_path: "/metadata/vctm_eduid.json"
     vct: "urn:credential:eduid:1"
     auth_method: pid_auth
     format: "dc+sd-jwt"
@@ -181,7 +183,7 @@ verifier:
           - "diploma"
           - "ehic"
           - "eduid"
-  oidc:
+  oidc_op:
     issuer: "http://localhost:9001"
     session_duration: 900
     code_duration: 600

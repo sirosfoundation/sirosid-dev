@@ -76,7 +76,7 @@ services:
     container_name: vc-issuer-e2e
     ports:
       - "9000:8080"     # HTTP API (OpenID4VCI endpoints)
-      - "9090:8090"     # gRPC for apigw communication
+      - "9190:8090"     # gRPC for apigw communication
     volumes:
       - ./fixtures/vc-config.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro

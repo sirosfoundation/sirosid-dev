@@ -209,7 +209,7 @@ up-vc-go-trust-allow: ## Start VC services with go-trust allow-all PDP
 	@echo "  go-trust mode: ALLOW ALL (development)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=allow \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build go-trust-allow vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-allow vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
 	@$(MAKE) --no-print-directory status-vc
 	@echo ""
 	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_ALLOW_URL)$(NC)"
@@ -219,7 +219,7 @@ up-vc-go-trust-whitelist: ## Start VC services with go-trust whitelist PDP
 	@echo "  go-trust mode: WHITELIST (staging)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=whitelist \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build go-trust-whitelist vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-whitelist vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
 	@$(MAKE) --no-print-directory status-vc
 	@echo ""
 	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_WHITELIST_URL)$(NC)"
@@ -229,7 +229,7 @@ up-vc-go-trust-deny: ## Start VC services with go-trust deny-all PDP (negative t
 	@echo "  go-trust mode: DENY ALL (negative testing)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=deny \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build go-trust-deny vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-deny vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
 	@$(MAKE) --no-print-directory status-vc
 	@echo ""
 	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_DENY_URL)$(NC)"
