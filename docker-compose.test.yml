@@ -35,8 +35,14 @@ services:
         - VITE_STATIC_PUBLIC_URL=http://localhost:3000
         - VITE_STATIC_NAME=E2E Test Wallet
         - VITE_VCT_REGISTRY_URL=http://localhost:8097/type-metadata
-        # Transport preference: try WebSocket first, fallback to HTTP
+        # Transport configuration
         - VITE_TRANSPORT_PREFERENCE=websocket,http
+        - VITE_ALLOWED_TRANSPORTS=http,websocket
+        # Logging and debugging
+        - VITE_LOG_LEVEL=debug
+        - VITE_DISPLAY_CONSOLE=true
+        # AuthZEN tenant for trust evaluation
+        - VITE_AUTHZEN_TENANT_ID=default
     image: wallet-frontend-e2e-test:local
     container_name: wallet-frontend-e2e-test
     ports:
