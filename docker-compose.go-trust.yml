@@ -18,12 +18,12 @@ services:
     image: go-trust-e2e-test:local
     container_name: go-trust-allow-e2e-test
     ports:
-      - "9094:6001"  # Use 9094 to avoid conflict with mock-trust-pdp on 9091
+      - "9095:6001"  # 9095 for go-trust-allow (tests expect this port)
     command: ["--registry", "always-trusted", "--host", "0.0.0.0", "--port", "6001"]
     environment:
-      - GO_TRUST_EXTERNAL_URL=http://localhost:9094
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9095
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:6001/healthz"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -38,12 +38,12 @@ services:
     image: go-trust-e2e-test:local
     container_name: go-trust-deny-e2e-test
     ports:
-      - "9092:6001"
+      - "9097:6001"  # 9097 for go-trust-deny (tests expect this port)
     command: ["--registry", "never-trusted", "--host", "0.0.0.0", "--port", "6001"]
     environment:
-      - GO_TRUST_EXTERNAL_URL=http://localhost:9092
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9097
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:6001/healthz"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -58,10 +58,10 @@ services:
     image: go-trust-e2e-test:local
     container_name: go-trust-whitelist-e2e-test
     ports:
-      - "9093:6001"
+      - "9096:6001"  # 9096 for go-trust-whitelist (tests expect this port)
     command: ["--registry", "whitelist", "--whitelist", "/app/whitelist.txt", "--host", "0.0.0.0", "--port", "6001", "--log-level", "debug"]
     environment:
-      - GO_TRUST_EXTERNAL_URL=http://localhost:9093
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9096
     volumes:
       - ./fixtures/go-trust-whitelist.txt:/app/whitelist.txt:ro
     depends_on:
@@ -70,7 +70,7 @@ services:
       mock-verifier:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:6001/healthz"]
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:6001/healthz"]
       interval: 3s
       timeout: 3s
       retries: 10

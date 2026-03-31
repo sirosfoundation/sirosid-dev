@@ -1,0 +1,16 @@
+# Override to use go-trust-allow as the trust PDP
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml -f docker-compose.go-trust.yml -f docker-compose.go-trust-allow.yml up -d
+#
+# This overrides wallet-backend to use the always-trusted registry.
+# Note: wallet-backend uses network_mode: host, so we use localhost address.
+
+services:
+  wallet-backend:
+    environment:
+      - WALLET_TRUST_PDP_URL=http://localhost:9095
+      - WALLET_TRUST_ENABLED=true
+    depends_on:
+      go-trust-allow:
+        condition: service_healthy

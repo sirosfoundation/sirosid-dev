@@ -1,0 +1,17 @@
+# Override to use go-trust-deny as the trust PDP
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml -f docker-compose.go-trust.yml -f docker-compose.go-trust-deny.yml up -d
+#
+# This overrides wallet-backend to use the never-trusted registry.
+# All credential issuance operations should fail with untrusted issuer error.
+# Note: wallet-backend uses network_mode: host, so we use localhost address.
+
+services:
+  wallet-backend:
+    environment:
+      - WALLET_TRUST_PDP_URL=http://localhost:9097
+      - WALLET_TRUST_ENABLED=true
+    depends_on:
+      go-trust-deny:
+        condition: service_healthy
