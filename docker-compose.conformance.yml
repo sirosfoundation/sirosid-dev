@@ -1,0 +1,56 @@
+# Docker Compose overlay for OpenID Conformance Suite
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml \
+#     -f docker-compose.go-trust.yml \
+#     -f docker-compose.go-trust-allow.yml \
+#     -f docker-compose.conformance.yml \
+#     up -d
+#
+# Or via Makefile:
+#   make up-conformance
+#
+# Prerequisites:
+#   - Add to /etc/hosts: 127.0.0.1 localhost.emobix.co.uk
+#   - The conformance suite uses self-signed TLS on port 8443
+#
+# The conformance suite provides:
+#   - Web UI: https://localhost.emobix.co.uk:8443/
+#   - API:    https://localhost.emobix.co.uk:8443/api/
+#
+# In devmode, no authentication token is required.
+
+services:
+  conformance-suite-server:
+    image: registry.gitlab.com/openid/conformance-suite/server:latest
+    container_name: conformance-suite-server
+    environment:
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+      - BASE_URL=https://localhost.emobix.co.uk:8443/
+      - MONGODB_HOST=conformance-suite-mongodb
+      - SPRING_PROFILES_ACTIVE=
+      - FINTECHLABS_DEVMODE=true
+      - FINTECHLABS_STARTREDIR=true
+    ports:
+      - "8443:8443"
+    depends_on:
+      conformance-suite-mongodb:
+        condition: service_started
+    volumes:
+      - conformance-suite-server-logs:/server/log
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8443/api/runner/available"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
+  conformance-suite-mongodb:
+    image: mongo:7
+    container_name: conformance-suite-mongodb
+    volumes:
+      - conformance-suite-mongodb-data:/data/db
+
+volumes:
+  conformance-suite-server-logs:
+  conformance-suite-mongodb-data:

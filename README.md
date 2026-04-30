@@ -228,6 +228,7 @@ export BACKEND_PATH=./go-wallet-backend
 | VC + Trust Allow | `make up-vc-go-trust-allow` | VC services + allow-all trust |
 | VC + Trust Whitelist | `make up-vc-go-trust-whitelist` | VC services + whitelist trust |
 | VC + Trust Deny | `make up-vc-go-trust-deny` | VC services + deny-all trust |
+| Conformance Suite | `make up-conformance` | VC + trust allow + OpenID Conformance Suite |
 | TS Backend | `make up-ts-backend` | TypeScript wallet-backend-server |
 
 ## Service Ports
@@ -258,6 +259,13 @@ export BACKEND_PATH=./go-wallet-backend
 | go-trust-whitelist | 9096 | - | Trust PDP (whitelist) |
 | go-trust-deny | 9097 | - | Trust PDP (deny all) |
 
+### Conformance Suite (when using `up-conformance`)
+
+| Service | Port | Description |
+|---------|------|-------------|
+| conformance-suite-server | 8443 (HTTPS) | OpenID Foundation Conformance Suite |
+| conformance-suite-mongodb | 27017 | Conformance suite database |
+
 ## Directory Structure
 
 ```
@@ -267,6 +275,7 @@ sirosid-dev/
 ├── docker-compose.go-trust-whitelist.yml
 ├── docker-compose.vc-services.yml     # Production VC services
 ├── docker-compose.vc-go-trust.yml     # VC + go-trust overlay
+├── docker-compose.conformance.yml     # OpenID Conformance Suite
 ├── docker-compose.ts-backend.yml      # TypeScript backend
 ├── dockerfiles/
 │   └── frontend.Dockerfile
@@ -419,6 +428,30 @@ cd sirosid-tests && make test
 cd sirosid-tests && make test-public    # Public API tests only
 cd sirosid-tests && make test-admin     # Admin API tests
 cd sirosid-tests && make test-webauthn  # WebAuthn tests
+
+# With conformance suite
+cd sirosid-dev && make up-conformance
+cd sirosid-tests && make test-conformance
+```
+
+### OpenID Conformance Suite
+
+The `make up-conformance` target starts the full wallet stack with go-trust
+allow-all and the OpenID Foundation Conformance Suite. This enables running
+the official OID4VP and OID4VCI wallet test plans against the wallet.
+
+The `ensure-conformance-hosts` target (a dependency of `up-conformance`)
+automatically adds `127.0.0.1 localhost.emobix.co.uk` to `/etc/hosts` if missing.
+
+```bash
+# Start conformance environment (auto-creates /etc/hosts entry)
+make up-conformance
+
+# Conformance UI: https://localhost.emobix.co.uk:8443/
+# Conformance API: https://localhost.emobix.co.uk:8443/api/
+
+# Stop conformance environment
+make down-conformance
 ```
 
 ## See Also

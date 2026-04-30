@@ -15,6 +15,8 @@
         up-vc-go-trust-allow up-vc-go-trust-whitelist up-vc-go-trust-deny \
         down-vc-go-trust \
         up-ts-backend down-ts-backend \
+        up-conformance down-conformance \
+        ensure-conformance-hosts \
         register-mocks clean
 
 # =============================================================================
@@ -33,6 +35,7 @@ GO_TRUST_WHITELIST_COMPOSE := docker-compose.go-trust-whitelist.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 TS_BACKEND_COMPOSE := docker-compose.ts-backend.yml
+CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 
 # Service URLs (published for use by sirosid-tests)
 export FRONTEND_URL ?= http://localhost:3000
@@ -237,6 +240,52 @@ up-vc-go-trust-deny: ## Start VC services with go-trust deny-all PDP (negative t
 down-vc-go-trust: ## Stop VC + go-trust environment
 	docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) down
 
+# =============================================================================
+# OpenID Conformance Suite
+# =============================================================================
+
+CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
+
+ensure-conformance-hosts: ## Ensure /etc/hosts has the conformance suite entry
+	@if grep -q '$(CONFORMANCE_HOSTNAME)' /etc/hosts; then \
+		echo "$(GREEN)✓ /etc/hosts already has $(CONFORMANCE_HOSTNAME)$(NC)"; \
+	else \
+		echo "$(YELLOW)Adding 127.0.0.1 $(CONFORMANCE_HOSTNAME) to /etc/hosts (requires sudo)...$(NC)"; \
+		echo '127.0.0.1 $(CONFORMANCE_HOSTNAME)' | sudo tee -a /etc/hosts >/dev/null; \
+		echo "$(GREEN)✓ Added $(CONFORMANCE_HOSTNAME) to /etc/hosts$(NC)"; \
+	fi
+
+up-conformance: ensure-conformance-hosts ## Start wallet + go-trust allow-all + conformance suite
+	@echo "$(GREEN)Starting sirosid-dev with conformance suite...$(NC)"
+	@echo "  Conformance URL: https://$(CONFORMANCE_HOSTNAME):8443/"
+	@echo "  go-trust mode: ALLOW ALL"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		GO_TRUST_MODE=allow \
+		docker compose \
+			-f $(PRIMARY_COMPOSE) \
+			-f $(VC_SERVICES_COMPOSE) \
+			-f $(VC_GO_TRUST_COMPOSE) \
+			-f $(CONFORMANCE_COMPOSE) \
+			up -d --build
+	@echo ""
+	@echo "$(GREEN)Waiting for conformance suite to start (this may take 60s+)...$(NC)"
+	@for i in $$(seq 1 30); do \
+		curl -fsk https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null 2>&1 && break; \
+		sleep 5; \
+	done
+	@curl -fsk https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ Conformance suite ready$(NC)" || \
+		echo "$(YELLOW)○ Conformance suite still starting... check: docker logs conformance-suite-server$(NC)"
+	@$(MAKE) --no-print-directory status-vc
+
+down-conformance: ## Stop conformance suite environment
+	docker compose \
+		-f $(PRIMARY_COMPOSE) \
+		-f $(VC_SERVICES_COMPOSE) \
+		-f $(VC_GO_TRUST_COMPOSE) \
+		-f $(CONFORMANCE_COMPOSE) \
+		down
+
 status-vc: ## Check VC service health
 	@echo "$(GREEN)VC Service Status:$(NC)"
 	@echo ""
@@ -311,6 +360,7 @@ clean: ## Remove all containers and volumes
 	-docker compose -f $(VC_SERVICES_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(VC_GO_TRUST_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(TS_BACKEND_COMPOSE) down -v 2>/dev/null
+	-docker compose -f $(CONFORMANCE_COMPOSE) down -v 2>/dev/null
 
 # =============================================================================
 # PKI Generation
