@@ -43,6 +43,8 @@ services:
         - VITE_DISPLAY_CONSOLE=true
         # AuthZEN tenant for trust evaluation
         - VITE_AUTHZEN_TENANT_ID=default
+        # Multi-tenant mode: enables /id/:tenantId/* routing
+        - BASE_PATH=/id/default/
     image: wallet-frontend-e2e-test:local
     container_name: wallet-frontend-e2e-test
     ports:

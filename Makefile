@@ -36,6 +36,7 @@ VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 TS_BACKEND_COMPOSE := docker-compose.ts-backend.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
+HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 
 # Service URLs (published for use by sirosid-tests)
 export FRONTEND_URL ?= http://localhost:3000
@@ -259,6 +260,7 @@ up-conformance: ensure-conformance-hosts ## Start wallet + go-trust allow-all + 
 	@echo "$(GREEN)Starting sirosid-dev with conformance suite...$(NC)"
 	@echo "  Conformance URL: https://$(CONFORMANCE_HOSTNAME):8443/"
 	@echo "  go-trust mode: ALLOW ALL"
+	@echo "  Transport: HTTP proxy"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=allow \
 		docker compose \
@@ -266,6 +268,7 @@ up-conformance: ensure-conformance-hosts ## Start wallet + go-trust allow-all + 
 			-f $(VC_SERVICES_COMPOSE) \
 			-f $(VC_GO_TRUST_COMPOSE) \
 			-f $(CONFORMANCE_COMPOSE) \
+			-f $(HTTP_TRANSPORT_COMPOSE) \
 			up -d --build
 	@echo ""
 	@echo "$(GREEN)Waiting for conformance suite to start (this may take 60s+)...$(NC)"
@@ -284,6 +287,7 @@ down-conformance: ## Stop conformance suite environment
 		-f $(VC_SERVICES_COMPOSE) \
 		-f $(VC_GO_TRUST_COMPOSE) \
 		-f $(CONFORMANCE_COMPOSE) \
+		-f $(HTTP_TRANSPORT_COMPOSE) \
 		down
 
 status-vc: ## Check VC service health

@@ -21,36 +21,71 @@
 # In devmode, no authentication token is required.
 
 services:
+  # Allow wallet-backend to talk to the conformance suite's self-signed HTTPS
+  wallet-backend:
+    environment:
+      - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
+
   conformance-suite-server:
-    image: registry.gitlab.com/openid/conformance-suite/server:latest
+    image: registry.gitlab.com/openid/conformance-suite:latest
     container_name: conformance-suite-server
     environment:
-      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-      - BASE_URL=https://localhost.emobix.co.uk:8443/
-      - MONGODB_HOST=conformance-suite-mongodb
+      - BASE_URL=https://localhost.emobix.co.uk:8443
+      - MONGODB_HOST=conformance-mongodb
       - SPRING_PROFILES_ACTIVE=
       - FINTECHLABS_DEVMODE=true
-      - FINTECHLABS_STARTREDIR=true
-    ports:
-      - "8443:8443"
+      - OIDC_GOOGLE_CLIENTID=google-client
+      - OIDC_GOOGLE_SECRET=google-secret
+      - OIDC_GITLAB_CLIENTID=gitlab-client
+      - OIDC_GITLAB_SECRET=gitlab-secret
     depends_on:
       conformance-suite-mongodb:
         condition: service_started
-    volumes:
-      - conformance-suite-server-logs:/server/log
+    networks:
+      e2e-test-network:
+        aliases:
+          - server
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500k"
+        max-file: "5"
+
+  conformance-suite-nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:latest
+    container_name: conformance-suite-nginx
+    ports:
+      - "8443:8443"
+    depends_on:
+      - conformance-suite-server
+    networks:
+      - e2e-test-network
     healthcheck:
-      test: ["CMD", "curl", "-fsk", "https://localhost:8443/api/runner/available"]
+      test: ["CMD", "curl", "-fsk", "https://localhost:8443/login.html"]
       interval: 10s
       timeout: 5s
       retries: 30
       start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500k"
+        max-file: "5"
 
   conformance-suite-mongodb:
-    image: mongo:7
+    image: mongo:6
     container_name: conformance-suite-mongodb
     volumes:
       - conformance-suite-mongodb-data:/data/db
+    networks:
+      e2e-test-network:
+        aliases:
+          - conformance-mongodb
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500k"
+        max-file: "5"
 
 volumes:
-  conformance-suite-server-logs:
   conformance-suite-mongodb-data:

@@ -1,0 +1,14 @@
+# Override to force HTTP proxy transport for the wallet frontend.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml -f docker-compose.http-transport.yml up -d --build
+#
+# This sets VITE_TRANSPORT_PREFERENCE=http so the frontend uses
+# the HTTP proxy transport instead of WebSocket.
+
+services:
+  wallet-frontend:
+    build:
+      args:
+        - VITE_TRANSPORT_PREFERENCE=http
+        - VITE_ALLOWED_TRANSPORTS=http
