@@ -31,6 +31,95 @@ make logs
 make down
 ```
 
+## Getting Started with the Conformance Test Suite
+
+The OpenID Foundation Conformance Suite validates that the wallet correctly
+implements the OID4VCI and OID4VP specifications. This section describes how
+to get a full conformance testing environment running from scratch.
+
+### Prerequisites
+
+- Docker and Docker Compose
+- Node.js 18+ and npm
+- The following sibling repositories cloned alongside `sirosid-dev`:
+  ```
+  siros.org/
+  ├── sirosid-dev/          # this repo
+  ├── sirosid-tests/        # E2E test suites
+  ├── wallet-frontend/      # web wallet UI
+  ├── go-wallet-backend/    # wallet backend (Go)
+  ├── go-trust/             # trust PDP
+  └── vc/                   # VC services (SUNET/vc)
+  ```
+
+### Step 1: Start the conformance environment
+
+```bash
+cd sirosid-dev
+make up-conformance
+```
+
+This single command:
+1. Adds `127.0.0.1 localhost.emobix.co.uk` to `/etc/hosts` (requires sudo)
+2. Builds and starts the wallet stack (frontend, go-wallet-backend, mocks)
+3. Starts VC services (issuer, verifier, apigw, registry, mockas, mongodb)
+4. Starts go-trust in allow-all mode
+5. Starts the OpenID Conformance Suite server (HTTPS on port 8443)
+
+Wait for all services to be healthy:
+```bash
+make status
+```
+
+### Step 2: Install test dependencies
+
+```bash
+cd ../sirosid-tests
+make install
+```
+
+### Step 3: Verify connectivity
+
+```bash
+make check-conformance-env
+```
+
+This checks that the wallet stack, VC services, and conformance suite are
+all reachable.
+
+### Step 4: Run conformance tests
+
+```bash
+# Run all conformance tests (OID4VP + OID4VCI)
+make test-conformance
+
+# Or run individually:
+make test-conformance-vp    # OID4VP wallet conformance
+make test-conformance-vci   # OID4VCI wallet conformance
+```
+
+### What the tests do
+
+The conformance suite acts as the counterparty (issuer for VCI, verifier for VP)
+and validates protocol-level correctness:
+
+- **OID4VCI**: The suite creates a test plan, issues credential offers, and
+  checks that the wallet correctly handles pre-authorized code flow with DPoP,
+  sd-jwt-vc format, and private_key_jwt client authentication.
+- **OID4VP**: The suite creates authorization requests and checks that the
+  wallet correctly presents credentials. The test automatically pre-loads a
+  PID credential from the VC issuer before running the conformance modules.
+
+Test configuration (JWKs, client IDs, variants) lives in
+`sirosid-tests/configs/conformance/`.
+
+### Stopping
+
+```bash
+cd sirosid-dev
+make down-conformance
+```
+
 ## Common Use Cases
 
 ### Testing a Credential Issuance Flow
