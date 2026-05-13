@@ -38,8 +38,8 @@ services:
         # Transport configuration
         - VITE_TRANSPORT_PREFERENCE=wmp,websocket,http
         - VITE_ALLOWED_TRANSPORTS=http,websocket,wmp
-        - VITE_WMP_RPC_URL=http://localhost:8082/wmp/rpc
-        - VITE_WMP_EVENTS_URL=http://localhost:8082/wmp/events
+        - VITE_WMP_RPC_URL=http://localhost:8082/api/v2/wallet/rpc
+        - VITE_WMP_EVENTS_URL=http://localhost:8082/api/v2/wallet/events
         # Logging and debugging
         - VITE_LOG_LEVEL=debug
         - VITE_DISPLAY_CONSOLE=true
