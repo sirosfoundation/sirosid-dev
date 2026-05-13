@@ -3,14 +3,12 @@
 # Usage:
 #   docker compose -f docker-compose.test.yml -f docker-compose.wmp-transport.yml up -d --build
 #
-# This sets VITE_TRANSPORT_PREFERENCE=wmp so the frontend uses
+# This sets TRANSPORT_PREFERENCE=wmp so the frontend uses
 # the WMP JSON-RPC transport instead of WebSocket or HTTP proxy.
+# WMP URLs are derived from WALLET_ENGINE_URL at runtime.
 
 services:
   wallet-frontend:
-    build:
-      args:
-        - VITE_TRANSPORT_PREFERENCE=wmp
-        - VITE_ALLOWED_TRANSPORTS=wmp
-        - VITE_WMP_RPC_URL=http://localhost:8082/api/v2/wallet/rpc
-        - VITE_WMP_EVENTS_URL=http://localhost:8082/api/v2/wallet/events
+    environment:
+      - TRANSPORT_PREFERENCE=wmp
+      - ALLOWED_TRANSPORTS=wmp

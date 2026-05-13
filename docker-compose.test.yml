@@ -23,34 +23,40 @@
 
 services:
   # Wallet Frontend - React app served via nginx
+  # Uses the production-like Dockerfile.e2e with runtime config injection.
+  # Environment variables are read by the nginx entrypoint script (wallet-config.sh)
+  # which injects them into index.html as a <meta> tag at container startup.
   wallet-frontend:
     build:
       context: ${FRONTEND_PATH:-../wallet-frontend}
       dockerfile: Dockerfile.e2e
-      args:
-        - VITE_WALLET_BACKEND_URL=http://localhost:8080
-        - VITE_WALLET_ENGINE_URL=http://localhost:8082
-        - VITE_WEBAUTHN_RPID=localhost
-        - VITE_OPENID4VCI_REDIRECT_URI=http://localhost:3000/
-        - VITE_STATIC_PUBLIC_URL=http://localhost:3000
-        - VITE_STATIC_NAME=E2E Test Wallet
-        - VITE_VCT_REGISTRY_URL=http://localhost:8097/type-metadata
-        # Transport configuration
-        - VITE_TRANSPORT_PREFERENCE=wmp,websocket,http
-        - VITE_ALLOWED_TRANSPORTS=http,websocket,wmp
-        - VITE_WMP_RPC_URL=http://localhost:8082/api/v2/wallet/rpc
-        - VITE_WMP_EVENTS_URL=http://localhost:8082/api/v2/wallet/events
-        # Logging and debugging
-        - VITE_LOG_LEVEL=debug
-        - VITE_DISPLAY_CONSOLE=true
-        # AuthZEN tenant for trust evaluation
-        - VITE_AUTHZEN_TENANT_ID=default
-        # Multi-tenant mode: enables /id/:tenantId/* routing
-        - BASE_PATH=/id/default/
     image: wallet-frontend-e2e-test:local
     container_name: wallet-frontend-e2e-test
     ports:
       - "3000:80"
+    environment:
+      - WALLET_BACKEND_URL=http://localhost:8080
+      - WALLET_ENGINE_URL=http://localhost:8082
+      - WEBAUTHN_RPID=localhost
+      - OPENID4VCI_REDIRECT_URI=http://localhost:3000/
+      - STATIC_PUBLIC_URL=http://localhost:3000
+      - STATIC_NAME=E2E Test Wallet
+      - VCT_REGISTRY_URL=http://localhost:8097/type-metadata
+      # Transport configuration
+      - TRANSPORT_PREFERENCE=wmp,websocket,http
+      - ALLOWED_TRANSPORTS=http,websocket,wmp
+      # Logging and debugging
+      - LOG_LEVEL=debug
+      - DISPLAY_CONSOLE=true
+      # Credentials
+      - LOGIN_WITH_PASSWORD=false
+      - DID_KEY_VERSION=jwk_jcs-pub
+      - OPENID4VCI_PROOF_TYPE_PRECEDENCE=attestation,jwt
+      - OPENID4VP_SAN_DNS_CHECK=false
+      - OPENID4VP_SAN_DNS_CHECK_SSL_CERTS=false
+      - DELEGATE_TRUST_TO_BACKEND=true
+      - MULTI_LANGUAGE_DISPLAY=true
+      - DISPLAY_ISSUANCE_WARNINGS=false
     depends_on:
       - wallet-backend
     healthcheck:
