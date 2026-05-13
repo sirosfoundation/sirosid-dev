@@ -36,8 +36,10 @@ services:
         - VITE_STATIC_NAME=E2E Test Wallet
         - VITE_VCT_REGISTRY_URL=http://localhost:8097/type-metadata
         # Transport configuration
-        - VITE_TRANSPORT_PREFERENCE=websocket,http
-        - VITE_ALLOWED_TRANSPORTS=http,websocket
+        - VITE_TRANSPORT_PREFERENCE=wmp,websocket,http
+        - VITE_ALLOWED_TRANSPORTS=http,websocket,wmp
+        - VITE_WMP_RPC_URL=http://localhost:8082/wmp/rpc
+        - VITE_WMP_EVENTS_URL=http://localhost:8082/wmp/events
         # Logging and debugging
         - VITE_LOG_LEVEL=debug
         - VITE_DISPLAY_CONSOLE=true

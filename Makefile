@@ -15,6 +15,7 @@
         up-vc-go-trust-allow up-vc-go-trust-whitelist up-vc-go-trust-deny \
         down-vc-go-trust \
         up-ts-backend down-ts-backend \
+        up-wmp down-wmp \
         up-conformance down-conformance \
         ensure-conformance-hosts \
         register-mocks clean
@@ -37,6 +38,7 @@ VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 TS_BACKEND_COMPOSE := docker-compose.ts-backend.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
+WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
 
 # Service URLs (published for use by sirosid-tests)
 export FRONTEND_URL ?= http://localhost:3000
@@ -79,6 +81,7 @@ help: ## Show this help
 	@echo "  make up-go-trust-whitelist # Use go-trust whitelist as PDP"
 	@echo "  make up-vc                 # Production-like VC services"
 	@echo "  make up-ts-backend         # TypeScript backend instead of Go"
+	@echo "  make up-wmp                # WMP transport only (JSON-RPC+SSE)"
 	@echo ""
 	@echo "$(GREEN)VC Services with go-trust:$(NC)"
 	@echo "  make up-vc-go-trust-allow     # VC + go-trust allow-all (dev)"
@@ -333,6 +336,19 @@ up-ts-backend: ## Start with TypeScript wallet-backend-server
 
 down-ts-backend: ## Stop TypeScript backend environment
 	docker compose -f $(PRIMARY_COMPOSE) -f $(TS_BACKEND_COMPOSE) down
+
+# =============================================================================
+# WMP Transport Stack
+# =============================================================================
+
+up-wmp: ## Start with WMP transport only
+	@echo "$(GREEN)Starting sirosid-dev with WMP transport...$(NC)"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		docker compose -f $(PRIMARY_COMPOSE) -f $(WMP_TRANSPORT_COMPOSE) up -d --build
+	@$(MAKE) --no-print-directory status
+
+down-wmp: ## Stop WMP transport environment
+	docker compose -f $(PRIMARY_COMPOSE) -f $(WMP_TRANSPORT_COMPOSE) down
 
 # =============================================================================
 # Mock Registration
