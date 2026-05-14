@@ -53,8 +53,6 @@ services:
       - WALLET_TRUST_PDP_URL=http://go-trust-whitelist:6001
       - WALLET_TRUST_ENABLED=true
     depends_on:
-      mock-issuer:
-        condition: service_healthy
       go-trust-whitelist:
         condition: service_started
       mock-verifier:

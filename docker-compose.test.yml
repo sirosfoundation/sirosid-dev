@@ -1,9 +1,12 @@
 # Docker Compose for E2E Tests
 #
-# All-in-one test environment: frontend, backend, and mock services.
+# Core test environment: frontend, backend, trust PDP, verifier, and VCTM registry.
+# For credential issuance/verification tests, layer the VC services overlay:
+#   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d
 #
 # Usage:
-#   make up              # Build and start all services
+#   make up              # Build and start core services
+#   make up-vc           # Build and start with VC issuer/verifier
 #   make run             # Run all E2E tests
 #   make down            # Stop all services
 #   make ci-docker       # Full cycle: up, run, down
@@ -73,8 +76,7 @@ services:
       - e2e-test-network
 
   # Go Wallet Backend - built from local source
-  # Uses network_mode: host so that proxy requests to localhost:9010 (mock issuer)
-  # work correctly - the backend can reach all localhost ports on the host network
+  # Uses network_mode: host so that proxy requests reach localhost services
   wallet-backend:
     build:
       context: ${BACKEND_PATH:-../go-wallet-backend}
@@ -98,34 +100,13 @@ services:
       - WALLET_TRUST_PDP_URL=http://localhost:9091
       - WALLET_TRUST_ENABLED=true
     depends_on:
-      mock-issuer:
-        condition: service_healthy
       mock-trust-pdp:
         condition: service_healthy
       mock-verifier:
         condition: service_healthy
     # Note: distroless image has no shell/wget, healthcheck done by make up
-
-  # Mock OpenID4VCI Credential Issuer
-  mock-issuer:
-    build:
-      context: ./mocks/issuer
-      dockerfile: Dockerfile
-    image: mock-issuer-e2e-test:local
-    container_name: mock-issuer-e2e-test
-    ports:
-      - "9010:9010"
-    environment:
-      - PORT=9010
-      - ISSUER_ID=http://localhost:9010
-      - INCLUDE_IACA=true
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9010/health"]
-      interval: 3s
-      timeout: 3s
-      retries: 10
-    networks:
-      - e2e-test-network
+    # For credential issuance tests, start VC services overlay:
+    #   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d
 
   # Mock AuthZEN Trust PDP
   mock-trust-pdp:
@@ -139,8 +120,8 @@ services:
     environment:
       - PORT=9081
       - PDP_ID=http://localhost:9081
-      - TRUSTED_ISSUERS=http://localhost:9010,http://mock-issuer:9010
-      - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011
+      - TRUSTED_ISSUERS=http://localhost:9000,http://vc-issuer:8080
+      - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011,http://localhost:9001,http://vc-verifier:8080
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9081/health"]
       interval: 3s

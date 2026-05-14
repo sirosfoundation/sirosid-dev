@@ -8,7 +8,6 @@ This repository provides a complete local development stack for the SIROS ID wal
 
 - **wallet-frontend** - Web wallet UI
 - **go-wallet-backend** - Wallet backend API (Go implementation)
-- **mock-issuer** - OpenID4VCI credential issuer mock
 - **mock-verifier** - OpenID4VP verifier mock
 - **mock-trust-pdp** - AuthZEN Trust PDP mock
 - **vctm-registry** - Verifiable Credential Type Metadata registry
@@ -126,21 +125,21 @@ make down-conformance
 
 The wallet supports OpenID4VCI credential issuance. To test an issuance flow:
 
-#### 1. Using Mock Issuer (Development)
+#### 1. Using VC Issuer (Development)
 
 ```bash
-# Start the default environment with mock issuer
+# Start the default environment with VC issuer
 make up
 
-# The mock issuer runs at http://localhost:9000
+# The VC issuer runs at http://localhost:9000
 # Use the admin API to register it with the wallet backend
 curl -X POST http://localhost:8081/admin/issuers \
   -H "Authorization: Bearer e2e-test-admin-token-for-testing-purposes-only" \
   -H "Content-Type: application/json" \
-  -d '{"name":"Mock Issuer","url":"http://localhost:9000"}'
+  -d '{"name":"VC Issuer","url":"http://localhost:9000"}'
 ```
 
-The mock issuer is pre-configured with several credential types (PID, diploma, ehic). 
+The VC issuer is pre-configured with several credential types (PID, diploma, ehic). 
 You can trigger issuance from the wallet UI or via API.
 
 #### 2. Using Production-like VC Services
@@ -330,7 +329,7 @@ export BACKEND_PATH=./go-wallet-backend
 | wallet-backend | 8080 | Backend API |
 | wallet-backend admin | 8081 | Admin API |
 | wallet-engine | 8082 | Credential engine |
-| mock-issuer | 9000 | OpenID4VCI issuer |
+| vc-issuer | 9000 | OpenID4VCI issuer (VC services) |
 | mock-verifier | 9001 | OpenID4VP verifier |
 | mock-trust-pdp | 9091 | Trust PDP mock |
 | vctm-registry | 8097 | VCTM registry |
@@ -369,7 +368,6 @@ sirosid-dev/
 ├── dockerfiles/
 │   └── frontend.Dockerfile
 ├── mocks/
-│   ├── issuer/                        # OpenID4VCI mock issuer
 │   ├── verifier/                      # OpenID4VP mock verifier
 │   └── trust-pdp/                     # AuthZEN PDP mock
 ├── fixtures/
@@ -403,7 +401,7 @@ The `fixtures/vc-go-trust-whitelist.yaml` defines trusted entities:
 ```yaml
 whitelist:
   issuers:
-    - http://localhost:9000      # Mock issuer
+    - http://localhost:9000      # VC issuer
     - http://localhost:9003      # VC apigw
     - http://vc-issuer:8080      # Docker internal
   verifiers:

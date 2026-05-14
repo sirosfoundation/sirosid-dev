@@ -33,8 +33,6 @@ services:
       # Trust/PDP settings if supported
       - TRUST_PDP_URL=http://localhost:9091
     depends_on:
-      mock-issuer:
-        condition: service_healthy
       mock-trust-pdp:
         condition: service_healthy
       mock-verifier:

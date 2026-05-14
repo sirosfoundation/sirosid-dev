@@ -65,8 +65,6 @@ services:
     volumes:
       - ./fixtures/go-trust-whitelist.txt:/app/whitelist.txt:ro
     depends_on:
-      mock-issuer:
-        condition: service_healthy
       mock-verifier:
         condition: service_healthy
     healthcheck:

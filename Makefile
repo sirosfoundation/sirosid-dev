@@ -45,7 +45,6 @@ export FRONTEND_URL ?= http://localhost:3000
 export BACKEND_URL ?= http://localhost:8080
 export ENGINE_URL ?= http://localhost:8082
 export ADMIN_URL ?= http://localhost:8081
-export MOCK_ISSUER_URL ?= http://localhost:9000
 export MOCK_VERIFIER_URL ?= http://localhost:9001
 export MOCK_PDP_URL ?= http://localhost:9091
 export VCTM_REGISTRY_URL ?= http://localhost:8097
@@ -98,7 +97,6 @@ help: ## Show this help
 	@echo "  Backend API:   $(BACKEND_URL)"
 	@echo "  Admin API:     $(ADMIN_URL)"
 	@echo "  Engine:        $(ENGINE_URL)"
-	@echo "  Mock Issuer:   $(MOCK_ISSUER_URL)"
 	@echo "  Mock Verifier: $(MOCK_VERIFIER_URL)"
 	@echo "  Trust PDP:     $(MOCK_PDP_URL)"
 	@echo "  VCTM Registry: $(VCTM_REGISTRY_URL)"
@@ -158,9 +156,6 @@ status: ## Check service health
 	@curl -sf $(ADMIN_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "wallet-admin" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "wallet-admin" "✗ not running"
-	@curl -sf $(MOCK_ISSUER_URL)/.well-known/openid-credential-issuer >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-issuer" "✓ running" || \
-		printf "  %-20s $(RED)%s$(NC)\n" "mock-issuer" "✗ not running"
 	@curl -sf $(MOCK_VERIFIER_URL)/.well-known/openid-verifier >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-verifier" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "mock-verifier" "✗ not running"
@@ -354,14 +349,8 @@ down-wmp: ## Stop WMP transport environment
 # Mock Registration
 # =============================================================================
 
-register-mocks: ## Register mock issuer/verifier with backend
+register-mocks: ## Register mock verifier with backend
 	@echo "$(GREEN)Registering mock services...$(NC)"
-	@curl -sf -X POST $(ADMIN_URL)/admin/issuers \
-		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
-		-H "Content-Type: application/json" \
-		-d '{"name":"Mock Issuer","url":"$(MOCK_ISSUER_URL)"}' && \
-		echo "  Mock issuer registered" || \
-		echo "  $(YELLOW)Warning: Could not register mock issuer$(NC)"
 	@curl -sf -X POST $(ADMIN_URL)/admin/verifiers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
