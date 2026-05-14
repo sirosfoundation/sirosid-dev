@@ -42,8 +42,8 @@ services:
       - STATIC_PUBLIC_URL=http://localhost:3000
       - STATIC_NAME=E2E Test Wallet
       - VCT_REGISTRY_URL=http://localhost:8097/type-metadata
-      # Transport configuration
-      - TRANSPORT_PREFERENCE=wmp,websocket,http
+      # Transport: websocket by default; use docker-compose.wmp-transport.yml overlay for WMP
+      - TRANSPORT_PREFERENCE=websocket
       - ALLOWED_TRANSPORTS=http,websocket,wmp
       # Logging and debugging
       - LOG_LEVEL=debug
