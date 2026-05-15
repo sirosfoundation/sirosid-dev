@@ -43,7 +43,7 @@ interface TrustPolicy {
   entity_pattern: RegExp;
   role: 'issuer' | 'verifier';
   trusted: boolean;
-  reason: string;
+  reason: Record<string, string>;
   trust_framework?: string;
 }
 
@@ -53,7 +53,7 @@ const trustPolicies: TrustPolicy[] = [
     entity_pattern: new RegExp(`^${escapeRegex(issuer)}$`),
     role: 'issuer' as const,
     trusted: true,
-    reason: 'Issuer is in the trusted issuers list',
+    reason: { en: 'Issuer is in the trusted issuers list' },
     trust_framework: 'test-framework',
   })),
   // Explicitly trusted verifiers
@@ -61,7 +61,7 @@ const trustPolicies: TrustPolicy[] = [
     entity_pattern: new RegExp(`^${escapeRegex(verifier)}$`),
     role: 'verifier' as const,
     trusted: true,
-    reason: 'Verifier is in the trusted verifiers list',
+    reason: { en: 'Verifier is in the trusted verifiers list' },
     trust_framework: 'test-framework',
   })),
   // Example: Trust anything on localhost for testing
@@ -69,14 +69,14 @@ const trustPolicies: TrustPolicy[] = [
     entity_pattern: /^https?:\/\/localhost(:\d+)?/,
     role: 'issuer' as const,
     trusted: true,
-    reason: 'Local development issuer - trusted for testing',
+    reason: { en: 'Local development issuer - trusted for testing' },
     trust_framework: 'local-dev',
   },
   {
     entity_pattern: /^https?:\/\/localhost(:\d+)?/,
     role: 'verifier' as const,
     trusted: true,
-    reason: 'Local development verifier - trusted for testing',
+    reason: { en: 'Local development verifier - trusted for testing' },
     trust_framework: 'local-dev',
   },
   // Example: Trust EUDI reference issuers
@@ -84,7 +84,7 @@ const trustPolicies: TrustPolicy[] = [
     entity_pattern: /\.eudi\.wallet\.gov|\.ec\.europa\.eu/,
     role: 'issuer' as const,
     trusted: true,
-    reason: 'EUDI reference implementation issuer',
+    reason: { en: 'EUDI reference implementation issuer' },
     trust_framework: 'eudi-wallet',
   },
 ];
@@ -114,7 +114,7 @@ interface EvaluationRequest {
 interface EvaluationResponse {
   decision: boolean;
   context?: {
-    reason?: string;
+    reason?: Record<string, string>;
     trust_framework?: string;
     entity_identifier?: string;
     role?: string;
@@ -124,8 +124,12 @@ interface EvaluationResponse {
 function evaluateTrust(request: EvaluationRequest): EvaluationResponse {
   // Extract entity and role from the request
   const entityId = request.resource.id;
+  const actionName = request.action.name || '';
+  // Map action.name to role (e.g. "credential-issuer" -> "issuer")
+  const actionRole = actionName.replace(/^credential-/, '');
   const role = request.resource.properties?.role as string || 
                request.action.properties?.role as string ||
+               actionRole ||
                'unknown';
 
   // Find matching policy
@@ -147,7 +151,7 @@ function evaluateTrust(request: EvaluationRequest): EvaluationResponse {
   return {
     decision: false,
     context: {
-      reason: `No trust policy found for ${role} ${entityId}`,
+      reason: { en: `No trust policy found for ${role} ${entityId}` },
       entity_identifier: entityId,
       role: role,
     },

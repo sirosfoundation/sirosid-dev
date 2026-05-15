@@ -97,8 +97,11 @@ services:
       - WALLET_SERVER_ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
       - WALLET_LOG_LEVEL=debug
       # With network_mode: host, use localhost for PDP too
-      - WALLET_TRUST_PDP_URL=http://localhost:9091
+      - WALLET_TRUST_PDP_URL=http://localhost:9081/access/v1
       - WALLET_TRUST_ENABLED=true
+      # Allow HTTP and private IPs for local E2E testing with VC services
+      - WALLET_HTTP_CLIENT_ALLOW_PRIVATE_IPS=true
+      - WALLET_HTTP_CLIENT_ALLOW_HTTP=true
     depends_on:
       mock-trust-pdp:
         condition: service_healthy
@@ -120,7 +123,7 @@ services:
     environment:
       - PORT=9081
       - PDP_ID=http://localhost:9081
-      - TRUSTED_ISSUERS=http://localhost:9000,http://vc-issuer:8080
+      - TRUSTED_ISSUERS=http://localhost:9003,http://vc-issuer:8080,http://localhost:9000
       - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011,http://localhost:9001,http://vc-verifier:8080
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9081/health"]

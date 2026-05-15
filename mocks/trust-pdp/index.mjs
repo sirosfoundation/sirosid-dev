@@ -61,7 +61,7 @@ function buildTrustPolicies() {
       entity_pattern: new RegExp(`^${escapeRegex(issuer)}$`),
       role: 'issuer',
       trusted: true,
-      reason: 'Issuer is in the trusted issuers list',
+      reason: { en: 'Issuer is in the trusted issuers list' },
       trust_framework: 'test-framework',
     });
   }
@@ -72,7 +72,7 @@ function buildTrustPolicies() {
       entity_pattern: new RegExp(`^${escapeRegex(verifier)}$`),
       role: 'verifier',
       trusted: true,
-      reason: 'Verifier is in the trusted verifiers list',
+      reason: { en: 'Verifier is in the trusted verifiers list' },
       trust_framework: 'test-framework',
     });
   }
@@ -82,14 +82,14 @@ function buildTrustPolicies() {
     entity_pattern: /^https?:\/\/localhost(:\d+)?/,
     role: 'issuer',
     trusted: true,
-    reason: 'Local development issuer - trusted for testing',
+    reason: { en: 'Local development issuer - trusted for testing' },
     trust_framework: 'local-dev',
   });
   policies.push({
     entity_pattern: /^https?:\/\/localhost(:\d+)?/,
     role: 'verifier',
     trusted: true,
-    reason: 'Local development verifier - trusted for testing',
+    reason: { en: 'Local development verifier - trusted for testing' },
     trust_framework: 'local-dev',
   });
   
@@ -101,8 +101,12 @@ const trustPolicies = buildTrustPolicies();
 function evaluateTrust(request) {
   // Extract entity and role from the request
   const entityId = request.resource?.id || '';
+  const actionName = request.action?.name || '';
+  // Map action.name to role (e.g. "credential-issuer" -> "issuer")
+  const actionRole = actionName.replace(/^credential-/, '');
   const role = request.resource?.properties?.role || 
                request.action?.properties?.role ||
+               actionRole ||
                'unknown';
 
   // Handle static trust modes (mimicking go-trust static registries)
@@ -110,7 +114,7 @@ function evaluateTrust(request) {
     return {
       decision: true,
       context: {
-        reason: 'AlwaysTrusted: all requests are trusted',
+        reason: { en: 'AlwaysTrusted: all requests are trusted' },
         trust_framework: 'static-always',
         entity_identifier: entityId,
         role: role,
@@ -123,7 +127,7 @@ function evaluateTrust(request) {
     return {
       decision: false,
       context: {
-        reason: 'NeverTrusted: all requests are denied',
+        reason: { en: 'NeverTrusted: all requests are denied' },
         trust_framework: 'static-never',
         entity_identifier: entityId,
         role: role,
@@ -153,7 +157,7 @@ function evaluateTrust(request) {
   return {
     decision: false,
     context: {
-      reason: `No trust policy found for ${role} ${entityId}`,
+      reason: { en: `No trust policy found for ${role} ${entityId}` },
       entity_identifier: entityId,
       role: role,
       mode: 'default',
