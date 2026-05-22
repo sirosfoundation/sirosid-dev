@@ -1,0 +1,309 @@
+# OpenID Conformance Suite CI
+#
+# Each profile starts only the services it needs:
+#   issuer:   VC services + go-trust + conformance suite
+#   verifier: VC services + go-trust + conformance suite
+#   wallet:   Wallet stack + go-trust + conformance suite
+#
+# go-trust (allow-all) is included in all profiles for trust evaluation.
+
+name: Conformance Suite
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Conformance profile to test'
+        required: false
+        type: choice
+        options:
+          - all
+          - issuer
+          - verifier
+          - wallet
+        default: all
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: conformance-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FRONTEND_URL: http://localhost:3000
+  BACKEND_URL: http://localhost:8080
+  ADMIN_URL: http://localhost:8081
+  ENGINE_URL: http://localhost:8082
+  ADMIN_TOKEN: e2e-test-admin-token-for-testing-purposes-only
+  VC_ISSUER_URL: http://localhost:9000
+  VC_VERIFIER_URL: http://localhost:9001
+  VC_MOCKAS_URL: http://localhost:9002
+  VC_APIGW_URL: http://localhost:9003
+  VC_REGISTRY_URL: http://localhost:9004
+  CONFORMANCE_URL: https://localhost.emobix.co.uk:8443/
+  ISSUER_CONFORMANCE_URL: http://vc-apigw:8080
+  VERIFIER_CONFORMANCE_URL: http://vc-verifier:8080
+  GO_TRUST_ALLOW_URL: http://localhost:9095
+  NODE_TLS_REJECT_UNAUTHORIZED: '0'
+
+jobs:
+  determine-profiles:
+    runs-on: ubuntu-latest
+    outputs:
+      profiles: ${{ steps.set-profiles.outputs.profiles }}
+    steps:
+      - id: set-profiles
+        run: |
+          PROFILE="${{ github.event.inputs.profile }}"
+          if [[ -z "$PROFILE" || "$PROFILE" == "all" ]]; then
+            echo 'profiles=["issuer","verifier","wallet"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "profiles=[\"$PROFILE\"]" >> "$GITHUB_OUTPUT"
+          fi
+
+  conformance:
+    needs: determine-profiles
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.determine-profiles.outputs.profiles) }}
+
+    steps:
+      # --- Common repos (always needed) ---
+      - name: Checkout sirosid-dev
+        uses: actions/checkout@v4
+        with:
+          path: sirosid-dev
+
+      - name: Checkout sirosid-tests
+        uses: actions/checkout@v4
+        with:
+          repository: sirosfoundation/sirosid-tests
+          path: sirosid-tests
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout go-trust
+        uses: actions/checkout@v4
+        with:
+          repository: sirosfoundation/go-trust
+          path: go-trust
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Issuer/verifier profiles: VC services ---
+      - name: Checkout vc
+        if: matrix.profile == 'issuer' || matrix.profile == 'verifier'
+        uses: actions/checkout@v4
+        with:
+          repository: SUNET/vc
+          path: vc
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Wallet profile: wallet stack ---
+      - name: Checkout wallet-frontend
+        if: matrix.profile == 'wallet'
+        uses: actions/checkout@v4
+        with:
+          repository: wwWallet/wallet-frontend
+          path: wallet-frontend
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout go-wallet-backend
+        if: matrix.profile == 'wallet'
+        uses: actions/checkout@v4
+        with:
+          repository: sirosfoundation/go-wallet-backend
+          path: go-wallet-backend
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- System setup ---
+      - name: Add conformance hostname to /etc/hosts
+        run: echo "127.0.0.1 localhost.emobix.co.uk" | sudo tee -a /etc/hosts
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Create Docker network
+        run: docker network create e2e-test-network || true
+
+      # --- Start services: issuer profile ---
+      # VC issuer/apigw/registry/mockas + go-trust + conformance suite
+      - name: 'Start services: issuer'
+        if: matrix.profile == 'issuer'
+        working-directory: sirosid-dev
+        env:
+          VC_PATH: ../vc
+          GO_TRUST_PATH: ../go-trust
+        run: |
+          docker compose \
+            -f docker-compose.vc-services.yml \
+            -f docker-compose.vc-go-trust.yml \
+            -f docker-compose.conformance-only.yml \
+            up -d --build \
+            mongodb vc-registry vc-issuer vc-apigw vc-mockas \
+            go-trust-allow \
+            conformance-suite-server conformance-suite-nginx conformance-suite-mongodb
+
+      # --- Start services: verifier profile ---
+      # VC verifier/registry + go-trust + conformance suite
+      - name: 'Start services: verifier'
+        if: matrix.profile == 'verifier'
+        working-directory: sirosid-dev
+        env:
+          VC_PATH: ../vc
+          GO_TRUST_PATH: ../go-trust
+        run: |
+          docker compose \
+            -f docker-compose.vc-services.yml \
+            -f docker-compose.vc-go-trust.yml \
+            -f docker-compose.conformance-only.yml \
+            up -d --build \
+            mongodb vc-registry vc-verifier \
+            go-trust-allow \
+            conformance-suite-server conformance-suite-nginx conformance-suite-mongodb
+
+      # --- Start services: wallet profile ---
+      # Wallet frontend/backend + go-trust allow-all + conformance suite
+      # No VC services — VP wallet tests skip gracefully
+      - name: 'Start services: wallet'
+        if: matrix.profile == 'wallet'
+        working-directory: sirosid-dev
+        env:
+          FRONTEND_PATH: ../wallet-frontend
+          BACKEND_PATH: ../go-wallet-backend
+          GO_TRUST_PATH: ../go-trust
+        run: |
+          docker compose \
+            -f docker-compose.test.yml \
+            -f docker-compose.go-trust.yml \
+            -f docker-compose.go-trust-allow.yml \
+            -f docker-compose.conformance.yml \
+            up -d --build \
+            wallet-frontend wallet-backend \
+            go-trust-allow \
+            conformance-suite-server conformance-suite-nginx conformance-suite-mongodb
+
+      # --- Wait for services ---
+      - name: Wait for conformance suite
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsk https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null 2>&1 && break
+            sleep 5
+          done
+          curl -fsk https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null 2>&1 \
+            && echo "✓ Conformance suite ready" \
+            || (echo "✗ Conformance suite failed to start" && exit 1)
+
+      - name: Wait for go-trust
+        run: |
+          for i in $(seq 1 20); do
+            curl -sf http://localhost:9095/healthz >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -sf http://localhost:9095/healthz >/dev/null 2>&1 \
+            && echo "✓ go-trust-allow ready" \
+            || echo "○ go-trust-allow not ready"
+
+      - name: 'Wait for VC services'
+        if: matrix.profile == 'issuer' || matrix.profile == 'verifier'
+        run: |
+          for svc_url in \
+            "http://localhost:9000/health|VC Issuer" \
+            "http://localhost:9001/health|VC Verifier" \
+            "http://localhost:9003/.well-known/oauth-authorization-server|VC API GW"; do
+            URL="${svc_url%%|*}"
+            NAME="${svc_url##*|}"
+            for i in $(seq 1 30); do
+              curl -sf "$URL" >/dev/null 2>&1 && break
+              sleep 2
+            done
+            curl -sf "$URL" >/dev/null 2>&1 \
+              && echo "✓ $NAME ready" \
+              || echo "○ $NAME not ready"
+          done
+
+      - name: 'Wait for wallet stack'
+        if: matrix.profile == 'wallet'
+        run: |
+          for svc_url in \
+            "http://localhost:3000|Frontend" \
+            "http://localhost:8080/health|Backend"; do
+            URL="${svc_url%%|*}"
+            NAME="${svc_url##*|}"
+            for i in $(seq 1 30); do
+              curl -sf "$URL" >/dev/null 2>&1 && break
+              sleep 2
+            done
+            curl -sf "$URL" >/dev/null 2>&1 \
+              && echo "✓ $NAME ready" \
+              || (echo "✗ $NAME failed to start" && exit 1)
+          done
+
+      # --- Install + run tests ---
+      - name: Install test dependencies
+        working-directory: sirosid-tests
+        run: |
+          npm ci
+          npx playwright install chromium --with-deps
+
+      - name: Run ${{ matrix.profile }} conformance tests
+        working-directory: sirosid-tests
+        env:
+          CI: 'true'
+        run: |
+          case "${{ matrix.profile }}" in
+            issuer)
+              npx playwright test specs/conformance/oid4vci-issuer.spec.ts \
+                --reporter=github,html --output=test-results-conformance
+              ;;
+            verifier)
+              npx playwright test specs/conformance/oid4vp-verifier.spec.ts \
+                --reporter=github,html --output=test-results-conformance
+              ;;
+            wallet)
+              npx playwright test specs/conformance/oid4vci-wallet.spec.ts \
+                --reporter=github,html --output=test-results-conformance
+              ;;
+          esac
+
+      # --- Diagnostics + artifacts ---
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          mkdir -p logs
+          for svc in wallet-backend wallet-frontend go-trust-allow \
+                     vc-issuer vc-verifier vc-apigw vc-mockas vc-registry \
+                     conformance-suite-server; do
+            docker logs "$svc" > "logs/${svc}.log" 2>&1 || true
+          done
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report-${{ matrix.profile }}
+          path: |
+            sirosid-tests/playwright-report/
+            sirosid-tests/test-results-conformance/
+          retention-days: 14
+
+      - name: Upload service logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs-${{ matrix.profile }}
+          path: logs/
+          retention-days: 7
+
+      - name: Stop services
+        if: always()
+        working-directory: sirosid-dev
+        run: docker compose down -v --remove-orphans 2>/dev/null || true

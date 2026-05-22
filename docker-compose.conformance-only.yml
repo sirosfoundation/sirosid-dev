@@ -1,0 +1,86 @@
+# Conformance suite services only (no wallet-backend override)
+#
+# Use this for issuer/verifier conformance profiles where the wallet
+# stack is not needed.  The full docker-compose.conformance.yml includes
+# a wallet-backend environment override for TLS skip which requires the
+# wallet-backend service to be defined in a base compose file.
+#
+# Usage (issuer conformance):
+#   docker compose \
+#     -f docker-compose.vc-services.yml \
+#     -f docker-compose.vc-go-trust.yml \
+#     -f docker-compose.conformance-only.yml \
+#     up -d
+#
+# Prerequisites:
+#   - /etc/hosts: 127.0.0.1 localhost.emobix.co.uk
+
+services:
+  conformance-suite-server:
+    image: registry.gitlab.com/openid/conformance-suite:latest
+    container_name: conformance-suite-server
+    environment:
+      - BASE_URL=https://localhost.emobix.co.uk:8443
+      - MONGODB_HOST=conformance-mongodb
+      - SPRING_PROFILES_ACTIVE=
+      - FINTECHLABS_DEVMODE=true
+      - OIDC_GOOGLE_CLIENTID=google-client
+      - OIDC_GOOGLE_SECRET=google-secret
+      - OIDC_GITLAB_CLIENTID=gitlab-client
+      - OIDC_GITLAB_SECRET=gitlab-secret
+    depends_on:
+      conformance-suite-mongodb:
+        condition: service_started
+    networks:
+      e2e-test-network:
+        aliases:
+          - server
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500k"
+        max-file: "5"
+
+  conformance-suite-nginx:
+    image: registry.gitlab.com/openid/conformance-suite/nginx:latest
+    container_name: conformance-suite-nginx
+    ports:
+      - "8443:8443"
+    depends_on:
+      - conformance-suite-server
+    networks:
+      - e2e-test-network
+    healthcheck:
+      test: ["CMD", "curl", "-fsk", "https://localhost:8443/login.html"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500k"
+        max-file: "5"
+
+  conformance-suite-mongodb:
+    image: mongo:6
+    container_name: conformance-suite-mongodb
+    volumes:
+      - conformance-suite-mongodb-data:/data/db
+    networks:
+      e2e-test-network:
+        aliases:
+          - conformance-mongodb
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "500k"
+        max-file: "5"
+
+volumes:
+  conformance-suite-mongodb-data:
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true
