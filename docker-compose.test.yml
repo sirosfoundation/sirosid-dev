@@ -76,14 +76,16 @@ services:
       - e2e-test-network
 
   # Go Wallet Backend - built from local source
-  # Uses network_mode: host so that proxy requests reach localhost services
   wallet-backend:
     build:
       context: ${BACKEND_PATH:-../go-wallet-backend}
       dockerfile: Dockerfile
     image: wallet-backend-e2e-test:local
     container_name: wallet-backend-e2e-test
-    network_mode: host
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+      - "8082:8082"
     # Run with all roles (backend + engine for WebSocket support)
     command: ["--mode=all"]
     environment:
@@ -92,12 +94,13 @@ services:
       - WALLET_SERVER_RP_ID=localhost
       - WALLET_SERVER_RP_ORIGIN=http://localhost:3000
       - WALLET_SERVER_PORT=8080
+      - WALLET_SERVER_ADMIN_HOST=0.0.0.0
       - WALLET_SERVER_ADMIN_PORT=8081
       - WALLET_SERVER_ENGINE_PORT=8082
       - WALLET_SERVER_ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
       - WALLET_LOG_LEVEL=debug
-      # With network_mode: host, use localhost for PDP too
-      - WALLET_TRUST_PDP_URL=http://localhost:9081/access/v1
+      # Use Docker DNS for inter-container communication
+      - WALLET_TRUST_PDP_URL=http://mock-trust-pdp:9081/access/v1
       - WALLET_TRUST_ENABLED=true
       # Allow HTTP and private IPs for local E2E testing with VC services
       - WALLET_HTTP_CLIENT_ALLOW_PRIVATE_IPS=true
@@ -107,6 +110,8 @@ services:
         condition: service_healthy
       mock-verifier:
         condition: service_healthy
+    networks:
+      - e2e-test-network
     # Note: distroless image has no shell/wget, healthcheck done by make up
     # For credential issuance tests, start VC services overlay:
     #   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d
@@ -154,14 +159,16 @@ services:
       - e2e-test-network
 
   # VCTM Registry Server - serves credential type metadata
-  # Uses network_mode: host so it can fetch VCTMs from localhost mock services
   vctm-registry:
     build:
       context: ${BACKEND_PATH:-../go-wallet-backend}
       dockerfile: Dockerfile.registry
     image: vctm-registry-e2e-test:local
     container_name: vctm-registry-e2e-test
-    network_mode: host
+    ports:
+      - "8097:8097"
+    networks:
+      - e2e-test-network
     environment:
       # Use environment variables to override config
       - REGISTRY_SERVER_HOST=0.0.0.0
@@ -183,6 +190,7 @@ services:
     volumes:
       - registry-data:/app/data
     # Note: distroless image has no shell/wget, healthcheck done by make up
+    # Note: distroless has no shell, so no CMD-form healthcheck possible
 
 networks:
   e2e-test-network:

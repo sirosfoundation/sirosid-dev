@@ -18,7 +18,9 @@ services:
       dockerfile: Dockerfile
     image: wallet-backend-server-e2e-test:local
     container_name: wallet-backend-server-e2e-test
-    network_mode: host
+    ports:
+      - "8080:8080"
+      - "8081:8081"
     # No --mode flag for TypeScript backend
     command: []
     environment:
@@ -31,7 +33,7 @@ services:
       - ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
       - LOG_LEVEL=debug
       # Trust/PDP settings if supported
-      - TRUST_PDP_URL=http://localhost:9091
+      - TRUST_PDP_URL=http://mock-trust-pdp:9081
     depends_on:
       mock-trust-pdp:
         condition: service_healthy

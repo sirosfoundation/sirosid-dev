@@ -45,8 +45,8 @@ export FRONTEND_URL ?= http://localhost:3000
 export BACKEND_URL ?= http://localhost:8080
 export ENGINE_URL ?= http://localhost:8082
 export ADMIN_URL ?= http://localhost:8081
-export MOCK_VERIFIER_URL ?= http://localhost:9001
-export MOCK_PDP_URL ?= http://localhost:9091
+export MOCK_VERIFIER_URL ?= http://localhost:9011
+export MOCK_PDP_URL ?= http://localhost:9081
 export VCTM_REGISTRY_URL ?= http://localhost:8097
 
 # VC Services URLs (when running up-vc or up-vc-go-trust)
@@ -153,16 +153,16 @@ status: ## Check service health
 	@curl -sf $(BACKEND_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "wallet-backend" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "wallet-backend" "✗ not running"
-	@curl -sf $(ADMIN_URL)/health >/dev/null 2>&1 && \
+	@curl -sf $(ADMIN_URL)/admin/status >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "wallet-admin" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "wallet-admin" "✗ not running"
-	@curl -sf $(MOCK_VERIFIER_URL)/.well-known/openid-verifier >/dev/null 2>&1 && \
+	@curl -sf $(MOCK_VERIFIER_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-verifier" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "mock-verifier" "✗ not running"
 	@curl -sf $(MOCK_PDP_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-trust-pdp" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "mock-trust-pdp" "✗ not running"
-	@curl -sf $(VCTM_REGISTRY_URL)/health >/dev/null 2>&1 && \
+	@curl -sf $(VCTM_REGISTRY_URL)/status >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vctm-registry" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vctm-registry" "✗ not running"
 	@echo ""
