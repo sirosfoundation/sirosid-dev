@@ -1,6 +1,6 @@
 # Docker Compose for E2E Tests
 #
-# Core test environment: frontend, backend, trust PDP, verifier, and VCTM registry.
+# Core test environment: frontend, backend (with built-in VCTM registry), trust PDP, and verifier.
 # For credential issuance/verification tests, layer the VC services overlay:
 #   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d
 #
@@ -44,7 +44,7 @@ services:
       - OPENID4VCI_REDIRECT_URI=http://localhost:3000/
       - STATIC_PUBLIC_URL=http://localhost:3000
       - STATIC_NAME=E2E Test Wallet
-      - VCT_REGISTRY_URL=http://localhost:8097/type-metadata
+      - VCT_REGISTRY_URL=http://localhost:8080/registry/type-metadata
       # Transport: websocket by default; use docker-compose.wmp-transport.yml overlay for WMP
       - TRANSPORT_PREFERENCE=websocket
       - ALLOWED_TRANSPORTS=http,websocket,wmp
@@ -105,6 +105,17 @@ services:
       # Allow HTTP and private IPs for local E2E testing with VC services
       - WALLET_HTTP_CLIENT_ALLOW_PRIVATE_IPS=true
       - WALLET_HTTP_CLIENT_ALLOW_HTTP=true
+      # Registry configuration (served via --mode=all on the same port)
+      - REGISTRY_SOURCE_URL=https://registry.siros.org/.well-known/vctm-registry.json
+      - REGISTRY_SOURCE_POLL_INTERVAL=5m
+      - REGISTRY_CACHE_PATH=/tmp/vctm-cache.json
+      - REGISTRY_DYNAMIC_CACHE_ENABLED=true
+      - REGISTRY_DYNAMIC_CACHE_DEFAULT_TTL=1h
+      - REGISTRY_DYNAMIC_CACHE_MAX_TTL=24h
+      - REGISTRY_DYNAMIC_CACHE_MIN_TTL=1m
+      - REGISTRY_JWT_REQUIRE_AUTH=false
+      - REGISTRY_RATE_LIMIT_UNAUTHENTICATED_RPM=1000
+      - REGISTRY_RATE_LIMIT_BURST_MULTIPLIER=10
     depends_on:
       mock-trust-pdp:
         condition: service_healthy
@@ -158,43 +169,6 @@ services:
     networks:
       - e2e-test-network
 
-  # VCTM Registry Server - serves credential type metadata
-  vctm-registry:
-    build:
-      context: ${BACKEND_PATH:-../go-wallet-backend}
-      dockerfile: Dockerfile.registry
-    image: vctm-registry-e2e-test:local
-    container_name: vctm-registry-e2e-test
-    ports:
-      - "8097:8097"
-    networks:
-      - e2e-test-network
-    environment:
-      # Use environment variables to override config
-      - REGISTRY_SERVER_HOST=0.0.0.0
-      - REGISTRY_SERVER_PORT=8097
-      - REGISTRY_SOURCE_URL=https://registry.siros.org/.well-known/vctm-registry.json
-      - REGISTRY_SOURCE_POLL_INTERVAL=5m
-      - REGISTRY_CACHE_PATH=/app/data/vctm-cache.json
-      # Enable dynamic fetching for E2E tests - VCTMs can be fetched from URLs
-      - REGISTRY_DYNAMIC_CACHE_ENABLED=true
-      - REGISTRY_DYNAMIC_CACHE_DEFAULT_TTL=1h
-      - REGISTRY_DYNAMIC_CACHE_MAX_TTL=24h
-      - REGISTRY_DYNAMIC_CACHE_MIN_TTL=1m
-      # Disable auth requirement for tests
-      - REGISTRY_JWT_REQUIRE_AUTH=false
-      # Increase rate limit for tests (default burst is only 5)
-      - REGISTRY_RATE_LIMIT_UNAUTHENTICATED_RPM=1000
-      - REGISTRY_RATE_LIMIT_BURST_MULTIPLIER=10
-      - REGISTRY_LOGGING_LEVEL=debug
-    volumes:
-      - registry-data:/app/data
-    # Note: distroless image has no shell/wget, healthcheck done by make up
-    # Note: distroless has no shell, so no CMD-form healthcheck possible
-
 networks:
   e2e-test-network:
     driver: bridge
-
-volumes:
-  registry-data:

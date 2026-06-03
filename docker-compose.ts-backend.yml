@@ -51,6 +51,6 @@ services:
         - VITE_OPENID4VCI_REDIRECT_URI=http://localhost:3000/
         - VITE_STATIC_PUBLIC_URL=http://localhost:3000
         - VITE_STATIC_NAME=E2E Test Wallet (TS Backend)
-        - VITE_VCT_REGISTRY_URL=http://localhost:8097/type-metadata
+        - VITE_VCT_REGISTRY_URL=http://localhost:8080/registry/type-metadata
         # HTTP only - TypeScript backend doesn't support WebSocket
         - VITE_TRANSPORT_PREFERENCE=http

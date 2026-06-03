@@ -47,7 +47,7 @@ export ENGINE_URL ?= http://localhost:8082
 export ADMIN_URL ?= http://localhost:8081
 export MOCK_VERIFIER_URL ?= http://localhost:9011
 export MOCK_PDP_URL ?= http://localhost:9081
-export VCTM_REGISTRY_URL ?= http://localhost:8097
+export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
 
 # VC Services URLs (when running up-vc or up-vc-go-trust)
 export VC_ISSUER_URL ?= http://localhost:9000
