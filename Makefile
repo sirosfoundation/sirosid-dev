@@ -54,11 +54,14 @@ export MOCK_VERIFIER_URL ?= http://localhost:9011
 export MOCK_PDP_URL ?= http://localhost:9081
 export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
 
-# VC Services URLs
+# VC Services URLs (external, for health checks from host)
 export VC_ISSUER_URL ?= http://localhost:9000
 export VC_VERIFIER_URL ?= http://localhost:9001
 export VC_APIGW_URL ?= http://localhost:9003
 export VC_REGISTRY_URL ?= http://localhost:9004
+# VC Services URLs (internal, for container-to-container registration)
+VC_APIGW_INTERNAL_URL ?= http://vc-apigw:8080
+VC_VERIFIER_INTERNAL_URL ?= http://vc-verifier:8080
 export GO_TRUST_ALLOW_URL ?= http://localhost:9095
 export GO_TRUST_WHITELIST_URL ?= http://localhost:9096
 export GO_TRUST_DENY_URL ?= http://localhost:9097
@@ -385,13 +388,13 @@ register-vc-services: ## Register VC issuer and verifier with backend
 	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d '{"credential_issuer_identifier":"$(VC_ISSUER_URL)","visible":true}' && \
+		-d '{"credential_issuer_identifier":"$(VC_APIGW_INTERNAL_URL)","visible":true}' && \
 		echo "  $(GREEN)✓ VC issuer registered$(NC)" || \
 		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"
 	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d '{"name":"VC Verifier","url":"$(VC_VERIFIER_URL)"}' && \
+		-d '{"name":"VC Verifier","url":"$(VC_VERIFIER_INTERNAL_URL)"}' && \
 		echo "  $(GREEN)✓ VC verifier registered$(NC)" || \
 		echo "  $(YELLOW)Warning: Could not register VC verifier$(NC)"
 
