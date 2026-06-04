@@ -14,7 +14,6 @@
         up-vc down-vc \
         up-vc-go-trust-allow up-vc-go-trust-whitelist up-vc-go-trust-deny \
         down-vc-go-trust \
-        up-ts-backend down-ts-backend \
         up-wmp down-wmp \
         up-conformance down-conformance \
         ensure-conformance-hosts \
@@ -27,7 +26,6 @@
 # Workspace paths - defaults assume sibling directories
 FRONTEND_PATH ?= ../wallet-frontend
 BACKEND_PATH ?= ../go-wallet-backend
-TS_BACKEND_PATH ?= ../wallet-backend-server
 
 # Docker compose files
 PRIMARY_COMPOSE := docker-compose.test.yml
@@ -35,7 +33,6 @@ GO_TRUST_COMPOSE := docker-compose.go-trust.yml
 GO_TRUST_WHITELIST_COMPOSE := docker-compose.go-trust-whitelist.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
-TS_BACKEND_COMPOSE := docker-compose.ts-backend.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
@@ -79,7 +76,6 @@ help: ## Show this help
 	@echo "  make up-go-trust           # Add go-trust PDP services"
 	@echo "  make up-go-trust-whitelist # Use go-trust whitelist as PDP"
 	@echo "  make up-vc                 # Production-like VC services"
-	@echo "  make up-ts-backend         # TypeScript backend instead of Go"
 	@echo "  make up-wmp                # WMP transport only (JSON-RPC+SSE)"
 	@echo ""
 	@echo "$(GREEN)VC Services with go-trust:$(NC)"
@@ -128,9 +124,6 @@ show-branches:
 	@if [ -d "$(BACKEND_PATH)/.git" ]; then \
 		printf "  %-24s %s\n" "go-wallet-backend:" "$$(git -C $(BACKEND_PATH) branch --show-current)"; \
 	fi
-	@if [ -d "$(TS_BACKEND_PATH)/.git" ]; then \
-		printf "  %-24s %s\n" "wallet-backend-server:" "$$(git -C $(TS_BACKEND_PATH) branch --show-current)"; \
-	fi
 	@echo ""
 
 # Print docker images used by the running stack
@@ -147,7 +140,6 @@ build-info:
 	for repo_info in \
 		"wallet-frontend:$(FRONTEND_PATH)" \
 		"go-wallet-backend:$(BACKEND_PATH)" \
-		"wallet-backend-server:$(TS_BACKEND_PATH)" \
 		"sirosid-dev:."; \
 	do \
 		name=$${repo_info%%:*}; \
@@ -194,7 +186,6 @@ down: ## Stop all services
 	-docker compose -f $(GO_TRUST_COMPOSE) down 2>/dev/null
 	-docker compose -f $(VC_SERVICES_COMPOSE) down 2>/dev/null
 	-docker compose -f $(VC_GO_TRUST_COMPOSE) down 2>/dev/null
-	-docker compose -f $(TS_BACKEND_COMPOSE) down 2>/dev/null
 
 logs: ## View service logs
 	docker compose -f $(PRIMARY_COMPOSE) logs -f
@@ -405,23 +396,6 @@ status-vc: ## Check VC service health
 	@echo ""
 
 # =============================================================================
-# TypeScript Backend Stack
-# =============================================================================
-
-up-ts-backend: ## Start with TypeScript wallet-backend-server
-	@echo "$(GREEN)Starting sirosid-dev with TypeScript backend...$(NC)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) TS_BACKEND_PATH=$(TS_BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(TS_BACKEND_COMPOSE) up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status
-
-down-ts-backend: ## Stop TypeScript backend environment
-	docker compose -f $(PRIMARY_COMPOSE) -f $(TS_BACKEND_COMPOSE) down
-
-# =============================================================================
 # WMP Transport Stack
 # =============================================================================
 
@@ -461,7 +435,6 @@ clean: ## Remove all containers and volumes
 	-docker compose -f $(GO_TRUST_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(VC_SERVICES_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(VC_GO_TRUST_COMPOSE) down -v 2>/dev/null
-	-docker compose -f $(TS_BACKEND_COMPOSE) down -v 2>/dev/null
 	-docker compose -f $(CONFORMANCE_COMPOSE) down -v 2>/dev/null
 
 # =============================================================================

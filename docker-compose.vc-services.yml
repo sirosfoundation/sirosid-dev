@@ -102,7 +102,7 @@ services:
   vc-verifier:
     build:
       context: ${VC_PATH:-../vc}
-      dockerfile: dockerfiles/web_worker
+      dockerfile: dockerfiles/worker
       args:
         SERVICE_NAME: verifier
     image: vc-verifier-e2e-test:local
