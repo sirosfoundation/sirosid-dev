@@ -270,6 +270,13 @@ function esc(s) {
   return d.innerHTML;
 }
 
+// Unregister any service workers that might intercept navigation to /
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.getRegistrations().then(function(regs) {
+    regs.forEach(function(r) { r.unregister(); });
+  });
+}
+
 checkAll();
 loadBuildInfo();
 setInterval(checkAll, 10000);
