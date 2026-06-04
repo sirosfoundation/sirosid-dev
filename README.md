@@ -28,7 +28,8 @@ make help          # Full option reference
 ## Prerequisites
 
 - Docker and Docker Compose
-- The following sibling repositories cloned alongside `sirosid-dev`:
+- The following sibling repositories cloned alongside `sirosid-dev`
+  (not needed when using `GOLDEN=yes` with pre-built images):
   ```
   siros.org/
   ├── sirosid-dev/          # this repo
@@ -48,6 +49,7 @@ A single `make up` command drives all configurations via parameters:
 | `VC=` | `1`, `yes`, `on`, `up` | off | Enable VC services (issuer, verifier, apigw, registry) |
 | `TRANSPORT=` | `wmp`, `http` | websocket | Transport protocol |
 | `CONFORMANCE=` | `1`, `yes`, `on`, `up` | off | Enable OpenID Conformance Suite |
+| `GOLDEN=` | `yes`, `<release-name>` | off | Use pre-built images from a golden release |
 
 ### Examples
 
@@ -72,6 +74,15 @@ make up TRANSPORT=wmp
 
 # Full conformance test stack (implies VC + allow + http transport)
 make up CONFORMANCE=yes
+
+# Use pre-built images from the default golden release (no local source needed)
+make up GOLDEN=yes
+
+# Golden release with VC services
+make up GOLDEN=yes VC=yes
+
+# Use a specific golden release
+make up GOLDEN=beta_r2 VC=1
 ```
 
 ### Trust PDP Modes
@@ -159,6 +170,36 @@ environment variables or on the command line:
 make up FRONTEND_PATH=~/other/wallet-frontend
 ```
 
+## Golden Releases
+
+The `GOLDEN=` option lets you run pre-built container images from a tested
+release instead of building from local source. This is useful for quick
+demos, reproducing reported issues, or running the stack without cloning
+all the source repos.
+
+```bash
+# Use the default golden release
+make up GOLDEN=yes
+
+# Use a specific named release
+make up GOLDEN=beta_r2 VC=yes
+```
+
+Golden release definitions are maintained in the
+[siros-conformance](https://github.com/sirosfoundation/siros-conformance)
+repo (`golden-releases.yaml`). The Makefile fetches this file on demand
+and generates a `.env.golden` file with the resolved image tags.
+
+**Note:** When using `GOLDEN=yes VC=yes`, the wallet and go-trust services
+use golden images but VC services are still built from local source. This is
+because the VC configuration format (`fixtures/vc-config.yaml`) evolves
+between releases, making golden VC images incompatible with the current
+config. The golden VC overlay (`docker-compose.golden-vc.yml`) is available
+for future use once configs are version-aligned.
+
+Images are pulled from `ghcr.io/sirosfoundation/*` — you may need
+`docker login ghcr.io` if the images are not public.
+
 ## Conformance Testing
 
 The OpenID Foundation Conformance Suite validates the wallet's OID4VCI and
@@ -190,6 +231,9 @@ sirosid-dev/
 ├── docker-compose.vc-services.yml       # VC services (issuer, verifier, apigw, registry)
 ├── docker-compose.vc-go-trust.yml       # VC ↔ go-trust wiring
 ├── docker-compose.conformance.yml       # OpenID Conformance Suite
+├── docker-compose.golden.yml            # Golden overlay: wallet images
+├── docker-compose.golden-go-trust.yml   # Golden overlay: go-trust image
+├── docker-compose.golden-vc.yml         # Golden overlay: VC service images
 ├── docker-compose.http-transport.yml    # HTTP proxy transport
 ├── docker-compose.wmp-transport.yml     # WMP transport
 ├── nginx-e2e.conf                       # Frontend nginx config (dashboard + health proxies)

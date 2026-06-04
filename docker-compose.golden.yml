@@ -1,0 +1,18 @@
+# Docker Compose overlay for running pre-built wallet container images
+# from a golden release instead of building from local source.
+#
+# Usage:
+#   make up GOLDEN=yes           # Use default golden release
+#   make up GOLDEN=beta_r2 VC=1  # Use a specific release with VC services
+#
+# The Makefile fetches golden-releases.yaml from siros-conformance,
+# resolves image tags, and passes them as environment variables.
+
+services:
+  wallet-frontend:
+    build: !reset null
+    image: ${WALLET_FRONTEND_IMAGE}
+
+  wallet-backend:
+    build: !reset null
+    image: ${WALLET_BACKEND_IMAGE}

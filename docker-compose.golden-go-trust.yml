@@ -1,0 +1,17 @@
+# Golden release overlay for go-trust services.
+# Replaces local builds with pre-built container images.
+# Note: the golden image uses --whitelist (not --whitelist-config)
+
+services:
+  go-trust-allow:
+    build: !reset null
+    image: ${GO_TRUST_IMAGE}
+
+  go-trust-deny:
+    build: !reset null
+    image: ${GO_TRUST_IMAGE}
+
+  go-trust-whitelist:
+    build: !reset null
+    image: ${GO_TRUST_IMAGE}
+    command: ["--registry", "whitelist", "--whitelist", "/app/whitelist.txt", "--host", "0.0.0.0", "--port", "6001", "--log-level", "debug"]

@@ -1,0 +1,19 @@
+# Golden release overlay for VC services.
+# Replaces local builds with pre-built container images.
+
+services:
+  vc-registry:
+    build: !reset null
+    image: ${VC_REGISTRY_IMAGE}
+
+  vc-issuer:
+    build: !reset null
+    image: ${VC_ISSUER_IMAGE}
+
+  vc-verifier:
+    build: !reset null
+    image: ${VC_VERIFIER_IMAGE}
+
+  vc-apigw:
+    build: !reset null
+    image: ${VC_APIGW_IMAGE}

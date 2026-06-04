@@ -18,3 +18,7 @@ Thumbs.db
 # Docker
 .docker/
 build-info.json
+
+# Golden release
+.env.golden
+.golden-releases.yaml

@@ -15,13 +15,16 @@ _truthy = $(filter 1 yes on up,$(1))
 # Wallet display name
 WALLET_NAME ?= SIROS ID (dev)
 
-.PHONY: help up down logs status status-vc \
-        ensure-conformance-hosts \
+.PHONY: help setup up down logs status status-vc \
+        ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki
 
 # =============================================================================
 # Configuration
 # =============================================================================
+
+# GitHub org
+GITHUB_ORG ?= git@github.com:sirosfoundation
 
 # Workspace paths - defaults assume sibling directories
 FRONTEND_PATH ?= ../wallet-frontend
@@ -38,12 +41,20 @@ VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
+GOLDEN_COMPOSE := docker-compose.golden.yml
+GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
+GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
 
 # Stack options (override on command line)
 PDP ?= allow
 VC ?=
 TRANSPORT ?=
 CONFORMANCE ?=
+GOLDEN ?=
+
+# Golden release configuration
+GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
+GOLDEN_RELEASES_CACHE := .golden-releases.yaml
 
 # Service URLs (published for use by sirosid-tests)
 export FRONTEND_URL ?= http://localhost:3000
@@ -137,6 +148,30 @@ else
   _CONFORMANCE_LABEL := no
 endif
 
+# Golden release: use pre-built images instead of local builds
+ifneq ($(GOLDEN),)
+  # Resolve the golden release: "yes" means default, anything else is a release name
+  ifeq ($(filter yes 1 on up,$(GOLDEN)),)
+    _GOLDEN_RELEASE := $(GOLDEN)
+  else
+    _GOLDEN_RELEASE := default
+  endif
+  _GOLDEN_LABEL := $(_GOLDEN_RELEASE)
+  COMPOSE_FILES += -f $(GOLDEN_COMPOSE)
+  ifneq ($(PDP),mock)
+    COMPOSE_FILES += -f $(GOLDEN_GO_TRUST_COMPOSE)
+  endif
+  ifneq ($(call _truthy,$(VC)),)
+    # Note: VC golden images are NOT used because fixtures/vc-config.yaml
+    # is written for current source. VC services build from source even
+    # in golden mode. Remove this guard when golden VC images and config
+    # are version-aligned.
+    # COMPOSE_FILES += -f $(GOLDEN_VC_COMPOSE)
+  endif
+else
+  _GOLDEN_LABEL :=
+endif
+
 # =============================================================================
 # Help
 # =============================================================================
@@ -171,6 +206,11 @@ help: ## Show this help
 	@echo "                     1, yes, on, up — enable"
 	@echo "                     Implies: VC=1 PDP=allow TRANSPORT=http"
 	@echo ""
+	@echo "  $(YELLOW)GOLDEN=$(NC)          Use pre-built images from a golden release (default: off)"
+	@echo "                     yes        use the default golden release"
+	@echo "                     <name>     use a specific release (e.g. beta_r2)"
+	@echo "                     Tags are fetched from siros-conformance/golden-releases.yaml"
+	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make up                              # Default: frontend + backend + go-trust allow"
 	@echo "  make up VC=yes                       # Add VC issuer/verifier services"
@@ -179,6 +219,8 @@ help: ## Show this help
 	@echo "  make up PDP=mock                      # Legacy mock PDP (no go-trust)"
 	@echo "  make up TRANSPORT=wmp                 # Use WMP transport"
 	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
+	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
+	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
 	@echo ""
 	@echo "$(GREEN)Service URLs (when running):$(NC)"
 	@echo "  Frontend:      $(FRONTEND_URL)"
@@ -255,23 +297,44 @@ build-info:
 
 CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
 
-up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE= to configure)
+up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to configure)
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
+endif
+ifneq ($(GOLDEN),)
+	@$(MAKE) --no-print-directory fetch-golden-env
 endif
 	@echo "$(GREEN)Starting sirosid-dev...$(NC)"
 	@echo "  PDP:         $(_PDP_LABEL)"
 	@echo "  VC services: $(_VC_LABEL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
+ifneq ($(GOLDEN),)
+	@echo "  Golden:      $(_GOLDEN_LABEL)"
+endif
 	@echo ""
+ifneq ($(GOLDEN),)
+	@echo "$(GREEN)Golden release images:$(NC)"
+	@cat .env.golden 2>/dev/null | while IFS='=' read -r k v; do \
+		printf "  %-28s %s\n" "$$k" "$$v"; \
+	done
+	@echo ""
+else
 	@$(MAKE) --no-print-directory show-branches
+endif
 	@$(MAKE) --no-print-directory build-info
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
+ifneq ($(GOLDEN),)
+	set -a && . ./.env.golden && set +a && \
+	WALLET_NAME="$(WALLET_NAME)" \
+		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
+		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
+else
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+endif
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 ifneq ($(call _truthy,$(VC)),)
@@ -399,6 +462,55 @@ register-vc-services: ## Register VC issuer and verifier with backend
 		echo "  $(YELLOW)Warning: Could not register VC verifier$(NC)"
 
 # =============================================================================
+# Golden Release Resolution
+# =============================================================================
+# Fetches golden-releases.yaml from siros-conformance and generates .env.golden
+# with image env vars for docker compose.
+
+# Service → env var / image registry mapping (matches siros-conformance)
+define GOLDEN_AWK
+BEGIN { in_release=0; in_images=0 }
+/^default:/ { default_release=$$2 }
+/^  [a-z]/ {
+  sub(/:$$/, "", $$1);
+  current_release=$$1;
+  if (release == "default" && current_release == default_release) in_release=1;
+  else if (current_release == release) in_release=1;
+  else in_release=0;
+  in_images=0;
+}
+in_release && /images:/ { in_images=1; next }
+in_images && /^      [a-z]/ {
+  sub(/:$$/, "", $$1);
+  gsub(/^ +/, "", $$1);
+  svc=$$1; tag=$$2;
+  gsub(/"/, "", tag);
+  if (svc == "wallet-frontend")   printf "WALLET_FRONTEND_IMAGE=ghcr.io/sirosfoundation/wallet-frontend:%s\n", tag;
+  if (svc == "go-wallet-backend") printf "WALLET_BACKEND_IMAGE=ghcr.io/sirosfoundation/go-wallet-backend:%s\n", tag;
+  if (svc == "go-trust")          printf "GO_TRUST_IMAGE=ghcr.io/sirosfoundation/go-trust:%s\n", tag;
+  if (svc == "vc-issuer")         printf "VC_ISSUER_IMAGE=ghcr.io/sirosfoundation/vc/issuer:%s\n", tag;
+  if (svc == "vc-verifier")       printf "VC_VERIFIER_IMAGE=ghcr.io/sirosfoundation/vc/verifier:%s\n", tag;
+  if (svc == "vc-apigw")          printf "VC_APIGW_IMAGE=ghcr.io/sirosfoundation/vc/apigw:%s\n", tag;
+  if (svc == "vc-registry")       printf "VC_REGISTRY_IMAGE=ghcr.io/sirosfoundation/vc/registry:%s\n", tag;
+}
+in_images && /^    [a-z]/ { in_images=0 }
+endef
+export GOLDEN_AWK
+
+fetch-golden-env:
+	@echo "$(GREEN)Fetching golden release ($(_GOLDEN_RELEASE))...$(NC)"
+	@curl -sfL "$(GOLDEN_RELEASES_URL)" -o $(GOLDEN_RELEASES_CACHE) || \
+		{ echo "$(RED)Failed to fetch golden-releases.yaml$(NC)"; exit 1; }
+	@awk -v release="$(_GOLDEN_RELEASE)" "$$GOLDEN_AWK" $(GOLDEN_RELEASES_CACHE) > .env.golden
+	@if [ ! -s .env.golden ]; then \
+		echo "$(RED)No images found for release '$(_GOLDEN_RELEASE)'.$(NC)"; \
+		echo "Available releases:"; \
+		awk '/^  [a-z].*:$$/ { sub(/:$$/, "", $$1); printf "  %s\n", $$1 }' $(GOLDEN_RELEASES_CACHE); \
+		rm -f .env.golden; \
+		exit 1; \
+	fi
+
+# =============================================================================
 # Cleanup
 # =============================================================================
 
@@ -414,3 +526,33 @@ clean: ## Remove all containers and volumes
 pki: ## Generate fresh PKI (signing keys and certificates)
 	@echo "$(GREEN)Generating PKI...$(NC)"
 	cd fixtures && ./create-pki.sh
+
+# =============================================================================
+# Setup — clone sibling repositories
+# =============================================================================
+
+# repo:branch pairs — override GITHUB_ORG to use a different remote
+SETUP_REPOS := \
+	wallet-frontend:release/sirosid \
+	wallet-common:release/sirosid \
+	go-wallet-backend:main \
+	go-trust:main \
+	vc:main
+
+setup: ## Clone sibling repos needed for local development
+	@echo "$(GREEN)Setting up sibling repositories...$(NC)"
+	@for entry in $(SETUP_REPOS); do \
+		repo=$${entry%%:*}; \
+		branch=$${entry#*:}; \
+		dir="../$${repo}"; \
+		if [ -d "$$dir" ]; then \
+			printf "  %-24s $(YELLOW)exists$(NC) (%s)\n" "$$repo" "$$(git -C $$dir branch --show-current 2>/dev/null || echo 'not a git repo')"; \
+		else \
+			echo "  Cloning $$repo (branch $$branch)..."; \
+			git clone -b "$$branch" "$(GITHUB_ORG)/$$repo.git" "$$dir" && \
+				printf "  %-24s $(GREEN)cloned$(NC) ($$branch)\n" "$$repo" || \
+				printf "  %-24s $(RED)failed$(NC)\n" "$$repo"; \
+		fi; \
+	done
+	@echo ""
+	@echo "$(GREEN)Done.$(NC) Run 'make up' to start the stack."
