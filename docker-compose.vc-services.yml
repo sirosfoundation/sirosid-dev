@@ -1,7 +1,7 @@
 # VC Services Docker Compose for E2E Testing
 #
-# This file provides production-grade VC issuer, verifier, registry, apigw,
-# and mockas services as an alternative to the mock services in docker-compose.test.yml.
+# This file provides production-grade VC issuer, verifier, registry, and apigw
+# services as an alternative to the mock services in docker-compose.test.yml.
 #
 # Usage:
 #   make up-vc              # Start VC services
@@ -155,38 +155,6 @@ services:
       vc-issuer:
         condition: service_healthy
       vc-registry:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-    networks:
-      - e2e-test-network
-
-  # VC MockAS - Mock Authentication Server for simulating user authentication
-  vc-mockas:
-    build:
-      context: ${VC_PATH:-../vc}
-      dockerfile: dockerfiles/worker
-      args:
-        SERVICE_NAME: mockas
-    image: vc-mockas-e2e-test:local
-    container_name: vc-mockas-e2e
-    ports:
-      - "9002:8080"
-    volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
-      - ./fixtures/vc-pki:/pki:ro
-      - ./fixtures/vc-users:/users:ro
-    environment:
-      - VC_CONFIG_YAML=/config.yaml
-      - SSL_CERT_FILE=/pki/rootCA.crt
-    depends_on:
-      mongodb:
-        condition: service_healthy
-      vc-apigw:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]

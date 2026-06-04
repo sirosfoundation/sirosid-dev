@@ -12,9 +12,12 @@
 # Truthy value check: treat 1, yes, on, up as true
 _truthy = $(filter 1 yes on up,$(1))
 
+# Wallet display name
+WALLET_NAME ?= SIROS ID (dev)
+
 .PHONY: help up down logs status status-vc \
         ensure-conformance-hosts \
-        register-mocks clean show-branches show-images build-info pki
+        register-mocks register-vc-services clean show-branches show-images build-info pki
 
 # =============================================================================
 # Configuration
@@ -54,7 +57,6 @@ export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
 # VC Services URLs
 export VC_ISSUER_URL ?= http://localhost:9000
 export VC_VERIFIER_URL ?= http://localhost:9001
-export VC_MOCKAS_URL ?= http://localhost:9002
 export VC_APIGW_URL ?= http://localhost:9003
 export VC_REGISTRY_URL ?= http://localhost:9004
 export GO_TRUST_ALLOW_URL ?= http://localhost:9095
@@ -156,7 +158,7 @@ help: ## Show this help
 	@echo ""
 	@echo "  $(YELLOW)VC=$(NC)              Enable production-like VC services (default: off)"
 	@echo "                     1, yes, on, up — enable"
-	@echo "                     Adds: vc-issuer, vc-verifier, vc-apigw, vc-registry, vc-mockas, mongodb"
+	@echo "                     Adds: vc-issuer, vc-verifier, vc-apigw, vc-registry, mongodb"
 	@echo ""
 	@echo "  $(YELLOW)TRANSPORT=$(NC)       Transport protocol (default: websocket)"
 	@echo "                     wmp        WMP transport (JSON-RPC + SSE)"
@@ -180,6 +182,17 @@ help: ## Show this help
 	@echo "  Backend API:   $(BACKEND_URL)"
 	@echo "  Admin API:     $(ADMIN_URL)"
 	@echo "  Engine:        $(ENGINE_URL)"
+	@echo ""
+	@echo "$(GREEN)Source paths:$(NC)  (override with env vars or on command line)"
+	@echo ""
+	@echo "  $(YELLOW)FRONTEND_PATH=$(NC)   wallet-frontend source  (default: $(GREEN)../wallet-frontend$(NC))"
+	@echo "  $(YELLOW)BACKEND_PATH=$(NC)    go-wallet-backend source (default: $(GREEN)../go-wallet-backend$(NC))"
+	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
+	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
+	@echo ""
+	@echo "$(GREEN)Other variables:$(NC)"
+	@echo ""
+	@echo "  $(YELLOW)WALLET_NAME=$(NC)      Wallet display name (default: $(GREEN)SIROS ID (dev)$(NC))"
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
@@ -253,12 +266,14 @@ endif
 	@$(MAKE) --no-print-directory build-info
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 ifneq ($(call _truthy,$(VC)),)
 	@$(MAKE) --no-print-directory status-vc
+	@$(MAKE) --no-print-directory register-vc-services
 endif
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@echo ""
@@ -330,9 +345,6 @@ status-vc: ## Check VC service health
 	@curl -sf $(VC_REGISTRY_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-registry" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-registry" "✗ not running"
-	@curl -sf $(VC_MOCKAS_URL)/ >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-mockas" "✓ running" || \
-		printf "  %-20s $(RED)%s$(NC)\n" "vc-mockas" "✗ not running"
 	@echo ""
 
 # =============================================================================
@@ -352,14 +364,36 @@ ensure-conformance-hosts: ## Ensure /etc/hosts has the conformance suite entry
 # Mock Registration
 # =============================================================================
 
+TENANT_ID ?= default
+
 register-mocks: ## Register mock verifier with backend
 	@echo "$(GREEN)Registering mock services...$(NC)"
-	@curl -sf -X POST $(ADMIN_URL)/admin/verifiers \
+	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
 		-d '{"name":"Mock Verifier","url":"$(MOCK_VERIFIER_URL)"}' && \
 		echo "  Mock verifier registered" || \
 		echo "  $(YELLOW)Warning: Could not register mock verifier$(NC)"
+
+register-vc-services: ## Register VC issuer and verifier with backend
+	@echo "$(GREEN)Registering VC services with wallet backend...$(NC)"
+	@for i in $$(seq 1 30); do \
+		curl -sf $(ADMIN_URL)/admin/tenants/$(TENANT_ID) \
+			-H "Authorization: Bearer $(ADMIN_TOKEN)" >/dev/null 2>&1 && break; \
+		sleep 2; \
+	done
+	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
+		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
+		-H "Content-Type: application/json" \
+		-d '{"credential_issuer_identifier":"$(VC_ISSUER_URL)","visible":true}' && \
+		echo "  $(GREEN)✓ VC issuer registered$(NC)" || \
+		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"
+	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
+		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
+		-H "Content-Type: application/json" \
+		-d '{"name":"VC Verifier","url":"$(VC_VERIFIER_URL)"}' && \
+		echo "  $(GREEN)✓ VC verifier registered$(NC)" || \
+		echo "  $(YELLOW)Warning: Could not register VC verifier$(NC)"
 
 # =============================================================================
 # Cleanup
