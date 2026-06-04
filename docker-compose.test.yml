@@ -64,6 +64,8 @@ services:
       - BASE_PATH=/id/default/
     volumes:
       - ./nginx-e2e.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./startup.html:/usr/share/nginx/startup.html:ro
+      - ./build-info.json:/usr/share/nginx/build-info.json:ro
     depends_on:
       - wallet-backend
     healthcheck:

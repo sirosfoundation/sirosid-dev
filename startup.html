@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sirosid-dev</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    background: #0c0e11;
+    color: #c8ccd0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    padding: 2rem;
+  }
+  h1 { color: #e8eaed; font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
+  a { color: #6cb4ff; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .card {
+    background: #161a1e;
+    border: 1px solid #2a2e33;
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .card h2 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #888;
+    margin-bottom: 0.75rem;
+  }
+  .links { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .links a {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    background: #1a3a5c;
+    border: 1px solid #2a5a8c;
+    border-radius: 6px;
+    color: #8cc8ff;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: background 0.15s;
+  }
+  .links a:hover { background: #224a6c; text-decoration: none; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: #888; font-weight: 500; font-size: 0.8rem;
+       text-transform: uppercase; letter-spacing: 0.04em;
+       padding: 0.4rem 0.75rem; border-bottom: 1px solid #2a2e33; }
+  td { padding: 0.4rem 0.75rem; border-bottom: 1px solid #1e2226; vertical-align: top; }
+  .svc-name { font-weight: 500; color: #e0e0e0; white-space: nowrap; }
+  .status-dot {
+    display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; margin-right: 6px; vertical-align: middle;
+  }
+  .dot-up { background: #4ade80; }
+  .dot-down { background: #555; }
+  .dot-checking { background: #fbbf24; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .meta { color: #888; font-size: 0.8rem; }
+  .meta code { color: #aaa; background: #1a1e22; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.8rem; }
+  .build-info { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+  .build-tag {
+    font-size: 0.8rem; padding: 0.2rem 0.5rem;
+    background: #1a1e22; border: 1px solid #2a2e33;
+    border-radius: 4px; color: #999;
+  }
+  .build-tag strong { color: #bbb; }
+  footer { margin-top: 2rem; color: #555; font-size: 0.75rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>sirosid-dev</h1>
+  <div class="subtitle">Local development environment</div>
+
+  <div class="card">
+    <h2>Wallet</h2>
+    <div class="links">
+      <a href="/id/default/login">Login</a>
+      <a href="/id/default/">Dashboard</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Services</h2>
+    <table>
+      <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
+      <tbody id="svc-table"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>Build Info</h2>
+    <div id="build-info"><span class="meta">Loading&hellip;</span></div>
+  </div>
+
+  <footer>Auto-refreshes every 10s &middot; <a href="#" onclick="checkAll();return false;">Refresh now</a></footer>
+
+<script>
+var SERVICES = [
+  { name: "wallet-frontend", url: "/", check: "/id/default/login", display: "http://localhost:3000" },
+  { name: "wallet-backend",  url: "http://localhost:8080", check: "http://localhost:8080/health" },
+  { name: "wallet-admin",    url: "http://localhost:8081", check: "http://localhost:8081/admin/status" },
+  { name: "wallet-engine",   url: "http://localhost:8082", check: "http://localhost:8082/health" },
+  { name: "mock-trust-pdp",  url: "http://localhost:9081", check: "http://localhost:9081/health" },
+  { name: "mock-verifier",   url: "http://localhost:9011", check: "http://localhost:9011/health" },
+  { name: "vctm-registry",   url: "http://localhost:8080/registry", check: "http://localhost:8080/registry/status" },
+  { name: "go-trust",        url: "http://localhost:9082", check: "http://localhost:9082/health" },
+  { name: "vc-issuer",       url: "http://localhost:9003", check: "http://localhost:9003/health" },
+  { name: "vc-verifier",     url: "http://localhost:9001", check: "http://localhost:9001/health" },
+  { name: "vc-apigw",        url: "http://localhost:9010", check: "http://localhost:9010/health" }
+];
+
+var svcStatus = {};
+
+function renderTable() {
+  var tbody = document.getElementById("svc-table");
+  tbody.innerHTML = "";
+  SERVICES.forEach(function(svc) {
+    var s = svcStatus[svc.name] || { state: "checking", detail: null };
+    var dotClass = s.state === "up" ? "dot-up" : s.state === "down" ? "dot-down" : "dot-checking";
+    var label = s.state === "up" ? "running" : s.state === "down" ? "not reachable" : "checking\u2026";
+    var detail = "";
+    if (s.detail) {
+      var parts = [];
+      if (s.detail.service) parts.push(s.detail.service);
+      if (s.detail.roles) parts.push("roles: " + s.detail.roles.join(", "));
+      if (s.detail.capabilities) parts.push(s.detail.capabilities.length + " capabilities");
+      if (s.detail.mode) parts.push("mode: " + s.detail.mode);
+      if (s.detail.pdp) parts.push(s.detail.pdp);
+      if (s.detail.verifier) parts.push(s.detail.verifier);
+      if (s.detail.trusted_issuers) parts.push(s.detail.trusted_issuers + " issuers");
+      if (s.detail.trusted_verifiers) parts.push(s.detail.trusted_verifiers + " verifiers");
+      detail = parts.join(" &middot; ");
+    }
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="svc-name">' + svc.name + '</td>' +
+      '<td><span class="status-dot ' + dotClass + '"></span>' + label + '</td>' +
+      '<td class="meta">' + detail + '</td>';
+    tbody.appendChild(tr);
+  });
+}
+
+function checkService(svc) {
+  svcStatus[svc.name] = { state: "checking", detail: null };
+  fetch(svc.check, { mode: "cors" })
+    .then(function(r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.text().then(function(text) {
+        try { return JSON.parse(text); } catch(e) { return null; }
+      });
+    })
+    .then(function(data) {
+      svcStatus[svc.name] = { state: "up", detail: data };
+      renderTable();
+    })
+    .catch(function() {
+      svcStatus[svc.name] = { state: "down", detail: null };
+      renderTable();
+    });
+}
+
+function checkAll() {
+  SERVICES.forEach(checkService);
+}
+
+function loadBuildInfo() {
+  fetch("/build-info.json")
+    .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then(function(info) {
+      var el = document.getElementById("build-info");
+      var html = '<table style="width:100%">';
+      html += '<thead><tr><th>Component</th><th>Branch</th><th>Commit</th><th>Built</th></tr></thead><tbody>';
+      (info.components || []).forEach(function(c) {
+        html += '<tr>' +
+          '<td class="svc-name">' + esc(c.name) + '</td>' +
+          '<td class="meta"><code>' + esc(c.branch || "?") + '</code></td>' +
+          '<td class="meta"><code>' + esc((c.commit || "?").substring(0, 10)) + '</code></td>' +
+          '<td class="meta">' + esc(c.built || "?") + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      if (info.generated) {
+        html += '<div class="meta" style="margin-top:0.5rem">Generated: ' + esc(info.generated) + '</div>';
+      }
+      el.innerHTML = html;
+    })
+    .catch(function() {
+      document.getElementById("build-info").innerHTML =
+        '<span class="meta">Not available &mdash; run <code>make build-info</code> to generate</span>';
+    });
+}
+
+function esc(s) {
+  var d = document.createElement("div");
+  d.appendChild(document.createTextNode(s));
+  return d.innerHTML;
+}
+
+checkAll();
+loadBuildInfo();
+setInterval(checkAll, 10000);
+</script>
+</body>
+</html>

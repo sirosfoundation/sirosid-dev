@@ -17,3 +17,4 @@ Thumbs.db
 
 # Docker
 .docker/
+build-info.json

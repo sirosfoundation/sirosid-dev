@@ -18,7 +18,7 @@
         up-wmp down-wmp \
         up-conformance down-conformance \
         ensure-conformance-hosts \
-        register-mocks clean show-branches show-images
+        register-mocks clean show-branches show-images build-info
 
 # =============================================================================
 # Configuration
@@ -140,6 +140,33 @@ show-images:
 		--filter "reference=*-e2e-test:local" 2>/dev/null | tail -n +2 || true
 	@echo ""
 
+# Generate build-info.json with git metadata from each component repo
+build-info:
+	@echo '{ "components": [' > build-info.json
+	@SEP=""; \
+	for repo_info in \
+		"wallet-frontend:$(FRONTEND_PATH)" \
+		"go-wallet-backend:$(BACKEND_PATH)" \
+		"wallet-backend-server:$(TS_BACKEND_PATH)" \
+		"sirosid-dev:."; \
+	do \
+		name=$${repo_info%%:*}; \
+		path=$${repo_info#*:}; \
+		if [ -d "$$path/.git" ]; then \
+			branch=$$(git -C "$$path" branch --show-current 2>/dev/null || echo "unknown"); \
+			commit=$$(git -C "$$path" rev-parse HEAD 2>/dev/null || echo "unknown"); \
+			built=$$(git -C "$$path" log -1 --format='%ci' 2>/dev/null || echo "unknown"); \
+			dirty="false"; \
+			if ! git -C "$$path" diff --quiet HEAD 2>/dev/null; then dirty="true"; fi; \
+			printf '%s\n    { "name": "%s", "branch": "%s", "commit": "%s", "built": "%s", "dirty": %s }' \
+				"$$SEP" "$$name" "$$branch" "$$commit" "$$built" "$$dirty" >> build-info.json; \
+			SEP=","; \
+		fi; \
+	done
+	@echo '' >> build-info.json
+	@echo '  ], "generated": "'$$(date -Iseconds)'" }' >> build-info.json
+	@echo "$(GREEN)Generated build-info.json$(NC)"
+
 # =============================================================================
 # Default Stack (Frontend + Go Backend + Mocks)
 # =============================================================================
@@ -147,6 +174,7 @@ show-images:
 up: ## Start default development stack
 	@echo "$(GREEN)Starting sirosid-dev environment...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@$(MAKE) --no-print-directory build-info
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		docker compose -f $(PRIMARY_COMPOSE) up -d --build 2>&1 | \
