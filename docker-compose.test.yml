@@ -123,6 +123,8 @@ services:
         condition: service_healthy
       mock-verifier:
         condition: service_healthy
+    extra_hosts:
+      - "localhost:host-gateway"
     networks:
       - e2e-test-network
     # Note: distroless image has no shell/wget, healthcheck done by make up
