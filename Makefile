@@ -333,7 +333,7 @@ status-vc: ## Check VC service health
 	@echo ""
 	@printf "  %-20s %s\n" "Service" "Status"
 	@printf "  %-20s %s\n" "-------" "------"
-	@curl -sf $(VC_ISSUER_URL)/.well-known/openid-credential-issuer >/dev/null 2>&1 && \
+	@curl -sf $(VC_ISSUER_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-issuer" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-issuer" "✗ not running"
 	@curl -sf $(VC_VERIFIER_URL)/.well-known/openid-configuration >/dev/null 2>&1 && \
