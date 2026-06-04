@@ -6,318 +6,110 @@ Local development environment for SIROS ID wallet ecosystem.
 
 This repository provides a complete local development stack for the SIROS ID wallet platform, including:
 
-- **wallet-frontend** - Web wallet UI
-- **go-wallet-backend** - Wallet backend API (Go implementation)
-- **mock-verifier** - OpenID4VP verifier mock
-- **mock-trust-pdp** - AuthZEN Trust PDP mock
-- **vctm-registry** - Verifiable Credential Type Metadata registry
-- **go-trust** - Production trust PDP service (optional)
-- **vc-issuer/verifier/apigw/registry** - Production-like VC services (optional)
+- **wallet-frontend** — Web wallet UI ("SIROS ID (dev)")
+- **go-wallet-backend** — Wallet backend API (Go)
+- **go-trust** — AuthZEN-compliant Trust PDP (allow / whitelist / deny modes)
+- **mock-verifier** — OpenID4VP verifier mock
+- **mock-trust-pdp** — Legacy AuthZEN PDP mock
+- **vctm-registry** — Verifiable Credential Type Metadata registry
+- **vc-issuer / vc-verifier / vc-apigw / vc-registry** — Production-like VC services (optional)
 
 ## Quick Start
 
 ```bash
-# Start the default development environment
-make up
-
-# Check status of all services
-make status
-
-# View logs
-make logs
-
-# Stop all services
-make down
+make up            # Start default stack (go-trust allow-all)
+make up VC=yes     # … with production-like VC services
+make status        # Check all service health
+make logs          # View Docker logs
+make down          # Stop everything
+make help          # Full option reference
 ```
 
-## Getting Started with the Conformance Test Suite
-
-The OpenID Foundation Conformance Suite validates that the wallet correctly
-implements the OID4VCI and OID4VP specifications. This section describes how
-to get a full conformance testing environment running from scratch.
-
-### Prerequisites
+## Prerequisites
 
 - Docker and Docker Compose
-- Node.js 18+ and npm
 - The following sibling repositories cloned alongside `sirosid-dev`:
   ```
   siros.org/
   ├── sirosid-dev/          # this repo
-  ├── sirosid-tests/        # E2E test suites
   ├── wallet-frontend/      # web wallet UI
   ├── go-wallet-backend/    # wallet backend (Go)
   ├── go-trust/             # trust PDP
-  └── vc/                   # VC services (SUNET/vc)
+  └── vc/                   # VC services (optional, for VC=yes)
   ```
 
-### Step 1: Start the conformance environment
+## Stack Options
+
+A single `make up` command drives all configurations via parameters:
+
+| Option | Values | Default | Description |
+|--------|--------|---------|-------------|
+| `PDP=` | `allow`, `whitelist`, `deny`, `mock` | `allow` | Trust PDP mode |
+| `VC=` | `1`, `yes`, `on`, `up` | off | Enable VC services (issuer, verifier, apigw, registry) |
+| `TRANSPORT=` | `wmp`, `http` | websocket | Transport protocol |
+| `CONFORMANCE=` | `1`, `yes`, `on`, `up` | off | Enable OpenID Conformance Suite |
+
+### Examples
 
 ```bash
-cd sirosid-dev
-make up-conformance
-```
-
-This single command:
-1. Adds `127.0.0.1 localhost.emobix.co.uk` to `/etc/hosts` (requires sudo)
-2. Builds and starts the wallet stack (frontend, go-wallet-backend, mocks)
-3. Starts VC services (issuer, verifier, apigw, registry, mockas, mongodb)
-4. Starts go-trust in allow-all mode
-5. Starts the OpenID Conformance Suite server (HTTPS on port 8443)
-
-Wait for all services to be healthy:
-```bash
-make status
-```
-
-### Step 2: Install test dependencies
-
-```bash
-cd ../sirosid-tests
-make install
-```
-
-### Step 3: Verify connectivity
-
-```bash
-make check-conformance-env
-```
-
-This checks that the wallet stack, VC services, and conformance suite are
-all reachable.
-
-### Step 4: Run conformance tests
-
-```bash
-# Run all conformance tests (OID4VP + OID4VCI)
-make test-conformance
-
-# Or run individually:
-make test-conformance-vp    # OID4VP wallet conformance
-make test-conformance-vci   # OID4VCI wallet conformance
-```
-
-### What the tests do
-
-The conformance suite acts as the counterparty (issuer for VCI, verifier for VP)
-and validates protocol-level correctness:
-
-- **OID4VCI**: The suite creates a test plan, issues credential offers, and
-  checks that the wallet correctly handles pre-authorized code flow with DPoP,
-  sd-jwt-vc format, and private_key_jwt client authentication.
-- **OID4VP**: The suite creates authorization requests and checks that the
-  wallet correctly presents credentials. The test automatically pre-loads a
-  PID credential from the VC issuer before running the conformance modules.
-
-Test configuration (JWKs, client IDs, variants) lives in
-`sirosid-tests/configs/conformance/`.
-
-### Stopping
-
-```bash
-cd sirosid-dev
-make down-conformance
-```
-
-## Common Use Cases
-
-### Testing a Credential Issuance Flow
-
-The wallet supports OpenID4VCI credential issuance. To test an issuance flow:
-
-#### 1. Using VC Issuer (Development)
-
-```bash
-# Start the default environment with VC issuer
+# Default: frontend + backend + go-trust allow-all
 make up
 
-# The VC issuer runs at http://localhost:9000
-# Use the admin API to register it with the wallet backend
-curl -X POST http://localhost:8081/admin/issuers \
-  -H "Authorization: Bearer e2e-test-admin-token-for-testing-purposes-only" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"VC Issuer","url":"http://localhost:9000"}'
+# Add production-like VC issuer/verifier
+make up VC=yes
+
+# VC services with whitelist trust (only configured issuers trusted)
+make up PDP=whitelist VC=1
+
+# Negative testing: deny all trust evaluations
+make up PDP=deny VC=1
+
+# Legacy mock PDP (no go-trust)
+make up PDP=mock
+
+# WMP transport
+make up TRANSPORT=wmp
+
+# Full conformance test stack (implies VC + allow + http transport)
+make up CONFORMANCE=yes
 ```
 
-The VC issuer is pre-configured with several credential types (PID, diploma, ehic). 
-You can trigger issuance from the wallet UI or via API.
+### Trust PDP Modes
 
-#### 2. Using Production-like VC Services
+| Mode | Description |
+|------|-------------|
+| `PDP=allow` | go-trust allow-all — trusts everything (default, for development) |
+| `PDP=whitelist` | go-trust whitelist — only entities in `fixtures/vc-go-trust-whitelist.yaml` are trusted |
+| `PDP=deny` | go-trust deny-all — rejects everything (negative testing) |
+| `PDP=mock` | Legacy mock-trust-pdp (no go-trust) |
 
-```bash
-# Start with full VC stack (issuer, verifier, registry, apigw, mockas)
-make up-vc
+## VC Services
 
-# Services available:
-# - vc-issuer:     http://localhost:9000 (gRPC: localhost:9090)
-# - vc-verifier:   http://localhost:9001 (gRPC: localhost:9091)
-# - vc-mockas:     http://localhost:9002 (authentication)
-# - vc-apigw:      http://localhost:9003 (OAuth2 AS)
-# - vc-registry:   http://localhost:9004 (status lists, gRPC: localhost:9094)
+When started with `VC=yes`, the environment includes production-like VC
+services built from the `../vc` source repository. On startup, the issuer
+and verifier are automatically registered with the wallet backend via the
+admin API — no manual registration needed.
+
+Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma.
+
+### Service Architecture
+
+```
+Browser → wallet-frontend (3000)
+            ↓
+          wallet-backend (8080/8081/8082)
+            ↓ (credential discovery)
+          vc-apigw (9003) ← OAuth2 AS + OpenID4VCI metadata
+            ↓
+          vc-issuer (9000) ← credential signing
+          vc-verifier (9001) ← OpenID4VP + OIDC provider
+          vc-registry (9004) ← status lists, type metadata
+          mongodb ← persistence
 ```
 
-#### 3. With Trust Evaluation (go-trust)
-
-For testing issuer trust evaluation during credential issuance:
-
-```bash
-# Allow-all mode (development - accepts any issuer)
-make up-vc-go-trust-allow
-
-# Whitelist mode (staging - only trusted issuers)
-make up-vc-go-trust-whitelist
-
-# Deny-all mode (negative testing - rejects all issuers)
-make up-vc-go-trust-deny
-```
-
-### Testing a Verification Flow
-
-The wallet supports OpenID4VP for credential presentation to verifiers.
-
-#### 1. Using Mock Verifier (Development)
-
-```bash
-# Start with default environment
-make up
-
-# Mock verifier available at http://localhost:9001
-# Register the verifier
-curl -X POST http://localhost:8081/admin/verifiers \
-  -H "Authorization: Bearer e2e-test-admin-token-for-testing-purposes-only" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Mock Verifier","url":"http://localhost:9001"}'
-```
-
-#### 2. Using Production-like Verifier
-
-```bash
-# Start VC services which includes the production verifier
-make up-vc
-
-# Verifier runs at http://localhost:9001
-# It supports:
-# - OpenID4VP authorization requests
-# - OIDC login with credential presentation
-# - Dynamic presentation request configuration
-```
-
-#### 3. End-to-End Verification with Trust
-
-```bash
-# Start VC services with whitelist-based trust
-make up-vc-go-trust-whitelist
-
-# The verifier (localhost:9001) will only accept credentials from 
-# issuers listed in fixtures/vc-go-trust-whitelist.yaml
-```
-
-### Testing Trust Policy Scenarios
-
-The go-trust service provides AuthZEN-compliant trust evaluation:
-
-| Mode | Command | Behavior |
-|------|---------|----------|
-| Allow All | `make up-vc-go-trust-allow` | All issuers/verifiers trusted (dev) |
-| Whitelist | `make up-vc-go-trust-whitelist` | Only configured entities trusted |
-| Deny All | `make up-vc-go-trust-deny` | No entities trusted (negative testing) |
-
-Configure the whitelist in `fixtures/vc-go-trust-whitelist.yaml`:
-
-```yaml
-whitelist:
-  issuers:
-    - http://localhost:9000
-    - http://localhost:9003
-  verifiers:
-    - http://localhost:9001
-  trusted_subjects:
-    - pattern: "*.example.com"
-```
-
-## Controlling Software Versions
-
-### Component Sources
-
-By default, services are built from sibling directories. Override by setting paths:
-
-```bash
-# Use different repository locations
-export FRONTEND_PATH=~/projects/my-wallet-frontend
-export BACKEND_PATH=~/projects/my-wallet-backend
-export TS_BACKEND_PATH=~/projects/wallet-backend-server
-
-# Start with custom paths
-make up
-```
-
-### Using Specific Branches
-
-To test a specific branch of a component:
-
-```bash
-# 1. Clone or checkout the desired branch in the sibling directory
-cd ../wallet-frontend
-git checkout feature/new-oidc-flow
-
-# 2. Start the environment (rebuilds from source)
-cd ../sirosid-dev
-make up
-```
-
-### Using Docker Images Instead of Source
-
-To use pre-built images instead of building from source, modify the docker-compose file:
-
-```yaml
-# In docker-compose.test.yml, change:
-wallet-frontend:
-  build:
-    context: ${FRONTEND_PATH:-../wallet-frontend}
-  # To:
-  image: ghcr.io/wwwallet/wallet-frontend:v1.2.3
-```
-
-### Version Matrix for Testing
-
-| Component | Default Source | Override Variable | Pre-built Images |
-|-----------|---------------|-------------------|------------------|
-| wallet-frontend | `../wallet-frontend` | `FRONTEND_PATH` | `ghcr.io/wwwallet/wallet-frontend:TAG` |
-| go-wallet-backend | `../go-wallet-backend` | `BACKEND_PATH` | `ghcr.io/sirosfoundation/go-wallet-backend:TAG` |
-| wallet-backend-server | `../wallet-backend-server` | `TS_BACKEND_PATH` | N/A (build from source) |
-| go-trust | `../go-trust` | `GO_TRUST_PATH` | `ghcr.io/sirosfoundation/go-trust:TAG` |
-| VC services | `../vc` | `VC_PATH` | N/A (build from source) |
-
-### CI Environment
-
-In CI, repositories are typically checked out alongside each other:
-
-```bash
-# CI checkout structure
-workspace/
-├── sirosid-dev/
-├── wallet-frontend/
-├── go-wallet-backend/
-└── sirosid-tests/
-
-# CI typically sets:
-export FRONTEND_PATH=./wallet-frontend
-export BACKEND_PATH=./go-wallet-backend
-```
-
-## Stack Configurations
-
-| Configuration | Command | Description |
-|--------------|---------|-------------|
-| Default | `make up` | Frontend + Go backend + mocks |
-| Go Trust | `make up-go-trust` | Adds go-trust PDP services |
-| Go Trust Whitelist | `make up-go-trust-whitelist` | Uses go-trust whitelist mode as PDP |
-| VC Services | `make up-vc` | Production-like VC issuer/verifier |
-| VC + Trust Allow | `make up-vc-go-trust-allow` | VC services + allow-all trust |
-| VC + Trust Whitelist | `make up-vc-go-trust-whitelist` | VC services + whitelist trust |
-| VC + Trust Deny | `make up-vc-go-trust-deny` | VC services + deny-all trust |
-| Conformance Suite | `make up-conformance` | VC + trust allow + OpenID Conformance Suite |
-| TS Backend | `make up-ts-backend` | TypeScript wallet-backend-server |
+The **apigw** is the public-facing entry point for OpenID4VCI — it serves
+`.well-known/openid-credential-issuer` metadata and handles token/credential
+endpoints. The issuer and registry are internal backend services.
 
 ## Service Ports
 
@@ -329,222 +121,130 @@ export BACKEND_PATH=./go-wallet-backend
 | wallet-backend | 8080 | Backend API |
 | wallet-backend admin | 8081 | Admin API |
 | wallet-engine | 8082 | Credential engine |
-| vc-issuer | 9000 | OpenID4VCI issuer (VC services) |
-| mock-verifier | 9001 | OpenID4VP verifier |
-| mock-trust-pdp | 9091 | Trust PDP mock |
-| vctm-registry | 8097 | VCTM registry |
+| mock-verifier | 9011 | OpenID4VP verifier mock |
+| mock-trust-pdp | 9081 | Trust PDP mock |
 
-### VC Services Stack (when using `up-vc*`)
+### VC Services (when `VC=yes`)
 
-| Service | HTTP Port | gRPC Port | Description |
-|---------|-----------|-----------|-------------|
-| vc-issuer | 9000 | 9090 | OpenID4VCI issuer |
-| vc-verifier | 9001 | 9091 | OpenID4VP verifier + OIDC |
-| vc-mockas | 9002 | - | Mock authentication server |
-| vc-apigw | 9003 | - | OAuth2 authorization server |
-| vc-registry | 9004 | 9094 | Status lists and revocation |
-| go-trust-allow | 9095 | - | Trust PDP (allow all) |
-| go-trust-whitelist | 9096 | - | Trust PDP (whitelist) |
-| go-trust-deny | 9097 | - | Trust PDP (deny all) |
+| Service | HTTP | gRPC | Description |
+|---------|------|------|-------------|
+| vc-issuer | 9000 | 9190 | OpenID4VCI credential issuer |
+| vc-verifier | 9001 | 9091 | OpenID4VP verifier + OIDC provider |
+| vc-apigw | 9003 | — | OAuth2 AS + credential metadata |
+| vc-registry | 9004 | 9094 | Status lists and type metadata |
 
-### Conformance Suite (when using `up-conformance`)
+### go-trust Instances
 
-| Service | Port | Description |
-|---------|------|-------------|
-| conformance-suite-server | 8443 (HTTPS) | OpenID Foundation Conformance Suite |
-| conformance-suite-mongodb | 27017 | Conformance suite database |
+| Instance | Port | Description |
+|----------|------|-------------|
+| go-trust-allow | 9095 | Allow-all (default PDP) |
+| go-trust-whitelist | 9096 | Whitelist mode |
+| go-trust-deny | 9097 | Deny-all |
+
+## Source Paths
+
+Services are built from sibling directories by default. Override with
+environment variables or on the command line:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FRONTEND_PATH` | `../wallet-frontend` | Wallet frontend source |
+| `BACKEND_PATH` | `../go-wallet-backend` | Wallet backend source |
+| `VC_PATH` | `../vc` | VC services source |
+| `GO_TRUST_PATH` | `../go-trust` | go-trust source |
+| `WALLET_NAME` | `SIROS ID (dev)` | Wallet display name |
+
+```bash
+# Example: use a different frontend checkout
+make up FRONTEND_PATH=~/other/wallet-frontend
+```
+
+## Conformance Testing
+
+The OpenID Foundation Conformance Suite validates the wallet's OID4VCI and
+OID4VP implementations.
+
+```bash
+# 1. Start conformance environment (auto-configures /etc/hosts)
+make up CONFORMANCE=yes
+
+# 2. Install test dependencies
+cd ../sirosid-tests && make install
+
+# 3. Run conformance tests
+cd ../sirosid-tests && make test-conformance
+
+# Conformance UI: https://localhost.emobix.co.uk:8443/
+```
 
 ## Directory Structure
 
 ```
 sirosid-dev/
-├── docker-compose.test.yml            # Primary dev environment
-├── docker-compose.go-trust.yml        # go-trust overlay
+├── Makefile                             # Single entry point for all operations
+├── docker-compose.test.yml              # Primary dev environment
+├── docker-compose.go-trust.yml          # go-trust base overlay
+├── docker-compose.go-trust-allow.yml    # go-trust allow-all
 ├── docker-compose.go-trust-whitelist.yml
-├── docker-compose.vc-services.yml     # Production VC services
-├── docker-compose.vc-go-trust.yml     # VC + go-trust overlay
-├── docker-compose.conformance.yml     # OpenID Conformance Suite
-├── docker-compose.ts-backend.yml      # TypeScript backend
-├── dockerfiles/
-│   └── frontend.Dockerfile
-├── mocks/
-│   ├── verifier/                      # OpenID4VP mock verifier
-│   └── trust-pdp/                     # AuthZEN PDP mock
+├── docker-compose.go-trust-deny.yml
+├── docker-compose.vc-services.yml       # VC services (issuer, verifier, apigw, registry)
+├── docker-compose.vc-go-trust.yml       # VC ↔ go-trust wiring
+├── docker-compose.conformance.yml       # OpenID Conformance Suite
+├── docker-compose.http-transport.yml    # HTTP proxy transport
+├── docker-compose.wmp-transport.yml     # WMP transport
+├── nginx-e2e.conf                       # Frontend nginx config (dashboard + health proxies)
 ├── fixtures/
-│   ├── create-pki.sh                  # PKI generation script
-│   ├── vc-config.yaml                 # VC services config
-│   ├── vc-go-trust-whitelist.yaml     # Trust whitelist config
-│   ├── vc-pki/                        # Signing keys/certs
-│   ├── vc-metadata/                   # VCTM JSON files
-│   └── vc-presentation-requests/
+│   ├── create-pki.sh                    # PKI generation script
+│   ├── vc-config.yaml                   # Shared VC services config
+│   ├── vc-go-trust-whitelist.yaml       # Trust whitelist
+│   ├── vc-pki/                          # Signing keys and certificates
+│   ├── vc-metadata/                     # VCTM JSON files
+│   └── vc-presentation-requests/        # Presentation request templates
+├── mocks/
+│   ├── verifier/                        # OpenID4VP mock verifier
+│   └── trust-pdp/                       # AuthZEN PDP mock
 └── scripts/
     ├── start-soft-fido2.sh
     └── stop-soft-fido2.sh
 ```
 
-## Configuration Files
-
-### VC Services Configuration
-
-The `fixtures/vc-config.yaml` configures all VC services:
-
-- **apigw** - OAuth2 authorization server settings
-- **issuer** - Credential issuer with JWT/signing configuration
-- **verifier** - OpenID4VP and OIDC configuration
-- **registry** - Status list and revocation settings
-- **mock_as** - Mock authentication (auto-approve mode for testing)
-
-### Trust Whitelist
-
-The `fixtures/vc-go-trust-whitelist.yaml` defines trusted entities:
-
-```yaml
-whitelist:
-  issuers:
-    - http://localhost:9000      # VC issuer
-    - http://localhost:9003      # VC apigw
-    - http://vc-issuer:8080      # Docker internal
-  verifiers:
-    - http://localhost:9001      # Mock verifier
-    - http://vc-verifier:8080    # Docker internal
-  trusted_subjects:
-    - pattern: "*.siros.org"     # Wildcard patterns
-```
-
-## Environment Variables
-
-Override default configuration via environment variables:
-
-```bash
-# Repository locations (for building from source)
-export FRONTEND_PATH=../wallet-frontend
-export BACKEND_PATH=../go-wallet-backend
-export TS_BACKEND_PATH=../wallet-backend-server
-
-# Service URLs (exported for use by sirosid-tests)
-export FRONTEND_URL=http://localhost:3000
-export BACKEND_URL=http://localhost:8080
-export ADMIN_URL=http://localhost:8081
-
-# VC service URLs
-export VC_ISSUER_URL=http://localhost:9000
-export VC_VERIFIER_URL=http://localhost:9001
-export VC_APIGW_URL=http://localhost:9003
-export VC_REGISTRY_URL=http://localhost:9004
-
-# Admin authentication
-export ADMIN_TOKEN=e2e-test-admin-token-for-testing-purposes-only
-```
-
 ## Troubleshooting
 
-### Services Not Starting
-
 ```bash
-# Check Docker logs
-docker compose -f docker-compose.test.yml logs
+# Check service health
+make status          # Core services
+make status-vc       # VC services (when VC=yes)
 
-# Check specific service
-docker compose -f docker-compose.test.yml logs wallet-backend
-```
+# View logs for a specific service
+docker logs wallet-backend-e2e-test
+docker logs vc-apigw-e2e
 
-### Port Conflicts
+# Rebuild from clean state
+make clean           # Remove all containers and volumes
+make up VC=yes       # Rebuild and start
 
-If ports are already in use:
-
-```bash
-# Find what's using a port
-lsof -i :9000
-
-# Or change ports via environment variable
-# (requires editing docker-compose files)
-```
-
-### Rebuilding After Code Changes
-
-```bash
-# Force rebuild all services
-make down
-docker compose -f docker-compose.test.yml build --no-cache
-make up
-```
-
-### PKI Issues
-
-```bash
-# Regenerate signing keys and certificates
+# Regenerate PKI (signing keys and certificates)
 make pki
 ```
-
-## Fixtures
-
-### PKI Generation
-
-```bash
-# Generate fresh signing keys and certificates
-make pki
-# Or directly:
-cd fixtures && ./create-pki.sh
-```
-
-### VCTM Metadata
-
-The `fixtures/vc-metadata/` directory contains credential type definitions:
-
-- `pid-1.5.json` - EU PID 1.5
-- `pid-1.8.json` - EU PID 1.8
-- `ehic.json` - European Health Insurance Card
-- `diploma.json` - Educational diploma
-- `eduid.json` - eduID credential
-- `elm.json` - European Learning Model
-- `microcredential.json` - Microcredential
-- `pda1.json` - Portable Document A1
 
 ## Integration with sirosid-tests
-
-This environment is designed to be tested by [sirosid-tests](../sirosid-tests):
 
 ```bash
 # Start dev environment
 cd sirosid-dev && make up
 
-# Run tests against it (in another terminal)
+# Run tests (in another terminal)
 cd sirosid-tests && make test
 
-# Run specific test suites
-cd sirosid-tests && make test-public    # Public API tests only
-cd sirosid-tests && make test-admin     # Admin API tests
-cd sirosid-tests && make test-webauthn  # WebAuthn tests
-
 # With conformance suite
-cd sirosid-dev && make up-conformance
+cd sirosid-dev && make up CONFORMANCE=yes
 cd sirosid-tests && make test-conformance
-```
-
-### OpenID Conformance Suite
-
-The `make up-conformance` target starts the full wallet stack with go-trust
-allow-all and the OpenID Foundation Conformance Suite. This enables running
-the official OID4VP and OID4VCI wallet test plans against the wallet.
-
-The `ensure-conformance-hosts` target (a dependency of `up-conformance`)
-automatically adds `127.0.0.1 localhost.emobix.co.uk` to `/etc/hosts` if missing.
-
-```bash
-# Start conformance environment (auto-creates /etc/hosts entry)
-make up-conformance
-
-# Conformance UI: https://localhost.emobix.co.uk:8443/
-# Conformance API: https://localhost.emobix.co.uk:8443/api/
-
-# Stop conformance environment
-make down-conformance
 ```
 
 ## See Also
 
-- [sirosid-tests](https://github.com/sirosfoundation/sirosid-tests) - E2E test suites
-- [go-wallet-backend](https://github.com/sirosfoundation/go-wallet-backend) - Wallet backend
-- [wallet-frontend](https://github.com/wwWallet/wallet-frontend) - Web wallet UI
-- [go-trust](https://github.com/sirosfoundation/go-trust) - Trust PDP
-- [SUNET/vc](https://github.com/SUNET/vc) - VC services (issuer, verifier, registry)
+- [sirosid-tests](https://github.com/sirosfoundation/sirosid-tests) — E2E test suites
+- [go-wallet-backend](https://github.com/sirosfoundation/go-wallet-backend) — Wallet backend
+- [wallet-frontend](https://github.com/wwWallet/wallet-frontend) — Web wallet UI
+- [go-trust](https://github.com/sirosfoundation/go-trust) — Trust PDP
+- [SUNET/vc](https://github.com/SUNET/vc) — VC services (issuer, verifier, registry)
