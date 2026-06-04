@@ -18,7 +18,7 @@
         up-wmp down-wmp \
         up-conformance down-conformance \
         ensure-conformance-hosts \
-        register-mocks clean show-branches
+        register-mocks clean show-branches show-images
 
 # =============================================================================
 # Configuration
@@ -133,6 +133,13 @@ show-branches:
 	fi
 	@echo ""
 
+# Print docker images used by the running stack
+show-images:
+	@echo "$(GREEN)Docker images:$(NC)"
+	@docker images --format 'table  {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedSince}}' \
+		--filter "reference=*-e2e-test:local" 2>/dev/null | tail -n +2 || true
+	@echo ""
+
 # =============================================================================
 # Default Stack (Frontend + Go Backend + Mocks)
 # =============================================================================
@@ -140,8 +147,11 @@ show-branches:
 up: ## Start default development stack
 	@echo "$(GREEN)Starting sirosid-dev environment...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) up -d --build
+		docker compose -f $(PRIMARY_COMPOSE) up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 	@echo ""
 	@echo "$(GREEN)Environment ready!$(NC)"
@@ -193,8 +203,11 @@ status: ## Check service health
 up-go-trust: ## Start with go-trust PDP services
 	@echo "$(GREEN)Starting sirosid-dev with go-trust...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) up -d --build
+		docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 
 down-go-trust: ## Stop go-trust environment
@@ -203,8 +216,11 @@ down-go-trust: ## Stop go-trust environment
 up-go-trust-whitelist: ## Start with go-trust whitelist as PDP
 	@echo "$(GREEN)Starting sirosid-dev with go-trust whitelist...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_WHITELIST_COMPOSE) up -d --build
+		docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_WHITELIST_COMPOSE) up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 
 down-go-trust-whitelist: ## Stop go-trust whitelist environment
@@ -217,8 +233,11 @@ down-go-trust-whitelist: ## Stop go-trust whitelist environment
 up-vc: ## Start with production-like VC services
 	@echo "$(GREEN)Starting sirosid-dev with VC services...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) up -d --build
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 
 down-vc: ## Stop VC services environment
@@ -232,9 +251,12 @@ up-vc-go-trust-allow: ## Start VC services with go-trust allow-all PDP
 	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (allow-all)...$(NC)"
 	@echo "  go-trust mode: ALLOW ALL (development)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=allow \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-allow vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-allow vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status-vc
 	@echo ""
 	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_ALLOW_URL)$(NC)"
@@ -243,9 +265,12 @@ up-vc-go-trust-whitelist: ## Start VC services with go-trust whitelist PDP
 	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (whitelist)...$(NC)"
 	@echo "  go-trust mode: WHITELIST (staging)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=whitelist \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-whitelist vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-whitelist vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status-vc
 	@echo ""
 	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_WHITELIST_URL)$(NC)"
@@ -254,9 +279,12 @@ up-vc-go-trust-deny: ## Start VC services with go-trust deny-all PDP (negative t
 	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (deny-all)...$(NC)"
 	@echo "  go-trust mode: DENY ALL (negative testing)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=deny \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-deny vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb
+		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-deny vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status-vc
 	@echo ""
 	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_DENY_URL)$(NC)"
@@ -285,6 +313,7 @@ up-conformance: ensure-conformance-hosts ## Start wallet + go-trust allow-all + 
 	@echo "  go-trust mode: ALLOW ALL"
 	@echo "  Transport: HTTP proxy"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		GO_TRUST_MODE=allow \
 		docker compose \
@@ -293,7 +322,9 @@ up-conformance: ensure-conformance-hosts ## Start wallet + go-trust allow-all + 
 			-f $(VC_GO_TRUST_COMPOSE) \
 			-f $(CONFORMANCE_COMPOSE) \
 			-f $(HTTP_TRANSPORT_COMPOSE) \
-			up -d --build
+			up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@echo ""
 	@echo "$(GREEN)Waiting for conformance suite to start (this may take 60s+)...$(NC)"
 	@for i in $$(seq 1 30); do \
@@ -352,8 +383,11 @@ status-vc: ## Check VC service health
 up-ts-backend: ## Start with TypeScript wallet-backend-server
 	@echo "$(GREEN)Starting sirosid-dev with TypeScript backend...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) TS_BACKEND_PATH=$(TS_BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(TS_BACKEND_COMPOSE) up -d --build
+		docker compose -f $(PRIMARY_COMPOSE) -f $(TS_BACKEND_COMPOSE) up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 
 down-ts-backend: ## Stop TypeScript backend environment
@@ -366,8 +400,11 @@ down-ts-backend: ## Stop TypeScript backend environment
 up-wmp: ## Start with WMP transport only
 	@echo "$(GREEN)Starting sirosid-dev with WMP transport...$(NC)"
 	@$(MAKE) --no-print-directory show-branches
+	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(WMP_TRANSPORT_COMPOSE) up -d --build
+		docker compose -f $(PRIMARY_COMPOSE) -f $(WMP_TRANSPORT_COMPOSE) up -d --build 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 
 down-wmp: ## Stop WMP transport environment
