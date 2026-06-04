@@ -246,7 +246,22 @@ help: ## Show this help
 # =============================================================================
 # Helpers
 # =============================================================================
-
+# Update all repos to their default upstream branches
+update:
+	@echo "$(GREEN)Force updating all SIROS repos...$(NC)"
+	repos="sirosid-dev wallet-frontend wallet-backend go-wallet-backend go-trust wallet-common vc"; \
+	for repo in $$repos; do \
+	  branch=main; \
+	  [ "$$repo" = "wallet-common" ] && branch=release/sirosid; \
+	  [ "$$repo" = "wallet-frontend" ] && branch=release/sirosid; \
+	  if [ -d "../$$repo/.git" ]; then \
+	    echo "Updating $$repo to $$branch..."; \
+	    git -C ../$$repo fetch origin; \
+	    git -C ../$$repo checkout $$branch; \
+	    git -C ../$$repo reset --hard origin/$$branch; \
+	  fi; \
+	done
+	@echo "$(GREEN)All repos updated.$(NC)"
 # Print the git branch for each locally-built repo
 show-branches:
 	@echo "$(GREEN)Local repo branches:$(NC)"
