@@ -16,12 +16,24 @@ This repository provides a complete local development stack for the SIROS ID wal
 
 ## Quick Start
 
+Bootstrap a complete development environment with a single command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sirosfoundation/sirosid-dev/main/install.sh | bash
+cd sirosid-dev
+make up
+```
+
+Or if you already have the repos cloned:
+
 ```bash
 make up            # Start default stack (go-trust allow-all)
 make up VC=yes     # … with production-like VC services
+make up GOLDEN=yes # … using pre-built golden release images
 make status        # Check all service health
 make logs          # View Docker logs
 make down          # Stop everything
+make update        # Force-update all repos to upstream
 make help          # Full option reference
 ```
 
@@ -36,8 +48,12 @@ make help          # Full option reference
   ├── wallet-frontend/      # web wallet UI
   ├── go-wallet-backend/    # wallet backend (Go)
   ├── go-trust/             # trust PDP
+  ├── wallet-common/        # shared TypeScript types
   └── vc/                   # VC services (optional, for VC=yes)
   ```
+
+The `install.sh` script clones all of these automatically. Alternatively,
+run `make setup` from an existing checkout to verify prerequisites.
 
 ## Stack Options
 
@@ -200,6 +216,17 @@ for future use once configs are version-aligned.
 Images are pulled from `ghcr.io/sirosfoundation/*` — you may need
 `docker login ghcr.io` if the images are not public.
 
+## Updating Repos
+
+Force-update all sibling repositories to their default upstream branches:
+
+```bash
+make update
+```
+
+This fetches and hard-resets each repo (`main` for most, `release/sirosid`
+for `wallet-frontend` and `wallet-common`).
+
 ## Conformance Testing
 
 The OpenID Foundation Conformance Suite validates the wallet's OID4VCI and
@@ -222,6 +249,7 @@ cd ../sirosid-tests && make test-conformance
 
 ```
 sirosid-dev/
+├── install.sh                           # Bootstrap script (curl | bash)
 ├── Makefile                             # Single entry point for all operations
 ├── docker-compose.test.yml              # Primary dev environment
 ├── docker-compose.go-trust.yml          # go-trust base overlay
@@ -287,6 +315,7 @@ cd sirosid-tests && make test-conformance
 
 ## See Also
 
+- [Local Development Environment](https://developers.siros.org/howto/local-dev-environment) — full setup guide on the developer docs site
 - [sirosid-tests](https://github.com/sirosfoundation/sirosid-tests) — E2E test suites
 - [go-wallet-backend](https://github.com/sirosfoundation/go-wallet-backend) — Wallet backend
 - [wallet-frontend](https://github.com/wwWallet/wallet-frontend) — Web wallet UI
