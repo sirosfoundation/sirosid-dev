@@ -466,7 +466,7 @@ register-vc-services: ## Register VC issuer and verifier with backend
 	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d '{"credential_issuer_identifier":"$(VC_APIGW_URL)","visible":true}' && \
+		-d '{"credential_issuer_identifier":"$(VC_APIGW_INTERNAL_URL)","visible":true}' && \
 		echo "  $(GREEN)✓ VC issuer registered$(NC)" || \
 		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"
 	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
