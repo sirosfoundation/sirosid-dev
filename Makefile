@@ -3,21 +3,18 @@
 # Local development environment for SIROS ID wallet ecosystem.
 #
 # Quick Start:
-#   make up       # Start default stack
-#   make status   # Check service health
-#   make logs     # View logs
-#   make down     # Stop all services
+#   make up               # Start default stack (go-trust allow-all PDP)
+#   make up VC=1           # Add production-like VC services
+#   make up PDP=deny       # Use deny-all PDP for negative testing
+#   make status            # Check service health
+#   make down              # Stop all services
 
-.PHONY: help up down logs status \
-        up-go-trust down-go-trust \
-        up-go-trust-whitelist down-go-trust-whitelist \
-        up-vc down-vc \
-        up-vc-go-trust-allow up-vc-go-trust-whitelist up-vc-go-trust-deny \
-        down-vc-go-trust \
-        up-wmp down-wmp \
-        up-conformance down-conformance \
+# Truthy value check: treat 1, yes, on, up as true
+_truthy = $(filter 1 yes on up,$(1))
+
+.PHONY: help up down logs status status-vc \
         ensure-conformance-hosts \
-        register-mocks clean show-branches show-images build-info
+        register-mocks clean show-branches show-images build-info pki
 
 # =============================================================================
 # Configuration
@@ -30,12 +27,20 @@ BACKEND_PATH ?= ../go-wallet-backend
 # Docker compose files
 PRIMARY_COMPOSE := docker-compose.test.yml
 GO_TRUST_COMPOSE := docker-compose.go-trust.yml
+GO_TRUST_ALLOW_COMPOSE := docker-compose.go-trust-allow.yml
 GO_TRUST_WHITELIST_COMPOSE := docker-compose.go-trust-whitelist.yml
+GO_TRUST_DENY_COMPOSE := docker-compose.go-trust-deny.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
+
+# Stack options (override on command line)
+PDP ?= allow
+VC ?=
+TRANSPORT ?=
+CONFORMANCE ?=
 
 # Service URLs (published for use by sirosid-tests)
 export FRONTEND_URL ?= http://localhost:3000
@@ -46,7 +51,7 @@ export MOCK_VERIFIER_URL ?= http://localhost:9011
 export MOCK_PDP_URL ?= http://localhost:9081
 export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
 
-# VC Services URLs (when running up-vc or up-vc-go-trust)
+# VC Services URLs
 export VC_ISSUER_URL ?= http://localhost:9000
 export VC_VERIFIER_URL ?= http://localhost:9001
 export VC_MOCKAS_URL ?= http://localhost:9002
@@ -65,47 +70,116 @@ RED := \033[0;31m
 NC := \033[0m
 
 # =============================================================================
+# Compose file list builder
+# =============================================================================
+# Build the list of compose files based on PDP, VC, TRANSPORT, CONFORMANCE
+
+COMPOSE_FILES := -f $(PRIMARY_COMPOSE)
+
+# PDP selection
+ifeq ($(PDP),allow)
+  COMPOSE_FILES += -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_ALLOW_COMPOSE)
+  _PDP_LABEL := go-trust allow-all
+else ifeq ($(PDP),whitelist)
+  COMPOSE_FILES += -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_WHITELIST_COMPOSE)
+  _PDP_LABEL := go-trust whitelist
+else ifeq ($(PDP),deny)
+  COMPOSE_FILES += -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_DENY_COMPOSE)
+  _PDP_LABEL := go-trust deny-all
+else ifeq ($(PDP),mock)
+  _PDP_LABEL := mock-trust-pdp
+else
+  $(error Unknown PDP mode '$(PDP)'. Use: allow, whitelist, deny, mock)
+endif
+
+# VC services
+ifneq ($(call _truthy,$(VC)),)
+  COMPOSE_FILES += -f $(VC_SERVICES_COMPOSE)
+  ifneq ($(PDP),mock)
+    COMPOSE_FILES += -f $(VC_GO_TRUST_COMPOSE)
+  endif
+  _VC_LABEL := yes
+else
+  _VC_LABEL := no
+endif
+
+# Transport override
+ifeq ($(TRANSPORT),wmp)
+  COMPOSE_FILES += -f $(WMP_TRANSPORT_COMPOSE)
+  _TRANSPORT_LABEL := WMP (JSON-RPC+SSE)
+else ifeq ($(TRANSPORT),http)
+  COMPOSE_FILES += -f $(HTTP_TRANSPORT_COMPOSE)
+  _TRANSPORT_LABEL := HTTP proxy
+else
+  _TRANSPORT_LABEL := WebSocket (default)
+endif
+
+# Conformance suite (implies VC + allow + http transport)
+ifneq ($(call _truthy,$(CONFORMANCE)),)
+  # Ensure required overlays are present
+  ifeq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
+    COMPOSE_FILES += -f $(VC_SERVICES_COMPOSE)
+  endif
+  ifeq ($(findstring $(VC_GO_TRUST_COMPOSE),$(COMPOSE_FILES)),)
+    COMPOSE_FILES += -f $(VC_GO_TRUST_COMPOSE)
+  endif
+  ifeq ($(findstring $(HTTP_TRANSPORT_COMPOSE),$(COMPOSE_FILES)),)
+    COMPOSE_FILES += -f $(HTTP_TRANSPORT_COMPOSE)
+  endif
+  COMPOSE_FILES += -f $(CONFORMANCE_COMPOSE)
+  _CONFORMANCE_LABEL := yes
+else
+  _CONFORMANCE_LABEL := no
+endif
+
+# =============================================================================
 # Help
 # =============================================================================
 
 help: ## Show this help
-	@echo "$(GREEN)sirosid-dev$(NC) - Local Development Environment"
+	@echo "$(GREEN)sirosid-dev$(NC) — Local Development Environment"
 	@echo ""
-	@echo "$(GREEN)Environment Stacks:$(NC)"
-	@echo "  make up                    # Default: frontend + Go backend + mocks"
-	@echo "  make up-go-trust           # Add go-trust PDP services"
-	@echo "  make up-go-trust-whitelist # Use go-trust whitelist as PDP"
-	@echo "  make up-vc                 # Production-like VC services"
-	@echo "  make up-wmp                # WMP transport only (JSON-RPC+SSE)"
+	@echo "$(GREEN)Usage:$(NC)"
+	@echo "  make up [OPTIONS]    Start the stack"
+	@echo "  make down            Stop all services"
+	@echo "  make status          Check service health"
+	@echo "  make logs            View Docker logs"
+	@echo "  make clean           Remove all containers and volumes"
 	@echo ""
-	@echo "$(GREEN)VC Services with go-trust:$(NC)"
-	@echo "  make up-vc-go-trust-allow     # VC + go-trust allow-all (dev)"
-	@echo "  make up-vc-go-trust-whitelist # VC + go-trust whitelist (staging)"
-	@echo "  make up-vc-go-trust-deny      # VC + go-trust deny-all (test failure)"
+	@echo "$(GREEN)Options:$(NC)  (pass on the make command line)"
 	@echo ""
-	@echo "$(GREEN)Management:$(NC)"
-	@echo "  make status    # Check all service health"
-	@echo "  make logs      # View Docker logs"
-	@echo "  make down      # Stop all services"
+	@echo "  $(YELLOW)PDP=$(NC)             Trust PDP to use (default: $(GREEN)allow$(NC))"
+	@echo "                     allow      go-trust allow-all — trusts everything (dev default)"
+	@echo "                     whitelist  go-trust whitelist — trusts configured issuers only"
+	@echo "                     deny       go-trust deny-all  — rejects everything (negative testing)"
+	@echo "                     mock       legacy mock-trust-pdp"
+	@echo ""
+	@echo "  $(YELLOW)VC=$(NC)              Enable production-like VC services (default: off)"
+	@echo "                     1, yes, on, up — enable"
+	@echo "                     Adds: vc-issuer, vc-verifier, vc-apigw, vc-registry, vc-mockas, mongodb"
+	@echo ""
+	@echo "  $(YELLOW)TRANSPORT=$(NC)       Transport protocol (default: websocket)"
+	@echo "                     wmp        WMP transport (JSON-RPC + SSE)"
+	@echo "                     http       HTTP proxy transport"
+	@echo ""
+	@echo "  $(YELLOW)CONFORMANCE=$(NC)     Enable OpenID conformance suite (default: off)"
+	@echo "                     1, yes, on, up — enable"
+	@echo "                     Implies: VC=1 PDP=allow TRANSPORT=http"
+	@echo ""
+	@echo "$(GREEN)Examples:$(NC)"
+	@echo "  make up                              # Default: frontend + backend + go-trust allow"
+	@echo "  make up VC=yes                       # Add VC issuer/verifier services"
+	@echo "  make up PDP=whitelist VC=1            # VC services with whitelist trust"
+	@echo "  make up PDP=deny VC=1                 # Negative testing: deny all trust"
+	@echo "  make up PDP=mock                      # Legacy mock PDP (no go-trust)"
+	@echo "  make up TRANSPORT=wmp                 # Use WMP transport"
+	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
 	@echo ""
 	@echo "$(GREEN)Service URLs (when running):$(NC)"
 	@echo "  Frontend:      $(FRONTEND_URL)"
 	@echo "  Backend API:   $(BACKEND_URL)"
 	@echo "  Admin API:     $(ADMIN_URL)"
 	@echo "  Engine:        $(ENGINE_URL)"
-	@echo "  Mock Verifier: $(MOCK_VERIFIER_URL)"
-	@echo "  Trust PDP:     $(MOCK_PDP_URL)"
-	@echo "  VCTM Registry: $(VCTM_REGISTRY_URL)"
-	@echo ""
-	@echo "$(GREEN)VC Service URLs (when running up-vc*):$(NC)"
-	@echo "  VC Issuer:     $(VC_ISSUER_URL)"
-	@echo "  VC Verifier:   $(VC_VERIFIER_URL)"
-	@echo "  VC MockAS:     $(VC_MOCKAS_URL)"
-	@echo "  VC API GW:     $(VC_APIGW_URL)"
-	@echo "  VC Registry:   $(VC_REGISTRY_URL)"
-	@echo "  go-trust Allow:     $(GO_TRUST_ALLOW_URL)"
-	@echo "  go-trust Whitelist: $(GO_TRUST_WHITELIST_URL)"
-	@echo "  go-trust Deny:      $(GO_TRUST_DENY_URL)"
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
@@ -160,37 +234,58 @@ build-info:
 	@echo "$(GREEN)Generated build-info.json$(NC)"
 
 # =============================================================================
-# Default Stack (Frontend + Go Backend + Mocks)
+# Up / Down / Status
 # =============================================================================
 
-up: ## Start default development stack
-	@echo "$(GREEN)Starting sirosid-dev environment...$(NC)"
+CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
+
+up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE= to configure)
+ifneq ($(call _truthy,$(CONFORMANCE)),)
+	@$(MAKE) --no-print-directory ensure-conformance-hosts
+endif
+	@echo "$(GREEN)Starting sirosid-dev...$(NC)"
+	@echo "  PDP:         $(_PDP_LABEL)"
+	@echo "  VC services: $(_VC_LABEL)"
+	@echo "  Transport:   $(_TRANSPORT_LABEL)"
+	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
+	@echo ""
 	@$(MAKE) --no-print-directory show-branches
 	@$(MAKE) --no-print-directory build-info
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) up -d --build 2>&1 | \
+		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
+ifneq ($(call _truthy,$(VC)),)
+	@$(MAKE) --no-print-directory status-vc
+endif
+ifneq ($(call _truthy,$(CONFORMANCE)),)
+	@echo ""
+	@echo "$(GREEN)Waiting for conformance suite to start (this may take 60s+)...$(NC)"
+	@for i in $$(seq 1 30); do \
+		curl -fsk https://$(CONFORMANCE_HOSTNAME):8443/api/runner/available >/dev/null 2>&1 && break; \
+		sleep 5; \
+	done
+	@curl -fsk https://$(CONFORMANCE_HOSTNAME):8443/api/runner/available >/dev/null 2>&1 && \
+		echo "$(GREEN)✓ Conformance suite ready at https://$(CONFORMANCE_HOSTNAME):8443/$(NC)" || \
+		echo "$(YELLOW)○ Conformance suite still starting... check: docker logs conformance-suite-server$(NC)"
+endif
 	@echo ""
 	@echo "$(GREEN)Environment ready!$(NC)"
 	@echo "  Frontend: $(FRONTEND_URL)"
 	@echo "  Backend:  $(BACKEND_URL)"
 	@echo ""
-	@echo "Run tests: cd ../sirosid-tests && make test"
 
 down: ## Stop all services
 	@echo "$(YELLOW)Stopping all services...$(NC)"
-	-docker compose -f $(PRIMARY_COMPOSE) down
-	-docker compose -f $(GO_TRUST_COMPOSE) down 2>/dev/null
-	-docker compose -f $(VC_SERVICES_COMPOSE) down 2>/dev/null
-	-docker compose -f $(VC_GO_TRUST_COMPOSE) down 2>/dev/null
+	-docker compose $(COMPOSE_FILES) down
+	@echo "$(GREEN)Done.$(NC)"
 
 logs: ## View service logs
-	docker compose -f $(PRIMARY_COMPOSE) logs -f
+	docker compose $(COMPOSE_FILES) logs -f
 
-status: ## Check service health
+status: ## Check core service health
 	@echo "$(GREEN)Service Status:$(NC)"
 	@echo ""
 	@printf "  %-20s %s\n" "Service" "Status"
@@ -204,165 +299,19 @@ status: ## Check service health
 	@curl -sf $(ADMIN_URL)/admin/status >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "wallet-admin" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "wallet-admin" "✗ not running"
-	@curl -sf $(MOCK_VERIFIER_URL)/health >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-verifier" "✓ running" || \
-		printf "  %-20s $(RED)%s$(NC)\n" "mock-verifier" "✗ not running"
+	@curl -sf $(GO_TRUST_ALLOW_URL)/healthz >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-allow" "✓ running" || true
+	@curl -sf $(GO_TRUST_WHITELIST_URL)/healthz >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-whitelist" "✓ running" || true
+	@curl -sf $(GO_TRUST_DENY_URL)/healthz >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-deny" "✓ running" || true
 	@curl -sf $(MOCK_PDP_URL)/health >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-trust-pdp" "✓ running" || \
-		printf "  %-20s $(RED)%s$(NC)\n" "mock-trust-pdp" "✗ not running"
+		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-trust-pdp" "✓ running" || true
+	@curl -sf $(MOCK_VERIFIER_URL)/health >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-verifier" "✓ running" || true
 	@curl -sf $(VCTM_REGISTRY_URL)/status >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "vctm-registry" "✓ running" || \
-		printf "  %-20s $(RED)%s$(NC)\n" "vctm-registry" "✗ not running"
+		printf "  %-20s $(GREEN)%s$(NC)\n" "vctm-registry" "✓ running" || true
 	@echo ""
-
-# =============================================================================
-# Go-Trust Stack
-# =============================================================================
-
-up-go-trust: ## Start with go-trust PDP services
-	@echo "$(GREEN)Starting sirosid-dev with go-trust...$(NC)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status
-
-down-go-trust: ## Stop go-trust environment
-	docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) down
-
-up-go-trust-whitelist: ## Start with go-trust whitelist as PDP
-	@echo "$(GREEN)Starting sirosid-dev with go-trust whitelist...$(NC)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_WHITELIST_COMPOSE) up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status
-
-down-go-trust-whitelist: ## Stop go-trust whitelist environment
-	docker compose -f $(PRIMARY_COMPOSE) -f $(GO_TRUST_COMPOSE) -f $(GO_TRUST_WHITELIST_COMPOSE) down
-
-# =============================================================================
-# VC Services Stack (Production-like)
-# =============================================================================
-
-up-vc: ## Start with production-like VC services
-	@echo "$(GREEN)Starting sirosid-dev with VC services...$(NC)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status
-
-down-vc: ## Stop VC services environment
-	docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) down
-
-# =============================================================================
-# VC Services + go-trust Stack
-# =============================================================================
-
-up-vc-go-trust-allow: ## Start VC services with go-trust allow-all PDP
-	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (allow-all)...$(NC)"
-	@echo "  go-trust mode: ALLOW ALL (development)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		GO_TRUST_MODE=allow \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-allow vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status-vc
-	@echo ""
-	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_ALLOW_URL)$(NC)"
-
-up-vc-go-trust-whitelist: ## Start VC services with go-trust whitelist PDP
-	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (whitelist)...$(NC)"
-	@echo "  go-trust mode: WHITELIST (staging)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		GO_TRUST_MODE=whitelist \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-whitelist vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status-vc
-	@echo ""
-	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_WHITELIST_URL)$(NC)"
-
-up-vc-go-trust-deny: ## Start VC services with go-trust deny-all PDP (negative testing)
-	@echo "$(GREEN)Starting sirosid-dev with VC services + go-trust (deny-all)...$(NC)"
-	@echo "  go-trust mode: DENY ALL (negative testing)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		GO_TRUST_MODE=deny \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) up -d --build wallet-backend wallet-frontend go-trust-deny vc-issuer vc-verifier vc-apigw vc-registry vc-mockas mongodb 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status-vc
-	@echo ""
-	@echo "$(GREEN)go-trust PDP running at $(GO_TRUST_DENY_URL)$(NC)"
-
-down-vc-go-trust: ## Stop VC + go-trust environment
-	docker compose -f $(PRIMARY_COMPOSE) -f $(VC_SERVICES_COMPOSE) -f $(VC_GO_TRUST_COMPOSE) down
-
-# =============================================================================
-# OpenID Conformance Suite
-# =============================================================================
-
-CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
-
-ensure-conformance-hosts: ## Ensure /etc/hosts has the conformance suite entry
-	@if grep -q '$(CONFORMANCE_HOSTNAME)' /etc/hosts; then \
-		echo "$(GREEN)✓ /etc/hosts already has $(CONFORMANCE_HOSTNAME)$(NC)"; \
-	else \
-		echo "$(YELLOW)Adding 127.0.0.1 $(CONFORMANCE_HOSTNAME) to /etc/hosts (requires sudo)...$(NC)"; \
-		echo '127.0.0.1 $(CONFORMANCE_HOSTNAME)' | sudo tee -a /etc/hosts >/dev/null; \
-		echo "$(GREEN)✓ Added $(CONFORMANCE_HOSTNAME) to /etc/hosts$(NC)"; \
-	fi
-
-up-conformance: ensure-conformance-hosts ## Start wallet + go-trust allow-all + conformance suite
-	@echo "$(GREEN)Starting sirosid-dev with conformance suite...$(NC)"
-	@echo "  Conformance URL: https://$(CONFORMANCE_HOSTNAME):8443/"
-	@echo "  go-trust mode: ALLOW ALL"
-	@echo "  Transport: HTTP proxy"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		GO_TRUST_MODE=allow \
-		docker compose \
-			-f $(PRIMARY_COMPOSE) \
-			-f $(VC_SERVICES_COMPOSE) \
-			-f $(VC_GO_TRUST_COMPOSE) \
-			-f $(CONFORMANCE_COMPOSE) \
-			-f $(HTTP_TRANSPORT_COMPOSE) \
-			up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@echo ""
-	@echo "$(GREEN)Waiting for conformance suite to start (this may take 60s+)...$(NC)"
-	@for i in $$(seq 1 30); do \
-		curl -fsk https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null 2>&1 && break; \
-		sleep 5; \
-	done
-	@curl -fsk https://localhost.emobix.co.uk:8443/api/runner/available >/dev/null 2>&1 && \
-		echo "$(GREEN)✓ Conformance suite ready$(NC)" || \
-		echo "$(YELLOW)○ Conformance suite still starting... check: docker logs conformance-suite-server$(NC)"
-	@$(MAKE) --no-print-directory status-vc
-
-down-conformance: ## Stop conformance suite environment
-	docker compose \
-		-f $(PRIMARY_COMPOSE) \
-		-f $(VC_SERVICES_COMPOSE) \
-		-f $(VC_GO_TRUST_COMPOSE) \
-		-f $(CONFORMANCE_COMPOSE) \
-		-f $(HTTP_TRANSPORT_COMPOSE) \
-		down
 
 status-vc: ## Check VC service health
 	@echo "$(GREEN)VC Service Status:$(NC)"
@@ -384,33 +333,20 @@ status-vc: ## Check VC service health
 	@curl -sf $(VC_MOCKAS_URL)/ >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-mockas" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-mockas" "✗ not running"
-	@curl -sf $(GO_TRUST_ALLOW_URL)/health >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-allow" "✓ running" || \
-		printf "  %-20s $(YELLOW)%s$(NC)\n" "go-trust-allow" "- not started"
-	@curl -sf $(GO_TRUST_WHITELIST_URL)/health >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-whitelist" "✓ running" || \
-		printf "  %-20s $(YELLOW)%s$(NC)\n" "go-trust-whitelist" "- not started"
-	@curl -sf $(GO_TRUST_DENY_URL)/health >/dev/null 2>&1 && \
-		printf "  %-20s $(GREEN)%s$(NC)\n" "go-trust-deny" "✓ running" || \
-		printf "  %-20s $(YELLOW)%s$(NC)\n" "go-trust-deny" "- not started"
 	@echo ""
 
 # =============================================================================
-# WMP Transport Stack
+# Conformance helpers
 # =============================================================================
 
-up-wmp: ## Start with WMP transport only
-	@echo "$(GREEN)Starting sirosid-dev with WMP transport...$(NC)"
-	@$(MAKE) --no-print-directory show-branches
-	@echo "$(YELLOW)Building and starting containers...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		docker compose -f $(PRIMARY_COMPOSE) -f $(WMP_TRANSPORT_COMPOSE) up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
-	@$(MAKE) --no-print-directory show-images
-	@$(MAKE) --no-print-directory status
-
-down-wmp: ## Stop WMP transport environment
-	docker compose -f $(PRIMARY_COMPOSE) -f $(WMP_TRANSPORT_COMPOSE) down
+ensure-conformance-hosts: ## Ensure /etc/hosts has the conformance suite entry
+	@if grep -q '$(CONFORMANCE_HOSTNAME)' /etc/hosts; then \
+		echo "$(GREEN)✓ /etc/hosts already has $(CONFORMANCE_HOSTNAME)$(NC)"; \
+	else \
+		echo "$(YELLOW)Adding 127.0.0.1 $(CONFORMANCE_HOSTNAME) to /etc/hosts (requires sudo)...$(NC)"; \
+		echo '127.0.0.1 $(CONFORMANCE_HOSTNAME)' | sudo tee -a /etc/hosts >/dev/null; \
+		echo "$(GREEN)✓ Added $(CONFORMANCE_HOSTNAME) to /etc/hosts$(NC)"; \
+	fi
 
 # =============================================================================
 # Mock Registration
@@ -431,11 +367,8 @@ register-mocks: ## Register mock verifier with backend
 
 clean: ## Remove all containers and volumes
 	@echo "$(YELLOW)Cleaning up...$(NC)"
-	-docker compose -f $(PRIMARY_COMPOSE) down -v --remove-orphans
-	-docker compose -f $(GO_TRUST_COMPOSE) down -v 2>/dev/null
-	-docker compose -f $(VC_SERVICES_COMPOSE) down -v 2>/dev/null
-	-docker compose -f $(VC_GO_TRUST_COMPOSE) down -v 2>/dev/null
-	-docker compose -f $(CONFORMANCE_COMPOSE) down -v 2>/dev/null
+	-docker compose $(COMPOSE_FILES) down -v --remove-orphans
+	@echo "$(GREEN)Done.$(NC)"
 
 # =============================================================================
 # PKI Generation
