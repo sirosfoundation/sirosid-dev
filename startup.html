@@ -5,113 +5,183 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>sirosid-dev</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body {
+    font-family: 'Helvetica Neue', Arial, system-ui, sans-serif;
     min-height: 100vh;
-    background: #0c0e11;
-    color: #c8ccd0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    color: #1a1a1a;
+    background: #fff;
     font-size: 14px;
     line-height: 1.5;
-    padding: 2rem;
   }
-  h1 { color: #e8eaed; font-size: 1.5rem; margin-bottom: 0.25rem; }
-  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 2rem; }
-  a { color: #6cb4ff; text-decoration: none; }
+  .navbar {
+    background: #fff;
+    border-bottom: 1px solid #e0e0e0;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .navbar-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0.6rem 2rem;
+    display: flex;
+    align-items: center;
+  }
+  .navbar-brand {
+    display: flex; align-items: center; gap: 0.6rem;
+    text-decoration: none; color: #1C4587;
+    font-weight: 600; font-size: 1.1rem;
+  }
+  .navbar-brand svg { height: 32px; width: auto; }
+  .navbar-links {
+    margin-left: auto;
+    display: flex; gap: 1.25rem; align-items: center;
+  }
+  .navbar-links a {
+    color: #555; text-decoration: none;
+    font-size: 0.875rem; font-weight: 500;
+    transition: color 0.2s;
+  }
+  .navbar-links a:hover { color: #1C4587; }
+  .content { max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }
+  h1 { color: #1C4587; font-size: 1.6rem; margin-bottom: 0.5rem; font-weight: 700; }
+  .subtitle { color: #555; margin-bottom: 1.5rem; font-size: 0.95rem; }
+  a { color: #1C4587; text-decoration: none; }
   a:hover { text-decoration: underline; }
   .card {
-    background: #161a1e;
-    border: 1px solid #2a2e33;
+    background: #fff;
+    border: 1px solid #e0e0e0;
     border-radius: 8px;
     padding: 1.25rem;
-    margin-bottom: 1rem;
+    margin-bottom: 1.25rem;
   }
   .card h2 {
     font-size: 0.85rem;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: #888;
+    letter-spacing: 0.03em;
+    color: #555;
+    font-weight: 600;
     margin-bottom: 0.75rem;
   }
   .links { display: flex; gap: 0.75rem; flex-wrap: wrap; }
   .links a {
     display: inline-block;
-    padding: 0.5rem 1rem;
-    background: #1a3a5c;
-    border: 1px solid #2a5a8c;
+    padding: 0.5rem 1.25rem;
+    background: #1C4587;
+    border: none;
     border-radius: 6px;
-    color: #8cc8ff;
+    color: #fff;
     font-weight: 500;
     font-size: 0.9rem;
     transition: background 0.15s;
   }
-  .links a:hover { background: #224a6c; text-decoration: none; }
+  .links a:hover { background: #163a70; text-decoration: none; }
   table { width: 100%; border-collapse: collapse; }
-  th { text-align: left; color: #888; font-weight: 500; font-size: 0.8rem;
-       text-transform: uppercase; letter-spacing: 0.04em;
-       padding: 0.4rem 0.75rem; border-bottom: 1px solid #2a2e33; }
-  td { padding: 0.4rem 0.75rem; border-bottom: 1px solid #1e2226; vertical-align: top; }
-  .svc-name { font-weight: 500; color: #e0e0e0; white-space: nowrap; }
+  th {
+    text-align: left; color: #555; font-weight: 600; font-size: 0.8rem;
+    text-transform: uppercase; letter-spacing: 0.03em;
+    padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0;
+    background: #f8f9fa;
+  }
+  td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+  .svc-name { font-weight: 500; color: #1a1a1a; white-space: nowrap; }
   .status-dot {
     display: inline-block; width: 8px; height: 8px;
     border-radius: 50%; margin-right: 6px; vertical-align: middle;
   }
-  .dot-up { background: #4ade80; }
-  .dot-down { background: #555; }
-  .dot-checking { background: #fbbf24; animation: pulse 1s ease-in-out infinite; }
+  .dot-up { background: #22c55e; }
+  .dot-down { background: #ccc; }
+  .dot-checking { background: #f59e0b; animation: pulse 1s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: 0.4; } }
-  .meta { color: #888; font-size: 0.8rem; }
-  .meta code { color: #aaa; background: #1a1e22; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.8rem; }
-  .build-info { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-  .build-tag {
-    font-size: 0.8rem; padding: 0.2rem 0.5rem;
-    background: #1a1e22; border: 1px solid #2a2e33;
-    border-radius: 4px; color: #999;
+  .meta { color: #555; font-size: 0.8rem; }
+  code {
+    background: #f0f0f0;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-size: 0.85em;
+    color: #333;
   }
-  .build-tag strong { color: #bbb; }
-  footer { margin-top: 2rem; color: #555; font-size: 0.75rem; text-align: center; }
+  .footer {
+    border-top: 1px solid #e0e0e0;
+    margin-top: 2rem;
+    padding: 1.5rem 0;
+    font-size: 0.8rem;
+    color: #555;
+  }
+  .footer-inner {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .footer a { color: #555; transition: color 0.2s; }
+  .footer a:hover { color: #1C4587; text-decoration: none; }
+  .port { color: #888; font-size: 0.75rem; font-weight: normal; }
 </style>
 </head>
 <body>
-  <h1>sirosid-dev</h1>
-  <div class="subtitle">Local development environment</div>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a class="navbar-brand" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 239 234" width="32" height="32">
+          <path fill="#1C4587" d="M 51.746094 89.585938 C 85.816406 84.324219 85.816406 84.324219 91.074219 50.246094 C 96.335938 84.324219 96.335938 84.324219 130.40625 89.585938 C 96.328125 94.84375 96.335938 94.910156 91.074219 128.929688 C 85.816406 94.847656 85.816406 94.847656 51.746094 89.585938 M 162.640625 217.410156 C 153.421875 157.6875 153.421875 157.6875 93.714844 148.46875 C 153.421875 139.246094 153.421875 139.246094 162.640625 79.523438 C 171.621094 137.710938 171.863281 139.207031 227.089844 147.773438 C 229.964844 137.921875 231.511719 127.503906 231.511719 116.71875 C 231.511719 55.589844 181.964844 6.03125 120.847656 6.03125 C 59.734375 6.03125 10.1875 55.589844 10.1875 116.71875 C 10.1875 177.851562 59.734375 227.410156 120.847656 227.410156 C 170.65625 227.410156 212.777344 194.496094 226.660156 149.226562 C 171.84375 157.730469 171.597656 159.472656 162.640625 217.410156"/>
+        </svg>
+        sirosid-dev
+      </a>
+      <div class="navbar-links">
+        <a href="/id/default/login">Login</a>
+        <a href="/id/default/">Dashboard</a>
+      </div>
+    </div>
+  </nav>
 
-  <div class="card">
-    <h2>Wallet</h2>
-    <div class="links">
-      <a href="/id/default/login">Login</a>
-      <a href="/id/default/">Dashboard</a>
+  <div class="content">
+    <h1>Development Environment</h1>
+    <div class="subtitle">Local service dashboard</div>
+
+    <div class="card">
+      <h2>Quick Links</h2>
+      <div class="links">
+        <a href="/id/default/login">Wallet Login</a>
+        <a href="/id/default/">Wallet Dashboard</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Services</h2>
+      <table>
+        <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
+        <tbody id="svc-table"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Build Info</h2>
+      <div id="build-info"><span class="meta">Loading&hellip;</span></div>
     </div>
   </div>
 
-  <div class="card">
-    <h2>Services</h2>
-    <table>
-      <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
-      <tbody id="svc-table"></tbody>
-    </table>
+  <div class="footer">
+    <div class="footer-inner">
+      <span>&copy; SIROS Foundation &middot; Auto-refreshes every 10s</span>
+      <a href="#" onclick="checkAll();return false;">Refresh now</a>
+    </div>
   </div>
-
-  <div class="card">
-    <h2>Build Info</h2>
-    <div id="build-info"><span class="meta">Loading&hellip;</span></div>
-  </div>
-
-  <footer>Auto-refreshes every 10s &middot; <a href="#" onclick="checkAll();return false;">Refresh now</a></footer>
 
 <script>
 var SERVICES = [
-  { name: "wallet-frontend", url: "/", check: "/id/default/login", display: "http://localhost:3000" },
-  { name: "wallet-backend",  url: "http://localhost:8080", check: "http://localhost:8080/health" },
-  { name: "wallet-admin",    url: "http://localhost:8081", check: "http://localhost:8081/admin/status" },
-  { name: "wallet-engine",   url: "http://localhost:8082", check: "http://localhost:8082/health" },
-  { name: "mock-trust-pdp",  url: "http://localhost:9081", check: "http://localhost:9081/health" },
-  { name: "mock-verifier",   url: "http://localhost:9011", check: "http://localhost:9011/health" },
-  { name: "vctm-registry",   url: "http://localhost:8080/registry", check: "http://localhost:8080/registry/status" },
-  { name: "go-trust",        url: "http://localhost:9082", check: "http://localhost:9082/health" },
-  { name: "vc-issuer",       url: "http://localhost:9003", check: "http://localhost:9003/health" },
-  { name: "vc-verifier",     url: "http://localhost:9001", check: "http://localhost:9001/health" },
-  { name: "vc-apigw",        url: "http://localhost:9010", check: "http://localhost:9010/health" }
+  { name: "wallet-frontend", check: "/id/default/login", port: 3000 },
+  { name: "wallet-backend",  check: "/_health/backend",  port: 8080 },
+  { name: "wallet-admin",    check: "/_health/admin",    port: 8081 },
+  { name: "wallet-engine",   check: "/_health/engine",   port: 8082 },
+  { name: "mock-trust-pdp",  check: "/_health/mock-pdp",      port: 9081 },
+  { name: "mock-verifier",   check: "/_health/mock-verifier", port: 9011 },
+  { name: "vctm-registry",   check: "/_health/registry",      port: 8080 },
+  { name: "go-trust",        check: "/_health/go-trust",      port: 9082 },
+  { name: "vc-issuer",       check: "/_health/vc-issuer",     port: 9003 },
+  { name: "vc-verifier",     check: "/_health/vc-verifier",   port: 9001 },
+  { name: "vc-apigw",        check: "/_health/vc-apigw",      port: 9010 }
 ];
 
 var svcStatus = {};
@@ -138,7 +208,7 @@ function renderTable() {
     }
     var tr = document.createElement("tr");
     tr.innerHTML =
-      '<td class="svc-name">' + svc.name + '</td>' +
+      '<td class="svc-name">' + svc.name + ' <span class="port">:' + svc.port + '</span></td>' +
       '<td><span class="status-dot ' + dotClass + '"></span>' + label + '</td>' +
       '<td class="meta">' + detail + '</td>';
     tbody.appendChild(tr);
