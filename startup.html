@@ -118,6 +118,36 @@
   .footer a { color: #555; transition: color 0.2s; }
   .footer a:hover { color: #1C4587; text-decoration: none; }
   .port { color: #888; font-size: 0.75rem; font-weight: normal; }
+  /* Conformance card styles */
+  .conf-btn {
+    display: inline-block;
+    padding: 0.4rem 1rem;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-weight: 500;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .conf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .conf-btn-primary { background: #1C4587; }
+  .conf-btn-primary:hover:not(:disabled) { background: #163a70; }
+  .conf-btn-secondary { background: #555; }
+  .conf-btn-secondary:hover:not(:disabled) { background: #444; }
+  .conf-run-grid { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .conf-status { margin-bottom: 0.75rem; font-size: 0.9rem; }
+  .conf-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .conf-results { margin-top: 0.75rem; }
+  .conf-results table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .conf-results th { text-align: left; color: #555; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e0e0e0; background: #f8f9fa; }
+  .conf-results td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #e0e0e0; }
+  .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+  .badge-pass { background: #dcfce7; color: #166534; }
+  .badge-fail { background: #fee2e2; color: #991b1b; }
+  .badge-warn { background: #fef9c3; color: #854d0e; }
+  .badge-run  { background: #dbeafe; color: #1e40af; }
+  .badge-skip { background: #f0f0f0; color: #555; }
 </style>
 </head>
 <body>
@@ -159,6 +189,15 @@
     <div class="card">
       <h2>Build Info</h2>
       <div id="build-info"><span class="meta">Loading&hellip;</span></div>
+    </div>
+
+    <div class="card" id="conformance-card">
+      <h2>Conformance Suite</h2>
+      <div class="conf-status" id="conf-status">
+        <span class="conf-status-dot dot-checking"></span>Checking conformance suite&hellip;
+      </div>
+      <div class="conf-run-grid" id="conf-buttons"></div>
+      <div class="conf-results" id="conf-results"></div>
     </div>
   </div>
 
@@ -280,6 +319,232 @@ if ('serviceWorker' in navigator) {
 checkAll();
 loadBuildInfo();
 setInterval(checkAll, 10000);
+
+// =========================================================================
+// Conformance Dashboard
+// =========================================================================
+
+var confBase = "/_conformance";
+var confAvailable = false;
+var confRuns = {};       // runId -> run state
+var confEventSource = null;
+
+function confStatusEl() { return document.getElementById("conf-status"); }
+
+function checkConformance() {
+  fetch(confBase + "/api/status")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      confAvailable = data.conformance_suite === "connected";
+      var dot = confAvailable ? "dot-up" : "dot-down";
+      var label = confAvailable ? "Connected" : "Not available";
+      confStatusEl().innerHTML =
+        '<span class="conf-status-dot ' + dot + '"></span>' + label +
+        ' <span class="meta">(' + esc(data.url || "") + ')</span>';
+      if (confAvailable) {
+        loadConfPlans();
+        if (!confEventSource) connectSSE();
+      }
+    })
+    .catch(function() {
+      confAvailable = false;
+      confStatusEl().innerHTML =
+        '<span class="conf-status-dot dot-down"></span>Runner not available ' +
+        '<span class="meta">(start with <code>make up CONFORMANCE=yes</code>)</span>';
+    });
+}
+
+function loadConfPlans() {
+  fetch(confBase + "/api/plans")
+    .then(function(r) { return r.json(); })
+    .then(function(plans) {
+      var el = document.getElementById("conf-buttons");
+      el.innerHTML = "";
+      plans.forEach(function(p) {
+        var btn = document.createElement("button");
+        btn.className = "conf-btn " + (p.phase === 1 ? "conf-btn-primary" : "conf-btn-secondary");
+        btn.textContent = p.label;
+        btn.title = p.planName + " (Phase " + p.phase + ")";
+        btn.onclick = function() { startConfRun(p.id, btn); };
+        el.appendChild(btn);
+      });
+    })
+    .catch(function() {});
+}
+
+function startConfRun(planType, btn) {
+  if (btn) btn.disabled = true;
+  fetch(confBase + "/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ planType: planType })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        alert("Error: " + data.error);
+        if (btn) btn.disabled = false;
+        return;
+      }
+      confRuns[data.id] = {
+        id: data.id,
+        planType: data.planType,
+        status: "creating",
+        modules: [],
+        results: []
+      };
+      renderConfResults();
+      setTimeout(function() { if (btn) btn.disabled = false; }, 5000);
+    })
+    .catch(function(err) {
+      alert("Failed to start run: " + err);
+      if (btn) btn.disabled = false;
+    });
+}
+
+function connectSSE() {
+  if (confEventSource) confEventSource.close();
+  confEventSource = new EventSource(confBase + "/api/events");
+
+  confEventSource.addEventListener("run_start", function(e) {
+    var d = JSON.parse(e.data);
+    confRuns[d.id] = confRuns[d.id] || { id: d.id, planType: d.planType, status: "creating", modules: [], results: [] };
+    confRuns[d.id].label = d.label;
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_update", function(e) {
+    var d = JSON.parse(e.data);
+    if (confRuns[d.id]) {
+      confRuns[d.id].status = d.status;
+      if (d.modules) confRuns[d.id].modules = d.modules;
+      if (d.planId) confRuns[d.id].planId = d.planId;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_state", function(e) {
+    var d = JSON.parse(e.data);
+    confRuns[d.id] = d;
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("module_event", function(e) {
+    var d = JSON.parse(e.data);
+    var run = confRuns[d.runId];
+    if (!run) return;
+    if (d.type === "module_start") {
+      run.currentModule = d.module;
+    } else if (d.type === "module_result") {
+      run.results = run.results || [];
+      // Replace existing or add
+      var idx = run.results.findIndex(function(r) { return r.module === d.module; });
+      var entry = { module: d.module, status: d.status, result: d.result };
+      if (idx >= 0) run.results[idx] = entry;
+      else run.results.push(entry);
+      run.currentModule = null;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_finished", function(e) {
+    var d = JSON.parse(e.data);
+    if (confRuns[d.id]) {
+      confRuns[d.id].status = "finished";
+      confRuns[d.id].passed = d.passed;
+      confRuns[d.id].failed = d.failed;
+      confRuns[d.id].total = d.total;
+      confRuns[d.id].planDetailUrl = d.planDetailUrl;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_error", function(e) {
+    var d = JSON.parse(e.data);
+    if (confRuns[d.id]) {
+      confRuns[d.id].status = "error";
+      confRuns[d.id].error = d.error;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.onerror = function() {
+    setTimeout(function() { if (confAvailable) connectSSE(); }, 5000);
+  };
+}
+
+function resultBadge(result) {
+  if (!result) return '<span class="badge badge-run">running</span>';
+  var cls = result === "PASSED" ? "badge-pass"
+          : result === "WARNING" ? "badge-warn"
+          : result === "SKIPPED" || result === "REVIEW" ? "badge-skip"
+          : "badge-fail";
+  return '<span class="badge ' + cls + '">' + esc(result) + '</span>';
+}
+
+function renderConfResults() {
+  var el = document.getElementById("conf-results");
+  var ids = Object.keys(confRuns).sort().reverse();
+  if (ids.length === 0) {
+    el.innerHTML = '<span class="meta">No runs yet. Click a button above to start a conformance test plan.</span>';
+    return;
+  }
+  var html = "";
+  ids.forEach(function(id) {
+    var run = confRuns[id];
+    var statusText = run.status;
+    if (run.status === "finished") {
+      statusText = run.passed + "/" + run.total + " passed";
+      if (run.failed > 0) statusText += ", " + run.failed + " failed";
+    }
+    if (run.status === "error") statusText = "Error: " + (run.error || "unknown");
+
+    html += '<div style="margin-bottom:1rem">';
+    html += '<strong>' + esc(run.label || run.planType) + '</strong>';
+    html += ' <span class="meta">&mdash; ' + esc(statusText) + '</span>';
+    if (run.planDetailUrl) {
+      html += ' <a href="' + esc(run.planDetailUrl) + '" target="_blank" class="meta">View in suite</a>';
+    }
+
+    // Module table
+    var modules = run.modules || [];
+    var results = run.results || [];
+    if (modules.length > 0 || results.length > 0) {
+      html += '<table><thead><tr><th>Module</th><th>Result</th></tr></thead><tbody>';
+      // Show completed results first
+      results.forEach(function(r) {
+        html += '<tr><td class="svc-name">' + esc(r.module) + '</td><td>' + resultBadge(r.result) + '</td></tr>';
+      });
+      // Show pending modules
+      var completedModules = results.map(function(r) { return r.module; });
+      modules.forEach(function(m) {
+        if (completedModules.indexOf(m) >= 0) return;
+        var badge = m === run.currentModule
+          ? '<span class="badge badge-run">running</span>'
+          : '<span class="meta">pending</span>';
+        html += '<tr><td class="svc-name">' + esc(m) + '</td><td>' + badge + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+// Load previous runs
+function loadConfRuns() {
+  fetch(confBase + "/api/runs")
+    .then(function(r) { return r.json(); })
+    .then(function(list) {
+      list.forEach(function(run) { confRuns[run.id] = run; });
+      renderConfResults();
+    })
+    .catch(function() {});
+}
+
+checkConformance();
+loadConfRuns();
+setInterval(checkConformance, 30000);
 </script>
 </body>
 </html>

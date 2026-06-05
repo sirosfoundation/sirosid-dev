@@ -1,0 +1,39 @@
+{
+  "alias": "siros-issuer-vci-test",
+  "description": "OID4VCI issuer conformance test for SIROS VC issuer",
+  "server": {
+    "discoveryUrl": "${ISSUER_DISCOVERY_URL}"
+  },
+  "client": {
+    "client_id": "e2e-test-client",
+    "scope": "pid",
+    "redirect_uri": "http://localhost:3000/cb",
+    "jwks": {
+      "keys": [
+        {
+          "kty": "EC",
+          "x": "ktT77AqMntawPyU772lBg8nd7cwENrYyOL_KWbYN8Jc",
+          "y": "67lPXEq5gJdimDYD0AacxLfRfIm2-fSNd3HBqyXXvBI",
+          "crv": "P-256",
+          "kid": "client-key-1",
+          "use": "sig",
+          "alg": "ES256"
+        }
+      ]
+    },
+    "private_key": {
+      "kty": "EC",
+      "x": "ktT77AqMntawPyU772lBg8nd7cwENrYyOL_KWbYN8Jc",
+      "y": "67lPXEq5gJdimDYD0AacxLfRfIm2-fSNd3HBqyXXvBI",
+      "crv": "P-256",
+      "d": "KJEKZo2PQq6E40P6HMenViCVBRXoWD2FDyevRsJnlG0",
+      "kid": "client-key-1",
+      "use": "sig",
+      "alg": "ES256"
+    }
+  },
+  "resource": {
+    "resourceUrl": "${ISSUER_RESOURCE_URL}"
+  },
+  "waitTimeoutSeconds": 120
+}
