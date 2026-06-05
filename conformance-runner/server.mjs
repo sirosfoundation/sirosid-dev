@@ -11,7 +11,11 @@
  *   POST /api/runs                 - Start a new conformance run
  *   GET  /api/runs                 - List recent runs
  *   GET  /api/runs/:id             - Get run details
+ *   GET  /api/log/:moduleId        - Proxy: conformance suite test log
+ *   GET  /api/info/:moduleId       - Proxy: conformance suite module info
+ *   GET  /api/plan/:planId         - Proxy: conformance suite plan details
  *   GET  /api/events               - SSE event stream
+ *   ALL  /mcp                      - MCP Streamable HTTP endpoint
  */
 
 import express from 'express';
@@ -20,6 +24,7 @@ import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { ConformanceAPI } from './lib/conformance-api.mjs';
 import { runWalletVCI, runWalletVP } from './lib/wallet-runner.mjs';
+import { setupMcpServer } from './lib/mcp-server.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -189,43 +194,21 @@ app.get('/api/runs/:id', (req, res) => {
 
 app.post('/api/runs', async (req, res) => {
   const { planType } = req.body || {};
-  const plan = PLANS[planType];
-  if (!plan) {
+  if (!PLANS[planType]) {
     return res.status(400).json({ error: `Unknown plan type. Choose: ${Object.keys(PLANS).join(', ')}` });
   }
 
-  // Check if conformance suite is reachable
   const ready = await api.isReady();
   if (!ready) {
     return res.status(503).json({ error: 'Conformance suite not available' });
   }
 
-  const id = `run-${++runCounter}-${Date.now()}`;
-  const run = {
-    id,
-    planType,
-    label: plan.label,
-    phase: plan.phase,
-    status: 'creating',
-    startedAt: Date.now(),
-    planId: null,
-    modules: [],
-    results: [],
-    error: null,
-    finishedAt: null,
-  };
-  runs.set(id, run);
-  broadcast('run_start', { id, planType, label: plan.label });
-
-  // Run async
-  executeRun(id, plan, planType).catch(err => {
-    run.status = 'error';
-    run.error = err.message;
-    run.finishedAt = Date.now();
-    broadcast('run_error', { id, error: err.message });
-  });
-
-  res.status(201).json({ id, planType });
+  try {
+    const result = startRun(planType);
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Proxy endpoints — serve conformance suite data without cert warnings
@@ -396,6 +379,55 @@ async function runServerSideModules(planId, modules, emit) {
 // ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
+
+// Expose startRun as a callable function for MCP
+function startRun(planType) {
+  const plan = PLANS[planType];
+  if (!plan) throw new Error(`Unknown plan type: ${planType}`);
+
+  const id = `run-${++runCounter}-${Date.now()}`;
+  const run = {
+    id,
+    planType,
+    label: plan.label,
+    phase: plan.phase,
+    status: 'creating',
+    startedAt: Date.now(),
+    planId: null,
+    modules: [],
+    results: [],
+    error: null,
+    finishedAt: null,
+  };
+  runs.set(id, run);
+  broadcast('run_start', { id, planType, label: plan.label });
+
+  executeRun(id, plan, planType).catch(err => {
+    run.status = 'error';
+    run.error = err.message;
+    run.finishedAt = Date.now();
+    broadcast('run_error', { id, error: err.message });
+  });
+
+  return { id, planType };
+}
+
+// Set up MCP server
+setupMcpServer({
+  app,
+  api,
+  runs,
+  plans: PLANS,
+  startRun,
+  env: {
+    CONFORMANCE_URL,
+    CONFORMANCE_PUBLIC_URL,
+    ISSUER_CONFORMANCE_URL,
+    VERIFIER_CONFORMANCE_URL,
+    WALLET_FRONTEND_URL: process.env.WALLET_FRONTEND_URL || 'http://wallet-frontend:3000',
+    ADMIN_URL: process.env.ADMIN_URL || 'http://amity:8080',
+  },
+});
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Conformance runner listening on port ${PORT}`);
