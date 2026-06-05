@@ -17,7 +17,8 @@ WALLET_NAME ?= SIROS ID (dev)
 
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts fetch-golden-env \
-        register-mocks register-vc-services clean show-branches show-images build-info pki
+        register-mocks register-vc-services clean show-branches show-images build-info pki \
+        android-setup
 
 # =============================================================================
 # Configuration
@@ -247,6 +248,10 @@ help: ## Show this help
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
 	@echo ""
+	@echo "$(GREEN)Android SDK:$(NC)"
+	@echo "  make android-setup   Generate assetlinks.json + configure ADB for passkey dev"
+	@echo "  SDK_PACKAGE=x.y.z    Override package name (default: org.siros.sdk.sample)"
+	@echo ""
 
 # =============================================================================
 # Helpers
@@ -318,6 +323,8 @@ build-info:
 CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
 
 up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to configure)
+	@# Ensure .well-known/assetlinks.json exists (Docker bind mount requires it)
+	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
 endif
@@ -586,3 +593,13 @@ setup: ## Clone sibling repos needed for local development
 	done
 	@echo ""
 	@echo "$(GREEN)Done.$(NC) Run 'make up' to start the stack."
+
+# =============================================================================
+# Android SDK Development
+# =============================================================================
+
+SDK_PATH ?= ../siros-sdk-kotlin
+SDK_PACKAGE ?= org.siros.sdk.sample
+
+android-setup: ## Configure local env for Android SDK testing (generates assetlinks.json, configures ADB)
+	@./scripts/setup-android.sh --package $(SDK_PACKAGE)
