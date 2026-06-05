@@ -51,6 +51,7 @@ VC ?=
 TRANSPORT ?=
 CONFORMANCE ?=
 GOLDEN ?=
+REBUILD ?=
 
 # Golden release configuration
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
@@ -211,6 +212,9 @@ help: ## Show this help
 	@echo "                     <name>     use a specific release (e.g. beta_r2)"
 	@echo "                     Tags are fetched from siros-conformance/golden-releases.yaml"
 	@echo ""
+	@echo "  $(YELLOW)REBUILD=$(NC)         Force rebuild all images with no cache (default: off)"
+	@echo "                     1, yes, on — rebuild everything from scratch"
+	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make up                              # Default: frontend + backend + go-trust allow"
 	@echo "  make up VC=yes                       # Add VC issuer/verifier services"
@@ -221,6 +225,7 @@ help: ## Show this help
 	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
 	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
 	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
+	@echo "  make up REBUILD=yes                    # Force full rebuild (no cache)"
 	@echo ""
 	@echo "$(GREEN)Service URLs (when running):$(NC)"
 	@echo "  Frontend:      $(FRONTEND_URL)"
@@ -345,6 +350,13 @@ ifneq ($(GOLDEN),)
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
 else
+ifneq ($(call _truthy,$(REBUILD)),)
+	@echo "$(YELLOW)Force-rebuilding all images (no cache)...$(NC)"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		WALLET_NAME="$(WALLET_NAME)" \
+		docker compose $(COMPOSE_FILES) build --no-cache 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+endif
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
@@ -529,10 +541,13 @@ fetch-golden-env:
 # Cleanup
 # =============================================================================
 
-clean: ## Remove all containers and volumes
+clean: ## Remove all containers, volumes and build cache
 	@echo "$(YELLOW)Cleaning up...$(NC)"
 	-docker compose $(COMPOSE_FILES) down -v --remove-orphans
-	@echo "$(GREEN)Done.$(NC)"
+	-docker compose $(COMPOSE_FILES) down -v --remove-orphans 2>/dev/null
+	@echo "$(YELLOW)Pruning build cache for project images...$(NC)"
+	-docker builder prune -f --filter label=com.docker.compose.project 2>/dev/null || true
+	@echo "$(GREEN)Done. Run 'make up' to rebuild from scratch.$(NC)"
 
 # =============================================================================
 # PKI Generation
