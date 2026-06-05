@@ -90,8 +90,48 @@ openssl x509 -req -in /tmp/signing_ec.csr -CA "${PKI_DIR}/rootCA.crt" -CAkey "${
 # Create certificate chain PEM (cert + CA)
 cat "${PKI_DIR}/signing_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/signing_ec_chain.pem"
 
-# Clean up temp files
+# Clean up signing temp files
 rm -f /tmp/signing_ec.csr /tmp/signing_ec.conf /tmp/signing_ec.ext /tmp/ca.conf
+
+echo "Generating TLS proxy server certificate..."
+# Server key for the vc-proxy (HTTPS reverse proxy for conformance testing)
+openssl ecparam -name prime256v1 -genkey -noout -out /tmp/proxy_raw.pem
+openssl pkcs8 -topk8 -nocrypt -in /tmp/proxy_raw.pem -out "${PKI_DIR}/proxy_server.key"
+rm /tmp/proxy_raw.pem
+
+cat > /tmp/proxy.conf <<EOF
+[req]
+default_bits       = 256
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+
+[dn]
+C  = SE
+ST = Test
+L  = E2E Testing
+O  = Wallet E2E Test
+OU = VC Proxy
+CN = vc-proxy
+EOF
+
+cat > /tmp/proxy.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = vc-proxy
+DNS.2 = localhost
+EOF
+
+openssl req -new -key "${PKI_DIR}/proxy_server.key" -out /tmp/proxy.csr -config /tmp/proxy.conf
+openssl x509 -req -in /tmp/proxy.csr -CA "${PKI_DIR}/rootCA.crt" -CAkey "${PKI_DIR}/rootCA.key" \
+    -CAcreateserial -out "${PKI_DIR}/proxy_server.crt" -days 730 -sha256 -extfile /tmp/proxy.ext
+
+rm -f /tmp/proxy.csr /tmp/proxy.conf /tmp/proxy.ext
 
 echo ""
 echo "PKI files created in ${PKI_DIR}:"
