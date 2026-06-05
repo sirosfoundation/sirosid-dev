@@ -228,6 +228,34 @@ app.post('/api/runs', async (req, res) => {
   res.status(201).json({ id, planType });
 });
 
+// Proxy endpoints — serve conformance suite data without cert warnings
+app.get('/api/log/:moduleId', async (req, res) => {
+  try {
+    const log = await api.getTestLog(req.params.moduleId);
+    res.json(log);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/info/:moduleId', async (req, res) => {
+  try {
+    const info = await api.getModuleInfo(req.params.moduleId);
+    res.json(info);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
+app.get('/api/plan/:planId', async (req, res) => {
+  try {
+    const plan = await api.request('GET', `${CONFORMANCE_URL}api/plan/${req.params.planId}`, { expectedStatus: 200 });
+    res.json(plan);
+  } catch (err) {
+    res.status(502).json({ error: err.message });
+  }
+});
+
 // SSE endpoint
 app.get('/api/events', (req, res) => {
   res.writeHead(200, {

@@ -157,6 +157,49 @@
   .run-body { padding: 0.5rem 0; }
   .run-body.collapsed { display: none; }
   .run-summary { display: inline-flex; gap: 0.5rem; align-items: center; }
+  /* Log viewer panel */
+  .log-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 200; }
+  .log-overlay.active { display: block; }
+  .log-panel {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(75vw, 900px);
+    background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,0.15); z-index: 201;
+    display: flex; flex-direction: column; transform: translateX(100%);
+    transition: transform 0.2s ease;
+  }
+  .log-panel.active { transform: translateX(0); }
+  .log-panel-header {
+    display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e0e0e0; background: #f8f9fa; flex-shrink: 0;
+  }
+  .log-panel-header h3 { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; flex: 1; margin: 0; }
+  .log-panel-close {
+    background: none; border: none; font-size: 1.4rem; cursor: pointer;
+    color: #888; padding: 0 0.3rem; line-height: 1;
+  }
+  .log-panel-close:hover { color: #333; }
+  .log-panel-body { flex: 1; overflow-y: auto; padding: 1rem 1.25rem; }
+  .log-entry { margin-bottom: 0.75rem; border: 1px solid #e8e8e8; border-radius: 6px; overflow: hidden; }
+  .log-entry-header {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem;
+    background: #f8f9fa; cursor: pointer; font-size: 0.82rem; user-select: none;
+  }
+  .log-entry-header:hover { background: #f0f0f0; }
+  .log-src { font-weight: 600; color: #555; min-width: 5em; }
+  .log-msg { flex: 1; color: #1a1a1a; word-break: break-word; }
+  .log-entry-body { display: none; padding: 0.5rem 0.75rem; font-size: 0.78rem; background: #fafafa; border-top: 1px solid #e8e8e8; }
+  .log-entry-body.open { display: block; }
+  .log-entry-body pre {
+    white-space: pre-wrap; word-break: break-all; margin: 0;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 0.78rem;
+    color: #333; max-height: 400px; overflow-y: auto;
+  }
+  .log-entry.log-fail { border-left: 3px solid #ef4444; }
+  .log-entry.log-pass { border-left: 3px solid #22c55e; }
+  .log-entry.log-warn { border-left: 3px solid #f59e0b; }
+  .log-entry.log-info { border-left: 3px solid #3b82f6; }
+  .log-module-info { margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.85rem; }
+  .log-module-info dt { font-weight: 600; color: #555; display: inline; }
+  .log-module-info dd { display: inline; margin: 0 1rem 0 0.3rem; }
   /* Tabs */
   .tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 1.25rem; }
   .tab {
@@ -619,8 +662,8 @@ function renderConfResults() {
       results.forEach(function(r) {
         html += '<tr><td class="svc-name">' + esc(r.module) + '</td><td>' + resultBadge(r.result) + '</td>';
         html += '<td>';
-        if (r.logUrl) {
-          html += '<a href="' + esc(r.logUrl) + '" target="_blank">view log</a>';
+        if (r.moduleId) {
+          html += '<a href="#" onclick="event.preventDefault();showLog(\'' + esc(r.moduleId) + '\',\'' + esc(r.module) + '\')">view log</a>';
         }
         html += '</td></tr>';
       });
@@ -655,6 +698,115 @@ function loadConfRuns() {
 checkConformance();
 loadConfRuns();
 setInterval(checkConformance, 30000);
+
+// =========================================================================
+// Log Viewer
+// =========================================================================
+
+function showLog(moduleId, moduleName) {
+  var overlay = document.getElementById("log-overlay");
+  var panel = document.getElementById("log-panel");
+  var body = document.getElementById("log-panel-body");
+  var title = document.getElementById("log-panel-title");
+
+  title.textContent = moduleName || moduleId;
+  body.innerHTML = '<span class="meta">Loading log&hellip;</span>';
+  overlay.classList.add("active");
+  // Trigger panel slide after overlay is visible
+  requestAnimationFrame(function() { panel.classList.add("active"); });
+
+  // Fetch module info and log in parallel
+  Promise.all([
+    fetch(confBase + "/api/info/" + encodeURIComponent(moduleId)).then(function(r) { return r.json(); }),
+    fetch(confBase + "/api/log/" + encodeURIComponent(moduleId)).then(function(r) { return r.json(); })
+  ]).then(function(results) {
+    var info = results[0];
+    var log = results[1];
+    renderLogPanel(info, log);
+  }).catch(function(err) {
+    body.innerHTML = '<div style="color:#991b1b">Failed to load log: ' + esc(String(err)) + '</div>';
+  });
+}
+
+function closeLogPanel() {
+  var panel = document.getElementById("log-panel");
+  var overlay = document.getElementById("log-overlay");
+  panel.classList.remove("active");
+  setTimeout(function() { overlay.classList.remove("active"); }, 200);
+}
+
+function renderLogPanel(info, log) {
+  var body = document.getElementById("log-panel-body");
+  var html = "";
+
+  // Module summary
+  html += '<div class="log-module-info"><dl style="margin:0">';
+  html += '<dt>Status:</dt><dd>' + resultBadge(info.result || info.status) + '</dd>';
+  if (info.testModule) { html += '<dt>Module:</dt><dd>' + esc(info.testModule) + '</dd>'; }
+  if (info.testName) { html += '<dt>Test:</dt><dd>' + esc(info.testName) + '</dd>'; }
+  if (info.description) { html += '<dt>Description:</dt><dd>' + esc(info.description) + '</dd>'; }
+  html += '</dl></div>';
+
+  // Log entries
+  if (!Array.isArray(log) || log.length === 0) {
+    html += '<span class="meta">No log entries.</span>';
+  } else {
+    log.forEach(function(entry, idx) {
+      var src = entry.src || "";
+      var msg = entry.msg || "";
+      var result = entry.result || "";
+      var entryClass = "log-info";
+      if (result === "FAILURE") entryClass = "log-fail";
+      else if (result === "WARNING") entryClass = "log-warn";
+      else if (result === "SUCCESS") entryClass = "log-pass";
+      else if (msg.toLowerCase().indexOf("error") >= 0 || msg.toLowerCase().indexOf("fail") >= 0) entryClass = "log-fail";
+
+      html += '<div class="log-entry ' + entryClass + '">';
+      html += '<div class="log-entry-header" onclick="toggleLogEntry(' + idx + ')">';
+      if (result) html += resultBadge(result === "FAILURE" ? "FAILED" : result) + ' ';
+      html += '<span class="log-src">' + esc(src) + '</span>';
+      html += '<span class="log-msg">' + esc(msg.substring(0, 200)) + (msg.length > 200 ? "..." : "") + '</span>';
+      html += '</div>';
+
+      // Detail body — show all fields
+      html += '<div class="log-entry-body" id="log-entry-' + idx + '">';
+      if (msg.length > 200) {
+        html += '<p><strong>Message:</strong></p><pre>' + esc(msg) + '</pre>';
+      }
+      // Show other relevant fields
+      var skipKeys = {"src":1, "msg":1, "result":1, "_type":1};
+      var details = Object.keys(entry).filter(function(k) { return !skipKeys[k] && entry[k]; });
+      if (details.length > 0) {
+        details.forEach(function(k) {
+          var val = entry[k];
+          if (typeof val === "object") val = JSON.stringify(val, null, 2);
+          else val = String(val);
+          html += '<p style="margin:0.3rem 0"><strong>' + esc(k) + ':</strong></p>';
+          html += '<pre>' + esc(val) + '</pre>';
+        });
+      }
+      html += '</div>';
+      html += '</div>';
+    });
+  }
+  body.innerHTML = html;
+}
+
+function toggleLogEntry(idx) {
+  var el = document.getElementById("log-entry-" + idx);
+  if (el) el.classList.toggle("open");
+}
 </script>
+
+<!-- Log viewer panel -->
+<div id="log-overlay" class="log-overlay" onclick="closeLogPanel()"></div>
+<div id="log-panel" class="log-panel" onclick="event.stopPropagation()">
+  <div class="log-panel-header">
+    <h3 id="log-panel-title">Log</h3>
+    <button class="log-panel-close" onclick="closeLogPanel()" title="Close">&times;</button>
+  </div>
+  <div class="log-panel-body" id="log-panel-body"></div>
+</div>
+
 </body>
 </html>
