@@ -598,7 +598,9 @@ function toggleRunCollapse(id) {
 
 function renderConfResults() {
   var el = document.getElementById("conf-results");
-  var ids = Object.keys(confRuns).sort().reverse();
+  var ids = Object.keys(confRuns).sort(function(a, b) {
+    return (confRuns[b].startedAt || 0) - (confRuns[a].startedAt || 0);
+  });
   if (ids.length === 0) {
     el.innerHTML = '<span class="meta">No runs yet. Click a button above to start a conformance test plan.</span>';
     return;

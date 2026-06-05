@@ -363,14 +363,21 @@ async function runServerSideModules(planId, modules, emit) {
       continue;
     }
 
-    // WAITING — for issuer tests, may need browser interaction at mock AS
+    // WAITING — the conformance suite is waiting for the client to drive
+    // the OID4VCI protocol. Poll with timeout and properly report result.
+    let finalState;
     try {
-      await api.waitForState(moduleId, ['FINISHED', 'INTERRUPTED'], 120000);
-    } catch {}
+      finalState = await api.waitForState(moduleId, ['FINISHED', 'INTERRUPTED'], 120000);
+    } catch {
+      // Timeout — re-check actual state from the suite
+      const check = await api.getModuleInfo(moduleId).catch(() => ({}));
+      finalState = check.status || 'INTERRUPTED';
+    }
 
     const finalInfo = await api.getModuleInfo(moduleId);
-    emit({ type: 'module_result', module: moduleName, moduleId, status: finalInfo.status, result: finalInfo.result });
-    results.push({ module: moduleName, moduleId, status: finalInfo.status, result: finalInfo.result, passed: finalInfo.result === 'PASSED' });
+    const finalResult = finalInfo.result || (finalState === 'INTERRUPTED' ? 'INTERRUPTED' : 'TIMEOUT');
+    emit({ type: 'module_result', module: moduleName, moduleId, status: finalInfo.status || finalState, result: finalResult });
+    results.push({ module: moduleName, moduleId, status: finalInfo.status || finalState, result: finalResult, passed: finalResult === 'PASSED' });
   }
 
   return results;
