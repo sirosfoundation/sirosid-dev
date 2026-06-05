@@ -148,6 +148,24 @@
   .badge-warn { background: #fef9c3; color: #854d0e; }
   .badge-run  { background: #dbeafe; color: #1e40af; }
   .badge-skip { background: #f0f0f0; color: #555; }
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 1.25rem; }
+  .tab {
+    padding: 0.6rem 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab:hover { color: #1C4587; }
+  .tab.active { color: #1C4587; border-bottom-color: #1C4587; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -170,34 +188,43 @@
     <h1>Development Environment</h1>
     <div class="subtitle">Local service dashboard</div>
 
-    <div class="card">
-      <h2>Quick Links</h2>
-      <div class="links">
-        <a href="/id/default/login">Wallet Login</a>
-        <a href="/id/default/">Wallet Dashboard</a>
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('status')">Status</button>
+      <button class="tab" onclick="switchTab('conformance')">Conformance</button>
+    </div>
+
+    <div id="tab-status" class="tab-panel active">
+      <div class="card">
+        <h2>Quick Links</h2>
+        <div class="links">
+          <a href="/id/default/login">Wallet Login</a>
+          <a href="/id/default/">Wallet Dashboard</a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Services</h2>
+        <table>
+          <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
+          <tbody id="svc-table"></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Build Info</h2>
+        <div id="build-info"><span class="meta">Loading&hellip;</span></div>
       </div>
     </div>
 
-    <div class="card">
-      <h2>Services</h2>
-      <table>
-        <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
-        <tbody id="svc-table"></tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h2>Build Info</h2>
-      <div id="build-info"><span class="meta">Loading&hellip;</span></div>
-    </div>
-
-    <div class="card" id="conformance-card">
-      <h2>Conformance Suite</h2>
-      <div class="conf-status" id="conf-status">
-        <span class="conf-status-dot dot-checking"></span>Checking conformance suite&hellip;
+    <div id="tab-conformance" class="tab-panel">
+      <div class="card" id="conformance-card">
+        <h2>Conformance Suite</h2>
+        <div class="conf-status" id="conf-status">
+          <span class="conf-status-dot dot-checking"></span>Checking conformance suite&hellip;
+        </div>
+        <div class="conf-run-grid" id="conf-buttons"></div>
+        <div class="conf-results" id="conf-results"></div>
       </div>
-      <div class="conf-run-grid" id="conf-buttons"></div>
-      <div class="conf-results" id="conf-results"></div>
     </div>
   </div>
 
@@ -209,6 +236,13 @@
   </div>
 
 <script>
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector('.tab[onclick*="' + name + '"]').classList.add('active');
+}
+
 var SERVICES = [
   { name: "wallet-frontend", check: "/id/default/login", port: 3000 },
   { name: "wallet-backend",  check: "/_health/backend",  port: 8080 },
