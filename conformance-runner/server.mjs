@@ -27,6 +27,7 @@ app.use(express.json());
 
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const CONFORMANCE_URL = process.env.CONFORMANCE_URL || 'https://localhost.emobix.co.uk:8443/';
+const CONFORMANCE_PUBLIC_URL = process.env.CONFORMANCE_PUBLIC_URL || 'https://localhost.emobix.co.uk:8443/';
 const ISSUER_CONFORMANCE_URL = process.env.ISSUER_CONFORMANCE_URL || 'http://vc-apigw:8080';
 const VERIFIER_CONFORMANCE_URL = process.env.VERIFIER_CONFORMANCE_URL || 'http://vc-verifier:8080';
 
@@ -158,7 +159,11 @@ app.get('/api/health', (_req, res) => {
 
 app.get('/api/status', async (_req, res) => {
   const ready = await api.isReady();
-  res.json({ conformance_suite: ready ? 'connected' : 'unavailable', url: CONFORMANCE_URL });
+  res.json({
+    conformance_suite: ready ? 'connected' : 'unavailable',
+    url: CONFORMANCE_URL,
+    publicUrl: CONFORMANCE_PUBLIC_URL,
+  });
 });
 
 app.get('/api/plans', (_req, res) => {
@@ -234,11 +239,9 @@ app.get('/api/events', (req, res) => {
   res.write(`event: connected\ndata: ${JSON.stringify({ time: Date.now() })}\n\n`);
   sseClients.add(res);
 
-  // Send current state for any active runs
+  // Send current state for all runs (active and finished)
   for (const run of runs.values()) {
-    if (run.status === 'running' || run.status === 'creating') {
-      res.write(`event: run_state\ndata: ${JSON.stringify(run)}\n\n`);
-    }
+    res.write(`event: run_state\ndata: ${JSON.stringify(run)}\n\n`);
   }
 
   req.on('close', () => sseClients.delete(res));
@@ -261,13 +264,25 @@ async function executeRun(id, plan, planType) {
     const testPlan = await api.createTestPlan(plan.planName, configJson, plan.variant);
     run.planId = testPlan.id;
     run.modules = testPlan.modules.map(m => m.testModule);
+    run.planDetailUrl = `${CONFORMANCE_PUBLIC_URL}plan-detail.html?plan=${testPlan.id}`;
     run.status = 'running';
-    broadcast('run_update', { id, status: 'running', planId: testPlan.id, modules: run.modules });
+    broadcast('run_update', { id, status: 'running', planId: testPlan.id, modules: run.modules, planDetailUrl: run.planDetailUrl });
 
     const emit = (event) => {
-      broadcast('module_event', { runId: id, ...event });
+      // Enrich module_result events with log URL for SSE clients
+      const enriched = { ...event };
+      if (event.type === 'module_result' && event.moduleId) {
+        enriched.logUrl = `${CONFORMANCE_PUBLIC_URL}log-detail.html?log=${event.moduleId}`;
+      }
+      broadcast('module_event', { runId: id, ...enriched });
       if (event.type === 'module_result') {
-        run.results.push({ module: event.module, status: event.status, result: event.result });
+        run.results.push({
+          module: event.module,
+          status: event.status,
+          result: event.result,
+          moduleId: event.moduleId,
+          logUrl: event.moduleId ? `${CONFORMANCE_PUBLIC_URL}log-detail.html?log=${event.moduleId}` : null,
+        });
       }
     };
 
@@ -296,7 +311,7 @@ async function executeRun(id, plan, planType) {
       passed,
       failed,
       total: results.length,
-      planDetailUrl: api.getPlanDetailUrl(testPlan.id),
+      planDetailUrl: run.planDetailUrl,
     });
   } catch (err) {
     run.status = 'error';
@@ -324,29 +339,27 @@ async function runServerSideModules(planId, modules, emit) {
     try {
       state = await api.waitForState(moduleId, ['WAITING', 'FINISHED', 'INTERRUPTED'], 120000);
     } catch (err) {
-      // True timeout — couldn't determine state
       const info = await api.getModuleInfo(moduleId).catch(() => ({}));
-      emit({ type: 'module_result', module: moduleName, status: info.status || 'ERROR', result: info.result || 'TIMEOUT' });
-      results.push({ module: moduleName, status: info.status || 'ERROR', result: info.result || 'TIMEOUT', passed: false });
+      emit({ type: 'module_result', module: moduleName, moduleId, status: info.status || 'ERROR', result: info.result || 'TIMEOUT' });
+      results.push({ module: moduleName, moduleId, status: info.status || 'ERROR', result: info.result || 'TIMEOUT', passed: false });
       continue;
     }
 
     if (state === 'FINISHED' || state === 'INTERRUPTED') {
       const info = await api.getModuleInfo(moduleId);
-      emit({ type: 'module_result', module: moduleName, status: info.status, result: info.result });
-      results.push({ module: moduleName, status: info.status, result: info.result, passed: info.result === 'PASSED' });
+      emit({ type: 'module_result', module: moduleName, moduleId, status: info.status, result: info.result });
+      results.push({ module: moduleName, moduleId, status: info.status, result: info.result, passed: info.result === 'PASSED' });
       continue;
     }
 
     // WAITING — for issuer tests, may need browser interaction at mock AS
-    // For now, just wait for it to finish (mock AS auto-approves)
     try {
-      await api.waitForState(moduleId, ['FINISHED'], 120000);
+      await api.waitForState(moduleId, ['FINISHED', 'INTERRUPTED'], 120000);
     } catch {}
 
     const finalInfo = await api.getModuleInfo(moduleId);
-    emit({ type: 'module_result', module: moduleName, status: finalInfo.status, result: finalInfo.result });
-    results.push({ module: moduleName, status: finalInfo.status, result: finalInfo.result, passed: finalInfo.result === 'PASSED' });
+    emit({ type: 'module_result', module: moduleName, moduleId, status: finalInfo.status, result: finalInfo.result });
+    results.push({ module: moduleName, moduleId, status: finalInfo.status, result: finalInfo.result, passed: finalInfo.result === 'PASSED' });
   }
 
   return results;

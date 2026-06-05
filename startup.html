@@ -142,12 +142,21 @@
   .conf-results table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
   .conf-results th { text-align: left; color: #555; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e0e0e0; background: #f8f9fa; }
   .conf-results td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #e0e0e0; }
+  .conf-results td a { color: #1C4587; text-decoration: none; font-size: 0.75rem; }
+  .conf-results td a:hover { text-decoration: underline; }
   .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
   .badge-pass { background: #dcfce7; color: #166534; }
   .badge-fail { background: #fee2e2; color: #991b1b; }
   .badge-warn { background: #fef9c3; color: #854d0e; }
   .badge-run  { background: #dbeafe; color: #1e40af; }
   .badge-skip { background: #f0f0f0; color: #555; }
+  .run-header { cursor: pointer; padding: 0.6rem 0; border-bottom: 1px solid #e0e0e0; user-select: none; }
+  .run-header:hover { background: #f8f9fa; }
+  .run-toggle { display: inline-block; width: 1em; font-size: 0.8rem; color: #888; margin-right: 0.3rem; }
+  .run-time { font-size: 0.75rem; color: #888; margin-left: 0.5rem; }
+  .run-body { padding: 0.5rem 0; }
+  .run-body.collapsed { display: none; }
+  .run-summary { display: inline-flex; gap: 0.5rem; align-items: center; }
   /* Tabs */
   .tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 1.25rem; }
   .tab {
@@ -424,6 +433,7 @@ function startConfRun(planType, btn) {
         id: data.id,
         planType: data.planType,
         status: "creating",
+        startedAt: Date.now(),
         modules: [],
         results: []
       };
@@ -442,8 +452,9 @@ function connectSSE() {
 
   confEventSource.addEventListener("run_start", function(e) {
     var d = JSON.parse(e.data);
-    confRuns[d.id] = confRuns[d.id] || { id: d.id, planType: d.planType, status: "creating", modules: [], results: [] };
+    confRuns[d.id] = confRuns[d.id] || { id: d.id, planType: d.planType, status: "creating", startedAt: Date.now(), modules: [], results: [] };
     confRuns[d.id].label = d.label;
+    collapsedRuns[d.id] = false; // new runs start expanded
     renderConfResults();
   });
 
@@ -453,6 +464,7 @@ function connectSSE() {
       confRuns[d.id].status = d.status;
       if (d.modules) confRuns[d.id].modules = d.modules;
       if (d.planId) confRuns[d.id].planId = d.planId;
+      if (d.planDetailUrl) confRuns[d.id].planDetailUrl = d.planDetailUrl;
     }
     renderConfResults();
   });
@@ -471,9 +483,8 @@ function connectSSE() {
       run.currentModule = d.module;
     } else if (d.type === "module_result") {
       run.results = run.results || [];
-      // Replace existing or add
       var idx = run.results.findIndex(function(r) { return r.module === d.module; });
-      var entry = { module: d.module, status: d.status, result: d.result };
+      var entry = { module: d.module, status: d.status, result: d.result, moduleId: d.moduleId, logUrl: d.logUrl };
       if (idx >= 0) run.results[idx] = entry;
       else run.results.push(entry);
       run.currentModule = null;
@@ -488,7 +499,10 @@ function connectSSE() {
       confRuns[d.id].passed = d.passed;
       confRuns[d.id].failed = d.failed;
       confRuns[d.id].total = d.total;
+      confRuns[d.id].finishedAt = Date.now();
       confRuns[d.id].planDetailUrl = d.planDetailUrl;
+      // Auto-expand finished runs
+      collapsedRuns[d.id] = false;
     }
     renderConfResults();
   });
@@ -516,6 +530,29 @@ function resultBadge(result) {
   return '<span class="badge ' + cls + '">' + esc(result) + '</span>';
 }
 
+function formatTime(ts) {
+  if (!ts) return "";
+  var d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatDuration(start, end) {
+  if (!start || !end) return "";
+  var secs = Math.round((end - start) / 1000);
+  if (secs < 60) return secs + "s";
+  return Math.floor(secs / 60) + "m " + (secs % 60) + "s";
+}
+
+var collapsedRuns = {};
+
+function toggleRunCollapse(id) {
+  collapsedRuns[id] = !collapsedRuns[id];
+  var body = document.getElementById("run-body-" + id);
+  if (body) body.classList.toggle("collapsed", !!collapsedRuns[id]);
+  var toggle = document.getElementById("run-toggle-" + id);
+  if (toggle) toggle.textContent = collapsedRuns[id] ? "▶" : "▼";
+}
+
 function renderConfResults() {
   var el = document.getElementById("conf-results");
   var ids = Object.keys(confRuns).sort().reverse();
@@ -526,28 +563,66 @@ function renderConfResults() {
   var html = "";
   ids.forEach(function(id) {
     var run = confRuns[id];
-    var statusText = run.status;
-    if (run.status === "finished") {
-      statusText = run.passed + "/" + run.total + " passed";
-      if (run.failed > 0) statusText += ", " + run.failed + " failed";
-    }
-    if (run.status === "error") statusText = "Error: " + (run.error || "unknown");
+    var isActive = run.status === "running" || run.status === "creating";
+    // Auto-collapse finished/error runs (but not if user toggled)
+    if (!(id in collapsedRuns)) collapsedRuns[id] = !isActive && run.status !== "finished";
+    var collapsed = collapsedRuns[id];
 
-    html += '<div style="margin-bottom:1rem">';
-    html += '<strong>' + esc(run.label || run.planType) + '</strong>';
-    html += ' <span class="meta">&mdash; ' + esc(statusText) + '</span>';
+    // Status badge for the run header
+    var statusBadge = "";
+    if (run.status === "finished") {
+      var passCount = (run.results || []).filter(function(r) { return r.result === "PASSED"; }).length;
+      var failCount = (run.results || []).filter(function(r) { return r.result !== "PASSED" && r.result !== "SKIPPED"; }).length;
+      var total = (run.results || []).length;
+      if (failCount === 0) {
+        statusBadge = '<span class="badge badge-pass">' + passCount + '/' + total + ' passed</span>';
+      } else {
+        statusBadge = '<span class="badge badge-fail">' + failCount + ' failed</span> <span class="badge badge-pass">' + passCount + ' passed</span>';
+      }
+    } else if (run.status === "error") {
+      statusBadge = '<span class="badge badge-fail">error</span>';
+    } else if (run.status === "running") {
+      statusBadge = '<span class="badge badge-run">running</span>';
+    } else {
+      statusBadge = '<span class="badge badge-run">' + esc(run.status) + '</span>';
+    }
+
+    // Time info
+    var timeInfo = formatTime(run.startedAt);
+    if (run.finishedAt) timeInfo += " (" + formatDuration(run.startedAt, run.finishedAt) + ")";
+
+    html += '<div style="margin-bottom:0.5rem">';
+    // Collapsible header
+    html += '<div class="run-header" onclick="toggleRunCollapse(\'' + esc(id) + '\')">';
+    html += '<span class="run-toggle" id="run-toggle-' + esc(id) + '">' + (collapsed ? '▶' : '▼') + '</span>';
+    html += '<strong>' + esc(run.label || run.planType) + '</strong> ';
+    html += '<span class="run-summary">' + statusBadge + '</span>';
+    if (timeInfo) html += '<span class="run-time">' + esc(timeInfo) + '</span>';
     if (run.planDetailUrl) {
-      html += ' <a href="' + esc(run.planDetailUrl) + '" target="_blank" class="meta">View in suite</a>';
+      html += ' <a href="' + esc(run.planDetailUrl) + '" target="_blank" style="font-size:0.75rem;color:#1C4587" onclick="event.stopPropagation()">&#x2197; suite</a>';
+    }
+    html += '</div>';
+
+    // Collapsible body
+    html += '<div class="run-body' + (collapsed ? ' collapsed' : '') + '" id="run-body-' + esc(id) + '">';
+
+    if (run.status === "error") {
+      html += '<div style="color:#991b1b;font-size:0.85rem;padding:0.4rem 0">Error: ' + esc(run.error || "unknown") + '</div>';
     }
 
     // Module table
     var modules = run.modules || [];
     var results = run.results || [];
     if (modules.length > 0 || results.length > 0) {
-      html += '<table><thead><tr><th>Module</th><th>Result</th></tr></thead><tbody>';
+      html += '<table><thead><tr><th>Module</th><th>Result</th><th></th></tr></thead><tbody>';
       // Show completed results first
       results.forEach(function(r) {
-        html += '<tr><td class="svc-name">' + esc(r.module) + '</td><td>' + resultBadge(r.result) + '</td></tr>';
+        html += '<tr><td class="svc-name">' + esc(r.module) + '</td><td>' + resultBadge(r.result) + '</td>';
+        html += '<td>';
+        if (r.logUrl) {
+          html += '<a href="' + esc(r.logUrl) + '" target="_blank">view log</a>';
+        }
+        html += '</td></tr>';
       });
       // Show pending modules
       var completedModules = results.map(function(r) { return r.module; });
@@ -556,11 +631,12 @@ function renderConfResults() {
         var badge = m === run.currentModule
           ? '<span class="badge badge-run">running</span>'
           : '<span class="meta">pending</span>';
-        html += '<tr><td class="svc-name">' + esc(m) + '</td><td>' + badge + '</td></tr>';
+        html += '<tr><td class="svc-name">' + esc(m) + '</td><td>' + badge + '</td><td></td></tr>';
       });
       html += '</tbody></table>';
     }
-    html += '</div>';
+    html += '</div>'; // close run-body
+    html += '</div>'; // close outer
   });
   el.innerHTML = html;
 }
