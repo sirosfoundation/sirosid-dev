@@ -1,5 +1,5 @@
 {
-  "alias": "siros-issuer-vci-test",
+  "alias": "${ALIAS}",
   "description": "OID4VCI issuer conformance test for SIROS VC issuer",
   "server": {
     "discoveryUrl": "${ISSUER_DISCOVERY_URL}"

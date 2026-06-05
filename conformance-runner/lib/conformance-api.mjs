@@ -136,4 +136,60 @@ export class ConformanceAPI {
 
   getPlanDetailUrl(planId) { return `${this.baseUrl}plan-detail.html?plan=${planId}`; }
   getLogDetailUrl(moduleId) { return `${this.baseUrl}log-detail.html?log=${moduleId}`; }
+
+  /**
+   * Check what the suite is waiting for by examining the test log.
+   * Returns 'credential_offer' | 'tx_code' | 'browser' | null
+   */
+  async getWaitingAction(moduleId) {
+    const logs = await this.getTestLog(moduleId);
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const entry = logs[i];
+      const src = entry.src || '';
+      if (src.includes('WaitForCredentialOffer')) return 'credential_offer';
+      if (src.includes('WaitForTxCode')) return 'tx_code';
+    }
+    // Fall back to browser interaction
+    return 'browser';
+  }
+
+  /**
+   * Get the credential offer endpoint URL for a module (used for issuer_initiated flow).
+   */
+  async getCredentialOfferUrl(moduleId) {
+    const info = await this.getModuleInfo(moduleId);
+    const alias = info.alias;
+    if (alias) return `${this.baseUrl}test/a/${alias}/credential_offer`;
+    return null;
+  }
+
+  /**
+   * Get the tx_code endpoint URL for a module.
+   */
+  async getTxCodeUrl(moduleId) {
+    const info = await this.getModuleInfo(moduleId);
+    const alias = info.alias;
+    if (alias) return `${this.baseUrl}test/a/${alias}/tx_code`;
+    return null;
+  }
+
+  /**
+   * Get browser interaction URL for issuer tests.
+   * When the conformance suite enters WAITING and needs browser-based
+   * authorization (e.g. mock AS login), this returns the URL to navigate to.
+   */
+  async getBrowserInteractionUrl(moduleId) {
+    const info = await this.getModuleInfo(moduleId);
+    // Check for urls field
+    const urls = info.urls;
+    if (urls) {
+      for (const urlEntry of Object.values(urls)) {
+        if (typeof urlEntry === 'string' && urlEntry.includes('/test/')) return urlEntry;
+      }
+    }
+    // Fall back to constructing from alias
+    const alias = info.alias;
+    if (alias) return `${this.baseUrl}test/a/${alias}/authorize`;
+    return null;
+  }
 }

@@ -29,6 +29,8 @@ services:
   conformance-suite-server:
     image: registry.gitlab.com/openid/conformance-suite:latest
     container_name: conformance-suite-server
+    extra_hosts:
+      - "localhost.emobix.co.uk:host-gateway"
     environment:
       - BASE_URL=https://localhost.emobix.co.uk:8443
       - MONGODB_HOST=conformance-mongodb
@@ -92,6 +94,8 @@ services:
       context: ./conformance-runner
       dockerfile: Dockerfile
     container_name: conformance-runner
+    extra_hosts:
+      - "localhost.emobix.co.uk:host-gateway"
     ports:
       - "3001:3001"
     environment:

@@ -325,6 +325,8 @@ CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
 up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to configure)
 	@# Ensure .well-known/assetlinks.json exists (Docker bind mount requires it)
 	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
+	@# Ensure the shared e2e-test-network exists
+	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
 endif

@@ -175,4 +175,5 @@ services:
 
 networks:
   e2e-test-network:
-    driver: bridge
+    name: e2e-test-network
+    external: true

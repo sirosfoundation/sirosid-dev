@@ -22,6 +22,7 @@ import express from 'express';
 import { readFileSync } from 'fs';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { chromium } from 'playwright';
 import { ConformanceAPI } from './lib/conformance-api.mjs';
 import { runWalletVCI, runWalletVP } from './lib/wallet-runner.mjs';
 import { setupMcpServer } from './lib/mcp-server.mjs';
@@ -60,24 +61,38 @@ const PLANS = {
     planName: 'oid4vci-1_0-issuer-test-plan',
     configFile: 'vci-issuer-config.json',
     phase: 1,
-    variant: {
-      credential_format: 'sd_jwt_vc',
-      sender_constrain: 'dpop',
-      client_auth_type: 'private_key_jwt',
-      vci_grant_type: 'pre_authorization_code',
-      fapi_profile: 'vci',
-      fapi_request_method: 'unsigned',
-      fapi_response_mode: 'plain_response',
-      openid: 'plain_oauth',
-      authorization_request_type: 'simple',
-      vci_authorization_code_flow_variant: 'issuer_initiated',
-      vci_credential_encryption: 'plain',
-    },
+    variants: [
+      {
+        name: 'sd_jwt_vc / pre-authorized_code',
+        variant: {
+          credential_format: 'sd_jwt_vc',
+          sender_constrain: 'dpop',
+          vci_grant_type: 'pre_authorization_code',
+          vci_authorization_code_flow_variant: 'issuer_initiated',
+          client_auth_type: 'private_key_jwt',
+          fapi_request_method: 'unsigned',
+          fapi_profile: 'vci',
+        },
+      },
+      {
+        name: 'sd_jwt_vc / authorization_code',
+        variant: {
+          credential_format: 'sd_jwt_vc',
+          sender_constrain: 'dpop',
+          vci_grant_type: 'authorization_code',
+          client_auth_type: 'private_key_jwt',
+          fapi_request_method: 'unsigned',
+          fapi_profile: 'vci',
+        },
+      },
+    ],
     loadConfig() {
+      const uniqueSuffix = Date.now().toString(36);
       return loadConfig(this.configFile, {
         ISSUER_DISCOVERY_URL: `${ISSUER_CONFORMANCE_URL}/.well-known/openid-credential-issuer`,
         ISSUER_RESOURCE_URL: ISSUER_CONFORMANCE_URL,
         ISSUER_CREDENTIAL_ISSUER_URL: ISSUER_CONFORMANCE_URL,
+        ALIAS: `siros-issuer-vci-${uniqueSuffix}`,
       });
     },
   },
@@ -86,13 +101,16 @@ const PLANS = {
     planName: 'oid4vp-1final-rp-test-plan',
     configFile: 'vp-verifier-config.json',
     phase: 1,
-    variant: {
-      credential_format: 'sd_jwt_vc',
-      client_id_prefix: 'x509_san_dns',
-      response_mode: 'direct_post',
-      request_method: 'request_uri_signed',
-      vp_profile: 'plain_vp',
-    },
+    variants: [{
+      name: 'sd_jwt_vc / x509_san_dns / direct_post / request_uri_signed',
+      variant: {
+        credential_format: 'sd_jwt_vc',
+        client_id_prefix: 'x509_san_dns',
+        response_mode: 'direct_post',
+        request_method: 'request_uri_signed',
+        vp_profile: 'plain_vp',
+      },
+    }],
     loadConfig() {
       return loadConfig(this.configFile, {
         VERIFIER_DISCOVERY_URL: `${VERIFIER_CONFORMANCE_URL}/.well-known/openid-configuration`,
@@ -105,19 +123,22 @@ const PLANS = {
     planName: 'oid4vci-1_0-wallet-test-plan',
     configFile: 'vci-wallet-config.json',
     phase: 2,
-    variant: {
-      credential_format: 'sd_jwt_vc',
-      vci_grant_type: 'pre_authorization_code',
-      vci_credential_issuance_mode: 'immediate',
-      vci_credential_offer_variant: 'by_value',
-      sender_constrain: 'dpop',
-      vci_credential_encryption: 'plain',
-      fapi_profile: 'vci',
-      fapi_request_method: 'unsigned',
-      client_auth_type: 'private_key_jwt',
-      authorization_request_type: 'simple',
-      vci_authorization_code_flow_variant: 'issuer_initiated',
-    },
+    variants: [{
+      name: 'sd_jwt_vc / pre_authorization_code / immediate / by_value',
+      variant: {
+        credential_format: 'sd_jwt_vc',
+        vci_grant_type: 'pre_authorization_code',
+        vci_credential_issuance_mode: 'immediate',
+        vci_credential_offer_variant: 'by_value',
+        sender_constrain: 'dpop',
+        vci_credential_encryption: 'plain',
+        fapi_profile: 'vci',
+        fapi_request_method: 'unsigned',
+        client_auth_type: 'private_key_jwt',
+        authorization_request_type: 'simple',
+        vci_authorization_code_flow_variant: 'issuer_initiated',
+      },
+    }],
     loadConfig() { return loadConfig(this.configFile); },
   },
   'vp-wallet': {
@@ -125,13 +146,16 @@ const PLANS = {
     planName: 'oid4vp-1final-wallet-test-plan',
     configFile: 'vp-wallet-config.json',
     phase: 2,
-    variant: {
-      credential_format: 'sd_jwt_vc',
-      client_id_prefix: 'x509_san_dns',
-      response_mode: 'direct_post',
-      request_method: 'request_uri_signed',
-      vp_profile: 'plain_vp',
-    },
+    variants: [{
+      name: 'sd_jwt_vc / x509_san_dns / direct_post / request_uri_signed',
+      variant: {
+        credential_format: 'sd_jwt_vc',
+        client_id_prefix: 'x509_san_dns',
+        response_mode: 'direct_post',
+        request_method: 'request_uri_signed',
+        vp_profile: 'plain_vp',
+      },
+    }],
     loadConfig() { return loadConfig(this.configFile); },
   },
 };
@@ -177,6 +201,7 @@ app.get('/api/plans', (_req, res) => {
     label: p.label,
     planName: p.planName,
     phase: p.phase,
+    variants: (p.variants || []).map(v => v.name),
   }));
   res.json(list);
 });
@@ -266,62 +291,74 @@ async function executeRun(id, plan, planType) {
   const run = runs.get(id);
 
   try {
-    // Load config
     run.status = 'creating';
     broadcast('run_update', { id, status: 'creating' });
-    const configJson = plan.loadConfig();
 
-    // Create test plan
-    const testPlan = await api.createTestPlan(plan.planName, configJson, plan.variant);
-    run.planId = testPlan.id;
-    run.modules = testPlan.modules.map(m => m.testModule);
-    run.planDetailUrl = `${CONFORMANCE_PUBLIC_URL}plan-detail.html?plan=${testPlan.id}`;
-    run.status = 'running';
-    broadcast('run_update', { id, status: 'running', planId: testPlan.id, modules: run.modules, planDetailUrl: run.planDetailUrl });
+    // Iterate over variants — create a separate plan per variant
+    const allResults = [];
+    const variantList = plan.variants || [{ name: 'default', variant: plan.variant }];
 
-    const emit = (event) => {
-      // Enrich module_result events with log URL for SSE clients
-      const enriched = { ...event };
-      if (event.type === 'module_result' && event.moduleId) {
-        enriched.logUrl = `${CONFORMANCE_PUBLIC_URL}log-detail.html?log=${event.moduleId}`;
-      }
-      broadcast('module_event', { runId: id, ...enriched });
-      if (event.type === 'module_result') {
-        run.results.push({
-          module: event.module,
-          status: event.status,
-          result: event.result,
-          moduleId: event.moduleId,
-          logUrl: event.moduleId ? `${CONFORMANCE_PUBLIC_URL}log-detail.html?log=${event.moduleId}` : null,
-        });
-      }
-    };
+    for (const variantConfig of variantList) {
+      console.log(`[${planType}] Starting variant: ${variantConfig.name}`);
+      broadcast('run_update', { id, status: 'creating', variant: variantConfig.name });
 
-    let results;
+      // Load config per variant so each gets a unique alias
+      const configJson = plan.loadConfig();
 
-    if (plan.phase === 2) {
-      // Wallet tests — need Playwright
-      if (planType === 'vci-wallet') {
-        results = await runWalletVCI(api, testPlan.id, run.modules, configJson, emit);
+      const testPlan = await api.createTestPlan(plan.planName, configJson, variantConfig.variant);
+      const modules = testPlan.modules.map(m => m.testModule);
+
+      // Use the last plan's detail URL (or could aggregate)
+      run.planId = testPlan.id;
+      run.modules = [...(run.modules || []), ...modules.map(m => `[${variantConfig.name}] ${m}`)];
+      run.planDetailUrl = `${CONFORMANCE_PUBLIC_URL}plan-detail.html?plan=${testPlan.id}`;
+      run.status = 'running';
+      broadcast('run_update', { id, status: 'running', planId: testPlan.id, modules, planDetailUrl: run.planDetailUrl, variant: variantConfig.name });
+
+      const emit = (event) => {
+        const enriched = { ...event, variant: variantConfig.name };
+        if (event.type === 'module_result' && event.moduleId) {
+          enriched.logUrl = `${CONFORMANCE_PUBLIC_URL}log-detail.html?log=${event.moduleId}`;
+        }
+        broadcast('module_event', { runId: id, ...enriched });
+        if (event.type === 'module_result') {
+          run.results.push({
+            module: event.module,
+            variant: variantConfig.name,
+            status: event.status,
+            result: event.result,
+            moduleId: event.moduleId,
+            logUrl: event.moduleId ? `${CONFORMANCE_PUBLIC_URL}log-detail.html?log=${event.moduleId}` : null,
+          });
+        }
+      };
+
+      let results;
+
+      if (plan.phase === 2) {
+        if (planType === 'vci-wallet') {
+          results = await runWalletVCI(api, testPlan.id, modules, configJson, emit);
+        } else {
+          results = await runWalletVP(api, testPlan.id, modules, configJson, emit);
+        }
       } else {
-        results = await runWalletVP(api, testPlan.id, run.modules, configJson, emit);
+        results = await runServerSideModules(testPlan.id, modules, emit);
       }
-    } else {
-      // Phase 1 — issuer/verifier tests: conformance suite drives, we just poll
-      results = await runServerSideModules(testPlan.id, run.modules, emit);
+
+      allResults.push(...results.map(r => ({ ...r, variant: variantConfig.name })));
     }
 
-    run.results = results;
+    run.results = allResults;
     run.status = 'finished';
     run.finishedAt = Date.now();
 
-    const passed = results.filter(r => r.passed).length;
-    const failed = results.filter(r => !r.passed).length;
+    const passed = allResults.filter(r => r.passed).length;
+    const failed = allResults.filter(r => !r.passed).length;
     broadcast('run_finished', {
       id,
       passed,
       failed,
-      total: results.length,
+      total: allResults.length,
       planDetailUrl: run.planDetailUrl,
     });
   } catch (err) {
@@ -334,50 +371,174 @@ async function executeRun(id, plan, planType) {
 }
 
 /**
+ * Create a credential offer from the issuer and rewrite URLs for the conformance suite.
+ * Returns the URL-encoded credential offer suitable for the conformance suite.
+ */
+async function createCredentialOffer() {
+  const res = await fetch(`${ISSUER_CONFORMANCE_URL}/offers/pid_1_8/e2e_test`);
+  if (!res.ok) throw new Error(`Failed to create credential offer: ${res.status}`);
+  const data = await res.json();
+  const offerUri = data.qr?.uri || '';
+  const url = new URL(offerUri);
+  const offerJson = url.searchParams.get('credential_offer');
+  if (!offerJson) throw new Error('No credential_offer in offer URI');
+  const offer = JSON.parse(offerJson);
+  // Rewrite credential_issuer to use the proxy URL visible to the conformance suite
+  offer.credential_issuer = ISSUER_CONFORMANCE_URL;
+  return offer;
+}
+
+/**
+ * Handle a WAITING state for a module. Checks what the suite is waiting for
+ * and takes the appropriate action (credential offer, tx_code, or browser auth).
+ * Returns true if the module is still running and may enter WAITING again.
+ */
+async function handleWaiting(moduleId, moduleName, browser) {
+  const action = await api.getWaitingAction(moduleId);
+  console.log(`[${moduleName}] WAITING action: ${action}`);
+
+  if (action === 'credential_offer') {
+    // Create a credential offer from the issuer and submit it
+    const offer = await createCredentialOffer();
+    const offerUrl = await api.getCredentialOfferUrl(moduleId);
+    if (!offerUrl) throw new Error('No credential offer URL found');
+    const encoded = encodeURIComponent(JSON.stringify(offer));
+    const submitUrl = `${offerUrl}?credential_offer=${encoded}`;
+    console.log(`[${moduleName}] Submitting credential offer to: ${offerUrl}`);
+    const res = await fetch(submitUrl, {
+      headers: { 'Content-Type': 'application/json' },
+    });
+    console.log(`[${moduleName}] Credential offer response: ${res.status}`);
+    return true; // May enter WAITING again for tx_code or browser auth
+
+  } else if (action === 'tx_code') {
+    // Send tx_code
+    const txCodeUrl = await api.getTxCodeUrl(moduleId);
+    if (!txCodeUrl) throw new Error('No tx_code URL found');
+    console.log(`[${moduleName}] Sending tx_code`);
+    await fetch(`${txCodeUrl}?code=1234`);
+    return true; // May enter WAITING again for browser auth
+
+  } else {
+    // Browser interaction — authorize flow
+    const browserUrl = await api.getBrowserInteractionUrl(moduleId);
+    if (browserUrl) {
+      console.log(`[${moduleName}] Browser interaction at: ${browserUrl.slice(0, 100)}`);
+      const context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+
+      try {
+        await page.goto(browserUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.waitForTimeout(3000);
+
+        // Handle mock AS login form if present
+        const loginInput = page.locator('input[name="username"], input[type="text"]').first();
+        if (await loginInput.isVisible({ timeout: 3000 }).catch(() => false)) {
+          console.log(`[${moduleName}] Filling mock AS login form`);
+          await loginInput.fill('test-user-001');
+          const submitBtn = page.locator('button[type="submit"], input[type="submit"]').first();
+          if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+            await submitBtn.click();
+            await page.waitForTimeout(3000);
+          }
+        }
+
+        // Handle consent/approve button
+        const approveBtn = page.locator(
+          'button:has-text("Approve"), button:has-text("Allow"), button:has-text("Authorize")'
+        ).first();
+        if (await approveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
+          console.log(`[${moduleName}] Clicking approve`);
+          await approveBtn.click();
+          await page.waitForTimeout(3000);
+        }
+      } catch (browserErr) {
+        console.error(`[${moduleName}] Browser interaction error:`, browserErr.message);
+      } finally {
+        await context.close();
+      }
+    } else {
+      console.log(`[${moduleName}] WAITING but no browser URL found`);
+    }
+    return false; // Browser auth is the last interaction
+  }
+}
+
+/**
  * Phase 1: Run issuer/verifier modules. The conformance suite drives the
- * interaction — we just create, start, and poll each module.
+ * interaction — we create, start, and handle WAITING states which may
+ * require credential offers, tx_codes, or browser-based authorization.
  */
 async function runServerSideModules(planId, modules, emit) {
   const results = [];
+  let browser;
 
-  for (const moduleName of modules) {
-    emit({ type: 'module_start', module: moduleName });
+  try {
+    browser = await chromium.launch({ args: ['--no-sandbox', '--ignore-certificate-errors'] });
 
-    const moduleInfo = await api.createTestFromPlan(planId, moduleName);
-    const moduleId = moduleInfo.id;
+    for (const moduleName of modules) {
+      emit({ type: 'module_start', module: moduleName });
 
-    let state;
-    try {
-      state = await api.waitForState(moduleId, ['WAITING', 'FINISHED', 'INTERRUPTED'], 120000);
-    } catch (err) {
-      const info = await api.getModuleInfo(moduleId).catch(() => ({}));
-      emit({ type: 'module_result', module: moduleName, moduleId, status: info.status || 'ERROR', result: info.result || 'TIMEOUT' });
-      results.push({ module: moduleName, moduleId, status: info.status || 'ERROR', result: info.result || 'TIMEOUT', passed: false });
-      continue;
+      const moduleInfo = await api.createTestFromPlan(planId, moduleName);
+      const moduleId = moduleInfo.id;
+
+      let state;
+      try {
+        state = await api.waitForState(moduleId, ['WAITING', 'FINISHED', 'INTERRUPTED'], 120000);
+      } catch (err) {
+        const info = await api.getModuleInfo(moduleId).catch(() => ({}));
+        emit({ type: 'module_result', module: moduleName, moduleId, status: info.status || 'ERROR', result: info.result || 'TIMEOUT' });
+        results.push({ module: moduleName, moduleId, status: info.status || 'ERROR', result: info.result || 'TIMEOUT', passed: false });
+        continue;
+      }
+
+      // Handle up to 3 WAITING cycles (credential_offer → tx_code → browser auth)
+      let waitCycles = 0;
+      while (state === 'WAITING' && waitCycles < 5) {
+        waitCycles++;
+        try {
+          const moreWaiting = await handleWaiting(moduleId, moduleName, browser);
+          if (!moreWaiting) break;
+          // Wait for next state transition
+          state = await api.waitForState(moduleId, ['WAITING', 'FINISHED', 'INTERRUPTED'], 60000);
+        } catch (waitErr) {
+          console.error(`[${moduleName}] Error handling WAITING:`, waitErr.message);
+          break;
+        }
+      }
+
+      // Wait for final result
+      if (state !== 'FINISHED' && state !== 'INTERRUPTED') {
+        try {
+          state = await api.waitForState(moduleId, ['FINISHED', 'INTERRUPTED'], 60000);
+        } catch {
+          const check = await api.getModuleInfo(moduleId).catch(() => ({}));
+          state = check.status || 'INTERRUPTED';
+        }
+      }
+
+      const finalInfo = await api.getModuleInfo(moduleId);
+      const finalResult = finalInfo.result || (state === 'INTERRUPTED' ? 'INTERRUPTED' : 'TIMEOUT');
+
+      // Log failure details for debugging
+      if (finalResult !== 'PASSED') {
+        try {
+          const logs = await api.getTestLog(moduleId);
+          const failures = logs.filter(l => l.result === 'FAILURE' || l.result === 'WARNING');
+          if (failures.length > 0) {
+            console.log(`[${moduleName}] Failure details:`);
+            for (const f of failures.slice(0, 5)) {
+              console.log(`  [${f.result}] ${f.src}: ${(f.msg || '').slice(0, 300)}`);
+            }
+          }
+        } catch { /* best-effort */ }
+      }
+
+      emit({ type: 'module_result', module: moduleName, moduleId, status: finalInfo.status || state, result: finalResult });
+      results.push({ module: moduleName, moduleId, status: finalInfo.status || state, result: finalResult, passed: finalResult === 'PASSED' });
     }
-
-    if (state === 'FINISHED' || state === 'INTERRUPTED') {
-      const info = await api.getModuleInfo(moduleId);
-      emit({ type: 'module_result', module: moduleName, moduleId, status: info.status, result: info.result });
-      results.push({ module: moduleName, moduleId, status: info.status, result: info.result, passed: info.result === 'PASSED' });
-      continue;
-    }
-
-    // WAITING — the conformance suite is waiting for the client to drive
-    // the OID4VCI protocol. Poll with timeout and properly report result.
-    let finalState;
-    try {
-      finalState = await api.waitForState(moduleId, ['FINISHED', 'INTERRUPTED'], 120000);
-    } catch {
-      // Timeout — re-check actual state from the suite
-      const check = await api.getModuleInfo(moduleId).catch(() => ({}));
-      finalState = check.status || 'INTERRUPTED';
-    }
-
-    const finalInfo = await api.getModuleInfo(moduleId);
-    const finalResult = finalInfo.result || (finalState === 'INTERRUPTED' ? 'INTERRUPTED' : 'TIMEOUT');
-    emit({ type: 'module_result', module: moduleName, moduleId, status: finalInfo.status || finalState, result: finalResult });
-    results.push({ module: moduleName, moduleId, status: finalInfo.status || finalState, result: finalResult, passed: finalResult === 'PASSED' });
+  } finally {
+    if (browser) await browser.close();
   }
 
   return results;
