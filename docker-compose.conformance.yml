@@ -92,6 +92,8 @@ services:
       context: ./conformance-runner
       dockerfile: Dockerfile
     container_name: conformance-runner
+    ports:
+      - "3001:3001"
     environment:
       - PORT=3001
       - CONFORMANCE_URL=https://conformance-suite-nginx:8443/

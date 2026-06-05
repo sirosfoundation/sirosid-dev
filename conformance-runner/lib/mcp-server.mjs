@@ -5,6 +5,9 @@
  * log access, and Playwright-based test execution via MCP tools and resources.
  *
  * Transport: Streamable HTTP mounted at /mcp on the Express app.
+ *
+ * Each MCP session gets its own McpServer instance (the SDK only allows
+ * one transport connection per McpServer).
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -13,44 +16,31 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 
+const SERVER_INFO = { name: 'conformance-runner', version: '1.0.0' };
+
+const INSTRUCTIONS = [
+  'You are connected to the SIROS conformance test runner.',
+  'This MCP provides access to the OpenID conformance test environment,',
+  'including the ability to view services, run conformance test plans,',
+  'inspect results and logs, and execute arbitrary Playwright tests',
+  'against the wallet frontend and other services in the environment.',
+  '',
+  'Available tools:',
+  '  - get_environment: Get full environment status (services, URLs, config)',
+  '  - list_plans: List available conformance test plans',
+  '  - start_run: Start a conformance test run for a given plan type',
+  '  - list_runs: List all conformance runs with status and results',
+  '  - get_run: Get detailed status of a specific run',
+  '  - get_module_log: Get the detailed test log for a specific module',
+  '  - get_module_info: Get info/result for a specific module',
+  '  - run_playwright: Execute arbitrary Playwright code against the test environment',
+  '  - check_session: Check if there is an authenticated wallet session',
+].join('\n');
+
 /**
- * @param {object} opts
- * @param {import('express').Express} opts.app - Express app to mount on
- * @param {import('./conformance-api.mjs').ConformanceAPI} opts.api - Conformance suite API client
- * @param {Map<string, object>} opts.runs - Shared runs state
- * @param {object} opts.plans - PLANS definitions
- * @param {Function} opts.startRun - Function(planType) → Promise<{id, planType}>
- * @param {object} opts.env - Environment config
+ * Register all tools on a McpServer instance.
  */
-export function setupMcpServer({ app, api, runs, plans, startRun, env }) {
-  const server = new McpServer(
-    { name: 'conformance-runner', version: '1.0.0' },
-    {
-      instructions: [
-        'You are connected to the SIROS conformance test runner.',
-        'This MCP provides access to the OpenID conformance test environment,',
-        'including the ability to view services, run conformance test plans,',
-        'inspect results and logs, and execute arbitrary Playwright tests',
-        'against the wallet frontend and other services in the environment.',
-        '',
-        'Available tools:',
-        '  - get_environment: Get full environment status (services, URLs, config)',
-        '  - list_plans: List available conformance test plans',
-        '  - start_run: Start a conformance test run for a given plan type',
-        '  - list_runs: List all conformance runs with status and results',
-        '  - get_run: Get detailed status of a specific run',
-        '  - get_module_log: Get the detailed test log for a specific module',
-        '  - get_module_info: Get info/result for a specific module',
-        '  - run_playwright: Execute arbitrary Playwright code against the test environment',
-        '  - check_session: Check if there is an authenticated wallet session',
-      ].join('\n'),
-    }
-  );
-
-  // -----------------------------------------------------------------------
-  // Tools
-  // -----------------------------------------------------------------------
-
+function registerTools(server, { api, runs, plans, startRun, env }) {
   server.tool(
     'get_environment',
     'Get full test environment status: service URLs, conformance suite connectivity, and configuration',
@@ -355,43 +345,51 @@ export function setupMcpServer({ app, api, runs, plans, startRun, env }) {
       }
     }
   );
+}
 
-  // -----------------------------------------------------------------------
-  // Streamable HTTP Transport
-  // -----------------------------------------------------------------------
+/**
+ * Create a fresh McpServer instance with all tools registered.
+ */
+function createServer(opts) {
+  const server = new McpServer(SERVER_INFO, { instructions: INSTRUCTIONS });
+  registerTools(server, opts);
+  return server;
+}
 
-  const transports = {};
+/**
+ * Mount the MCP Streamable HTTP endpoint on the Express app.
+ */
+export function setupMcpServer(opts) {
+  const { app } = opts;
+  const sessions = {}; // sessionId → { transport, server }
 
   app.all('/mcp', async (req, res) => {
     const sessionId = req.headers['mcp-session-id'];
-    let transport;
 
-    if (sessionId && transports[sessionId]) {
-      transport = transports[sessionId];
+    if (sessionId && sessions[sessionId]) {
+      await sessions[sessionId].transport.handleRequest(req, res, req.body);
     } else if (req.method === 'GET' || req.method === 'DELETE') {
-      // GET and DELETE require existing session
       res.status(400).json({ error: 'No active session. Send a POST with initialize first.' });
-      return;
     } else {
-      transport = new StreamableHTTPServerTransport({
+      // New session — fresh McpServer + transport
+      const server = createServer(opts);
+      const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
         onsessioninitialized: (id) => {
-          transports[id] = transport;
+          sessions[id] = { transport, server };
         },
       });
 
       transport.onclose = () => {
         if (transport.sessionId) {
-          delete transports[transport.sessionId];
+          delete sessions[transport.sessionId];
         }
       };
 
       await server.connect(transport);
+      await transport.handleRequest(req, res, req.body);
     }
-
-    await transport.handleRequest(req, res, req.body);
   });
 
   console.log('MCP server mounted at /mcp (Streamable HTTP)');
-  return server;
 }
