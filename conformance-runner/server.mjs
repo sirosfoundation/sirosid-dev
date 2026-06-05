@@ -56,9 +56,16 @@ const PLANS = {
     phase: 1,
     variant: {
       credential_format: 'sd_jwt_vc',
-      vci_grant_type: 'pre_authorization_code',
       sender_constrain: 'dpop',
+      client_auth_type: 'private_key_jwt',
+      vci_grant_type: 'pre_authorization_code',
       fapi_profile: 'vci',
+      fapi_request_method: 'unsigned',
+      fapi_response_mode: 'plain_response',
+      openid: 'plain_oauth',
+      authorization_request_type: 'simple',
+      vci_authorization_code_flow_variant: 'issuer_initiated',
+      vci_credential_encryption: 'plain',
     },
     loadConfig() {
       return loadConfig(this.configFile, {
@@ -77,6 +84,7 @@ const PLANS = {
       client_id_prefix: 'x509_san_dns',
       response_mode: 'direct_post',
       request_method: 'request_uri_signed',
+      vp_profile: 'plain_vp',
     },
     loadConfig() {
       return loadConfig(this.configFile, {
