@@ -56,7 +56,9 @@ const PLANS = {
     phase: 1,
     variant: {
       credential_format: 'sd_jwt_vc',
+      vci_grant_type: 'pre_authorization_code',
       sender_constrain: 'dpop',
+      fapi_profile: 'vci',
     },
     loadConfig() {
       return loadConfig(this.configFile, {
