@@ -4,6 +4,10 @@
   "server": {
     "discoveryUrl": "${ISSUER_DISCOVERY_URL}"
   },
+  "vci": {
+    "credential_issuer_url": "${ISSUER_CREDENTIAL_ISSUER_URL}",
+    "credential_configuration_id": "pid_1_8"
+  },
   "client": {
     "client_id": "e2e-test-client",
     "scope": "pid",

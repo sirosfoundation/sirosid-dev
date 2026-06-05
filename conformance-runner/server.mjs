@@ -71,6 +71,7 @@ const PLANS = {
       return loadConfig(this.configFile, {
         ISSUER_DISCOVERY_URL: `${ISSUER_CONFORMANCE_URL}/.well-known/openid-credential-issuer`,
         ISSUER_RESOURCE_URL: ISSUER_CONFORMANCE_URL,
+        ISSUER_CREDENTIAL_ISSUER_URL: ISSUER_CONFORMANCE_URL,
       });
     },
   },
@@ -321,14 +322,16 @@ async function runServerSideModules(planId, modules, emit) {
 
     let state;
     try {
-      state = await api.waitForState(moduleId, ['WAITING', 'FINISHED'], 120000);
+      state = await api.waitForState(moduleId, ['WAITING', 'FINISHED', 'INTERRUPTED'], 120000);
     } catch (err) {
-      emit({ type: 'module_result', module: moduleName, status: 'ERROR', result: 'TIMEOUT' });
-      results.push({ module: moduleName, status: 'ERROR', result: 'TIMEOUT', passed: false });
+      // True timeout — couldn't determine state
+      const info = await api.getModuleInfo(moduleId).catch(() => ({}));
+      emit({ type: 'module_result', module: moduleName, status: info.status || 'ERROR', result: info.result || 'TIMEOUT' });
+      results.push({ module: moduleName, status: info.status || 'ERROR', result: info.result || 'TIMEOUT', passed: false });
       continue;
     }
 
-    if (state === 'FINISHED') {
+    if (state === 'FINISHED' || state === 'INTERRUPTED') {
       const info = await api.getModuleInfo(moduleId);
       emit({ type: 'module_result', module: moduleName, status: info.status, result: info.result });
       results.push({ module: moduleName, status: info.status, result: info.result, passed: info.result === 'PASSED' });

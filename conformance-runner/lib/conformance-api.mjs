@@ -107,7 +107,10 @@ export class ConformanceAPI {
       const status = info.status;
       if (status !== last) last = status;
       if (requiredStates.includes(status)) return status;
-      if (status === 'INTERRUPTED') throw new Error(`Module ${moduleId} was interrupted`);
+      // If INTERRUPTED is not in requiredStates, treat it as a terminal state
+      if (status === 'INTERRUPTED' && !requiredStates.includes('INTERRUPTED')) {
+        return status;
+      }
       await this.sleep(1000);
     }
     throw new Error(`Timed out waiting for ${requiredStates.join('|')} (last: ${last})`);
