@@ -57,6 +57,7 @@ apigw:
       allowed_origins:
         - "http://localhost:3000"
         - "http://localhost:*"
+        - "https://vc-proxy:8443"
       allowed_methods:
         - "GET"
         - "POST"
@@ -67,18 +68,33 @@ apigw:
   key_config:
     private_key_path: "/pki/signing_ec_private.pem"
     chain_path: "/pki/signing_ec_chain.pem"
-  public_url: "http://localhost:9003"
-  registry_public_url: "http://localhost:9004"
+  public_url: "https://vc-proxy:8443"
+  registry_public_url: "https://vc-proxy:8445"
   issuer_client:
     addr: "vc-issuer:8090"
   registry_client:
     addr: "vc-registry:8090"
+  auth_providers:
+    oidc:
+      enable: true
+      issuer_url: "http://mini-oidc:9005"
+      redirect_uri: "https://vc-proxy:8443/oidcrp/callback"
+      scopes: ["openid", "profile"]
+      session_duration: 300
+      registration:
+        preconfigured:
+          enable: true
+          client_id: "apigw-oidc-client"
+          client_secret: "test-secret"
   data_sources:
-    datastore:
+    assertion:
       scopes:
         pid:
           auth_provider: oidc
-          auth_claims: ["given_name", "family_name", "birth_date"]
+        pid_1_8:
+          auth_provider: oidc
+    datastore:
+      scopes:
         ehic:
           auth_provider: openid4vp
           auth_scopes: ["pid"]
@@ -88,17 +104,30 @@ apigw:
           auth_claims: ["given_name", "family_name"]
   delivery:
     openid4vci:
-      token_endpoint: "http://localhost:9003/token"
+      token_endpoint: "https://vc-proxy:8443/token"
       clients:
         "e2e-test-client":
           type: "public"
-          redirect_uri: "http://localhost:3000/cb"
+          redirect_uri:
+            - "http://localhost:3000/cb"
+            - "https://localhost.emobix.co.uk:8443/test/a/*"
           scopes:
             - "pid"
+            - "pid_1_8"
+            - "diploma"
+            - "ehic"
+        "e2e-test-client-2":
+          type: "public"
+          redirect_uri:
+            - "http://localhost:3000/cb"
+            - "https://localhost.emobix.co.uk:8443/test/a/*"
+          scopes:
+            - "pid"
+            - "pid_1_8"
             - "diploma"
             - "ehic"
     credential_offers:
-      issuer_url: "http://localhost:9003"
+      issuer_url: "https://vc-proxy:8443"
       wallets:
         local:
           label: "SIROS ID (dev)"
@@ -117,14 +146,14 @@ issuer:
       enable: false
   grpc_server:
     addr: ":8090"
-  issuer_url: "http://localhost:9003"
+  issuer_url: "https://vc-proxy:8443"
   registry_client:
     addr: "vc-registry:8090"
   key_config:
     private_key_path: "/pki/signing_ec_private.pem"
     chain_path: "/pki/signing_ec_chain.pem"
   jwt_attribute:
-    issuer: "http://localhost:9003"
+    issuer: "https://vc-proxy:8443"
     enable_not_before: true
     valid_duration: 3600
     verifiable_credential_type: "https://credential.e2etest.local/identity_credential"
@@ -192,7 +221,7 @@ registry:
       enable: false
   grpc_server:
     addr: ":8090"
-  public_url: "http://localhost:9004"
+  public_url: "https://vc-proxy:8445"
   token_status_lists:
     key_config:
       private_key_path: "/pki/signing_ec_private.pem"

@@ -165,6 +165,23 @@ services:
     networks:
       - e2e-test-network
 
+  mini-oidc:
+    build: ./mini-oidc-provider
+    container_name: mini-oidc-e2e
+    ports:
+      - "9005:9005"
+    environment:
+      - PORT=9005
+      - ISSUER=http://mini-oidc:9005
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:9005/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    networks:
+      - e2e-test-network
+
 networks:
   e2e-test-network:
     name: e2e-test-network

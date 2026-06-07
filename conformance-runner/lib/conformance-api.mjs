@@ -187,6 +187,12 @@ export class ConformanceAPI {
         if (typeof urlEntry === 'string' && urlEntry.includes('/test/')) return urlEntry;
       }
     }
+    // Check the test log for the authorization redirect URL
+    const logs = await this.getTestLog(moduleId);
+    for (let i = logs.length - 1; i >= 0; i--) {
+      const entry = logs[i];
+      if (entry.redirect_to && typeof entry.redirect_to === 'string') return entry.redirect_to;
+    }
     // Fall back to constructing from alias
     const alias = info.alias;
     if (alias) return `${this.baseUrl}test/a/${alias}/authorize`;

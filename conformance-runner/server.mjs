@@ -371,20 +371,45 @@ async function executeRun(id, plan, planType) {
 }
 
 /**
- * Create a credential offer from the issuer and rewrite URLs for the conformance suite.
- * Returns the URL-encoded credential offer suitable for the conformance suite.
+ * Create a credential offer with a pre-authorized code by driving the standalone
+ * OIDC flow: initiate → mini-oidc (auto-approve) → callback → extract offer.
+ * Returns the credential offer object suitable for the conformance suite.
  */
 async function createCredentialOffer() {
-  const res = await fetch(`${ISSUER_CONFORMANCE_URL}/offers/pid_1_8/e2e_test`);
-  if (!res.ok) throw new Error(`Failed to create credential offer: ${res.status}`);
-  const data = await res.json();
-  const offerUri = data.qr?.uri || '';
-  const url = new URL(offerUri);
-  const offerJson = url.searchParams.get('credential_offer');
-  if (!offerJson) throw new Error('No credential_offer in offer URI');
-  const offer = JSON.parse(offerJson);
+  // Step 1: Initiate standalone OIDC flow
+  const initRes = await fetch(`${ISSUER_CONFORMANCE_URL}/oidcrp/initiate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ credential_type: 'pid_1_8' }),
+  });
+  if (!initRes.ok) throw new Error(`OIDC initiate failed: ${initRes.status}`);
+  const { authorization_url } = await initRes.json();
+
+  // Step 2: Call mini-oidc authorize (auto-approves, returns 302 to callback)
+  const oidcRes = await fetch(authorization_url, { redirect: 'manual' });
+  const callbackUrl = oidcRes.headers.get('location');
+  if (!callbackUrl) throw new Error('No redirect from OIDC provider');
+
+  // Step 3: Call the callback (standalone mode returns JSON with credential_offer)
+  const cbRes = await fetch(callbackUrl);
+  if (!cbRes.ok) throw new Error(`OIDC callback failed: ${cbRes.status}`);
+  const cbData = await cbRes.json();
+
+  if (!cbData.credential_offer) {
+    throw new Error('No credential_offer in OIDC callback response');
+  }
+
   // Rewrite credential_issuer to use the proxy URL visible to the conformance suite
+  const offer = cbData.credential_offer;
   offer.credential_issuer = ISSUER_CONFORMANCE_URL;
+
+  // Strip empty tx_code from pre-auth grant (the issuer serializes the zero struct)
+  const preAuthGrant = offer.grants?.['urn:ietf:params:oauth:grant-type:pre-authorized_code'];
+  if (preAuthGrant?.tx_code && !preAuthGrant.tx_code.input_mode && !preAuthGrant.tx_code.length) {
+    delete preAuthGrant.tx_code;
+  }
+
+  console.log('[createCredentialOffer] offer grants:', JSON.stringify(offer.grants));
   return offer;
 }
 
@@ -427,30 +452,63 @@ async function handleWaiting(moduleId, moduleName, browser) {
       const context = await browser.newContext({ ignoreHTTPSErrors: true });
       const page = await context.newPage();
 
-      try {
-        await page.goto(browserUrl, { waitUntil: 'networkidle', timeout: 30000 });
-        await page.waitForTimeout(3000);
+      // Log all navigations for debugging
+      page.on('console', msg => console.log(`[${moduleName}] BROWSER CONSOLE: ${msg.text()}`));
+      page.on('response', res => {
+        if (res.status() >= 300) {
+          console.log(`[${moduleName}] BROWSER ${res.status()} ${res.url().slice(0, 120)}`);
+        }
+      });
+      page.on('requestfailed', req => {
+        console.log(`[${moduleName}] BROWSER REQUEST FAILED: ${req.url().slice(0, 120)} ${req.failure()?.errorText}`);
+      });
 
-        // Handle mock AS login form if present
-        const loginInput = page.locator('input[name="username"], input[type="text"]').first();
-        if (await loginInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-          console.log(`[${moduleName}] Filling mock AS login form`);
-          await loginInput.fill('test-user-001');
-          const submitBtn = page.locator('button[type="submit"], input[type="submit"]').first();
-          if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
-            await submitBtn.click();
-            await page.waitForTimeout(3000);
-          }
+      try {
+        // Navigate to authorize URL — this loads the consent page which may
+        // auto-redirect through OIDC provider before settling back.
+        console.log(`[${moduleName}] Navigating to authorize URL...`);
+        await page.goto(browserUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        console.log(`[${moduleName}] Page loaded, current URL: ${page.url()}`);
+
+        // Wait for the OIDC redirect chain to complete:
+        // consent.html → mini-oidc/authorize → oidcrp/callback → consent/#/credentials
+        try {
+          await page.waitForURL(url => url.hash?.includes('credentials') || url.pathname.includes('oidcrp/callback'), { timeout: 30000 });
+          console.log(`[${moduleName}] OIDC redirect chain completed, URL: ${page.url()}`);
+        } catch (waitErr) {
+          console.log(`[${moduleName}] waitForURL timed out, current URL: ${page.url()}`);
+          console.log(`[${moduleName}] Page title: ${await page.title().catch(() => 'unknown')}`);
+          // Take a snapshot of the page content for debugging
+          const bodyText = await page.locator('body').innerText({ timeout: 2000 }).catch(() => 'could not get text');
+          console.log(`[${moduleName}] Page body (first 500 chars): ${bodyText.slice(0, 500)}`);
         }
 
-        // Handle consent/approve button
+        // Give Alpine.js time to render the credential selection UI
+        await page.waitForTimeout(2000);
+
+        // Select the first credential radio button.
+        // The radio uses Alpine.js + appearance-none CSS, so Playwright's
+        // check() can't verify state change. Use evaluate() to set checked
+        // and dispatch events so Alpine picks it up.
+        const credRadio = page.locator('input[name="credential"][type="radio"]').first();
+        if (await credRadio.isVisible({ timeout: 5000 }).catch(() => false)) {
+          console.log(`[${moduleName}] Selecting credential`);
+          await credRadio.evaluate(el => {
+            el.checked = true;
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+          });
+          await page.waitForTimeout(500);
+        }
+
+        // Handle consent/approve button — matches "Get credential" submit or Approve/Allow/Authorize buttons
         const approveBtn = page.locator(
-          'button:has-text("Approve"), button:has-text("Allow"), button:has-text("Authorize")'
+          'input[type="submit"][value="Get credential"], button:has-text("Approve"), button:has-text("Allow"), button:has-text("Authorize")'
         ).first();
-        if (await approveBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-          console.log(`[${moduleName}] Clicking approve`);
+        if (await approveBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
+          console.log(`[${moduleName}] Clicking approve/get credential`);
           await approveBtn.click();
-          await page.waitForTimeout(3000);
+          await page.waitForTimeout(5000);
         }
       } catch (browserErr) {
         console.error(`[${moduleName}] Browser interaction error:`, browserErr.message);
