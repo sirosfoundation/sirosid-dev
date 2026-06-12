@@ -1,0 +1,31 @@
+# Docker Compose overlay for Android development via Waydroid.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml \
+#     -f docker-compose.vc-services.yml \
+#     -f docker-compose.go-trust-allow.yml \
+#     -f docker-compose.android.yml \
+#     up -d
+#
+# Or via the android-test.sh helper:
+#   ./scripts/android-test.sh restart
+#
+# Prerequisites:
+#   - Run scripts/generate-android-config.py first to create
+#     fixtures/vc-config-android.yaml from the base config.
+#   - Waydroid running with ADB accessible.
+#
+# This overlay:
+#   - Mounts the Android-patched vc-config for vc-apigw
+#     (external OIDC URLs reachable from the Android browser)
+#   - Sets mini-oidc ISSUER to the host gateway so ID token issuer
+#     matches the vc-apigw OIDC RP issuer_url.
+
+services:
+  vc-apigw:
+    volumes:
+      - ./fixtures/vc-config-android.yaml:/config.yaml:ro
+
+  mini-oidc:
+    environment:
+      - ISSUER=http://${WAYDROID_GATEWAY:-192.168.240.1}:9005

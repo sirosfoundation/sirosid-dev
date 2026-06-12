@@ -77,8 +77,8 @@ apigw:
   auth_providers:
     oidc:
       enable: true
-      issuer_url: "http://mini-oidc:9005"
-      redirect_uri: "https://vc-proxy:8443/oidcrp/callback"
+      issuer_url: "http://192.168.240.1:9005"
+      redirect_uri: "http://192.168.240.1:8091/oidcrp/callback"
       scopes: ["openid", "profile"]
       session_duration: 300
       registration:
@@ -91,14 +91,14 @@ apigw:
       scopes:
         pid:
           auth_provider: oidc
+        pid_1_5:
+          auth_provider: oidc
         pid_1_8:
+          auth_provider: oidc
+        ehic:
           auth_provider: oidc
     datastore:
       scopes:
-        ehic:
-          auth_provider: openid4vp
-          auth_scopes: ["pid"]
-          auth_claims: ["given_name", "family_name", "birth_date"]
         diploma:
           auth_provider: oidc
           auth_claims: ["given_name", "family_name"]
@@ -108,21 +108,19 @@ apigw:
       clients:
         "e2e-test-client":
           type: "public"
-          redirect_uri:
-            - "http://localhost:3000/cb"
-            - "https://localhost.emobix.co.uk:8443/test/a/*"
+          redirect_uri: "siros-sample://callback"
           scopes:
             - "pid"
+            - "pid_1_5"
             - "pid_1_8"
             - "diploma"
             - "ehic"
         "e2e-test-client-2":
           type: "public"
-          redirect_uri:
-            - "http://localhost:3000/cb"
-            - "https://localhost.emobix.co.uk:8443/test/a/*"
+          redirect_uri: "http://localhost:3000/cb"
           scopes:
             - "pid"
+            - "pid_1_5"
             - "pid_1_8"
             - "diploma"
             - "ehic"
@@ -135,6 +133,9 @@ apigw:
         e2e_test:
           label: "E2E Test Wallet"
           redirect_uri: "http://localhost:3000/callback"
+        android:
+          label: "SIROS Android (Waydroid)"
+          redirect_uri: "siros-sample://callback"
 
 # =============================================================================
 # Issuer Service - OpenID4VCI Credential Issuer

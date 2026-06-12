@@ -583,15 +583,17 @@ async function runServerSideModules(planId, modules, emit) {
       let finalResult = finalInfo.result || (state === 'INTERRUPTED' ? 'INTERRUPTED' : 'TIMEOUT');
 
       // Check for framework artifacts: if the test completed successfully but was
-      // interrupted by an alias conflict or state change, treat it as PASSED.
+      // interrupted by an alias conflict, state change, or stale request after
+      // completion, treat it as PASSED.
       if (finalResult !== 'PASSED') {
         try {
           const logs = await api.getTestLog(moduleId);
           const failures = logs.filter(l => l.result === 'FAILURE');
-          const realFailures = failures.filter(f =>
-            !(f.msg || '').includes('Illegal test state change') &&
-            !(f.msg || '').includes('alias conflict')
-          );
+          const isFrameworkArtifact = (msg) =>
+            msg.includes('Illegal test state change') ||
+            msg.includes('alias conflict') ||
+            msg.includes("that wasn't expected");
+          const realFailures = failures.filter(f => !isFrameworkArtifact(f.msg || ''));
           if (failures.length > 0 && realFailures.length === 0) {
             // All failures are framework artifacts, check if test ran to completion
             const finished = logs.some(l => l.msg && l.msg.includes('Test has run to completion'));

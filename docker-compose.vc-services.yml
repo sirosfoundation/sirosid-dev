@@ -172,7 +172,7 @@ services:
       - "9005:9005"
     environment:
       - PORT=9005
-      - ISSUER=http://mini-oidc:9005
+      - ISSUER=${MINI_OIDC_ISSUER:-http://mini-oidc:9005}
     healthcheck:
       test: ["CMD-SHELL", "node -e \"fetch('http://localhost:9005/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
       interval: 5s

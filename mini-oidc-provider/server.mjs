@@ -121,7 +121,7 @@ async function handler(req, res) {
     });
   }
 
-  // --- Authorization endpoint (auto-approve) ---
+  // --- Authorization endpoint (consent page) ---
   if (path === '/authorize' && req.method === 'GET') {
     const q = url.query;
     const code = randomBytes(32).toString('hex');
@@ -133,15 +133,89 @@ async function handler(req, res) {
       codeChallenge: q.code_challenge,
       codeChallengeMethod: q.code_challenge_method || 'plain',
       scope: q.scope || 'openid',
+      state: q.state || '',
       createdAt: Date.now(),
     });
 
-    // Auto-approve: redirect immediately
-    const redirectUrl = new URL(q.redirect_uri);
-    redirectUrl.searchParams.set('code', code);
-    if (q.state) redirectUrl.searchParams.set('state', q.state);
+    // Show a consent page with user info and an approve button
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mini OIDC — Sign In</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+           background: #f0f2f5; display: flex; justify-content: center; align-items: flex-start;
+           min-height: 100vh; min-height: 100dvh; padding: 8px; }
+    .card { background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.1);
+            padding: 16px; max-width: 400px; width: 100%; text-align: center; margin-top: 8px; }
+    .avatar { width: 48px; height: 48px; border-radius: 50%; background: #4f46e5;
+              color: #fff; font-size: 22px; line-height: 48px; margin: 0 auto 8px; }
+    h1 { font-size: 18px; color: #111; margin-bottom: 2px; }
+    .sub { color: #666; font-size: 13px; margin-bottom: 12px; }
+    .info { text-align: left; background: #f8f9fa; border-radius: 8px; padding: 8px 12px;
+            margin-bottom: 16px; font-size: 13px; color: #333; }
+    .info dt { font-weight: 600; margin-top: 6px; }
+    .info dt:first-child { margin-top: 0; }
+    .info dd { margin-left: 0; color: #555; }
+    .scope { display: inline-block; background: #e0e7ff; color: #3730a3; border-radius: 4px;
+             padding: 2px 8px; font-size: 12px; margin: 2px; }
+    form { display: flex; gap: 12px; justify-content: center; }
+    button { padding: 10px 28px; border: none; border-radius: 8px; font-size: 15px;
+             font-weight: 600; cursor: pointer; transition: background .15s; }
+    .approve { background: #4f46e5; color: #fff; }
+    .approve:hover { background: #4338ca; }
+    .deny { background: #e5e7eb; color: #374151; }
+    .deny:hover { background: #d1d5db; }
+    .client { color: #4f46e5; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="avatar">A</div>
+    <h1>${TEST_USER.name}</h1>
+    <p class="sub">${TEST_USER.email}</p>
+    <div class="info">
+      <dl>
+        <dt>Application</dt>
+        <dd class="client">${q.client_id || 'Unknown'}</dd>
+        <dt>Requested access</dt>
+        <dd>${(q.scope || 'openid').split(' ').map(s => '<span class="scope">' + s + '</span>').join(' ')}</dd>
+      </dl>
+    </div>
+    <form method="POST" action="/authorize/consent">
+      <input type="hidden" name="code" value="${code}">
+      <button type="submit" class="approve">Approve</button>
+    </form>
+  </div>
+</body>
+</html>`;
 
-    console.log(`[mini-oidc] auto-approve → ${redirectUrl.toString()}`);
+    console.log(`[mini-oidc] showing consent page for client=${q.client_id}`);
+    res.writeHead(200, {
+      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Length': Buffer.byteLength(html),
+      'Cache-Control': 'no-store',
+    });
+    return res.end(html);
+  }
+
+  // --- Authorization consent callback (approve button) ---
+  if (path === '/authorize/consent' && req.method === 'POST') {
+    const body = await parseBody(req);
+    const authCode = codes.get(body.code);
+    if (!authCode) {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      return res.end('Invalid or expired authorization code');
+    }
+
+    const redirectUrl = new URL(authCode.redirectUri);
+    redirectUrl.searchParams.set('code', body.code);
+    if (authCode.state) redirectUrl.searchParams.set('state', authCode.state);
+
+    console.log(`[mini-oidc] user approved → ${redirectUrl.toString()}`);
     res.writeHead(302, { Location: redirectUrl.toString() });
     return res.end();
   }

@@ -18,7 +18,7 @@ WALLET_NAME ?= SIROS ID (dev)
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
-        android-setup
+	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test
 
 # =============================================================================
 # Configuration
@@ -250,7 +250,14 @@ help: ## Show this help
 	@echo ""
 	@echo "$(GREEN)Android SDK:$(NC)"
 	@echo "  make android-setup   Generate assetlinks.json + configure ADB for passkey dev"
-	@echo "  SDK_PACKAGE=x.y.z    Override package name (default: org.siros.sdk.sample)"
+	@echo "  make android-config  Generate Android overlay VC config"
+	@echo "  make android-up      Generate Android config + start Android overlay services"
+	@echo "  make android-down    Stop Android overlay services"
+	@echo "  make android-full    Full Android flow (config + build + deploy + register + launch)"
+	@echo "  make android-restart Restart Android test services + relaunch app"
+	@echo "  make android-launch  Launch installed sample app + log snapshot"
+	@echo "  make android-logs    Follow Android app logs"
+	@echo "  SDK_PACKAGE=x.y.z    Override package name (default: org.sirosfoundation.sdk.sample)"
 	@echo ""
 
 # =============================================================================
@@ -601,7 +608,42 @@ setup: ## Clone sibling repos needed for local development
 # =============================================================================
 
 SDK_PATH ?= ../siros-sdk-kotlin
-SDK_PACKAGE ?= org.siros.sdk.sample
+SDK_PACKAGE ?= org.sirosfoundation.sdk.sample
 
 android-setup: ## Configure local env for Android SDK testing (generates assetlinks.json, configures ADB)
 	@./scripts/setup-android.sh --package $(SDK_PACKAGE)
+
+android-config: ## Generate Android-specific VC config overlay file
+	@./scripts/android-test.sh config
+
+android-up: android-config ## Start Android overlay services without rebuilding/installing APK
+	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+	@docker compose -f docker-compose.test.yml \
+		-f docker-compose.vc-services.yml \
+		-f docker-compose.go-trust.yml \
+		-f docker-compose.go-trust-allow.yml \
+		-f docker-compose.android.yml \
+		up -d
+
+android-down: ## Stop Android overlay services
+	@docker compose -f docker-compose.test.yml \
+		-f docker-compose.vc-services.yml \
+		-f docker-compose.go-trust.yml \
+		-f docker-compose.go-trust-allow.yml \
+		-f docker-compose.android.yml \
+		down
+
+android-full: ## Run full Android test flow (config + build + deploy + register + launch)
+	@./scripts/android-test.sh full
+
+android-restart: ## Restart Android test services and relaunch app
+	@./scripts/android-test.sh restart
+
+android-launch: ## Launch the installed Android sample app and print a log snapshot
+	@./scripts/android-test.sh launch
+
+android-logs: ## Follow Android sample app logs
+	@./scripts/android-test.sh logs
+
+android-test: ## Build, deploy, and test Android SDK sample app (use CMD= for subcommands: build|deploy|register|restart|logs|snapshot)
+	@./scripts/android-test.sh $(CMD)
