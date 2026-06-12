@@ -17,7 +17,8 @@ WALLET_NAME ?= SIROS ID (dev)
 
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts fetch-golden-env \
-        register-mocks register-vc-services clean show-branches show-images build-info pki
+        register-mocks register-vc-services clean show-branches show-images build-info pki \
+	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test
 
 # =============================================================================
 # Configuration
@@ -51,6 +52,7 @@ VC ?=
 TRANSPORT ?=
 CONFORMANCE ?=
 GOLDEN ?=
+REBUILD ?=
 
 # Golden release configuration
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
@@ -211,6 +213,9 @@ help: ## Show this help
 	@echo "                     <name>     use a specific release (e.g. beta_r2)"
 	@echo "                     Tags are fetched from siros-conformance/golden-releases.yaml"
 	@echo ""
+	@echo "  $(YELLOW)REBUILD=$(NC)         Force rebuild all images with no cache (default: off)"
+	@echo "                     1, yes, on — rebuild everything from scratch"
+	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make up                              # Default: frontend + backend + go-trust allow"
 	@echo "  make up VC=yes                       # Add VC issuer/verifier services"
@@ -221,6 +226,7 @@ help: ## Show this help
 	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
 	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
 	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
+	@echo "  make up REBUILD=yes                    # Force full rebuild (no cache)"
 	@echo ""
 	@echo "$(GREEN)Service URLs (when running):$(NC)"
 	@echo "  Frontend:      $(FRONTEND_URL)"
@@ -241,6 +247,17 @@ help: ## Show this help
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
+	@echo ""
+	@echo "$(GREEN)Android SDK:$(NC)"
+	@echo "  make android-setup   Generate assetlinks.json + configure ADB for passkey dev"
+	@echo "  make android-config  Generate Android overlay VC config"
+	@echo "  make android-up      Generate Android config + start Android overlay services"
+	@echo "  make android-down    Stop Android overlay services"
+	@echo "  make android-full    Full Android flow (config + build + deploy + register + launch)"
+	@echo "  make android-restart Restart Android test services + relaunch app"
+	@echo "  make android-launch  Launch installed sample app + log snapshot"
+	@echo "  make android-logs    Follow Android app logs"
+	@echo "  SDK_PACKAGE=x.y.z    Override package name (default: org.sirosfoundation.sdk.sample)"
 	@echo ""
 
 # =============================================================================
@@ -313,6 +330,10 @@ build-info:
 CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
 
 up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to configure)
+	@# Ensure .well-known/assetlinks.json exists (Docker bind mount requires it)
+	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
+	@# Ensure the shared e2e-test-network exists
+	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
 endif
@@ -345,6 +366,13 @@ ifneq ($(GOLDEN),)
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
 else
+ifneq ($(call _truthy,$(REBUILD)),)
+	@echo "$(YELLOW)Force-rebuilding all images (no cache)...$(NC)"
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+		WALLET_NAME="$(WALLET_NAME)" \
+		docker compose $(COMPOSE_FILES) build --no-cache 2>&1 | \
+		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+endif
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
@@ -529,10 +557,13 @@ fetch-golden-env:
 # Cleanup
 # =============================================================================
 
-clean: ## Remove all containers and volumes
+clean: ## Remove all containers, volumes and build cache
 	@echo "$(YELLOW)Cleaning up...$(NC)"
 	-docker compose $(COMPOSE_FILES) down -v --remove-orphans
-	@echo "$(GREEN)Done.$(NC)"
+	-docker compose $(COMPOSE_FILES) down -v --remove-orphans 2>/dev/null
+	@echo "$(YELLOW)Pruning build cache for project images...$(NC)"
+	-docker builder prune -f --filter label=com.docker.compose.project 2>/dev/null || true
+	@echo "$(GREEN)Done. Run 'make up' to rebuild from scratch.$(NC)"
 
 # =============================================================================
 # PKI Generation
@@ -571,3 +602,48 @@ setup: ## Clone sibling repos needed for local development
 	done
 	@echo ""
 	@echo "$(GREEN)Done.$(NC) Run 'make up' to start the stack."
+
+# =============================================================================
+# Android SDK Development
+# =============================================================================
+
+SDK_PATH ?= ../siros-sdk-kotlin
+SDK_PACKAGE ?= org.sirosfoundation.sdk.sample
+
+android-setup: ## Configure local env for Android SDK testing (generates assetlinks.json, configures ADB)
+	@./scripts/setup-android.sh --package $(SDK_PACKAGE)
+
+android-config: ## Generate Android-specific VC config overlay file
+	@./scripts/android-test.sh config
+
+android-up: android-config ## Start Android overlay services without rebuilding/installing APK
+	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+	@docker compose -f docker-compose.test.yml \
+		-f docker-compose.vc-services.yml \
+		-f docker-compose.go-trust.yml \
+		-f docker-compose.go-trust-allow.yml \
+		-f docker-compose.android.yml \
+		up -d
+
+android-down: ## Stop Android overlay services
+	@docker compose -f docker-compose.test.yml \
+		-f docker-compose.vc-services.yml \
+		-f docker-compose.go-trust.yml \
+		-f docker-compose.go-trust-allow.yml \
+		-f docker-compose.android.yml \
+		down
+
+android-full: ## Run full Android test flow (config + build + deploy + register + launch)
+	@./scripts/android-test.sh full
+
+android-restart: ## Restart Android test services and relaunch app
+	@./scripts/android-test.sh restart
+
+android-launch: ## Launch the installed Android sample app and print a log snapshot
+	@./scripts/android-test.sh launch
+
+android-logs: ## Follow Android sample app logs
+	@./scripts/android-test.sh logs
+
+android-test: ## Build, deploy, and test Android SDK sample app (use CMD= for subcommands: build|deploy|register|restart|logs|snapshot)
+	@./scripts/android-test.sh $(CMD)

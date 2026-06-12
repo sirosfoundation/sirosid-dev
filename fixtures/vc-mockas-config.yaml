@@ -1,0 +1,121 @@
+# Mock AS configuration
+# Uses old-style config schema compatible with the vc-mockas-e2e-test:local image
+---
+common:
+  production: false
+  mongo:
+    uri: mongodb://mongodb:27017
+  tracing:
+    addr: "localhost:4318"
+    type: "noop"
+    timeout: 1
+  credential_offer:
+    type: "credential_offer"
+    issuer_url: "http://localhost:9003"
+    wallet_url: "http://localhost:3000/cb"
+    qr:
+      recovery_level: 2
+      size: 256
+  kafka:
+    enabled: false
+    brokers:
+      - "kafka0:9092"
+
+authentic_sources:
+  "http://localhost:9003":
+    country_code: "SE"
+    notification_endpoint:
+      url: "http://vc-mockas:8080/notification"
+    authentic_source_endpoint:
+      url: "http://vc-mockas:8080"
+    signature_service_endpoint:
+      url: "http://vc-issuer:8080"
+    revocation_service_endpoint:
+      url: "http://vc-registry:8080"
+    credential_types:
+      "pid":
+        profile: "sd-jwt-vc"
+
+apigw:
+  api_server:
+    addr: ":8080"
+  external_server_url: "http://localhost:9003"
+  issuer_client:
+    addr: "vc-issuer:8090"
+  registry_client:
+    addr: "vc-registry:8090"
+  oauth_server:
+    token_endpoint: "http://localhost:9003/token"
+    clients:
+      "e2e-test-client":
+        type: "public"
+        redirect_uri: "http://localhost:3000/cb"
+        scopes:
+          - "pid"
+          - "diploma"
+          - "ehic"
+    metadata:
+      path: "/oauth-metadata.json"
+      signing_key_path: "/pki/signing_ec_private.pem"
+      signing_chain_path: "/pki/signing_ec_chain.pem"
+
+issuer:
+  api_server:
+    addr: ":8080"
+  grpc_server:
+    addr: ":8090"
+  identifier: "http://localhost:9003"
+  issuer_url: "http://localhost:9003"
+  signing_key_path: "/pki/signing_ec_private.pem"
+  registry_client:
+    addr: "vc-registry:8090"
+  jwt_attribute:
+    issuer: "http://localhost:9003"
+    enable_not_before: true
+    valid_duration: 3600
+    verifiable_credential_type: "https://credential.e2etest.local/identity_credential"
+
+verifier:
+  api_server:
+    addr: ":8080"
+  grpc_server:
+    addr: ":8090"
+  external_server_url: "http://localhost:9001"
+  oauth_server:
+    token_endpoint: "http://localhost:9001/token"
+    clients:
+      "e2e-test-client":
+        type: "confidential"
+        redirect_uri: "http://localhost:3000/cb"
+        scopes:
+          - "pid"
+          - "diploma"
+          - "ehic"
+    metadata:
+      path: "/oauth-metadata.json"
+      signing_key_path: "/pki/signing_ec_private.pem"
+      signing_chain_path: "/pki/signing_ec_chain.pem"
+
+registry:
+  api_server:
+    addr: ":8080"
+  grpc_server:
+    addr: ":8090"
+  external_server_url: "http://localhost:9004"
+  token_status_lists:
+    signing_key_path: "/pki/signing_ec_private.pem"
+  admin_gui:
+    enabled: true
+    username: "admin"
+    password: "e2e-admin-password"
+    session_secret: "e2e-test-session-secret-change-me"
+
+mock_as:
+  api_server:
+    addr: ":8080"
+  datastore_url: "http://vc-apigw:8080"
+  auto_approve: true
+  bootstrap_users:
+    - "test-user-001"
+    - "test-user-002"
+    - "test-user-003"
