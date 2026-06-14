@@ -23,6 +23,8 @@
 services:
   # Allow wallet-backend to talk to the conformance suite's self-signed HTTPS
   wallet-backend:
+    extra_hosts:
+      - "localhost.emobix.co.uk:host-gateway"
     environment:
       - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
 
