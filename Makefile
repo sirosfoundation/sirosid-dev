@@ -18,7 +18,8 @@ WALLET_NAME ?= SIROS ID (dev)
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
-	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test
+	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
+	install conformance-install
 
 # =============================================================================
 # Configuration
@@ -182,6 +183,8 @@ help: ## Show this help
 	@echo "$(GREEN)sirosid-dev$(NC) — Local Development Environment"
 	@echo ""
 	@echo "$(GREEN)Usage:$(NC)"
+	@echo "  make setup             Clone sibling repos"
+	@echo "  make install           Install dependencies (npm, etc.)"
 	@echo "  make up [OPTIONS]    Start the stack"
 	@echo "  make down            Stop all services"
 	@echo "  make status          Check service health"
@@ -601,7 +604,20 @@ setup: ## Clone sibling repos needed for local development
 		fi; \
 	done
 	@echo ""
-	@echo "$(GREEN)Done.$(NC) Run 'make up' to start the stack."
+	@echo "$(GREEN)Done.$(NC) Run 'make install' to install dependencies, then 'make up' to start the stack."
+
+# =============================================================================
+# Dependency Installation
+# =============================================================================
+
+conformance-install: ## Install conformance-runner npm dependencies
+	@echo "$(GREEN)Installing conformance-runner dependencies...$(NC)"
+	cd conformance-runner && npm ci
+	@echo "$(GREEN)✓ conformance-runner dependencies installed$(NC)"
+
+install: conformance-install ## Install all project dependencies
+	@echo ""
+	@echo "$(GREEN)All dependencies installed.$(NC)"
 
 # =============================================================================
 # Android SDK Development
