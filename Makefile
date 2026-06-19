@@ -54,31 +54,32 @@ TRANSPORT ?=
 CONFORMANCE ?=
 GOLDEN ?=
 REBUILD ?=
+DOMAIN ?= localhost
 
 # Golden release configuration
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
 GOLDEN_RELEASES_CACHE := .golden-releases.yaml
 
 # Service URLs (published for use by sirosid-tests)
-export FRONTEND_URL ?= http://localhost:3000
-export BACKEND_URL ?= http://localhost:8080
-export ENGINE_URL ?= http://localhost:8082
-export ADMIN_URL ?= http://localhost:8081
-export MOCK_VERIFIER_URL ?= http://localhost:9011
-export MOCK_PDP_URL ?= http://localhost:9081
-export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
+export FRONTEND_URL ?= http://$(DOMAIN):3000
+export BACKEND_URL ?= http://$(DOMAIN):8080
+export ENGINE_URL ?= http://$(DOMAIN):8082
+export ADMIN_URL ?= http://$(DOMAIN):8081
+export MOCK_VERIFIER_URL ?= http://$(DOMAIN):9011
+export MOCK_PDP_URL ?= http://$(DOMAIN):9081
+export VCTM_REGISTRY_URL ?= http://$(DOMAIN):8080/registry
 
 # VC Services URLs (external, for health checks from host)
-export VC_ISSUER_URL ?= http://localhost:9000
-export VC_VERIFIER_URL ?= http://localhost:9001
-export VC_APIGW_URL ?= http://localhost:9003
-export VC_REGISTRY_URL ?= http://localhost:9004
+export VC_ISSUER_URL ?= http://$(DOMAIN):9000
+export VC_VERIFIER_URL ?= http://$(DOMAIN):9001
+export VC_APIGW_URL ?= http://$(DOMAIN):9003
+export VC_REGISTRY_URL ?= http://$(DOMAIN):9004
 # VC Services URLs (internal, for container-to-container registration)
 VC_APIGW_INTERNAL_URL ?= http://vc-apigw:8080
 VC_VERIFIER_INTERNAL_URL ?= http://vc-verifier:8080
-export GO_TRUST_ALLOW_URL ?= http://localhost:9095
-export GO_TRUST_WHITELIST_URL ?= http://localhost:9096
-export GO_TRUST_DENY_URL ?= http://localhost:9097
+export GO_TRUST_ALLOW_URL ?= http://$(DOMAIN):9095
+export GO_TRUST_WHITELIST_URL ?= http://$(DOMAIN):9096
+export GO_TRUST_DENY_URL ?= http://$(DOMAIN):9097
 
 export ADMIN_TOKEN ?= e2e-test-admin-token-for-testing-purposes-only
 
@@ -219,6 +220,10 @@ help: ## Show this help
 	@echo "  $(YELLOW)REBUILD=$(NC)         Force rebuild all images with no cache (default: off)"
 	@echo "                     1, yes, on — rebuild everything from scratch"
 	@echo ""
+	@echo "  $(YELLOW)DOMAIN=$(NC)          Domain name for service URLs (default: $(GREEN)localhost$(NC))"
+	@echo "                     Set to your host's LAN address or mDNS name for"
+	@echo "                     mobile device access (e.g. DOMAIN=myhost.local)"
+	@echo ""
 	@echo "$(GREEN)Examples:$(NC)"
 	@echo "  make up                              # Default: frontend + backend + go-trust allow"
 	@echo "  make up VC=yes                       # Add VC issuer/verifier services"
@@ -230,6 +235,7 @@ help: ## Show this help
 	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
 	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
 	@echo "  make up REBUILD=yes                    # Force full rebuild (no cache)"
+	@echo "  make up DOMAIN=myhost.local           # Use custom domain (for mobile dev)"
 	@echo ""
 	@echo "$(GREEN)Service URLs (when running):$(NC)"
 	@echo "  Frontend:      $(FRONTEND_URL)"
@@ -247,6 +253,7 @@ help: ## Show this help
 	@echo "$(GREEN)Other variables:$(NC)"
 	@echo ""
 	@echo "  $(YELLOW)WALLET_NAME=$(NC)      Wallet display name (default: $(GREEN)SIROS ID (dev)$(NC))"
+	@echo "  $(YELLOW)DOMAIN=$(NC)           Domain for service URLs (default: $(GREEN)localhost$(NC))"
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
@@ -348,6 +355,7 @@ endif
 	@echo "  VC services: $(_VC_LABEL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
+	@echo "  Domain:      $(DOMAIN)"
 ifneq ($(GOLDEN),)
 	@echo "  Golden:      $(_GOLDEN_LABEL)"
 endif
@@ -365,19 +373,19 @@ endif
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
 ifneq ($(GOLDEN),)
 	set -a && . ./.env.golden && set +a && \
-	WALLET_NAME="$(WALLET_NAME)" \
+	WALLET_NAME="$(WALLET_NAME)" DOMAIN="$(DOMAIN)" \
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
 else
 ifneq ($(call _truthy,$(REBUILD)),)
 	@echo "$(YELLOW)Force-rebuilding all images (no cache)...$(NC)"
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		WALLET_NAME="$(WALLET_NAME)" \
+		WALLET_NAME="$(WALLET_NAME)" DOMAIN="$(DOMAIN)" \
 		docker compose $(COMPOSE_FILES) build --no-cache 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 endif
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
-		WALLET_NAME="$(WALLET_NAME)" \
+		WALLET_NAME="$(WALLET_NAME)" DOMAIN="$(DOMAIN)" \
 		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 endif

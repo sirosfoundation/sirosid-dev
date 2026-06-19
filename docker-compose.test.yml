@@ -38,13 +38,13 @@ services:
     ports:
       - "3000:80"
     environment:
-      - WALLET_BACKEND_URL=http://localhost:8080
-      - WALLET_ENGINE_URL=http://localhost:8082
-      - WEBAUTHN_RPID=localhost
-      - OPENID4VCI_REDIRECT_URI=http://localhost:3000/
-      - STATIC_PUBLIC_URL=http://localhost:3000
+      - WALLET_BACKEND_URL=http://${DOMAIN:-localhost}:8080
+      - WALLET_ENGINE_URL=http://${DOMAIN:-localhost}:8082
+      - WEBAUTHN_RPID=${DOMAIN:-localhost}
+      - OPENID4VCI_REDIRECT_URI=http://${DOMAIN:-localhost}:3000/
+      - STATIC_PUBLIC_URL=http://${DOMAIN:-localhost}:3000
       - STATIC_NAME=${WALLET_NAME:-SIROS ID (dev)}
-      - VCT_REGISTRY_URL=http://localhost:8080/registry/type-metadata
+      - VCT_REGISTRY_URL=http://${DOMAIN:-localhost}:8080/registry/type-metadata
       # Transport: websocket by default; use docker-compose.wmp-transport.yml overlay for WMP
       - TRANSPORT_PREFERENCE=websocket
       - ALLOWED_TRANSPORTS=http,websocket,wmp
@@ -95,9 +95,9 @@ services:
     environment:
       - WALLET_JWT_SECRET=test-secret-for-e2e-testing-minimum-32-chars
       - WALLET_SERVER_WEBAUTHN_DISPLAY_NAME=${WALLET_NAME:-SIROS ID (dev)}
-      - WALLET_SERVER_RP_ID=${WALLET_RP_ID:-localhost}
-      - WALLET_SERVER_RP_ORIGIN=${WALLET_RP_ORIGIN:-http://localhost:3000}
-      - WALLET_SERVER_RP_ORIGINS=${WALLET_RP_ORIGINS:-http://localhost:3000,android:apk-key-hash:xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q}
+      - WALLET_SERVER_RP_ID=${DOMAIN:-localhost}
+      - WALLET_SERVER_RP_ORIGIN=http://${DOMAIN:-localhost}:3000
+      - WALLET_SERVER_RP_ORIGINS=http://${DOMAIN:-localhost}:3000,android:apk-key-hash:xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q
       - WALLET_SERVER_PORT=8080
       - WALLET_SERVER_ADMIN_HOST=0.0.0.0
       - WALLET_SERVER_ADMIN_PORT=8081
@@ -161,9 +161,9 @@ services:
       - "9081:9081"
     environment:
       - PORT=9081
-      - PDP_ID=http://localhost:9081
-      - TRUSTED_ISSUERS=http://localhost:9003,http://vc-issuer:8080,http://localhost:9000,http://vc-apigw:8080,https://vc-proxy:8443
-      - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011,http://localhost:9001,http://vc-verifier:8080
+      - PDP_ID=http://${DOMAIN:-localhost}:9081
+      - TRUSTED_ISSUERS=http://${DOMAIN:-localhost}:9003,http://vc-issuer:8080,http://${DOMAIN:-localhost}:9000,http://vc-apigw:8080,https://vc-proxy:8443
+      - TRUSTED_VERIFIERS=http://${DOMAIN:-localhost}:9011,http://mock-verifier:9011,http://${DOMAIN:-localhost}:9001,http://vc-verifier:8080
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9081/health"]
       interval: 3s
@@ -183,7 +183,7 @@ services:
       - "9011:9011"
     environment:
       - PORT=9011
-      - VERIFIER_ID=http://localhost:9011
+      - VERIFIER_ID=http://${DOMAIN:-localhost}:9011
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9011/health"]
       interval: 3s

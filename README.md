@@ -66,6 +66,7 @@ A single `make up` command drives all configurations via parameters:
 | `TRANSPORT=` | `wmp`, `http` | websocket | Transport protocol |
 | `CONFORMANCE=` | `1`, `yes`, `on`, `up` | off | Enable OpenID Conformance Suite |
 | `GOLDEN=` | `yes`, `<release-name>` | off | Use pre-built images from a golden release |
+| `DOMAIN=` | any hostname | `localhost` | Domain name used in all service URLs |
 
 ### Examples
 
@@ -99,6 +100,9 @@ make up GOLDEN=yes VC=yes
 
 # Use a specific golden release
 make up GOLDEN=beta_r2 VC=1
+
+# Mobile device development: use host's LAN name so real devices can reach services
+make up DOMAIN=myhost.local
 ```
 
 ### Trust PDP Modes
@@ -185,6 +189,34 @@ environment variables or on the command line:
 # Example: use a different frontend checkout
 make up FRONTEND_PATH=~/other/wallet-frontend
 ```
+
+## Mobile Development with Real Devices
+
+By default, all services advertise themselves as `localhost`. This works
+fine in a browser on the same machine, but JavaScript running on a real
+mobile device cannot reach `localhost` — it would refer to the device
+itself, not your development machine.
+
+Use the `DOMAIN=` variable to replace `localhost` with a hostname that is
+reachable from devices on the same local network:
+
+```bash
+# Use your machine's mDNS name (macOS/Linux with Avahi)
+make up DOMAIN=myhost.local
+
+# Or use your LAN IP address
+make up DOMAIN=192.168.1.42
+```
+
+With this set, the wallet frontend will issue XHR requests to
+`http://myhost.local:8080` instead of `http://localhost:8080`, making it
+work correctly when opened on a phone or tablet connected to the same
+network.
+
+**Note:** WebAuthn (passkey) flows require the `DOMAIN` value to match the
+origin served in the browser. Ensure you open the frontend using
+`http://myhost.local:3000` (not `http://localhost:3000`) when testing on a
+real device.
 
 ## Golden Releases
 
