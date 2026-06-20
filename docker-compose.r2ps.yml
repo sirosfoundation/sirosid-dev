@@ -1,0 +1,133 @@
+# Docker Compose overlay for R2PS (Remote PAKE-Protected Signing) services.
+#
+# Adds go-r2ps-service with SoftHSM2 for WSCD/WSCA operations, plus a
+# separate SoftHSM2 instance for wallet-backend attestation signing.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml \
+#     -f docker-compose.vc-services.yml \
+#     -f docker-compose.go-trust-allow.yml \
+#     -f docker-compose.r2ps.yml \
+#     up -d
+#
+# Or via make:
+#   make up VC=yes R2PS=yes
+#
+# Environment variables:
+#   R2PS_PATH  - Path to go-r2ps-service source (default: ../go-r2ps-service)
+
+services:
+  # -----------------------------------------------------------------------
+  # SoftHSM2 init container for R2PS (WSCD key generation + signing)
+  # -----------------------------------------------------------------------
+  r2ps-softhsm:
+    image: alpine:3.21
+    container_name: r2ps-softhsm-e2e
+    command: >
+      sh -c "apk add --no-cache softhsm &&
+             mkdir -p /var/lib/softhsm/tokens &&
+             softhsm2-util --init-token --slot 0 --label r2ps-wscd --pin 1234 --so-pin 5678 &&
+             echo 'R2PS SoftHSM token initialized' &&
+             tail -f /dev/null"
+    volumes:
+      - r2ps-softhsm-tokens:/var/lib/softhsm/tokens
+    networks:
+      - e2e-test-network
+    healthcheck:
+      test: ["CMD", "test", "-d", "/var/lib/softhsm/tokens"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  # -----------------------------------------------------------------------
+  # go-r2ps-service — WSCD + WSCA + admin roles
+  # -----------------------------------------------------------------------
+  r2ps-server:
+    build:
+      context: ${R2PS_PATH:-../go-r2ps-service}
+      dockerfile: Dockerfile
+    image: r2ps-server-e2e-test:local
+    container_name: r2ps-server-e2e-test
+    ports:
+      - "8443:8443"
+      - "8444:8081"
+    environment:
+      # Server
+      R2PS_LISTEN: ":8443"
+      R2PS_MODE: "all"
+      R2PS_LOG_LEVEL: "debug"
+      R2PS_LOG_FORMAT: "text"
+      # HSM (SoftHSM2 shared volume)
+      R2PS_HSM_MODULE: /usr/lib/softhsm/libsofthsm2.so
+      R2PS_HSM_TOKEN_LABEL: r2ps-wscd
+      R2PS_HSM_PIN: "1234"
+      R2PS_HSM_POOL_SIZE: "4"
+      R2PS_HSM_TIMEOUT: "5s"
+      # Auth
+      R2PS_MAX_ATTEMPTS: "5"
+      R2PS_LOCKOUT_DURATION: "15m"
+      R2PS_SESSION_TTL: "5m"
+      # Admin API
+      R2PS_ADMIN_LISTEN: ":8081"
+      # In-memory store for dev (no MongoDB needed)
+    volumes:
+      - r2ps-softhsm-tokens:/var/lib/softhsm/tokens
+    depends_on:
+      r2ps-softhsm:
+        condition: service_healthy
+    networks:
+      - e2e-test-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8443/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # -----------------------------------------------------------------------
+  # SoftHSM2 init container for wallet-backend attestation keys
+  # (Separate HSM from R2PS — simulates distinct trust domains)
+  # -----------------------------------------------------------------------
+  attest-softhsm:
+    image: alpine:3.21
+    container_name: attest-softhsm-e2e
+    command: >
+      sh -c "apk add --no-cache softhsm &&
+             mkdir -p /var/lib/softhsm/tokens &&
+             softhsm2-util --init-token --slot 0 --label wallet-attest --pin 5678 --so-pin 1234 &&
+             echo 'Attestation SoftHSM token initialized' &&
+             tail -f /dev/null"
+    volumes:
+      - attest-softhsm-tokens:/var/lib/softhsm/tokens
+    networks:
+      - e2e-test-network
+    healthcheck:
+      test: ["CMD", "test", "-d", "/var/lib/softhsm/tokens"]
+      interval: 3s
+      timeout: 2s
+      retries: 5
+      start_period: 5s
+
+  # -----------------------------------------------------------------------
+  # Override wallet-backend: add attestation HSM volume + R2PS awareness
+  # -----------------------------------------------------------------------
+  wallet-backend:
+    volumes:
+      - attest-softhsm-tokens:/var/lib/softhsm/tokens:ro
+    environment:
+      # Wallet Provider attestation via SoftHSM2
+      - WALLET_PROVIDER_HSM_MODULE=/usr/lib/softhsm/libsofthsm2.so
+      - WALLET_PROVIDER_HSM_TOKEN_LABEL=wallet-attest
+      - WALLET_PROVIDER_HSM_PIN=5678
+      # R2PS service URL (container-to-container)
+      - WALLET_R2PS_URL=http://r2ps-server:8443
+    depends_on:
+      attest-softhsm:
+        condition: service_healthy
+      r2ps-server:
+        condition: service_healthy
+
+volumes:
+  r2ps-softhsm-tokens:
+  attest-softhsm-tokens:

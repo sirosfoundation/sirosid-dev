@@ -43,6 +43,7 @@ VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
+R2PS_COMPOSE := docker-compose.r2ps.yml
 GOLDEN_COMPOSE := docker-compose.golden.yml
 GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
 GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
@@ -52,6 +53,7 @@ PDP ?= allow
 VC ?=
 TRANSPORT ?=
 CONFORMANCE ?=
+R2PS ?=
 GOLDEN ?=
 REBUILD ?=
 
@@ -67,6 +69,10 @@ export ADMIN_URL ?= http://localhost:8081
 export MOCK_VERIFIER_URL ?= http://localhost:9011
 export MOCK_PDP_URL ?= http://localhost:9081
 export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
+
+# R2PS service URLs
+export R2PS_URL ?= http://localhost:8443
+export R2PS_ADMIN_URL ?= http://localhost:8444
 
 # VC Services URLs (external, for health checks from host)
 export VC_ISSUER_URL ?= http://localhost:9000
@@ -151,6 +157,14 @@ else
   _CONFORMANCE_LABEL := no
 endif
 
+# R2PS services (WSCD/WSCA via SoftHSM2)
+ifneq ($(call _truthy,$(R2PS)),)
+  COMPOSE_FILES += -f $(R2PS_COMPOSE)
+  _R2PS_LABEL := yes
+else
+  _R2PS_LABEL := no
+endif
+
 # Golden release: use pre-built images instead of local builds
 ifneq ($(GOLDEN),)
   # Resolve the golden release: "yes" means default, anything else is a release name
@@ -211,6 +225,10 @@ help: ## Show this help
 	@echo "                     1, yes, on, up — enable"
 	@echo "                     Implies: VC=1 PDP=allow TRANSPORT=http"
 	@echo ""
+	@echo "  $(YELLOW)R2PS=$(NC)            Enable R2PS service with SoftHSM2 (default: off)"
+	@echo "                     1, yes, on, up — enable"
+	@echo "                     Adds: go-r2ps-service, SoftHSM2 (WSCD + attestation)"
+	@echo ""
 	@echo "  $(YELLOW)GOLDEN=$(NC)          Use pre-built images from a golden release (default: off)"
 	@echo "                     yes        use the default golden release"
 	@echo "                     <name>     use a specific release (e.g. beta_r2)"
@@ -227,6 +245,7 @@ help: ## Show this help
 	@echo "  make up PDP=mock                      # Legacy mock PDP (no go-trust)"
 	@echo "  make up TRANSPORT=wmp                 # Use WMP transport"
 	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
+	@echo "  make up R2PS=yes VC=yes               # R2PS with SoftHSM2 + VC services"
 	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
 	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
 	@echo "  make up REBUILD=yes                    # Force full rebuild (no cache)"
@@ -348,6 +367,7 @@ endif
 	@echo "  VC services: $(_VC_LABEL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
+	@echo "  R2PS:        $(_R2PS_LABEL)"
 ifneq ($(GOLDEN),)
 	@echo "  Golden:      $(_GOLDEN_LABEL)"
 endif
@@ -620,6 +640,13 @@ install: conformance-install ## Install all project dependencies
 	@echo "$(GREEN)All dependencies installed.$(NC)"
 
 # =============================================================================
+# R2PS Service
+# =============================================================================
+
+r2ps-setup: ## Verify R2PS service health and show status
+	@./scripts/setup-r2ps.sh
+
+# =============================================================================
 # Android SDK Development
 # =============================================================================
 
@@ -638,6 +665,7 @@ android-up: android-config ## Start Android overlay services without rebuilding/
 		-f docker-compose.vc-services.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
+		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
 		-f docker-compose.android.yml \
 		up -d
 
@@ -646,6 +674,7 @@ android-down: ## Stop Android overlay services
 		-f docker-compose.vc-services.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
+		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
 		-f docker-compose.android.yml \
 		down
 
