@@ -65,6 +65,7 @@ A single `make up` command drives all configurations via parameters:
 | `VC=` | `1`, `yes`, `on`, `up` | off | Enable VC services (issuer, verifier, apigw, registry) |
 | `TRANSPORT=` | `wmp`, `http` | websocket | Transport protocol |
 | `CONFORMANCE=` | `1`, `yes`, `on`, `up` | off | Enable OpenID Conformance Suite |
+| `R2PS=` | `1`, `yes`, `on`, `up` | off | Enable R2PS service with SoftHSM2 (WSCD/WSCA) |
 | `GOLDEN=` | `yes`, `<release-name>` | off | Use pre-built images from a golden release |
 
 ### Examples
@@ -168,6 +169,15 @@ endpoints. The issuer and registry are internal backend services.
 | go-trust-whitelist | 9096 | Whitelist mode |
 | go-trust-deny | 9097 | Deny-all |
 
+### R2PS Services (when `R2PS=yes`)
+
+| Service | Port | Description |
+|---------|------|-------------|
+| r2ps-server | 8443 | R2PS protocol (WSCD/WSCA) |
+| r2ps-server admin | 8444 | Admin API (key listing, status lists) |
+| r2ps-server (conformance) | 9443 | R2PS when running with conformance suite |
+| r2ps-server admin (conformance) | 9444 | Admin when running with conformance suite |
+
 ## Source Paths
 
 Services are built from sibling directories by default. Override with
@@ -245,6 +255,132 @@ cd ../sirosid-tests && make test-conformance
 # Conformance UI: https://localhost.emobix.co.uk:8443/
 ```
 
+## R2PS (Remote PAKE-Protected Signing)
+
+The R2PS service provides a remote WSCD (Wallet Secure Cryptographic Device)
+backed by SoftHSM2. It enables the wallet to perform key generation, signing,
+and ECDH operations through a PAKE-authenticated protocol.
+
+### Starting R2PS
+
+```bash
+make up R2PS=yes VC=yes
+```
+
+This adds:
+- `r2ps-server` — go-r2ps-service (WSCD + WSCA + admin, port 8443)
+- `r2ps-softhsm` — SoftHSM2 init (token label `r2ps-wscd`, PIN `1234`)
+- `attest-softhsm` — Separate HSM for wallet-backend attestation keys
+
+### Key Provisioning Flow
+
+R2PS keys are **not** provisioned via the admin API. Instead, the wallet SDK
+performs key provisioning through the R2PS protocol itself:
+
+1. **Registration** — The wallet registers with the R2PS server using OPAQUE
+   (password-authenticated key exchange). This creates a credential on the
+   server tied to the wallet's `client_id` and `context`.
+
+2. **Authentication** — On subsequent connections, the wallet authenticates
+   via OPAQUE to establish a session (with session ID and symmetric key).
+
+3. **Key Generation** — The authenticated wallet sends a `P256Generate`
+   request through the R2PS protocol. The server generates an EC P-256 key
+   pair in the HSM and returns confirmation. The public key is stored in the
+   key store for later retrieval.
+
+4. **Signing** — The wallet sends sign requests (with the key ID) through
+   the authenticated session. The server signs using the HSM-held private key.
+
+### Admin API (Monitoring)
+
+The admin API (port 8444 on host, 8081 inside container) provides read-only
+inspection and status list management:
+
+```bash
+# List all HSM-generated public keys
+curl -s http://localhost:8444/admin/store/keys | jq .
+
+# List keys for a specific wallet client
+curl -s http://localhost:8444/admin/store/keys?client_id=<wallet-id> | jq .
+
+# Get a specific key by KID
+curl -s http://localhost:8444/admin/store/keys/<kid> | jq .
+
+# List status entries (ka = key attestation, wia = wallet instance attestation)
+curl -s http://localhost:8444/admin/store/statuses/ka | jq .
+curl -s http://localhost:8444/admin/store/statuses/wia | jq .
+
+# Allocate a new status list index (for testing)
+curl -s -X POST http://localhost:8444/admin/store/allocate/ka | jq .
+
+# Verify R2PS health
+curl -s http://localhost:8443/healthz
+```
+
+### Wallet-Backend Integration
+
+The wallet-backend is made aware of R2PS via the `WALLET_R2PS_URL` environment
+variable (set automatically by `docker-compose.r2ps.yml`):
+
+```yaml
+environment:
+  - WALLET_R2PS_URL=http://r2ps-server:8443
+```
+
+### Android SDK Configuration
+
+For the native Android SDK (`siros-sdk-kotlin`), R2PS is configured in the
+sample app's `WalletViewModel`:
+
+- `BuildConfig.R2PS_ENABLED` — Toggle R2PS (requires native lib built with
+  `r2ps` Cargo feature in `siros-wscd-manager`)
+- `DEFAULT_R2PS_URL` — R2PS server URL (default: `http://192.168.240.1:9443`
+  for Waydroid, where `192.168.240.1` is the host gateway)
+
+When running conformance tests with R2PS, use the port remapping overlay to
+avoid conflicts with the conformance suite (both use 8443):
+
+```bash
+# R2PS remapped to 9443/9444 to coexist with conformance suite on 8443
+docker compose -f docker-compose.test.yml \
+  -f docker-compose.vc-services.yml \
+  -f docker-compose.go-trust.yml \
+  -f docker-compose.go-trust-allow.yml \
+  -f docker-compose.r2ps.yml \
+  -f docker-compose.r2ps-conformance.yml \
+  -f docker-compose.conformance.yml \
+  up -d
+```
+
+### HSM Details
+
+| Parameter | Value |
+|-----------|-------|
+| HSM module | `/usr/lib/softhsm/libsofthsm2.so` |
+| Token label | `r2ps-wscd` |
+| User PIN | `1234` |
+| SO PIN | `5678` |
+| Key type | EC P-256 |
+| Pool size | 4 sessions |
+
+### Verifying Provisioned Keys
+
+After the wallet has registered and generated a key:
+
+```bash
+# Run the setup script to check status
+make r2ps-setup
+
+# Or manually query the admin API
+curl -s http://localhost:8444/admin/store/keys | python3 -c "
+import sys, json
+keys = json.load(sys.stdin)
+for k in keys:
+    print(f\"  KID: {k['kid']}  Curve: {k['curve']}  Client: {k.get('client_id','?')}\")
+"
+```
+
 ## Directory Structure
 
 ```
@@ -259,6 +395,9 @@ sirosid-dev/
 ├── docker-compose.vc-services.yml       # VC services (issuer, verifier, apigw, registry)
 ├── docker-compose.vc-go-trust.yml       # VC ↔ go-trust wiring
 ├── docker-compose.conformance.yml       # OpenID Conformance Suite
+├── docker-compose.r2ps.yml              # R2PS service (go-r2ps-service + SoftHSM2)
+├── docker-compose.r2ps-conformance.yml  # R2PS port remapping for conformance coexistence
+├── docker-compose.android.yml           # Android SDK overlay
 ├── docker-compose.golden.yml            # Golden overlay: wallet images
 ├── docker-compose.golden-go-trust.yml   # Golden overlay: go-trust image
 ├── docker-compose.golden-vc.yml         # Golden overlay: VC service images
