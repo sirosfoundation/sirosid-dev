@@ -1,0 +1,21 @@
+# Docker Compose overlay to resolve port conflict between R2PS and conformance suite.
+#
+# When running conformance tests with R2PS, the conformance nginx uses
+# host port 8443 for TLS. This overlay remaps R2PS to port 9443.
+#
+# Usage (full Android conformance with R2PS):
+#   docker compose -f docker-compose.test.yml \
+#     -f docker-compose.vc-services.yml \
+#     -f docker-compose.go-trust.yml \
+#     -f docker-compose.go-trust-allow.yml \
+#     -f docker-compose.r2ps.yml \
+#     -f docker-compose.android.yml \
+#     -f docker-compose.conformance.yml \
+#     -f docker-compose.r2ps-conformance.yml \
+#     up -d
+
+services:
+  r2ps-server:
+    ports: !override
+      - "9443:8443"
+      - "9444:8081"

@@ -43,6 +43,8 @@ VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
+R2PS_COMPOSE := docker-compose.r2ps.yml
+DOMAIN_COMPOSE := docker-compose.domain.yml
 GOLDEN_COMPOSE := docker-compose.golden.yml
 GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
 GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
@@ -52,6 +54,8 @@ PDP ?= allow
 VC ?=
 TRANSPORT ?=
 CONFORMANCE ?=
+R2PS ?=
+DOMAIN ?=
 GOLDEN ?=
 REBUILD ?=
 
@@ -59,26 +63,33 @@ REBUILD ?=
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
 GOLDEN_RELEASES_CACHE := .golden-releases.yaml
 
+# Host for URL construction (localhost or DOMAIN if set)
+_HOST := $(if $(DOMAIN),$(DOMAIN),localhost)
+
 # Service URLs (published for use by sirosid-tests)
-export FRONTEND_URL ?= http://localhost:3000
-export BACKEND_URL ?= http://localhost:8080
-export ENGINE_URL ?= http://localhost:8082
-export ADMIN_URL ?= http://localhost:8081
-export MOCK_VERIFIER_URL ?= http://localhost:9011
-export MOCK_PDP_URL ?= http://localhost:9081
-export VCTM_REGISTRY_URL ?= http://localhost:8080/registry
+export FRONTEND_URL ?= http://$(_HOST):3000
+export BACKEND_URL ?= http://$(_HOST):8080
+export ENGINE_URL ?= http://$(_HOST):8082
+export ADMIN_URL ?= http://$(_HOST):8081
+export MOCK_VERIFIER_URL ?= http://$(_HOST):9011
+export MOCK_PDP_URL ?= http://$(_HOST):9081
+export VCTM_REGISTRY_URL ?= http://$(_HOST):8080/registry
+
+# R2PS service URLs
+export R2PS_URL ?= http://$(_HOST):8443
+export R2PS_ADMIN_URL ?= http://$(_HOST):8444
 
 # VC Services URLs (external, for health checks from host)
-export VC_ISSUER_URL ?= http://localhost:9000
-export VC_VERIFIER_URL ?= http://localhost:9001
-export VC_APIGW_URL ?= http://localhost:9003
-export VC_REGISTRY_URL ?= http://localhost:9004
+export VC_ISSUER_URL ?= http://$(_HOST):9000
+export VC_VERIFIER_URL ?= http://$(_HOST):9001
+export VC_APIGW_URL ?= http://$(_HOST):9003
+export VC_REGISTRY_URL ?= http://$(_HOST):9004
 # VC Services URLs (internal, for container-to-container registration)
 VC_APIGW_INTERNAL_URL ?= http://vc-apigw:8080
 VC_VERIFIER_INTERNAL_URL ?= http://vc-verifier:8080
-export GO_TRUST_ALLOW_URL ?= http://localhost:9095
-export GO_TRUST_WHITELIST_URL ?= http://localhost:9096
-export GO_TRUST_DENY_URL ?= http://localhost:9097
+export GO_TRUST_ALLOW_URL ?= http://$(_HOST):9095
+export GO_TRUST_WHITELIST_URL ?= http://$(_HOST):9096
+export GO_TRUST_DENY_URL ?= http://$(_HOST):9097
 
 export ADMIN_TOKEN ?= e2e-test-admin-token-for-testing-purposes-only
 
@@ -151,6 +162,23 @@ else
   _CONFORMANCE_LABEL := no
 endif
 
+# R2PS services (WSCD/WSCA via SoftHSM2)
+ifneq ($(call _truthy,$(R2PS)),)
+  COMPOSE_FILES += -f $(R2PS_COMPOSE)
+  _R2PS_LABEL := yes
+else
+  _R2PS_LABEL := no
+endif
+
+# Custom domain (replaces localhost for mobile device access)
+ifneq ($(DOMAIN),)
+  COMPOSE_FILES += -f $(DOMAIN_COMPOSE)
+  export DOMAIN
+  _DOMAIN_LABEL := $(DOMAIN)
+else
+  _DOMAIN_LABEL := localhost (default)
+endif
+
 # Golden release: use pre-built images instead of local builds
 ifneq ($(GOLDEN),)
   # Resolve the golden release: "yes" means default, anything else is a release name
@@ -211,6 +239,14 @@ help: ## Show this help
 	@echo "                     1, yes, on, up — enable"
 	@echo "                     Implies: VC=1 PDP=allow TRANSPORT=http"
 	@echo ""
+	@echo "  $(YELLOW)R2PS=$(NC)            Enable R2PS service with SoftHSM2 (default: off)"
+	@echo "                     1, yes, on, up — enable"
+	@echo "                     Adds: go-r2ps-service, SoftHSM2 (WSCD + attestation)"
+	@echo ""
+	@echo "  $(YELLOW)DOMAIN=$(NC)          Set a custom domain (default: localhost)"
+	@echo "                     Replaces localhost in all service URLs"
+	@echo "                     Enables access from mobile devices on the local network"
+	@echo ""
 	@echo "  $(YELLOW)GOLDEN=$(NC)          Use pre-built images from a golden release (default: off)"
 	@echo "                     yes        use the default golden release"
 	@echo "                     <name>     use a specific release (e.g. beta_r2)"
@@ -227,6 +263,8 @@ help: ## Show this help
 	@echo "  make up PDP=mock                      # Legacy mock PDP (no go-trust)"
 	@echo "  make up TRANSPORT=wmp                 # Use WMP transport"
 	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
+	@echo "  make up R2PS=yes VC=yes               # R2PS with SoftHSM2 + VC services"
+	@echo "  make up DOMAIN=myhost.local            # Custom domain for mobile device access"
 	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
 	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
 	@echo "  make up REBUILD=yes                    # Force full rebuild (no cache)"
@@ -269,7 +307,7 @@ help: ## Show this help
 # Update all repos to their default upstream branches
 update:
 	@echo "$(GREEN)Force updating all SIROS repos...$(NC)"
-	repos="sirosid-dev wallet-frontend wallet-backend go-wallet-backend go-trust wallet-common vc"; \
+	repos="sirosid-dev wallet-frontend go-wallet-backend go-trust wallet-common vc"; \
 	for repo in $$repos; do \
 	  branch=main; \
 	  [ "$$repo" = "wallet-common" ] && branch=release/sirosid; \
@@ -348,6 +386,8 @@ endif
 	@echo "  VC services: $(_VC_LABEL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
+	@echo "  R2PS:        $(_R2PS_LABEL)"
+	@echo "  Domain:      $(_DOMAIN_LABEL)"
 ifneq ($(GOLDEN),)
 	@echo "  Golden:      $(_GOLDEN_LABEL)"
 endif
@@ -620,6 +660,46 @@ install: conformance-install ## Install all project dependencies
 	@echo "$(GREEN)All dependencies installed.$(NC)"
 
 # =============================================================================
+# R2PS Service
+# =============================================================================
+
+r2ps-setup: ## Verify R2PS service health and show status
+	@./scripts/setup-r2ps.sh
+
+# =============================================================================
+# Cloudflare Tunnels (on-demand TLS domains for mobile/external testing)
+# =============================================================================
+
+TUNNEL_COMPOSE := docker-compose.tunnel.yml
+
+tunnel: ## Start Cloudflare quick tunnels (no account needed) and show URLs
+	@./scripts/tunnel.sh start
+
+tunnel-stop: ## Stop Cloudflare tunnels and clean up
+	@./scripts/tunnel.sh stop
+
+tunnel-status: ## Show active tunnel URLs and process status
+	@./scripts/tunnel.sh status
+
+restart-with-tunnels: ## Restart the stack using Cloudflare tunnel URLs
+	@if [ ! -f .env.tunnel ]; then \
+		echo "$(RED)No tunnels running. Start them first: make tunnel$(NC)"; \
+		exit 1; \
+	fi
+	@. ./.env.tunnel && \
+		TUNNEL_RPID=$$(echo "$$TUNNEL_FRONTEND_URL" | sed 's|https://||') && \
+		export TUNNEL_RPID TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL && \
+		echo "$(GREEN)Restarting with tunnel URLs...$(NC)" && \
+		echo "  Frontend: $$TUNNEL_FRONTEND_URL" && \
+		echo "  Backend:  $$TUNNEL_BACKEND_URL" && \
+		echo "  Engine:   $$TUNNEL_ENGINE_URL" && \
+		echo "  RP ID:    $$TUNNEL_RPID" && \
+		docker compose $(COMPOSE_FILES) -f $(TUNNEL_COMPOSE) up -d
+	@echo ""
+	@echo "$(GREEN)✓ Stack restarted with Cloudflare tunnel URLs$(NC)"
+	@echo "  Open the frontend URL on any device to test"
+
+# =============================================================================
 # Android SDK Development
 # =============================================================================
 
@@ -638,6 +718,7 @@ android-up: android-config ## Start Android overlay services without rebuilding/
 		-f docker-compose.vc-services.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
+		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
 		-f docker-compose.android.yml \
 		up -d
 
@@ -646,6 +727,7 @@ android-down: ## Stop Android overlay services
 		-f docker-compose.vc-services.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
+		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
 		-f docker-compose.android.yml \
 		down
 

@@ -15,6 +15,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const SERVER_INFO = { name: 'conformance-runner', version: '1.0.0' };
 
@@ -35,6 +37,109 @@ const INSTRUCTIONS = [
   '  - get_module_info: Get info/result for a specific module',
   '  - run_playwright: Execute arbitrary Playwright code against the test environment',
   '  - check_session: Check if there is an authenticated wallet session',
+  '  - run_android_conformance: Run conformance tests against the Android sample-app in Waydroid',
+  '',
+  '## Android Conformance Testing',
+  '',
+  'The `run_android_conformance` tool runs OID4VCI/OID4VP conformance tests against',
+  'the native Android sample-app in Waydroid. Prerequisites:',
+  '  - Waydroid running with sample-app installed',
+  '  - Conformance suite TLS cert with SANs installed in Android CA store',
+  '  - /etc/hosts in Android: 192.168.240.1 localhost.emobix.co.uk',
+  '  - wallet-backend with extra_hosts for localhost.emobix.co.uk',
+  '  - ADMIN_TOKEN set for auto-registering conformance issuer',
+  '',
+  'The test runner dispatches openid-credential-offer:// deep links via',
+  '`waydroid shell` and monitors logcat for flow completion signals.',
+  'The app auto-registers a user via ensureAuthenticatedForTesting().',
+  '',
+  'See conformance-runner/ANDROID-CONFORMANCE.md for full setup details.',
+  '',
+  '## R2PS (Remote PAKE-Protected Signing)',
+  '',
+  'The R2PS service provides a remote WSCD backed by SoftHSM2 for key generation,',
+  'signing, and ECDH operations via a PAKE-authenticated protocol (OPAQUE).',
+  '',
+  '### Starting R2PS',
+  '  make up R2PS=yes VC=yes',
+  '',
+  'This adds:',
+  '  - r2ps-server (go-r2ps-service): WSCD + WSCA + admin on port 8443 (protocol) / 8444 (admin)',
+  '  - r2ps-softhsm: SoftHSM2 init (token label "r2ps-wscd", PIN "1234")',
+  '  - attest-softhsm: Separate HSM for wallet-backend attestation keys',
+  '',
+  '### Key Provisioning Flow',
+  'R2PS keys are provisioned by the wallet SDK itself (not via admin API):',
+  '  1. Registration: Wallet registers with R2PS via OPAQUE (creates credential for client_id + context)',
+  '  2. Authentication: Wallet authenticates via OPAQUE to get a session (session ID + symmetric key)',
+  '  3. Key Generation: Authenticated wallet sends P256Generate request; server creates EC P-256 key in HSM',
+  '  4. Signing: Wallet sends sign requests with KID through the authenticated session',
+  '',
+  '### Admin API (port 8444 / 9444 with conformance)',
+  '  - GET /admin/store/keys — List all HSM-generated public keys',
+  '  - GET /admin/store/keys?client_id=<id> — Filter keys by wallet client',
+  '  - GET /admin/store/keys/<kid> — Get specific key by KID',
+  '  - GET /admin/store/statuses/ka — Key attestation status entries',
+  '  - GET /admin/store/statuses/wia — Wallet instance attestation status entries',
+  '  - PUT /admin/store/status/<category>/<idx> — Update status entry',
+  '  - POST /admin/store/allocate/<category> — Allocate new status list index',
+  '',
+  '### Port Conflict Resolution',
+  'When running R2PS alongside the conformance suite (both default to port 8443),',
+  'use docker-compose.r2ps-conformance.yml to remap R2PS to 9443/9444:',
+  '  docker compose -f docker-compose.r2ps.yml -f docker-compose.r2ps-conformance.yml ...',
+  '',
+  '### Wallet-Backend Integration',
+  'The wallet-backend gets R2PS URL via WALLET_R2PS_URL=http://r2ps-server:8443',
+  '(set automatically by docker-compose.r2ps.yml).',
+  '',
+  '### Android SDK R2PS',
+  'For siros-sdk-kotlin sample-app:',
+  '  - BuildConfig.R2PS_ENABLED — toggle R2PS (needs native lib with r2ps Cargo feature)',
+  '  - DEFAULT_R2PS_URL — server URL (default: http://192.168.240.1:9443 for Waydroid)',
+  '',
+  '### HSM Details',
+  '  Module: /usr/lib/softhsm/libsofthsm2.so',
+  '  Token label: r2ps-wscd | PIN: 1234 | SO PIN: 5678',
+  '  Key type: EC P-256 | Pool size: 4 sessions',
+  '',
+  'Use the `get_r2ps_status` tool to query R2PS service health and provisioned keys.',
+  '',
+  '## Custom Domain & Cloudflare Tunnels',
+  '',
+  '### DOMAIN= (local network)',
+  'Replace localhost with a custom hostname for mobile device testing:',
+  '  make up DOMAIN=myhost.local VC=yes',
+  '',
+  'The domain must resolve to the host machine IP from the test device.',
+  'Uses docker-compose.domain.yml overlay to inject the domain into',
+  'WALLET_BACKEND_URL, WEBAUTHN_RPID, WALLET_SERVER_RP_ID, etc.',
+  '',
+  '### Cloudflare Quick Tunnels (on-demand TLS)',
+  'Create temporary *.trycloudflare.com domains with valid TLS certificates.',
+  'No Cloudflare account required.',
+  '',
+  'Make targets:',
+  '  make tunnel                — Start tunnels for frontend/backend/engine',
+  '  make restart-with-tunnels  — Restart stack using tunnel URLs',
+  '  make tunnel-status         — Show active tunnel URLs',
+  '  make tunnel-stop           — Stop tunnels and clean up',
+  '',
+  'Workflow:',
+  '  1. make up VC=yes           — Start stack normally',
+  '  2. make tunnel              — Create tunnels (outputs URLs)',
+  '  3. make restart-with-tunnels — Reconfigure with tunnel URLs',
+  '  4. Open frontend URL on any device',
+  '',
+  'Tunnels create three processes (cloudflared quick tunnel):',
+  '  - Frontend (port 3000) → https://<random1>.trycloudflare.com',
+  '  - Backend  (port 8080) → https://<random2>.trycloudflare.com',
+  '  - Engine   (port 8082) → https://<random3>.trycloudflare.com',
+  '',
+  'URLs are written to .env.tunnel. The docker-compose.tunnel.yml overlay',
+  'injects them into the frontend and backend containers.',
+  '',
+  'Prerequisite: cloudflared installed (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)',
 ].join('\n');
 
 /**
@@ -343,6 +448,110 @@ function registerTools(server, { api, runs, plans, startRun, env }) {
           isError: true,
         };
       }
+    }
+  );
+
+  server.tool(
+    'run_android_conformance',
+    'Run OID4VCI or OID4VP conformance tests against the Android sample-app in Waydroid. ' +
+    'Requires Waydroid running with the sample-app installed, conformance suite TLS cert in Android CA store, ' +
+    'and wallet-backend accessible. Returns test results (pass/fail per module).',
+    {
+      plan: z.enum(['vci', 'vp', 'all']).describe('Which conformance plan to run: vci, vp, or all'),
+    },
+    async ({ plan }) => {
+      const execFileAsync = promisify(execFile);
+      const scriptPath = new URL('../../run-android-conformance.mjs', import.meta.url).pathname;
+
+      try {
+        const envVars = {
+          ...process.env,
+          NODE_TLS_REJECT_UNAUTHORIZED: '0',
+          CONFORMANCE_URL: env.CONFORMANCE_PUBLIC_URL || env.CONFORMANCE_URL,
+          ADMIN_URL: env.ADMIN_URL || 'http://localhost:8081',
+          ADMIN_TOKEN: env.ADMIN_TOKEN || '',
+        };
+
+        const { stdout, stderr } = await execFileAsync(
+          'node',
+          [scriptPath, '--plan', plan],
+          { env: envVars, timeout: 600_000, maxBuffer: 10 * 1024 * 1024 }
+        );
+
+        return {
+          content: [{ type: 'text', text: stdout + (stderr ? `\n\nSTDERR:\n${stderr}` : '') }],
+        };
+      } catch (err) {
+        const output = (err.stdout || '') + (err.stderr ? `\n\nSTDERR:\n${err.stderr}` : '');
+        return {
+          content: [{
+            type: 'text',
+            text: `Android conformance run failed (exit ${err.code}):\n${output}\n\n${err.message}`,
+          }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    'get_r2ps_status',
+    'Get R2PS (Remote PAKE-Protected Signing) service status including health, ' +
+    'provisioned HSM keys, and status list entries. Use this to verify R2PS is running ' +
+    'and to inspect keys generated by wallet clients.',
+    {
+      client_id: z.string().optional().describe('Filter keys by wallet client ID'),
+      kid: z.string().optional().describe('Get a specific key by KID'),
+    },
+    async ({ client_id, kid }) => {
+      const r2psUrl = env.R2PS_URL || 'http://localhost:8443';
+      const r2psAdminUrl = env.R2PS_ADMIN_URL || 'http://localhost:8444';
+      const result = {};
+
+      // Health check
+      try {
+        const healthResp = await fetch(`${r2psUrl}/healthz`);
+        result.health = { status: healthResp.ok ? 'healthy' : 'unhealthy', httpStatus: healthResp.status };
+      } catch (err) {
+        result.health = { status: 'unreachable', error: err.message };
+      }
+
+      // If asking for a specific key
+      if (kid) {
+        try {
+          const resp = await fetch(`${r2psAdminUrl}/admin/store/keys/${encodeURIComponent(kid)}`);
+          result.key = resp.ok ? await resp.json() : { error: `HTTP ${resp.status}` };
+        } catch (err) {
+          result.key = { error: err.message };
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+      }
+
+      // List keys (optionally filtered by client_id)
+      try {
+        const keysUrl = client_id
+          ? `${r2psAdminUrl}/admin/store/keys?client_id=${encodeURIComponent(client_id)}`
+          : `${r2psAdminUrl}/admin/store/keys`;
+        const keysResp = await fetch(keysUrl);
+        result.keys = keysResp.ok ? await keysResp.json() : { error: `HTTP ${keysResp.status}` };
+      } catch (err) {
+        result.keys = { error: err.message };
+      }
+
+      // Status lists
+      for (const category of ['ka', 'wia']) {
+        try {
+          const resp = await fetch(`${r2psAdminUrl}/admin/store/statuses/${category}`);
+          result[`status_${category}`] = resp.ok ? await resp.json() : { error: `HTTP ${resp.status}` };
+        } catch (err) {
+          result[`status_${category}`] = { error: err.message };
+        }
+      }
+
+      result.urls = { protocol: r2psUrl, admin: r2psAdminUrl };
+      result.hsm = { module: '/usr/lib/softhsm/libsofthsm2.so', tokenLabel: 'r2ps-wscd', pin: '1234', keyType: 'EC P-256' };
+
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
   );
 }

@@ -1,0 +1,34 @@
+# Docker Compose overlay for custom domain configuration.
+#
+# Replaces all localhost references with a configurable domain name,
+# enabling access from mobile devices on the local network.
+#
+# Usage:
+#   make up DOMAIN=myhost.local
+#
+# Or directly:
+#   DOMAIN=myhost.local docker compose \
+#     -f docker-compose.test.yml \
+#     -f docker-compose.domain.yml \
+#     up -d
+#
+# Prerequisites:
+#   - The domain must resolve to the host machine's IP (e.g. via
+#     /etc/hosts on the mobile device, mDNS, or local DNS)
+#   - Ports must be accessible on the network interface (not just loopback)
+
+services:
+  wallet-frontend:
+    environment:
+      - WALLET_BACKEND_URL=http://${DOMAIN}:8080
+      - WALLET_ENGINE_URL=http://${DOMAIN}:8082
+      - WEBAUTHN_RPID=${DOMAIN}
+      - OPENID4VCI_REDIRECT_URI=http://${DOMAIN}:3000/
+      - STATIC_PUBLIC_URL=http://${DOMAIN}:3000
+      - VCT_REGISTRY_URL=http://${DOMAIN}:8080/registry/type-metadata
+
+  wallet-backend:
+    environment:
+      - WALLET_SERVER_RP_ID=${DOMAIN}
+      - WALLET_SERVER_RP_ORIGIN=http://${DOMAIN}:3000
+      - WALLET_SERVER_RP_ORIGINS=http://${DOMAIN}:3000,android:apk-key-hash:xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q
