@@ -98,7 +98,7 @@ const PLANS = {
   },
   'vp-verifier': {
     label: 'OID4VP Verifier',
-    planName: 'oid4vp-1final-rp-test-plan',
+    planName: 'oid4vp-1final-verifier-test-plan',
     configFile: 'vp-verifier-config.json',
     phase: 1,
     variants: [{

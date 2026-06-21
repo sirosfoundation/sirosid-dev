@@ -15,6 +15,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 const SERVER_INFO = { name: 'conformance-runner', version: '1.0.0' };
 
@@ -35,6 +37,23 @@ const INSTRUCTIONS = [
   '  - get_module_info: Get info/result for a specific module',
   '  - run_playwright: Execute arbitrary Playwright code against the test environment',
   '  - check_session: Check if there is an authenticated wallet session',
+  '  - run_android_conformance: Run conformance tests against the Android sample-app in Waydroid',
+  '',
+  '## Android Conformance Testing',
+  '',
+  'The `run_android_conformance` tool runs OID4VCI/OID4VP conformance tests against',
+  'the native Android sample-app in Waydroid. Prerequisites:',
+  '  - Waydroid running with sample-app installed',
+  '  - Conformance suite TLS cert with SANs installed in Android CA store',
+  '  - /etc/hosts in Android: 192.168.240.1 localhost.emobix.co.uk',
+  '  - wallet-backend with extra_hosts for localhost.emobix.co.uk',
+  '  - ADMIN_TOKEN set for auto-registering conformance issuer',
+  '',
+  'The test runner dispatches openid-credential-offer:// deep links via',
+  '`waydroid shell` and monitors logcat for flow completion signals.',
+  'The app auto-registers a user via ensureAuthenticatedForTesting().',
+  '',
+  'See conformance-runner/ANDROID-CONFORMANCE.md for full setup details.',
 ].join('\n');
 
 /**
@@ -340,6 +359,49 @@ function registerTools(server, { api, runs, plans, startRun, env }) {
         if (browser) await browser.close().catch(() => {});
         return {
           content: [{ type: 'text', text: `Playwright error: ${err.message}\n\n${err.stack || ''}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    'run_android_conformance',
+    'Run OID4VCI or OID4VP conformance tests against the Android sample-app in Waydroid. ' +
+    'Requires Waydroid running with the sample-app installed, conformance suite TLS cert in Android CA store, ' +
+    'and wallet-backend accessible. Returns test results (pass/fail per module).',
+    {
+      plan: z.enum(['vci', 'vp', 'all']).describe('Which conformance plan to run: vci, vp, or all'),
+    },
+    async ({ plan }) => {
+      const execFileAsync = promisify(execFile);
+      const scriptPath = new URL('../../run-android-conformance.mjs', import.meta.url).pathname;
+
+      try {
+        const envVars = {
+          ...process.env,
+          NODE_TLS_REJECT_UNAUTHORIZED: '0',
+          CONFORMANCE_URL: env.CONFORMANCE_PUBLIC_URL || env.CONFORMANCE_URL,
+          ADMIN_URL: env.ADMIN_URL || 'http://localhost:8081',
+          ADMIN_TOKEN: env.ADMIN_TOKEN || '',
+        };
+
+        const { stdout, stderr } = await execFileAsync(
+          'node',
+          [scriptPath, '--plan', plan],
+          { env: envVars, timeout: 600_000, maxBuffer: 10 * 1024 * 1024 }
+        );
+
+        return {
+          content: [{ type: 'text', text: stdout + (stderr ? `\n\nSTDERR:\n${stderr}` : '') }],
+        };
+      } catch (err) {
+        const output = (err.stdout || '') + (err.stderr ? `\n\nSTDERR:\n${err.stderr}` : '');
+        return {
+          content: [{
+            type: 'text',
+            text: `Android conformance run failed (exit ${err.code}):\n${output}\n\n${err.message}`,
+          }],
           isError: true,
         };
       }

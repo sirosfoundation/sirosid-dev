@@ -27,6 +27,7 @@ services:
       sh -c "apk add --no-cache softhsm &&
              mkdir -p /var/lib/softhsm/tokens &&
              softhsm2-util --init-token --slot 0 --label r2ps-wscd --pin 1234 --so-pin 5678 &&
+             chmod -R 777 /var/lib/softhsm/tokens &&
              echo 'R2PS SoftHSM token initialized' &&
              tail -f /dev/null"
     volumes:
@@ -96,6 +97,7 @@ services:
       sh -c "apk add --no-cache softhsm &&
              mkdir -p /var/lib/softhsm/tokens &&
              softhsm2-util --init-token --slot 0 --label wallet-attest --pin 5678 --so-pin 1234 &&
+             chmod -R 777 /var/lib/softhsm/tokens &&
              echo 'Attestation SoftHSM token initialized' &&
              tail -f /dev/null"
     volumes:
