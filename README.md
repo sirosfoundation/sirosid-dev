@@ -66,6 +66,7 @@ A single `make up` command drives all configurations via parameters:
 | `TRANSPORT=` | `wmp`, `http` | websocket | Transport protocol |
 | `CONFORMANCE=` | `1`, `yes`, `on`, `up` | off | Enable OpenID Conformance Suite |
 | `R2PS=` | `1`, `yes`, `on`, `up` | off | Enable R2PS service with SoftHSM2 (WSCD/WSCA) |
+| `DOMAIN=` | hostname/FQDN | `localhost` | Custom domain for mobile device access |
 | `GOLDEN=` | `yes`, `<release-name>` | off | Use pre-built images from a golden release |
 
 ### Examples
@@ -100,6 +101,9 @@ make up GOLDEN=yes VC=yes
 
 # Use a specific golden release
 make up GOLDEN=beta_r2 VC=1
+
+# Custom domain for mobile device access on the local network
+make up DOMAIN=myhost.local VC=yes
 ```
 
 ### Trust PDP Modes
@@ -398,6 +402,7 @@ sirosid-dev/
 ├── docker-compose.r2ps.yml              # R2PS service (go-r2ps-service + SoftHSM2)
 ├── docker-compose.r2ps-conformance.yml  # R2PS port remapping for conformance coexistence
 ├── docker-compose.android.yml           # Android SDK overlay
+├── docker-compose.domain.yml            # Custom domain overlay (DOMAIN= support)
 ├── docker-compose.golden.yml            # Golden overlay: wallet images
 ├── docker-compose.golden-go-trust.yml   # Golden overlay: go-trust image
 ├── docker-compose.golden-vc.yml         # Golden overlay: VC service images

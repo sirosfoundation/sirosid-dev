@@ -6,7 +6,6 @@ set -euo pipefail
 REPOS=(
   sirosid-dev
   wallet-frontend
-  wallet-backend
   go-wallet-backend
   go-trust
   wallet-common
