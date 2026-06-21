@@ -106,6 +106,64 @@ make up GOLDEN=beta_r2 VC=1
 make up DOMAIN=myhost.local VC=yes
 ```
 
+### Custom Domain / Mobile Testing
+
+The `DOMAIN=` option replaces all `localhost` references in service URLs
+with a custom hostname, enabling access from mobile devices or other
+machines on the local network.
+
+```bash
+# Using a local hostname (requires DNS/mDNS or /etc/hosts on the device)
+make up DOMAIN=myhost.local VC=yes
+```
+
+The domain must resolve to the host machine's IP from the testing device
+(via `/etc/hosts`, mDNS, or local DNS).
+
+### Cloudflare Tunnels (On-Demand TLS Domains)
+
+For testing with real TLS certificates and publicly reachable URLs (e.g.
+for mobile devices not on the same network, or when TLS is required),
+use Cloudflare quick tunnels. No Cloudflare account is needed — temporary
+`*.trycloudflare.com` domains are assigned automatically.
+
+```bash
+# 1. Start the stack normally
+make up VC=yes
+
+# 2. Create tunnels (assigns random *.trycloudflare.com URLs)
+make tunnel
+
+# 3. Restart the stack with tunnel URLs injected
+make restart-with-tunnels
+
+# 4. Open the frontend tunnel URL on any device
+#    (shown in the output of 'make tunnel')
+
+# Check tunnel status
+make tunnel-status
+
+# Stop tunnels and revert to localhost
+make tunnel-stop
+make up VC=yes    # restart with localhost
+```
+
+**Prerequisites:** `cloudflared` must be installed:
+```bash
+# Linux
+curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+  -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared
+
+# macOS
+brew install cloudflared
+```
+
+**How it works:** `make tunnel` starts three `cloudflared` quick tunnel
+processes (frontend:3000, backend:8080, engine:8082). Each gets a unique
+`https://<random>.trycloudflare.com` URL with a valid TLS certificate.
+`make restart-with-tunnels` then reconfigures the frontend and backend
+containers to use these URLs instead of `localhost`.
+
 ### Trust PDP Modes
 
 | Mode | Description |
@@ -403,6 +461,7 @@ sirosid-dev/
 ├── docker-compose.r2ps-conformance.yml  # R2PS port remapping for conformance coexistence
 ├── docker-compose.android.yml           # Android SDK overlay
 ├── docker-compose.domain.yml            # Custom domain overlay (DOMAIN= support)
+├── docker-compose.tunnel.yml           # Cloudflare tunnel URL overlay
 ├── docker-compose.golden.yml            # Golden overlay: wallet images
 ├── docker-compose.golden-go-trust.yml   # Golden overlay: go-trust image
 ├── docker-compose.golden-vc.yml         # Golden overlay: VC service images
@@ -421,7 +480,8 @@ sirosid-dev/
 │   └── trust-pdp/                       # AuthZEN PDP mock
 └── scripts/
     ├── start-soft-fido2.sh
-    └── stop-soft-fido2.sh
+    ├── stop-soft-fido2.sh
+    └── tunnel.sh                        # Cloudflare quick tunnel management
 ```
 
 ## Troubleshooting

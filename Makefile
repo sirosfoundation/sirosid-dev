@@ -667,6 +667,39 @@ r2ps-setup: ## Verify R2PS service health and show status
 	@./scripts/setup-r2ps.sh
 
 # =============================================================================
+# Cloudflare Tunnels (on-demand TLS domains for mobile/external testing)
+# =============================================================================
+
+TUNNEL_COMPOSE := docker-compose.tunnel.yml
+
+tunnel: ## Start Cloudflare quick tunnels (no account needed) and show URLs
+	@./scripts/tunnel.sh start
+
+tunnel-stop: ## Stop Cloudflare tunnels and clean up
+	@./scripts/tunnel.sh stop
+
+tunnel-status: ## Show active tunnel URLs and process status
+	@./scripts/tunnel.sh status
+
+restart-with-tunnels: ## Restart the stack using Cloudflare tunnel URLs
+	@if [ ! -f .env.tunnel ]; then \
+		echo "$(RED)No tunnels running. Start them first: make tunnel$(NC)"; \
+		exit 1; \
+	fi
+	@. ./.env.tunnel && \
+		TUNNEL_RPID=$$(echo "$$TUNNEL_FRONTEND_URL" | sed 's|https://||') && \
+		export TUNNEL_RPID TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL && \
+		echo "$(GREEN)Restarting with tunnel URLs...$(NC)" && \
+		echo "  Frontend: $$TUNNEL_FRONTEND_URL" && \
+		echo "  Backend:  $$TUNNEL_BACKEND_URL" && \
+		echo "  Engine:   $$TUNNEL_ENGINE_URL" && \
+		echo "  RP ID:    $$TUNNEL_RPID" && \
+		docker compose $(COMPOSE_FILES) -f $(TUNNEL_COMPOSE) up -d
+	@echo ""
+	@echo "$(GREEN)✓ Stack restarted with Cloudflare tunnel URLs$(NC)"
+	@echo "  Open the frontend URL on any device to test"
+
+# =============================================================================
 # Android SDK Development
 # =============================================================================
 
