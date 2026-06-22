@@ -81,7 +81,7 @@ start_tunnel() {
     # Wait for the tunnel URL to appear in the log (up to 30s)
     local url=""
     for i in $(seq 1 30); do
-        url=$(grep -oP 'https://[a-z0-9-]+\.trycloudflare\.com' "$logfile" 2>/dev/null | head -1) || true
+        url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$logfile" 2>/dev/null | head -1) || true
         if [[ -n "$url" ]]; then
             break
         fi
