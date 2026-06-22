@@ -125,9 +125,12 @@ endif
 # VC services
 ifneq ($(call _truthy,$(VC)),)
   COMPOSE_FILES += -f $(VC_SERVICES_COMPOSE)
-  ifneq ($(PDP),mock)
-    COMPOSE_FILES += -f $(VC_GO_TRUST_COMPOSE)
-  endif
+  # Note: vc-go-trust.yml is intentionally NOT included here.
+  # go-trust services (allow/deny/whitelist) are already provided by
+  # docker-compose.go-trust.yml via the PDP selection above. Adding
+  # vc-go-trust.yml alongside go-trust.yml redefines the same services
+  # with different container_name values, which breaks Docker Compose
+  # validation on macOS Docker Desktop.
   _VC_LABEL := yes
 else
   _VC_LABEL := no
@@ -375,6 +378,20 @@ up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to conf
 	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
 	@# Ensure the shared e2e-test-network exists
 	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+ifneq ($(call _truthy,$(VC)),)
+	@# Pre-flight: ../vc must exist for VC service builds
+	@if [ ! -d "$(VC_PATH:-../vc)" ] && [ ! -d "../vc" ]; then \
+		echo "$(RED)Error: VC services require the 'vc' repo at ../vc$(NC)"; \
+		echo "  Run: make setup   (clones all required sibling repos)"; \
+		echo "  Or:  git clone https://github.com/SUNET/vc ../vc"; \
+		exit 1; \
+	fi
+	@# Pre-flight: generate PKI if missing
+	@if [ ! -f fixtures/vc-pki/rootCA.crt ]; then \
+		echo "$(YELLOW)VC PKI not found — generating...$(NC)"; \
+		$(MAKE) --no-print-directory pki; \
+	fi
+endif
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
 endif
