@@ -715,6 +715,16 @@ restart-with-tunnels: ## Restart the stack using Cloudflare tunnel URLs
 	@echo ""
 	@echo "$(GREEN)✓ Stack restarted with Cloudflare tunnel URLs$(NC)"
 	@echo "  Open the frontend URL on any device to test"
+	@echo ""
+	@# Re-run android-setup so the ADB compat flag is refreshed for the new tunnel domain.
+	@# trycloudflare.com subdomains are not in Google's Statement List cache, so Android's
+	@# CredentialManager will reject passkey creation unless DEVELOPMENT_PASSKEY_REGISTRATION
+	@# is enabled on the device — even when the tunnel uses real HTTPS.
+	@$(MAKE) --no-print-directory android-setup 2>/dev/null || true
+	@echo ""
+	@echo "$(YELLOW)Android passkey note:$(NC) If passkey creation still fails with"
+	@echo "  'RP ID cannot be validated', connect your device and run:"
+	@echo "  adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION $(SDK_PACKAGE)"
 
 # =============================================================================
 # Android SDK Development
