@@ -9,6 +9,7 @@ node_modules/
 # IDE
 .idea/
 .vscode/
+!.vscode/mcp.json
 *.swp
 
 # OS

@@ -1,0 +1,20 @@
+{
+  // VS Code MCP server configuration for sirosid-dev.
+  //
+  // This connects GitHub Copilot Chat to the conformance-runner MCP server,
+  // which exposes tools for managing the full development environment:
+  //   - devenv_*  tools: start/stop/update the Docker stack, tunnels, Android setup
+  //   - conformance tools: run OID4VCI/OID4VP test plans, inspect results and logs
+  //   - run_playwright: execute arbitrary browser automation against the wallet
+  //
+  // To start the server: make mcp
+  // The server listens on http://localhost:3001/mcp
+  //
+  // See conformance-runner/lib/devenv-tools.mjs and lib/mcp-server.mjs for tool details.
+  "servers": {
+    "sirosid-dev": {
+      "type": "http",
+      "url": "http://localhost:3001/mcp"
+    }
+  }
+}
