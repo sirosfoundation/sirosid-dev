@@ -1,0 +1,125 @@
+# sirosid-dev — Copilot Instructions
+
+## Repository Purpose
+
+`sirosid-dev` is the local development environment for the SIROS ID wallet
+platform. It orchestrates Docker Compose stacks for wallet-frontend,
+go-wallet-backend, go-trust PDP, mock services, and optional VC services.
+The single entry point is the `Makefile`; all configuration flows through
+`make up [OPTIONS]`.
+
+## Key Conventions
+
+### Compose file naming
+- `docker-compose.test.yml` — primary base stack (always included)
+- `docker-compose.<thing>.yml` — optional overlay added via `COMPOSE_FILES`
+- `docker-compose.<thing>-allow.yml` / `-deny.yml` — PDP sub-overlays
+- Do NOT add `driver: bridge` to any network; the shared `e2e-test-network`
+  is always `external: true`. The network must be pre-created with
+  `docker network create e2e-test-network` before `docker compose up`.
+
+### Generated env files (never commit these)
+- `.env.android` — produced by `make android-setup` / `scripts/setup-android.sh`
+  Contains: `APK_KEY_HASH=<base64url>`, `ANDROID_PACKAGE=<name>`
+- `.env.tunnel` — produced by `make tunnel` / `scripts/tunnel.sh`
+  Contains: `TUNNEL_FRONTEND_URL`, `TUNNEL_BACKEND_URL`, `TUNNEL_ENGINE_URL`
+- `.env.golden` — produced by `make fetch-golden-env`
+- Both are sourced by `make up` and `make restart-with-tunnels` before
+  invoking `docker compose`.
+
+### WebAuthn / passkeys
+- `WEBAUTHN_RPID` must be a **plain hostname** — no `https://` scheme, no port.
+  The tunnel overlay uses `${TUNNEL_RPID}` (scheme stripped by `sed`) not
+  `${TUNNEL_FRONTEND_URL}`.
+- `WALLET_SERVER_RP_ORIGINS` includes `android:apk-key-hash:<base64url>`.
+  The hash must match the debug keystore of the developer running the app.
+  It is now dynamic: `${APK_KEY_HASH:-<siros-default>}`, sourced from
+  `.env.android`. Developers with a different keystore must run
+  `make android-setup` to regenerate `.env.android`.
+- `DEVELOPMENT_PASSKEY_REGISTRATION` ADB compat flag must be set on the
+  Android device after every tunnel restart — `make restart-with-tunnels`
+  calls `make android-setup` automatically for this.
+
+### macOS compatibility
+- `grep -P` (Perl regex) does not exist on macOS BSD grep — use `grep -E`
+- `grep -a` (force text mode) is needed when cloudflared logs contain ANSI codes
+- Docker Compose V2 on macOS rejects: same service defined in two files with
+  different `container_name`, and any network with both `driver:` and
+  `external: true` simultaneously.
+- `info()/warn()/ok()` shell functions that print to stdout will corrupt output
+  captured in `$(...)` subshells — always redirect them to stderr with `>&2`.
+
+### Error visibility
+The `make up` docker compose invocation captures all output to a temp file,
+shows a filtered summary (✔/Building/Container/etc.), and on non-zero exit
+dumps the full log and fails. Do not revert to the `2>&1 | grep ... || true`
+pattern — that silently swallows errors.
+
+## Android SDK Testing Workflow
+
+Full workflow for developers testing `siros-sdk-kotlin` sample app:
+
+```bash
+# 1. One-time: generate .env.android and configure ADB
+make android-setup [SDK_PACKAGE=com.example.app]
+
+# 2. Local network testing
+make up [VC=yes]                # backend URL: http://<host>:8090
+
+# 3. Remote / HTTPS testing (required for passkeys on physical devices)
+make tunnel
+make restart-with-tunnels       # auto re-runs android-setup
+```
+
+Key script: `scripts/setup-android.sh`
+- Reads `~/.android/debug.keystore` with `keytool`
+- Derives APK key hash: `SHA256 fingerprint → hex bytes → base64url (no padding)`
+- Writes `.well-known/assetlinks.json` (mounted into wallet-frontend nginx)
+- Writes `.env.android` with `APK_KEY_HASH` and `ANDROID_PACKAGE`
+- Runs `adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION <package>`
+
+## COMPOSE_FILES Construction
+
+`COMPOSE_FILES` is assembled in `Makefile` lines 107–203 based on parameters:
+
+```
+PDP=allow    → + docker-compose.go-trust.yml + docker-compose.go-trust-allow.yml
+PDP=whitelist → + go-trust.yml + go-trust-whitelist.yml
+PDP=deny     → + go-trust.yml + go-trust-deny.yml
+PDP=mock     → nothing extra (mock-trust-pdp is in test.yml)
+VC=yes       → + docker-compose.vc-services.yml
+CONFORMANCE  → + vc-services + vc-go-trust + http-transport + conformance
+TRANSPORT=wmp → + wmp-transport.yml
+TRANSPORT=http → + http-transport.yml
+R2PS=yes     → + r2ps.yml
+DOMAIN=<x>   → + domain.yml
+GOLDEN=yes   → + golden.yml [+ golden-go-trust.yml]
+```
+
+`docker-compose.vc-go-trust.yml` is intentionally NOT included when `VC=yes`
+without `CONFORMANCE=yes` — it would duplicate services already in `go-trust.yml`
+and break Docker Compose V2 on macOS.
+
+## Service Health
+
+The status check in `make up` uses HTTP polling (curl) not docker health status:
+- `curl -sf http://localhost:3000` → wallet-frontend
+- `curl -sf http://localhost:8080/health` → wallet-backend
+- `curl -sf http://localhost:9000/health` → vc-issuer
+- `curl -sf http://localhost:9001/health` → vc-verifier
+
+All services use container name suffix `-e2e-test` or `-e2e` to avoid conflicts
+with other docker-compose projects on the same host.
+
+## Common Pitfalls
+
+- `make up VC=yes` fails silently on macOS → check for duplicate service
+  definitions across compose files, or network defined as both `driver: bridge`
+  AND `external: true` in the merged config.
+- Containers start but services not running → usually a missing volume file
+  (e.g. `.well-known/assetlinks.json` must exist before `make up`; it is
+  created empty automatically if missing).
+- `make tunnel` produces garbled `.env.tunnel` → `info()/warn()` output was
+  going to stdout and getting captured. All shell helper functions must use `>&2`.
+- APK key hash wrong → developer has a different debug keystore from the one
+  used to generate the hardcoded default. Run `make android-setup`.
