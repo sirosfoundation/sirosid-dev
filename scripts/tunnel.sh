@@ -44,10 +44,10 @@ RED='\033[0;31m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-info()  { echo -e "${GREEN}[tunnel]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[tunnel]${NC} $*"; }
+info()  { echo -e "${GREEN}[tunnel]${NC} $*" >&2; }
+warn()  { echo -e "${YELLOW}[tunnel]${NC} $*" >&2; }
 error() { echo -e "${RED}[tunnel]${NC} $*" >&2; }
-ok()    { echo -e "${GREEN}[tunnel] ✓${NC} $*"; }
+ok()    { echo -e "${GREEN}[tunnel] ✓${NC} $*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Prerequisite check
@@ -81,7 +81,7 @@ start_tunnel() {
     # Wait for the tunnel URL to appear in the log (up to 30s)
     local url=""
     for i in $(seq 1 30); do
-        url=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$logfile" 2>/dev/null | head -1) || true
+        url=$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$logfile" 2>/dev/null | head -1) || true
         if [[ -n "$url" ]]; then
             break
         fi
