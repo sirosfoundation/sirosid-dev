@@ -17,6 +17,7 @@ import { randomUUID } from 'node:crypto';
 import { chromium } from 'playwright';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { registerDevenvTools } from './devenv-tools.mjs';
 
 const SERVER_INFO = { name: 'conformance-runner', version: '1.0.0' };
 
@@ -139,13 +140,35 @@ const INSTRUCTIONS = [
   'URLs are written to .env.tunnel. The docker-compose.tunnel.yml overlay',
   'injects them into the frontend and backend containers.',
   '',
-  'Prerequisite: cloudflared installed (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)',
+'Prerequisite: cloudflared installed (https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)',
+  '',
+  '## Dev Environment Control',
+  '',
+  'These tools expose the full Makefile as MCP tools for controlling the dev environment:',
+  '  - devenv_status: Check which services are running + active tunnel/android env',
+  '  - devenv_setup: Clone repos + install dependencies (one-time bootstrap)',
+  '  - devenv_up: Start the dev stack (PDP/VC/transport/conformance/r2ps/domain/golden options)',
+  '  - devenv_down: Stop all containers',
+  '  - devenv_update: Pull latest code for all repos',
+  '  - devenv_logs: Get recent log output from any container',
+  '  - devenv_pki: Regenerate signing keys and certificates',
+  '  - devenv_clean: Destroy all containers, volumes, and build cache',
+  '  - devenv_tunnel_start: Start Cloudflare quick tunnels',
+  '  - devenv_tunnel_stop: Stop tunnels and clean up',
+  '  - devenv_tunnel_status: Show active tunnel URLs',
+  '  - devenv_restart_with_tunnels: Restart stack using tunnel URLs',
+  '  - devenv_android_setup: Configure APK key hash + assetlinks.json for Android SDK testing',
+  '  - devenv_check_prerequisites: Check which required tools are installed',
+  '  - devenv_make_help: Show all available make targets',
+  '  - devenv_make: Run any arbitrary make target',
 ].join('\n');
 
 /**
  * Register all tools on a McpServer instance.
  */
 function registerTools(server, { api, runs, plans, startRun, env }) {
+  // Register dev environment control tools (make targets)
+  registerDevenvTools(server);
   server.tool(
     'get_environment',
     'Get full test environment status: service URLs, conformance suite connectivity, and configuration',
