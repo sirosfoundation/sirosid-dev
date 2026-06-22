@@ -433,10 +433,21 @@ ifneq ($(call _truthy,$(REBUILD)),)
 		docker compose $(COMPOSE_FILES) build --no-cache 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 endif
+	@_LOG=$$(mktemp /tmp/compose.XXXXXX); \
+	[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
-		docker compose $(COMPOSE_FILES) up -d --build 2>&1 | \
-		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
+		docker compose $(COMPOSE_FILES) up -d --build >$$_LOG 2>&1; \
+	_EXIT=$$?; \
+	grep -E '^\s*(✔|=>|Building|Container|Network|Image)' $$_LOG || true; \
+	if [ $$_EXIT -ne 0 ]; then \
+		echo ""; \
+		echo "$(RED)docker compose failed (exit $$_EXIT). Full output:$(NC)"; \
+		cat $$_LOG; \
+		rm -f $$_LOG; \
+		exit $$_EXIT; \
+	fi; \
+	rm -f $$_LOG
 endif
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
@@ -706,11 +717,13 @@ restart-with-tunnels: ## Restart the stack using Cloudflare tunnel URLs
 	@. ./.env.tunnel && \
 		TUNNEL_RPID=$$(echo "$$TUNNEL_FRONTEND_URL" | sed 's|https://||') && \
 		export TUNNEL_RPID TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL && \
+		{ [ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; } && \
 		echo "$(GREEN)Restarting with tunnel URLs...$(NC)" && \
 		echo "  Frontend: $$TUNNEL_FRONTEND_URL" && \
 		echo "  Backend:  $$TUNNEL_BACKEND_URL" && \
 		echo "  Engine:   $$TUNNEL_ENGINE_URL" && \
 		echo "  RP ID:    $$TUNNEL_RPID" && \
+		[ -n "$$APK_KEY_HASH" ] && echo "  APK hash: $$APK_KEY_HASH" || true && \
 		docker compose $(COMPOSE_FILES) -f $(TUNNEL_COMPOSE) up -d
 	@echo ""
 	@echo "$(GREEN)✓ Stack restarted with Cloudflare tunnel URLs$(NC)"

@@ -112,6 +112,16 @@ fi
 # ── Step 3: Generate assetlinks.json ─────────────────────────────────
 
 if [[ -n "$FINGERPRINT" ]]; then
+    # Compute the base64url APK key hash used in WALLET_SERVER_RP_ORIGINS.
+    # Format: remove colon separators, hex-decode, base64url-encode (no padding).
+    APK_KEY_HASH=$(printf '%s' "$FINGERPRINT" \
+        | tr -d ':' \
+        | fold -w2 \
+        | while IFS= read -r byte; do printf "\\x$byte"; done \
+        | base64 \
+        | tr '+/' '-_' \
+        | tr -d '=')
+
     mkdir -p "$WELL_KNOWN_DIR"
     cat > "$WELL_KNOWN_DIR/assetlinks.json" <<EOF
 [
@@ -132,7 +142,15 @@ if [[ -n "$FINGERPRINT" ]]; then
 EOF
     info "Generated $WELL_KNOWN_DIR/assetlinks.json"
     info "  Package: $PACKAGE_NAME"
-    info "  Restart the dev stack (make down && make up) to serve it."
+
+    # Write .env.android so make up / make restart-with-tunnels can inject the
+    # correct APK key hash into WALLET_SERVER_RP_ORIGINS at runtime.
+    cat > "$PROJECT_DIR/.env.android" <<EOF
+APK_KEY_HASH=$APK_KEY_HASH
+ANDROID_PACKAGE=$PACKAGE_NAME
+EOF
+    info "Written .env.android (APK key hash: $APK_KEY_HASH)"
+    info "  Run 'make up' or 'make restart-with-tunnels' to apply."
 else
     warn "No fingerprint available — skipping assetlinks.json generation."
     warn "Provide one with: $0 --fingerprint 'XX:YY:...:ZZ'"

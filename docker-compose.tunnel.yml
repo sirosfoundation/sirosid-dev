@@ -26,4 +26,4 @@ services:
       # Extract hostname from tunnel URL for WebAuthn RP ID
       - WALLET_SERVER_RP_ID=${TUNNEL_RPID:-trycloudflare.com}
       - WALLET_SERVER_RP_ORIGIN=${TUNNEL_FRONTEND_URL}
-      - WALLET_SERVER_RP_ORIGINS=${TUNNEL_FRONTEND_URL},android:apk-key-hash:xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q
+      - WALLET_SERVER_RP_ORIGINS=${TUNNEL_FRONTEND_URL},android:apk-key-hash:${APK_KEY_HASH:-xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q}

@@ -97,7 +97,7 @@ services:
       - WALLET_SERVER_WEBAUTHN_DISPLAY_NAME=${WALLET_NAME:-SIROS ID (dev)}
       - WALLET_SERVER_RP_ID=${WALLET_RP_ID:-localhost}
       - WALLET_SERVER_RP_ORIGIN=${WALLET_RP_ORIGIN:-http://localhost:3000}
-      - WALLET_SERVER_RP_ORIGINS=${WALLET_RP_ORIGINS:-http://localhost:3000,android:apk-key-hash:xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q}
+      - WALLET_SERVER_RP_ORIGINS=${WALLET_RP_ORIGINS:-http://localhost:3000,android:apk-key-hash:${APK_KEY_HASH:-xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q}}
       - WALLET_SERVER_PORT=8080
       - WALLET_SERVER_ADMIN_HOST=0.0.0.0
       - WALLET_SERVER_ADMIN_PORT=8081

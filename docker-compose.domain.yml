@@ -31,4 +31,4 @@ services:
     environment:
       - WALLET_SERVER_RP_ID=${DOMAIN}
       - WALLET_SERVER_RP_ORIGIN=http://${DOMAIN}:3000
-      - WALLET_SERVER_RP_ORIGINS=http://${DOMAIN}:3000,android:apk-key-hash:xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q
+      - WALLET_SERVER_RP_ORIGINS=http://${DOMAIN}:3000,android:apk-key-hash:${APK_KEY_HASH:-xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW07Q}
