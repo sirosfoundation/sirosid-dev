@@ -26,20 +26,21 @@ services:
     command: >
       sh -c "apk add --no-cache softhsm &&
              mkdir -p /var/lib/softhsm/tokens &&
-             softhsm2-util --init-token --slot 0 --label r2ps-wscd --pin 1234 --so-pin 5678 &&
-             chmod -R 777 /var/lib/softhsm/tokens &&
-             echo 'R2PS SoftHSM token initialized' &&
+             chmod 777 /var/lib/softhsm/tokens &&
+             (softhsm2-util --show-slots 2>/dev/null | grep -q 'r2ps-wscd' || 
+              softhsm2-util --init-token --slot 0 --label r2ps-wscd --pin 1234 --so-pin 5678) &&
+             echo 'R2PS SoftHSM token ready' &&
              tail -f /dev/null"
     volumes:
       - r2ps-softhsm-tokens:/var/lib/softhsm/tokens
     networks:
       - e2e-test-network
     healthcheck:
-      test: ["CMD", "test", "-d", "/var/lib/softhsm/tokens"]
+      test: ["CMD", "sh", "-c", "softhsm2-util --show-slots 2>/dev/null | grep -q 'r2ps-wscd' && echo 'r2ps token OK'"]
       interval: 3s
-      timeout: 2s
+      timeout: 3s
       retries: 5
-      start_period: 5s
+      start_period: 8s
 
   # -----------------------------------------------------------------------
   # go-r2ps-service — WSCD + WSCA + admin roles
@@ -96,20 +97,21 @@ services:
     command: >
       sh -c "apk add --no-cache softhsm &&
              mkdir -p /var/lib/softhsm/tokens &&
-             softhsm2-util --init-token --slot 0 --label wallet-attest --pin 5678 --so-pin 1234 &&
-             chmod -R 777 /var/lib/softhsm/tokens &&
-             echo 'Attestation SoftHSM token initialized' &&
+             chmod 777 /var/lib/softhsm/tokens &&
+             (softhsm2-util --show-slots 2>/dev/null | grep -q 'wallet-attest' || 
+              softhsm2-util --init-token --slot 0 --label wallet-attest --pin 5678 --so-pin 1234) &&
+             echo 'Attestation SoftHSM token ready' &&
              tail -f /dev/null"
     volumes:
       - attest-softhsm-tokens:/var/lib/softhsm/tokens
     networks:
       - e2e-test-network
     healthcheck:
-      test: ["CMD", "test", "-d", "/var/lib/softhsm/tokens"]
+      test: ["CMD", "sh", "-c", "softhsm2-util --show-slots 2>/dev/null | grep -q 'wallet-attest' && echo 'attest token OK'"]
       interval: 3s
-      timeout: 2s
+      timeout: 3s
       retries: 5
-      start_period: 5s
+      start_period: 8s
 
   # -----------------------------------------------------------------------
   # Override wallet-backend: add attestation HSM volume + R2PS awareness

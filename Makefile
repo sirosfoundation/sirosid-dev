@@ -19,7 +19,7 @@ WALLET_NAME ?= SIROS ID (dev)
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
-	install
+	install tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
 
 # =============================================================================
 # Configuration
@@ -45,6 +45,7 @@ HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
 R2PS_COMPOSE := docker-compose.r2ps.yml
 DOMAIN_COMPOSE := docker-compose.domain.yml
+TUNNEL_COMPOSE := docker-compose.tunnel.yml
 GOLDEN_COMPOSE := docker-compose.golden.yml
 GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
 GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
@@ -56,6 +57,7 @@ TRANSPORT ?=
 CONFORMANCE ?=
 R2PS ?=
 DOMAIN ?=
+TUNNELS ?=
 GOLDEN ?=
 REBUILD ?=
 
@@ -142,12 +144,12 @@ ifeq ($(TRANSPORT),wmp)
   _TRANSPORT_LABEL := WMP (JSON-RPC+SSE)
 else ifeq ($(TRANSPORT),http)
   COMPOSE_FILES += -f $(HTTP_TRANSPORT_COMPOSE)
-  _TRANSPORT_LABEL := HTTP proxy
+  _TRANSPORT_LABEL := HTTP proxy (deprecated)
 else
   _TRANSPORT_LABEL := WebSocket (default)
 endif
 
-# Conformance suite (implies VC + allow + http transport)
+# Conformance suite (implies VC + allow)
 ifneq ($(call _truthy,$(CONFORMANCE)),)
   # Ensure required overlays are present
   ifeq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
@@ -155,9 +157,6 @@ ifneq ($(call _truthy,$(CONFORMANCE)),)
   endif
   ifeq ($(findstring $(VC_GO_TRUST_COMPOSE),$(COMPOSE_FILES)),)
     COMPOSE_FILES += -f $(VC_GO_TRUST_COMPOSE)
-  endif
-  ifeq ($(findstring $(HTTP_TRANSPORT_COMPOSE),$(COMPOSE_FILES)),)
-    COMPOSE_FILES += -f $(HTTP_TRANSPORT_COMPOSE)
   endif
   COMPOSE_FILES += -f $(CONFORMANCE_COMPOSE)
   _CONFORMANCE_LABEL := yes
@@ -180,6 +179,14 @@ ifneq ($(DOMAIN),)
   _DOMAIN_LABEL := $(DOMAIN)
 else
   _DOMAIN_LABEL := localhost (default)
+endif
+
+# Cloudflare quick tunnels (host-managed, not container-managed)
+ifneq ($(call _truthy,$(TUNNELS)),)
+	COMPOSE_FILES += -f $(TUNNEL_COMPOSE)
+	_TUNNELS_LABEL := yes
+else
+	_TUNNELS_LABEL := no
 endif
 
 # Golden release: use pre-built images instead of local builds
@@ -213,95 +220,102 @@ endif
 help: ## Show this help
 	@echo "$(GREEN)sirosid-dev$(NC) — Local Development Environment"
 	@echo ""
-	@echo "$(GREEN)Usage:$(NC)"
-	@echo "  make setup             Clone sibling repos"
-	@echo "  make install           Install dependencies (npm, etc.)"
-	@echo "  make up [OPTIONS]    Start the stack"
-	@echo "  make down            Stop all services"
-	@echo "  make status          Check service health"
-	@echo "  make logs            View Docker logs"
-	@echo "  make clean           Remove all containers and volumes"
+	@echo "$(GREEN)Primary Targets:$(NC)"
+	@echo "  make setup                           Clone sibling repos"
+	@echo "  make install                         Show dependency/install notes"
+	@echo "  make up [STACK OPTIONS]              Start the stack with selected overlays"
+	@echo "  make down                            Stop stack containers"
+	@echo "  make status                          Check core service health"
+	@echo "  make logs                            View Docker logs"
+	@echo "  make clean                           Remove containers, volumes, build cache"
 	@echo ""
-	@echo "$(GREEN)Options:$(NC)  (pass on the make command line)"
+	@echo "$(GREEN)Tunnel Targets:$(NC)"
+	@echo "  make tunnel-status                   Show active tunnel URLs and host processes"
+	@echo "  make tunnel-stop                     Stop Cloudflare tunnel processes and remove .env.tunnel"
+	@echo "  make restart-with-tunnels            Deprecated alias for: make up TUNNELS=yes"
 	@echo ""
-	@echo "  $(YELLOW)PDP=$(NC)             Trust PDP to use (default: $(GREEN)allow$(NC))"
-	@echo "                     allow      go-trust allow-all — trusts everything (dev default)"
-	@echo "                     whitelist  go-trust whitelist — trusts configured issuers only"
-	@echo "                     deny       go-trust deny-all  — rejects everything (negative testing)"
-	@echo "                     mock       legacy mock-trust-pdp"
+	@echo "$(GREEN)Android Targets:$(NC)"
+	@echo "  make android-setup [APP_PACKAGE=...] Generate assetlinks.json + .env.android and try ADB setup"
+	@echo "  make android-config                  Generate Android-specific VC config overlay"
+	@echo "  make android-up [SDK_REBUILD=yes]    Start Android overlay services (SDK_REBUILD=yes rebuilds Rust + SDK)"
+	@echo "  make android-down                    Stop Android overlay services"
+	@echo "  make android-full                    Full Android flow (config + build + deploy + launch)"
+	@echo "  make android-restart                 Restart Android test services + relaunch app"
+	@echo "  make android-launch                  Launch installed sample app + log snapshot"
+	@echo "  make android-logs                    Follow Android app logs"
 	@echo ""
-	@echo "  $(YELLOW)VC=$(NC)              Enable production-like VC services (default: off)"
-	@echo "                     1, yes, on, up — enable"
-	@echo "                     Adds: vc-issuer, vc-verifier, vc-apigw, vc-registry, mongodb"
+	@echo "$(GREEN)Stack Options:$(NC)  (pass on the make command line to 'make up')"
 	@echo ""
-	@echo "  $(YELLOW)TRANSPORT=$(NC)       Transport protocol (default: websocket)"
-	@echo "                     wmp        WMP transport (JSON-RPC + SSE)"
-	@echo "                     http       HTTP proxy transport"
+	@echo "  $(YELLOW)PDP=$(NC)<allow|whitelist|deny|mock>"
+	@echo "                     Select trust policy provider"
+	@echo "                     default: $(GREEN)allow$(NC)"
 	@echo ""
-	@echo "  $(YELLOW)CONFORMANCE=$(NC)     Enable OpenID conformance suite (default: off)"
-	@echo "                     1, yes, on, up — enable"
-	@echo "                     Implies: VC=1 PDP=allow TRANSPORT=http"
+	@echo "  $(YELLOW)VC=$(NC)<yes|no>"
+	@echo "                     Enable production-like VC services"
+	@echo "                     Adds issuer, verifier, apigw, registry, mongodb"
 	@echo ""
-	@echo "  $(YELLOW)R2PS=$(NC)            Enable R2PS service with SoftHSM2 (default: off)"
-	@echo "                     1, yes, on, up — enable"
-	@echo "                     Adds: go-r2ps-service, SoftHSM2 (WSCD + attestation)"
+	@echo "  $(YELLOW)TRANSPORT=$(NC)<websocket|wmp>"
+	@echo "                     Select wallet transport mode"
+	@echo "                     default: websocket (http is deprecated)"
 	@echo ""
-	@echo "  $(YELLOW)DOMAIN=$(NC)          Set a custom domain (default: localhost)"
-	@echo "                     Replaces localhost in all service URLs"
-	@echo "                     Enables access from mobile devices on the local network"
+	@echo "  $(YELLOW)CONFORMANCE=$(NC)<yes|no>"
+	@echo "                     Enable OpenID conformance suite"
+	@echo "                     Implies: VC=yes PDP=allow"
 	@echo ""
-	@echo "  $(YELLOW)GOLDEN=$(NC)          Use pre-built images from a golden release (default: off)"
-	@echo "                     yes        use the default golden release"
-	@echo "                     <name>     use a specific release (e.g. beta_r2)"
-	@echo "                     Tags are fetched from siros-conformance/golden-releases.yaml"
+	@echo "  $(YELLOW)R2PS=$(NC)<yes|no>"
+	@echo "                     Enable R2PS service + SoftHSM2"
 	@echo ""
-	@echo "  $(YELLOW)REBUILD=$(NC)         Force rebuild all images with no cache (default: off)"
-	@echo "                     1, yes, on — rebuild everything from scratch"
+	@echo "  $(YELLOW)DOMAIN=$(NC)<hostname>"
+	@echo "                     Replace localhost URLs with a local-network hostname"
 	@echo ""
-	@echo "$(GREEN)Examples:$(NC)"
-	@echo "  make up                              # Default: frontend + backend + go-trust allow"
-	@echo "  make up VC=yes                       # Add VC issuer/verifier services"
-	@echo "  make up PDP=whitelist VC=1            # VC services with whitelist trust"
-	@echo "  make up PDP=deny VC=1                 # Negative testing: deny all trust"
-	@echo "  make up PDP=mock                      # Legacy mock PDP (no go-trust)"
-	@echo "  make up TRANSPORT=wmp                 # Use WMP transport"
-	@echo "  make up CONFORMANCE=yes               # Full conformance test stack"
-	@echo "  make up R2PS=yes VC=yes               # R2PS with SoftHSM2 + VC services"
-	@echo "  make up DOMAIN=myhost.local            # Custom domain for mobile device access"
-	@echo "  make up GOLDEN=yes                    # Use default golden release (pre-built images)"
-	@echo "  make up GOLDEN=beta_r2 VC=1           # Use specific golden release with VC"
-	@echo "  make up REBUILD=yes                    # Force full rebuild (no cache)"
+	@echo "  $(YELLOW)TUNNELS=$(NC)<yes|no>"
+	@echo "                     Enable Cloudflare quick tunnel overlay"
+	@echo "                     Auto-creates or reuses .env.tunnel via cloudflared"
 	@echo ""
-	@echo "$(GREEN)Service URLs (when running):$(NC)"
+	@echo "  $(YELLOW)GOLDEN=$(NC)<yes|release-name>"
+	@echo "                     Use pre-built images from golden releases"
+	@echo ""
+	@echo "  $(YELLOW)REBUILD=$(NC)<yes|no>"
+	@echo "                     Force no-cache image rebuild before startup"
+	@echo ""
+	@echo "$(GREEN)Interaction Rules:$(NC)"
+	@echo "  - $(YELLOW)TUNNELS=yes$(NC) and $(YELLOW)DOMAIN=...$(NC) are mutually exclusive"
+	@echo "  - $(YELLOW)CONFORMANCE=yes$(NC) automatically enables VC services with allow-all trust"
+	@echo "  - $(YELLOW)make down$(NC) stops containers but does not stop Cloudflare tunnel processes"
+	@echo "  - $(YELLOW)make tunnel-stop$(NC) is required to remove active tunnel URLs"
+	@echo "  - $(YELLOW)APP_PACKAGE=...$(NC) affects android-setup only; it is not a stack-wide option"
+	@echo ""
+	@echo "$(GREEN)Useful Examples:$(NC)"
+	@echo "  make up"
+	@echo "  make up VC=yes"
+	@echo "  make up PDP=whitelist VC=yes"
+	@echo "  make up CONFORMANCE=yes"
+	@echo "  make up R2PS=yes VC=yes"
+	@echo "  make up DOMAIN=myhost.local VC=yes"
+	@echo "  make up TUNNELS=yes VC=yes"
+	@echo "  make up GOLDEN=beta_r2 VC=yes"
+	@echo "  make android-setup APP_PACKAGE=com.example.app"
+	@echo ""
+	@echo "$(GREEN)Current Default URLs:$(NC)"
 	@echo "  Frontend:      $(FRONTEND_URL)"
 	@echo "  Backend API:   $(BACKEND_URL)"
 	@echo "  Admin API:     $(ADMIN_URL)"
 	@echo "  Engine:        $(ENGINE_URL)"
 	@echo ""
-	@echo "$(GREEN)Source paths:$(NC)  (override with env vars or on command line)"
+	@echo "$(GREEN)Source Path Overrides:$(NC)"
 	@echo ""
 	@echo "  $(YELLOW)FRONTEND_PATH=$(NC)   wallet-frontend source  (default: $(GREEN)../wallet-frontend$(NC))"
 	@echo "  $(YELLOW)BACKEND_PATH=$(NC)    go-wallet-backend source (default: $(GREEN)../go-wallet-backend$(NC))"
 	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
 	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
 	@echo ""
-	@echo "$(GREEN)Other variables:$(NC)"
+	@echo "$(GREEN)Other Variables:$(NC)"
 	@echo ""
 	@echo "  $(YELLOW)WALLET_NAME=$(NC)      Wallet display name (default: $(GREEN)SIROS ID (dev)$(NC))"
+	@echo "  $(YELLOW)APP_PACKAGE=$(NC)     Used by make android-setup (default: $(GREEN)org.sirosfoundation.sdk.sample$(NC))"
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
-	@echo ""
-	@echo "$(GREEN)Android SDK:$(NC)"
-	@echo "  make android-setup   Generate assetlinks.json + configure ADB for passkey dev"
-	@echo "  make android-config  Generate Android overlay VC config"
-	@echo "  make android-up      Generate Android config + start Android overlay services"
-	@echo "  make android-down    Stop Android overlay services"
-	@echo "  make android-full    Full Android flow (config + build + deploy + register + launch)"
-	@echo "  make android-restart Restart Android test services + relaunch app"
-	@echo "  make android-launch  Launch installed sample app + log snapshot"
-	@echo "  make android-logs    Follow Android app logs"
-	@echo "  SDK_PACKAGE=x.y.z    Override package name (default: org.sirosfoundation.sdk.sample)"
 	@echo ""
 
 # =============================================================================
@@ -378,6 +392,14 @@ up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to conf
 	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
 	@# Ensure the shared e2e-test-network exists
 	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+ifneq ($(call _truthy,$(TUNNELS)),)
+	@if [ -n "$(DOMAIN)" ]; then \
+		echo "$(RED)Error: TUNNELS=yes cannot be combined with DOMAIN=$(DOMAIN).$(NC)"; \
+		echo "  Use either Cloudflare quick tunnels or a local custom domain, not both."; \
+		exit 1; \
+	fi
+	@$(MAKE) --no-print-directory ensure-tunnels
+endif
 ifneq ($(call _truthy,$(VC)),)
 	@# Pre-flight: ../vc must exist for VC service builds
 	@if [ ! -d "$(VC_PATH:-../vc)" ] && [ ! -d "../vc" ]; then \
@@ -405,6 +427,7 @@ endif
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
 	@echo "  R2PS:        $(_R2PS_LABEL)"
 	@echo "  Domain:      $(_DOMAIN_LABEL)"
+	@echo "  Tunnels:     $(_TUNNELS_LABEL)"
 ifneq ($(GOLDEN),)
 	@echo "  Golden:      $(_GOLDEN_LABEL)"
 endif
@@ -422,6 +445,8 @@ endif
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
 ifneq ($(GOLDEN),)
 	set -a && . ./.env.golden && set +a && \
+		{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; } && \
+		{ [ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; } && \
 	WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
@@ -434,6 +459,7 @@ ifneq ($(call _truthy,$(REBUILD)),)
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 endif
 	@_LOG=$$(mktemp /tmp/compose.XXXXXX); \
+	[ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
 	[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
@@ -449,6 +475,14 @@ endif
 	fi; \
 	rm -f $$_LOG
 endif
+	@if [ "$(call _truthy,$(TUNNELS))" != "" ] && [ -f .env.tunnel ]; then \
+		. ./.env.tunnel; \
+		echo ""; \
+		echo "$(GREEN)Tunnel URLs:$(NC)"; \
+		echo "  Frontend: $$TUNNEL_FRONTEND_URL"; \
+		echo "  Backend:  $$TUNNEL_BACKEND_URL"; \
+		echo "  Engine:   $$TUNNEL_ENGINE_URL"; \
+	fi
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
 ifneq ($(call _truthy,$(VC)),)
@@ -466,6 +500,14 @@ ifneq ($(call _truthy,$(CONFORMANCE)),)
 		echo "$(GREEN)✓ Conformance suite ready at https://$(CONFORMANCE_HOSTNAME):8443/$(NC)" || \
 		echo "$(YELLOW)○ Conformance suite still starting... check: docker logs conformance-suite-server$(NC)"
 endif
+	@if [ "$(call _truthy,$(TUNNELS))" != "" ]; then \
+		echo ""; \
+		echo "$(GREEN)Refreshing Android passkey setup for tunnel usage...$(NC)"; \
+		$(MAKE) --no-print-directory android-setup APP_PACKAGE=$(APP_PACKAGE) 2>/dev/null || true; \
+		echo ""; \
+		echo "$(YELLOW)Tunnel note:$(NC) tunnel processes are host-side and stay running after 'make down'."; \
+		echo "  Use 'make tunnel-stop' when you want to tear them down."; \
+	fi
 	@echo ""
 	@echo "$(GREEN)Environment ready!$(NC)"
 	@echo "  Frontend: $(FRONTEND_URL)"
@@ -474,11 +516,15 @@ endif
 
 down: ## Stop all services
 	@echo "$(YELLOW)Stopping all services...$(NC)"
-	-docker compose $(COMPOSE_FILES) down
+	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
+		docker compose $(COMPOSE_FILES) down; }
 	@echo "$(GREEN)Done.$(NC)"
 
 logs: ## View service logs
-	docker compose $(COMPOSE_FILES) logs -f
+	@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
+		docker compose $(COMPOSE_FILES) logs -f; }
 
 status: ## Check core service health
 	@echo "$(GREEN)Service Status:$(NC)"
@@ -630,8 +676,12 @@ fetch-golden-env:
 
 clean: ## Remove all containers, volumes and build cache
 	@echo "$(YELLOW)Cleaning up...$(NC)"
-	-docker compose $(COMPOSE_FILES) down -v --remove-orphans
-	-docker compose $(COMPOSE_FILES) down -v --remove-orphans 2>/dev/null
+	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
+		docker compose $(COMPOSE_FILES) down -v --remove-orphans; }
+	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
+		docker compose $(COMPOSE_FILES) down -v --remove-orphans 2>/dev/null; }
 	@echo "$(YELLOW)Pruning build cache for project images...$(NC)"
 	-docker builder prune -f --filter label=com.docker.compose.project 2>/dev/null || true
 	@echo "$(GREEN)Done. Run 'make up' to rebuild from scratch.$(NC)"
@@ -693,7 +743,8 @@ r2ps-setup: ## Verify R2PS service health and show status
 # Cloudflare Tunnels (on-demand TLS domains for mobile/external testing)
 # =============================================================================
 
-TUNNEL_COMPOSE := docker-compose.tunnel.yml
+ensure-tunnels: ## Ensure Cloudflare quick tunnels exist for TUNNELS=yes
+	@./scripts/tunnel.sh ensure
 
 tunnel: ## Start Cloudflare quick tunnels (no account needed) and show URLs
 	@./scripts/tunnel.sh start
@@ -705,50 +756,26 @@ tunnel-status: ## Show active tunnel URLs and process status
 	@./scripts/tunnel.sh status
 
 restart-with-tunnels: ## Restart the stack using Cloudflare tunnel URLs
-	@if [ ! -f .env.tunnel ]; then \
-		echo "$(RED)No tunnels running. Start them first: make tunnel$(NC)"; \
-		exit 1; \
-	fi
-	@. ./.env.tunnel && \
-		TUNNEL_RPID=$$(echo "$$TUNNEL_FRONTEND_URL" | sed 's|https://||') && \
-		export TUNNEL_RPID TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL && \
-		{ [ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; } && \
-		echo "$(GREEN)Restarting with tunnel URLs...$(NC)" && \
-		echo "  Frontend: $$TUNNEL_FRONTEND_URL" && \
-		echo "  Backend:  $$TUNNEL_BACKEND_URL" && \
-		echo "  Engine:   $$TUNNEL_ENGINE_URL" && \
-		echo "  RP ID:    $$TUNNEL_RPID" && \
-		[ -n "$$APK_KEY_HASH" ] && echo "  APK hash: $$APK_KEY_HASH" || true && \
-		docker compose $(COMPOSE_FILES) -f $(TUNNEL_COMPOSE) up -d
-	@echo ""
-	@echo "$(GREEN)✓ Stack restarted with Cloudflare tunnel URLs$(NC)"
-	@echo "  Open the frontend URL on any device to test"
-	@echo ""
-	@# Re-run android-setup so the ADB compat flag is refreshed for the new tunnel domain.
-	@# trycloudflare.com subdomains are not in Google's Statement List cache, so Android's
-	@# CredentialManager will reject passkey creation unless DEVELOPMENT_PASSKEY_REGISTRATION
-	@# is enabled on the device — even when the tunnel uses real HTTPS.
-	@$(MAKE) --no-print-directory android-setup 2>/dev/null || true
-	@echo ""
-	@echo "$(YELLOW)Android passkey note:$(NC) If passkey creation still fails with"
-	@echo "  'RP ID cannot be validated', connect your device and run:"
-	@echo "  adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION $(SDK_PACKAGE)"
+	@echo "$(YELLOW)restart-with-tunnels is deprecated.$(NC)"
+	@echo "  Use: make up TUNNELS=yes [your other options]"
+	@$(MAKE) --no-print-directory up TUNNELS=yes
 
 # =============================================================================
 # Android SDK Development
 # =============================================================================
 
 SDK_PATH ?= ../siros-sdk-kotlin
-SDK_PACKAGE ?= org.sirosfoundation.sdk.sample
+APP_PACKAGE ?= org.sirosfoundation.sdk.sample
 
 android-setup: ## Configure local env for Android SDK testing (generates assetlinks.json, configures ADB)
-	@./scripts/setup-android.sh --package $(SDK_PACKAGE)
+	@./scripts/setup-android.sh --package $(APP_PACKAGE)
 
 android-config: ## Generate Android-specific VC config overlay file
 	@./scripts/android-test.sh config
 
-android-up: android-config ## Start Android overlay services without rebuilding/installing APK
+android-up: android-config ## Start Android overlay services (SDK_REBUILD=yes to rebuild Rust crates + SDK first)
 	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+	$(if $(call _truthy,$(SDK_REBUILD)),@./scripts/android-test.sh rebuild)
 	@docker compose -f docker-compose.test.yml \
 		-f docker-compose.vc-services.yml \
 		-f docker-compose.go-trust.yml \
@@ -767,7 +794,7 @@ android-down: ## Stop Android overlay services
 		down
 
 android-full: ## Run full Android test flow (config + build + deploy + register + launch)
-	@./scripts/android-test.sh full
+	@SDK_REBUILD=$(SDK_REBUILD) ./scripts/android-test.sh full
 
 android-restart: ## Restart Android test services and relaunch app
 	@./scripts/android-test.sh restart

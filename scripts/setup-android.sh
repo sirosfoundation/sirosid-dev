@@ -143,14 +143,14 @@ EOF
     info "Generated $WELL_KNOWN_DIR/assetlinks.json"
     info "  Package: $PACKAGE_NAME"
 
-    # Write .env.android so make up / make restart-with-tunnels can inject the
+    # Write .env.android so make up can inject the
     # correct APK key hash into WALLET_SERVER_RP_ORIGINS at runtime.
     cat > "$PROJECT_DIR/.env.android" <<EOF
 APK_KEY_HASH=$APK_KEY_HASH
 ANDROID_PACKAGE=$PACKAGE_NAME
 EOF
     info "Written .env.android (APK key hash: $APK_KEY_HASH)"
-    info "  Run 'make up' or 'make restart-with-tunnels' to apply."
+    info "  Run 'make up' to apply."
 else
     warn "No fingerprint available — skipping assetlinks.json generation."
     warn "Provide one with: $0 --fingerprint 'XX:YY:...:ZZ'"
@@ -162,39 +162,51 @@ fi
 # over HTTPS. Since the dev environment runs over HTTP, we need to bypass
 # this check. The `am compat enable` command tells Android to skip the
 # signature verification for the specified package.
+#
+# Note: These compat flags are not available on Waydroid (Android container).
+# On Waydroid, passkey development requires additional configuration or
+# alternative approaches.
 
 if [[ "$SKIP_ADB" == "true" ]]; then
     info "Skipping ADB configuration (--skip-adb)."
 elif [[ -z "$ADB" ]]; then
     warn "adb not found. Skipping ADB configuration."
-    warn "To configure manually when a device is connected:"
+    warn "When a device is connected, you may need to run:"
     warn "  adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION $PACKAGE_NAME"
 else
     # Check if a device is connected
     DEVICES=$("$ADB" devices 2>/dev/null | grep -c 'device$' || true)
     if [[ "$DEVICES" -eq 0 ]]; then
         warn "No Android device/emulator connected."
-        warn "Connect a device and run these commands manually:"
-        warn "  $ADB shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION $PACKAGE_NAME"
+        warn "Skip this step for now or connect a device."
     else
+        # Detect Waydroid or other container environments by attempting the compat flag
+        # and checking if it's not available
         info "Configuring ADB for passkey development..."
-
-        # Allow unsigned asset links (bypasses HTTPS requirement)
-        if "$ADB" shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION "$PACKAGE_NAME" 2>/dev/null; then
-            info "  ✓ Enabled DEVELOPMENT_PASSKEY_REGISTRATION for $PACKAGE_NAME"
+        
+        # Try to enable DEVELOPMENT_PASSKEY_REGISTRATION
+        ADB_OUTPUT=$("$ADB" shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION "$PACKAGE_NAME" 2>&1 || true)
+        
+        if echo "$ADB_OUTPUT" | grep -qi "Unknown or invalid change"; then
+            # Compat flags not supported (typical on Waydroid)
+            info "Note: ADB compat flags not supported on this device (typical on Waydroid)"
+            info "If passkey registration fails:"
+            info "  - This is expected on Waydroid — you may need to test with a real device"
+            info "  - Or use alternative credential verification methods"
+        elif echo "$ADB_OUTPUT" | grep -qi "error\|failed"; then
+            # Some other error occurred
+            warn "Unable to configure ADB compat flags."
+            warn "You may need to configure manually when this issue is resolved."
         else
-            warn "  ○ DEVELOPMENT_PASSKEY_REGISTRATION not available on this device"
-            # Fallback: try older compat flags
-            "$ADB" shell am compat enable ALLOW_UNSIGNED_ASSET_LINKS "$PACKAGE_NAME" 2>/dev/null && \
-                info "  ✓ Enabled ALLOW_UNSIGNED_ASSET_LINKS for $PACKAGE_NAME" || \
-                warn "  ○ ALLOW_UNSIGNED_ASSET_LINKS not available either"
+            info "  ✓ Enabled DEVELOPMENT_PASSKEY_REGISTRATION for $PACKAGE_NAME"
         fi
+
 
         info ""
         info "Done. If passkey registration still fails, ensure:"
         info "  1. The dev stack is running (make up) and assetlinks.json is served"
-        info "  2. The app can reach localhost:3000 (check network/proxy)"
-        info "  3. Google Play Services is up to date on the device"
+        info "  2. The app can reach the wallet backend (check network config)"
+        info "  3. On Waydroid: manually verify app link delegation if needed"
     fi
 fi
 

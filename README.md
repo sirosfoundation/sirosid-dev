@@ -55,56 +55,30 @@ make help          # Full option reference
 The `install.sh` script clones all of these automatically. Alternatively,
 run `make setup` from an existing checkout to verify prerequisites.
 
-## Stack Options
+## Configuration
 
-A single `make up` command drives all configurations via parameters:
-
-| Option | Values | Default | Description |
-|--------|--------|---------|-------------|
-| `PDP=` | `allow`, `whitelist`, `deny`, `mock` | `allow` | Trust PDP mode |
-| `VC=` | `1`, `yes`, `on`, `up` | off | Enable VC services (issuer, verifier, apigw, registry) |
-| `TRANSPORT=` | `wmp`, `http` | websocket | Transport protocol |
-| `CONFORMANCE=` | `1`, `yes`, `on`, `up` | off | Enable OpenID Conformance Suite |
-| `R2PS=` | `1`, `yes`, `on`, `up` | off | Enable R2PS service with SoftHSM2 (WSCD/WSCA) |
-| `DOMAIN=` | hostname/FQDN | `localhost` | Custom domain for mobile device access |
-| `GOLDEN=` | `yes`, `<release-name>` | off | Use pre-built images from a golden release |
-
-### Examples
+A single `make up` command drives all configurations via parameters.
+For the full list of options, targets, and usage patterns, run:
 
 ```bash
-# Default: frontend + backend + go-trust allow-all
-make up
-
-# Add production-like VC issuer/verifier
-make up VC=yes
-
-# VC services with whitelist trust (only configured issuers trusted)
-make up PDP=whitelist VC=1
-
-# Negative testing: deny all trust evaluations
-make up PDP=deny VC=1
-
-# Legacy mock PDP (no go-trust)
-make up PDP=mock
-
-# WMP transport
-make up TRANSPORT=wmp
-
-# Full conformance test stack (implies VC + allow + http transport)
-make up CONFORMANCE=yes
-
-# Use pre-built images from the default golden release (no local source needed)
-make up GOLDEN=yes
-
-# Golden release with VC services
-make up GOLDEN=yes VC=yes
-
-# Use a specific golden release
-make up GOLDEN=beta_r2 VC=1
-
-# Custom domain for mobile device access on the local network
-make up DOMAIN=myhost.local VC=yes
+make help
 ```
+
+This shows all available parameters (PDP, VC, TRANSPORT, CONFORMANCE, R2PS, DOMAIN, GOLDEN, TUNNELS, WALLET_NAME, APP_PACKAGE),
+interaction rules, and complete examples.
+
+## Quickstart Examples
+
+```bash
+make up                    # Default stack
+make up VC=yes             # Add VC services
+make up TRANSPORT=wmp      # Use WMP transport
+make up CONFORMANCE=yes    # OpenID conformance suite
+make up DOMAIN=<host>.local VC=yes    # Custom domain for mobile
+make up GOLDEN=yes         # Pre-built images
+```
+
+For more examples and detailed explanations, see `make help`.
 
 ### Custom Domain / Mobile Testing
 
@@ -128,30 +102,25 @@ use Cloudflare quick tunnels. No Cloudflare account is needed — temporary
 `*.trycloudflare.com` domains are assigned automatically.
 
 ```bash
-# 1. Start the stack normally
-make up VC=yes
+# 1. Start the stack with tunnel support
+make up TUNNELS=yes VC=yes
 
-# 2. Create tunnels (assigns random *.trycloudflare.com URLs)
-make tunnel
-
-# 3. Restart the stack with tunnel URLs injected
-make restart-with-tunnels
-
-# 4. Open the frontend tunnel URL on any device
-#    (shown in the output of 'make tunnel')
+# 2. Open the frontend tunnel URL on any device
+#    (shown in the output of 'make up')
 
 # Check tunnel status
 make tunnel-status
 
-# Stop tunnels and revert to localhost
+# Stop tunnels and remove the public URLs
 make tunnel-stop
 make up VC=yes    # restart with localhost
 ```
 
-**Android passkeys + tunnels:** `make restart-with-tunnels` automatically
-re-runs `make android-setup` so the `DEVELOPMENT_PASSKEY_REGISTRATION` ADB
-compat flag stays set for the new tunnel domain. See [Android SDK Testing](#android-sdk-testing)
-for the full workflow.
+**Android passkeys + tunnels:** `make up TUNNELS=yes` automatically creates or
+reuses `.env.tunnel`, injects the tunnel URLs into the stack, and re-runs
+`make android-setup` after startup so Android testing remains aligned with the
+current environment. See [Android SDK Testing](#android-sdk-testing) for the
+full workflow.
 
 **Prerequisites:** `cloudflared` must be installed:
 ```bash
@@ -163,18 +132,23 @@ curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cl
 brew install cloudflared
 ```
 
-**How it works:** `make tunnel` starts three `cloudflared` quick tunnel
-processes (frontend:3000, backend:8080, engine:8082). Each gets a unique
-`https://<random>.trycloudflare.com` URL with a valid TLS certificate.
-`make restart-with-tunnels` reconfigures the frontend and backend containers
-to use these URLs, injects the correct WebAuthn RP ID (hostname only — no
-`https://` scheme), and updates `WALLET_SERVER_RP_ORIGINS` with the current
-APK key hash from `.env.android`.
+**How it works:** `make up TUNNELS=yes` ensures three `cloudflared` quick tunnel
+processes exist (frontend:3000, backend:8080, engine:8082). Each gets a unique
+`https://<random>.trycloudflare.com` URL with a valid TLS certificate. The
+tunnel overlay reconfigures the frontend and backend containers to use these
+URLs, injects the correct WebAuthn RP ID (hostname only — no `https://`
+scheme), and updates `WALLET_SERVER_RP_ORIGINS` with the current APK key hash
+from `.env.android`.
+
+**Lifecycle note:** the tunnels are host processes, not Docker containers.
+`make down` stops the stack but leaves the tunnels running so the URLs can be
+reused. Use `make tunnel-stop` when you want to tear them down.
 
 ## Android SDK Testing
 
-The native Android SDK sample app (`siros-sdk-kotlin`) can be tested against
-the local dev environment using a physical Android device or emulator.
+The Android SDK sample app (`siros-sdk-kotlin`) or native wrapper apps (TypeScript/JavaScript wrappers)
+can be tested against the local dev environment using a physical Android device or emulator.
+`APP_PACKAGE` specifies the app's package name for both SDK-based and wrapper implementations.
 
 ### One-Time Setup
 
@@ -182,8 +156,11 @@ the local dev environment using a physical Android device or emulator.
 # Connect your Android device via USB (or start an emulator), then:
 make android-setup
 
-# Custom package name (e.g. your own app):
-make android-setup SDK_PACKAGE=com.example.myapp
+# For SDK sample app (siros-sdk-kotlin):
+make android-setup APP_PACKAGE=org.sirosfoundation.sdk.sample
+
+# For native wrapper apps:
+make android-setup APP_PACKAGE=com.example.mywalletapp
 ```
 
 This does four things automatically:
@@ -194,7 +171,7 @@ This does four things automatically:
 4. Enables `DEVELOPMENT_PASSKEY_REGISTRATION` on the connected device via ADB
    (required because `trycloudflare.com` subdomains are not in Google's DAL cache)
 
-After `make android-setup`, both `make up` and `make restart-with-tunnels`
+After `make android-setup`, both `make up` and `make up TUNNELS=yes`
 automatically source `.env.android` so `WALLET_SERVER_RP_ORIGINS` always
 includes the correct APK key hash for your keystore.
 
@@ -222,22 +199,15 @@ real TLS without any account:
 # 1. Generate assetlinks.json and configure ADB
 make android-setup
 
-# 2. Start the stack
-make up [VC=yes]
+# 2. Start the stack with public TLS URLs
+make up TUNNELS=yes [VC=yes]
 
-# 3. Start Cloudflare tunnels
-make tunnel
-
-# 4. Restart stack with tunnel URLs + re-run ADB setup automatically
-make restart-with-tunnels
-
-# 5. Point the sample app at the backend tunnel URL shown in step 3/4 output
+# 3. Point the sample app at the backend tunnel URL shown in the output
 ```
 
-`make restart-with-tunnels` re-runs `make android-setup` automatically. This is
-necessary because each new tunnel gets a different hostname — the ADB compat flag
-is keyed to the package name but the assetlinks.json must list the correct origin,
-and the `DEVELOPMENT_PASSKEY_REGISTRATION` flag must be active on the device.
+`make up TUNNELS=yes` re-runs `make android-setup` automatically. This keeps
+the generated Android config current and re-applies any device-side passkey
+setup that may be needed for physical-device testing.
 
 ### Passkey Troubleshooting
 
@@ -246,7 +216,7 @@ and the `DEVELOPMENT_PASSKEY_REGISTRATION` flag must be active on the device.
 | "RP ID cannot be validated" | `DEVELOPMENT_PASSKEY_REGISTRATION` not set | Connect device and run `make android-setup` |
 | "Origin not allowed" | APK key hash mismatch | Delete `.env.android` and re-run `make android-setup` with the correct keystore |
 | Passkey creation works locally but fails with tunnels | Wrong RP ID (scheme included) | Fixed in current code — ensure you are on latest `main` |
-| Sample app can't reach backend | Tunnel URL not updated in app | Use the backend tunnel URL from `make tunnel-status` output |
+| Sample app can't reach backend | Tunnel URL not updated in app | Use the backend tunnel URL from the `make up TUNNELS=yes` or `make tunnel-status` output |
 
 **Manual ADB fallback** (if `make android-setup` can't set the flag automatically):
 ```bash
@@ -257,7 +227,7 @@ adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.sirosfoundation.
 
 | File | Description |
 |------|-------------|
-| `.env.android` | Generated by `make android-setup`; contains `APK_KEY_HASH` and `ANDROID_PACKAGE`; sourced by `make up` / `make restart-with-tunnels` |
+| `.env.android` | Generated by `make android-setup`; contains `APK_KEY_HASH` and `ANDROID_PACKAGE`; sourced by `make up` |
 | `.well-known/assetlinks.json` | Served by wallet-frontend nginx; required for Android passkey RP ID validation |
 | `scripts/setup-android.sh` | Script behind `make android-setup` |
 | `docker-compose.tunnel.yml` | Injects `TUNNEL_FRONTEND_URL`, `TUNNEL_RPID` (hostname only), `APK_KEY_HASH` |

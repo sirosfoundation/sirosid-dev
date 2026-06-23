@@ -24,7 +24,7 @@ The single entry point is the `Makefile`; all configuration flows through
 - `.env.tunnel` — produced by `make tunnel` / `scripts/tunnel.sh`
   Contains: `TUNNEL_FRONTEND_URL`, `TUNNEL_BACKEND_URL`, `TUNNEL_ENGINE_URL`
 - `.env.golden` — produced by `make fetch-golden-env`
-- Both are sourced by `make up` and `make restart-with-tunnels` before
+- Generated env files are sourced by `make up` before
   invoking `docker compose`.
 
 ### WebAuthn / passkeys
@@ -37,8 +37,8 @@ The single entry point is the `Makefile`; all configuration flows through
   `.env.android`. Developers with a different keystore must run
   `make android-setup` to regenerate `.env.android`.
 - `DEVELOPMENT_PASSKEY_REGISTRATION` ADB compat flag must be set on the
-  Android device after every tunnel restart — `make restart-with-tunnels`
-  calls `make android-setup` automatically for this.
+  Android device for some physical-device passkey flows. `make up TUNNELS=yes`
+  calls `make android-setup` automatically after startup.
 
 ### macOS compatibility
 - `grep -P` (Perl regex) does not exist on macOS BSD grep — use `grep -E`
@@ -61,14 +61,13 @@ Full workflow for developers testing `siros-sdk-kotlin` sample app:
 
 ```bash
 # 1. One-time: generate .env.android and configure ADB
-make android-setup [SDK_PACKAGE=com.example.app]
+make android-setup [APP_PACKAGE=com.example.app]
 
 # 2. Local network testing
 make up [VC=yes]                # backend URL: http://<host>:8090
 
 # 3. Remote / HTTPS testing (required for passkeys on physical devices)
-make tunnel
-make restart-with-tunnels       # auto re-runs android-setup
+make up TUNNELS=yes             # auto creates/reuses tunnels and re-runs android-setup
 ```
 
 Key script: `scripts/setup-android.sh`
@@ -88,9 +87,9 @@ PDP=whitelist → + go-trust.yml + go-trust-whitelist.yml
 PDP=deny     → + go-trust.yml + go-trust-deny.yml
 PDP=mock     → nothing extra (mock-trust-pdp is in test.yml)
 VC=yes       → + docker-compose.vc-services.yml
-CONFORMANCE  → + vc-services + vc-go-trust + http-transport + conformance
+CONFORMANCE  → + vc-services + vc-go-trust + conformance (no HTTP transport - it's deprecated)
 TRANSPORT=wmp → + wmp-transport.yml
-TRANSPORT=http → + http-transport.yml
+TRANSPORT=http → + http-transport.yml (deprecated)
 R2PS=yes     → + r2ps.yml
 DOMAIN=<x>   → + domain.yml
 GOLDEN=yes   → + golden.yml [+ golden-go-trust.yml]

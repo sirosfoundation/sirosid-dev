@@ -86,9 +86,9 @@ make up VC=yes
 # Enable R2PS remote signing (with SoftHSM2)
 make up R2PS=yes
 
-# Enable transport layer experiments
-make up TRANSPORT=http    # HTTP transport (default: WebSocket)
-make up TRANSPORT=wmp     # WMP transport
+# Transport layer experiments (WebSocket is default)
+make up TRANSPORT=wmp     # WMP transport (JSON-RPC+SSE)
+make up TRANSPORT=http    # HTTP transport (deprecated)
 
 # Use golden releases (pre-built images from specific milestone)
 make up GOLDEN=yes
@@ -98,14 +98,14 @@ make up GOLDEN=yes
 make up DOMAIN=myhost.local
 
 # Custom Android SDK package name (default: org.sirosfoundation.sdk.sample)
-make up ANDROID_PACKAGE=com.example.customapp
+make android-setup APP_PACKAGE=com.example.customapp
 
 # Cloudflare quick tunnels (on-demand TLS for mobile testing)
-make tunnel                    # Start tunnels (frontend, backend, engine)
-make restart-with-tunnels      # Reconfigure stack with tunnel URLs
+make up TUNNELS=yes            # Auto-create/reuse tunnels and start with tunnel URLs
 make tunnel-status             # Show active tunnel URLs
 make tunnel-stop               # Stop and cleanup tunnels
 # Tunnels create temporary https://*.trycloudflare.com domains
+# TUNNELS=yes and DOMAIN=... are mutually exclusive
 
 # Combine multiple options
 make up CONFORMANCE=yes VC=yes DOMAIN=test.local
@@ -150,17 +150,15 @@ make up DOMAIN=myhost.local VC=yes
 
 **Use Case**: Testing with physical mobile device on same network
 
-### Custom Android SDK Package Name (ANDROID_PACKAGE=)
+### Custom Android App Package Name (APP_PACKAGE=)
 
 Deploy sample app with custom package name:
 
 ```bash
-# Build and deploy with custom package
-export ANDROID_PACKAGE=com.example.mywalletapp
-make android-setup
+# Generate Android setup with a custom package
+make android-setup APP_PACKAGE=com.example.mywalletapp
 
 # This updates:
-# - APK package name in manifests
 # - assetlinks.json with new package
 # - .env.android with custom package name
 
@@ -171,7 +169,7 @@ cat .well-known/assetlinks.json
 
 **Use Case**: Testing multiple wallet app variants, custom branding
 
-### Cloudflare Quick Tunnels (make tunnel)
+### Cloudflare Quick Tunnels (TUNNELS=yes)
 
 Create temporary HTTPS domains for testing without local network access:
 
@@ -180,15 +178,12 @@ Create temporary HTTPS domains for testing without local network access:
 command -v cloudflared >/dev/null || \
   (brew install cloudflare/cloudflare/cloudflared || apt-get install cloudflared)
 
-# Start tunnels
-make tunnel
-# Output shows:
+# Start stack with tunnels
+make up TUNNELS=yes
+# Output shows tunnel URLs such as:
 # Frontend: https://xxx-yyy-zzz.trycloudflare.com
 # Backend:  https://aaa-bbb-ccc.trycloudflare.com  
 # Engine:   https://ddd-eee-fff.trycloudflare.com
-
-# Reconfigure stack to use tunnel URLs
-make restart-with-tunnels
 
 # Check tunnel status
 make tunnel-status
@@ -207,6 +202,7 @@ make tunnel-stop
 - docker-compose.tunnel.yml overlay injects them
 - No Cloudflare account required (quick tunnel mode)
 - URLs valid for ~24 hours
+- Tunnel processes continue running after `make down`; use `make tunnel-stop` to remove them
 
 ### WebAuthn RP ID & FIDO2 Configuration
 
@@ -370,7 +366,6 @@ docker exec wallet-backend-e2e-test nc -zv postgres 5432
 - `make tunnel` - Start Cloudflare quick tunnels for mobile testing
 - `make tunnel-status` - Show active tunnel URLs  
 - `make tunnel-stop` - Stop tunnels and cleanup
-- `make restart-with-tunnels` - Restart stack using tunnel URLs
 
 ## Architecture Decisions
 

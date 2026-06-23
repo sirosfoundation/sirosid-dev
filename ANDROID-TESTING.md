@@ -12,8 +12,8 @@ cd sirosid-dev
 # Step 1: Start full environment
 make up VC=yes CONFORMANCE=yes
 
-# Step 2 (Optional): Set custom app package name
-# export ANDROID_PACKAGE=com.example.myapp
+# Step 2 (Optional): Use a custom app package name
+# make android-setup APP_PACKAGE=com.example.myapp
 
 # Step 3: Generate Android configuration
 make android-setup
@@ -55,20 +55,16 @@ make android-launch
 By default, the sample app uses `org.sirosfoundation.sdk.sample`. To test with different package names:
 
 ```bash
-# Before running android-setup, export custom package name
-export ANDROID_PACKAGE=com.example.customwallet
-
-# Then run setup (generates assetlinks.json with correct package)
-make android-setup
+# Run setup with a custom package name
+make android-setup APP_PACKAGE=com.example.customwallet
 
 # Verify in assetlinks.json
 cat .well-known/assetlinks.json | jq '.[] | .target.package_name'
 # Output: "com.example.customwallet"
 
-# Build sample app (it reads ANDROID_PACKAGE from env)
+# Build sample app with the matching package name
 cd ../siros-sdk-kotlin
 ./gradlew build
-# Or modify BuildConfig.PACKAGE_NAME manually
 
 # Deploy and test
 adb install -r app/build/outputs/apk/debug/app-debug.apk

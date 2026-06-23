@@ -19,6 +19,7 @@ DEVENV_DIR="$(dirname "$SCRIPT_DIR")"
 WORKSPACE="$(dirname "$DEVENV_DIR")"
 
 SDK_DIR="${WORKSPACE}/siros-sdk-kotlin"
+WSCD_DIR="${WORKSPACE}/siros-wscd-manager"
 APK="${SDK_DIR}/sample-app/build/outputs/apk/debug/sample-app-debug.apk"
 PACKAGE="org.sirosfoundation.sdk.sample"
 ACTIVITY="${PACKAGE}/.MainActivity"
@@ -84,6 +85,35 @@ do_build() {
         ok "Build successful"
     else
         fail "Build failed"
+        exit 1
+    fi
+}
+
+do_rebuild() {
+    # Full clean rebuild: Rust crates → Android AAR → mavenLocal → Gradle clean build
+    if [ ! -d "$WSCD_DIR" ]; then
+        fail "siros-wscd-manager not found at $WSCD_DIR"
+        exit 1
+    fi
+
+    info "Rebuilding Rust crates (cargo clean + aar + publish-local)..."
+    cd "$WSCD_DIR"
+    cargo clean
+    if ! make publish-local; then
+        fail "siros-wscd-manager build failed"
+        exit 1
+    fi
+    ok "siros-wscd-manager AAR published to mavenLocal"
+
+    info "Cleaning Gradle build cache..."
+    cd "$SDK_DIR"
+    ./gradlew clean 2>&1 | tail -3
+
+    info "Building sample-app APK (clean)..."
+    if ./gradlew :sample-app:assembleDebug 2>&1 | tail -3; then
+        ok "Full rebuild successful"
+    else
+        fail "Gradle build failed"
         exit 1
     fi
 }
@@ -177,6 +207,9 @@ case "$CMD" in
     build)
         do_build
         ;;
+    rebuild)
+        do_rebuild
+        ;;
     deploy)
         do_deploy
         do_launch
@@ -209,7 +242,11 @@ case "$CMD" in
         ;;
     full|"")
         do_generate_config
-        do_build
+        if [[ "${SDK_REBUILD:-}" == "yes" ]]; then
+            do_rebuild
+        else
+            do_build
+        fi
         do_deploy
         do_register_issuer
         do_launch
@@ -217,7 +254,7 @@ case "$CMD" in
         do_logs_snapshot
         ;;
     *)
-        echo "Usage: $0 {full|config|build|deploy|launch|register|restart|logs|snapshot}"
+        echo "Usage: $0 {full|config|build|rebuild|deploy|launch|register|restart|logs|snapshot}"
         exit 1
         ;;
 esac
