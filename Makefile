@@ -19,7 +19,7 @@ WALLET_NAME ?= SIROS ID (dev)
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
-	install conformance-install mcp
+	install
 
 # =============================================================================
 # Configuration
@@ -678,19 +678,9 @@ setup: ## Clone sibling repos needed for local development
 # Dependency Installation
 # =============================================================================
 
-conformance-install: ## Install conformance-runner npm dependencies
-	@echo "$(GREEN)Installing conformance-runner dependencies...$(NC)"
-	cd conformance-runner && npm ci
-	@echo "$(GREEN)✓ conformance-runner dependencies installed$(NC)"
-
-mcp: conformance-install ## Start the MCP + conformance server (unified AI control plane for the dev environment)
-	@echo "$(GREEN)Starting MCP server on port 3001...$(NC)"
-	@echo "$(YELLOW)MCP endpoint: http://localhost:3001/mcp$(NC)"
-	cd conformance-runner && node server.mjs
-
-install: conformance-install ## Install all project dependencies
-	@echo ""
-	@echo "$(GREEN)All dependencies installed.$(NC)"
+install: ## Install all project dependencies
+	@echo "$(GREEN)No npm dependencies required.$(NC)"
+	@echo "$(GREEN)run-android-conformance.mjs uses only built-in Node.js modules.$(NC)"
 
 # =============================================================================
 # R2PS Service

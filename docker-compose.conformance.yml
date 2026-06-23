@@ -107,6 +107,7 @@ services:
       - ISSUER_CONFORMANCE_URL=https://vc-proxy:8443
       - VERIFIER_CONFORMANCE_URL=https://vc-proxy:8444
       - WALLET_FRONTEND_URL=http://wallet-frontend:3000
+      - WALLET_FRONTEND_URL=http://wallet-frontend:80
       - ADMIN_URL=http://amity:8080
       - ADMIN_TOKEN=${ADMIN_TOKEN:-}
       - NODE_TLS_REJECT_UNAUTHORIZED=0

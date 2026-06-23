@@ -50,10 +50,22 @@ const planArg = args.includes('--plan') ? args[args.indexOf('--plan') + 1] : 'vc
 // =============================================================================
 
 async function shell(...cmdArgs) {
-  const { stdout } = await execFileAsync('sudo', ['waydroid', 'shell', '--', ...cmdArgs], {
-    timeout: EXEC_TIMEOUT,
-  });
-  return (stdout || '').trim();
+  // Prefer direct waydroid invocation on host; fallback to sudo when needed.
+  try {
+    const { stdout } = await execFileAsync('waydroid', ['shell', '--', ...cmdArgs], {
+      timeout: EXEC_TIMEOUT,
+    });
+    return (stdout || '').trim();
+  } catch (err) {
+    try {
+      const { stdout } = await execFileAsync('sudo', ['-n', 'waydroid', 'shell', '--', ...cmdArgs], {
+        timeout: EXEC_TIMEOUT,
+      });
+      return (stdout || '').trim();
+    } catch {
+      throw err;
+    }
+  }
 }
 
 async function clearLogcat() {
