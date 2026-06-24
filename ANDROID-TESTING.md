@@ -138,24 +138,97 @@ adb devices     # Lists connected Waydroid instance
 - May be slower than native
 - Requires adequate RAM
 
-### Option 2: Physical Device / Local Emulator
+### Option 2: Physical Device via USB (Recommended for hardware testing)
 
 ```bash
-# Connect via USB or run local Android emulator
-adb devices    # List connected devices
+# Connect device via USB, ensure USB debugging is enabled and authorized
+adb devices    # Verify device appears
 
-# Forward network traffic if not on same network
-adb forward tcp:8080 tcp:8080  # Backend
-adb forward tcp:3000 tcp:3000  # Frontend
+# Step 1: Start full environment
+make up VC=yes CONFORMANCE=yes
+
+# Step 2: Set up USB device (port forwarding + assetlinks + config)
+make usb-android-setup
+
+# Step 3: Start USB Android overlay
+make usb-android-up
+
+# Step 4: Install and launch sample app
+adb install -r ../siros-sdk-kotlin/sample-app/build/outputs/apk/debug/sample-app-debug.apk
+make usb-android-launch
+```
+
+**How it works**:
+- Uses `adb reverse` to forward ports from the device's localhost to the host machine
+- Device accesses all services (backend, frontend, OIDC, etc.) via `localhost:PORT`
+- No special network gateway needed — works over USB regardless of Wi-Fi/network setup
+
+**Port forwarding** (automatic via `make usb-android-setup`):
+```bash
+# These ports are forwarded (device localhost → host localhost):
+# 3000  - wallet-frontend
+# 8080  - wallet-backend
+# 8081  - admin API
+# 8082  - wallet-engine
+# 9000  - VC issuer
+# 9001  - VC verifier
+# 9003  - VC API gateway
+# 9004  - VC registry
+# 9005  - mini-oidc
+# 9011  - mock verifier
+# 9081  - mock PDP
+# 9095  - go-trust allow
+```
+
+**Multi-device support** (when multiple devices connected):
+```bash
+# List devices
+adb devices
+# List of devices attached
+# ABC123DEF456     device
+# XYZ789GHI012     device
+
+# Target specific device
+ADB_SERIAL=ABC123DEF456 make usb-android-setup
+ADB_SERIAL=ABC123DEF456 make usb-android-launch
 ```
 
 **Advantages**:
-- Realistic performance testing
-- Hardware capabilities available
+- Real hardware capabilities (NFC, biometrics, secure element)
+- Accurate performance characteristics
+- Test FIDO2 plugin with actual YubiKey via NFC/USB
+- Works without Wi-Fi — USB-only connectivity
 
 **Limitations**:
-- Requires physical device or emulator setup
-- Network configuration may be needed
+- Requires physical device
+- Port forwarding must be re-established if ADB disconnects
+
+### Running Conformance Tests on USB Device
+
+```bash
+# Full automated conformance run
+node run-android-usb-conformance.mjs --plan vci
+
+# With specific device
+node run-android-usb-conformance.mjs --plan all --serial ABC123DEF456
+
+# Check device status
+make usb-android-status
+```
+
+### Waydroid ↔ USB Quick Reference
+
+| Task | Waydroid | USB Device |
+|------|----------|------------|
+| Start overlay | `make android-up` | `make usb-android-up` |
+| Stop overlay | `make android-down` | `make usb-android-down` |
+| Setup | `make android-setup` | `make usb-android-setup` |
+| Launch app | `make android-launch` | `make usb-android-launch` |
+| View logs | `make android-logs` | `make usb-android-logs` |
+| Full flow | `make android-full` | `make usb-android-full` |
+| Conformance | `run-android-conformance.mjs` | `run-android-usb-conformance.mjs` |
+| Device shell | `waydroid shell` | `adb shell` |
+| Host address | `192.168.240.1` | `localhost` (via adb reverse) |
 
 ## WSCD Plugins Configuration
 
@@ -265,6 +338,133 @@ val signature = plugin.rawSign(...)     // Perform actual signing
    - Marks test module PASSED or FAILED
 ```
 
+## WSCA Lifecycle Test Automation
+
+### Architecture
+
+The WSCA lifecycle test automation uses ADB intents to drive real WSCA/WSCD
+operations on the sample app. This is **not** a mock or backend bypass — all
+actions dispatch to the real ViewModel methods, using the same code path as
+the UI buttons.
+
+```
+┌─────────────────┐    adb intent    ┌────────────────────────┐
+│  sirosid-tests  │ ──────────────► │  Sample App (debug)     │
+│  Playwright +   │                  │  MainActivity           │
+│  wsca-automation│                  │   └─ dispatchWscaTest() │
+│                 │                  │       └─ ViewModel.*()  │
+│                 │ ◄────────────── │         └─ logcat JSON   │
+│  (polls logcat) │  WSCA_TEST_RESULT│                          │
+└─────────────────┘                  └────────────────────────┘
+```
+
+**Key design decisions:**
+- Intent action: `org.sirosfoundation.sdk.sample.WSCA_TEST`
+- Only available in **debug builds** (via `src/debug/AndroidManifest.xml`)
+- Results as structured JSON on logcat tag `WSCA_TEST_RESULT`
+- `ensureAuthenticatedForTesting()` auto-handles passkey registration/login
+
+### Available Actions
+
+| Action | Description | Extra Params |
+|--------|-------------|--------------|
+| `enroll` | Register + activate lifecycle | — |
+| `rotate` | Rotate lifecycle keys | — |
+| `destroy` | Destroy lifecycle context | `mode`: local, revoke, strict |
+| `status` | Query lifecycle state + key inventory | — |
+| `config` | Configure WSCA plugin settings | `r2ps_enabled`, `r2ps_url` |
+| `refresh` | Refresh WSCD info display | — |
+
+### Running Tests
+
+From the `sirosid-tests` directory:
+
+```bash
+# Run all WSCA lifecycle tests (softkey plugin)
+make test-wsca-softkey
+
+# Run with R2PS plugin (requires running R2PS service)
+make test-wsca-r2ps R2PS_URL=http://192.168.240.1:9443
+
+# Run both plugins
+make test-wsca
+
+# Or directly with playwright
+npx playwright test specs/conformance/wsca-lifecycle-android.spec.ts
+```
+
+### Physical Device Setup
+
+```bash
+# 1. Connect device via USB
+adb devices  # Verify device appears
+
+# 2. Start environment with R2PS support
+cd sirosid-dev
+make up VC=yes R2PS=yes
+make usb-android-setup
+
+# 3. Build and install debug APK
+cd ../siros-sdk-kotlin
+./gradlew :sample-app:assembleDebug
+adb install -r sample-app/build/outputs/apk/debug/sample-app-debug.apk
+
+# 4. Run WSCA tests targeting the physical device
+cd ../sirosid-tests
+ANDROID_DEVICE_SERIAL=<serial> make test-wsca-softkey
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ANDROID_WALLET_PACKAGE` | `org.sirosfoundation.sdk.sample` | App package name |
+| `ANDROID_WALLET_ACTIVITY` | `.MainActivity` | Activity class |
+| `ADB_PATH` | `adb` | Path to adb binary |
+| `ANDROID_DEVICE_SERIAL` | (auto) | Target specific device |
+| `R2PS_URL` | — | R2PS server URL (enables R2PS tests) |
+
+### Manual ADB Testing
+
+You can also drive WSCA actions manually for debugging:
+
+```bash
+# Enroll
+adb shell am start -n org.sirosfoundation.sdk.sample/.MainActivity \
+  -a org.sirosfoundation.sdk.sample.WSCA_TEST \
+  --es wsca_action enroll
+
+# Check result
+adb logcat -d -s WSCA_TEST_RESULT:*
+
+# Status
+adb shell am start -n org.sirosfoundation.sdk.sample/.MainActivity \
+  -a org.sirosfoundation.sdk.sample.WSCA_TEST \
+  --es wsca_action status
+
+# Destroy with revoke
+adb shell am start -n org.sirosfoundation.sdk.sample/.MainActivity \
+  -a org.sirosfoundation.sdk.sample.WSCA_TEST \
+  --es wsca_action destroy --es mode revoke
+```
+
+### Test Coverage
+
+The conformance spec tests the following lifecycle flows per plugin:
+
+1. **Configure** → set plugin (softkey/r2ps)
+2. **Enroll** → verify Active state
+3. **Status** → verify keys present
+4. **Rotate** → verify still Active
+5. **Status** → verify keys after rotation
+6. **Destroy (local)** → verify Destroyed state
+7. **Re-enroll** → verify recovery works
+8. **Destroy (revoke)** → verify with server-side revocation
+
+Plus an independent **Full Lifecycle Cycle** test: enroll → rotate × 2 → destroy.
+
+---
+
 ## Debugging Android Tests
 
 ### Check App Logs
@@ -278,6 +478,9 @@ adb logcat > android-test.log &
 
 # Specific tag filtering
 adb logcat | grep "siros-wscd-manager"
+
+# WSCA test results specifically
+adb logcat -s WSCA_TEST_RESULT:*
 ```
 
 ### Verify Certificate Installation
@@ -484,6 +687,7 @@ docker exec -it wallet-db psql -U wallet -c "SELECT * FROM wallet_instance;"
 
 ---
 
-**Last Updated**: 2026-06-23  
-**Sample App**: siros-sdk-kotlin, branch fix/private-data-issues-27-31  
-**WSCD Manager**: 0.1.0 with all plugins (softkey, r2ps, fido2)
+**Last Updated**: 2026-07-08  
+**Sample App**: siros-sdk-kotlin, branch feat/onboarding-provider (PR #34)  
+**WSCD Manager**: 0.1.0 with all plugins (softkey, r2ps, fido2)  
+**Test Automation**: sirosid-tests, branch feat/wsca-lifecycle-tests (PR #5)

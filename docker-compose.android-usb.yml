@@ -1,0 +1,35 @@
+# Docker Compose overlay for Android development via USB-connected real device.
+#
+# Unlike the Waydroid overlay (docker-compose.android.yml), a USB-connected
+# device cannot directly reach the host's Docker network. Instead, we use
+# `adb reverse` to forward ports from the device to the host.
+#
+# Usage:
+#   docker compose -f docker-compose.test.yml \
+#     -f docker-compose.vc-services.yml \
+#     -f docker-compose.go-trust.yml \
+#     -f docker-compose.go-trust-allow.yml \
+#     -f docker-compose.android-usb.yml \
+#     up -d
+#
+# Or via Make:
+#   make usb-android-up
+#
+# Prerequisites:
+#   - Physical Android device connected via USB with USB debugging enabled
+#   - ADB authorized on the device
+#   - Run `make usb-android-setup` first to set up port forwarding + config
+#
+# This overlay:
+#   - Mounts the Android-patched vc-config for vc-apigw
+#     (OIDC URLs use localhost since `adb reverse` maps device's localhost → host)
+#   - Sets mini-oidc ISSUER to localhost (reachable via adb reverse)
+
+services:
+  vc-apigw:
+    volumes:
+      - ./fixtures/vc-config-android-usb.yaml:/config.yaml:ro
+
+  mini-oidc:
+    environment:
+      - ISSUER=http://localhost:9005
