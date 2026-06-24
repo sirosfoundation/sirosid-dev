@@ -19,6 +19,7 @@ WALLET_NAME ?= SIROS ID (dev)
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
+	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	install tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
 
 # =============================================================================
@@ -243,6 +244,17 @@ help: ## Show this help
 	@echo "  make android-restart                 Restart Android test services + relaunch app"
 	@echo "  make android-launch                  Launch installed sample app + log snapshot"
 	@echo "  make android-logs                    Follow Android app logs"
+	@echo ""
+	@echo "$(GREEN)USB Android Targets (physical device):$(NC)"
+	@echo "  make usb-android-setup               Set up port forwarding + assetlinks + config"
+	@echo "  make usb-android-config              Generate USB-specific VC config (localhost via adb reverse)"
+	@echo "  make usb-android-up [SDK_REBUILD=yes] Start USB Android overlay services"
+	@echo "  make usb-android-down                Stop USB Android overlay + remove port forwarding"
+	@echo "  make usb-android-full                Full USB flow (setup + build + deploy + launch)"
+	@echo "  make usb-android-restart             Restart USB Android test services + relaunch app"
+	@echo "  make usb-android-launch              Launch installed sample app on USB device"
+	@echo "  make usb-android-logs                Follow Android app logs from USB device"
+	@echo "  make usb-android-status              Show device info, port forwarding, app status"
 	@echo ""
 	@echo "$(GREEN)Stack Options:$(NC)  (pass on the make command line to 'make up')"
 	@echo ""
@@ -807,3 +819,55 @@ android-logs: ## Follow Android sample app logs
 
 android-test: ## Build, deploy, and test Android SDK sample app (use CMD= for subcommands: build|deploy|register|restart|logs|snapshot)
 	@./scripts/android-test.sh $(CMD)
+
+# =============================================================================
+# USB Android Device Development (physical device via USB)
+# =============================================================================
+
+usb-android-setup: ## Set up USB device: port forwarding + assetlinks + config
+	@./scripts/setup-android.sh --package $(APP_PACKAGE)
+	@./scripts/usb-android-test.sh setup
+	@./scripts/usb-android-test.sh config
+
+usb-android-config: ## Generate USB-specific VC config overlay (localhost via adb reverse)
+	@./scripts/usb-android-test.sh config
+
+usb-android-up: usb-android-config ## Start USB Android overlay services (SDK_REBUILD=yes to rebuild)
+	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+	$(if $(call _truthy,$(SDK_REBUILD)),@./scripts/usb-android-test.sh rebuild)
+	@docker compose -f docker-compose.test.yml \
+		-f docker-compose.vc-services.yml \
+		-f docker-compose.go-trust.yml \
+		-f docker-compose.go-trust-allow.yml \
+		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
+		-f docker-compose.android-usb.yml \
+		up -d
+	@./scripts/usb-android-test.sh setup
+
+usb-android-down: ## Stop USB Android overlay services
+	@docker compose -f docker-compose.test.yml \
+		-f docker-compose.vc-services.yml \
+		-f docker-compose.go-trust.yml \
+		-f docker-compose.go-trust-allow.yml \
+		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
+		-f docker-compose.android-usb.yml \
+		down
+	@./scripts/usb-android-test.sh teardown
+
+usb-android-full: ## Run full USB Android test flow (setup + build + deploy + register + launch)
+	@SDK_REBUILD=$(SDK_REBUILD) ./scripts/usb-android-test.sh full
+
+usb-android-restart: ## Restart USB Android test services and relaunch app
+	@./scripts/usb-android-test.sh restart
+
+usb-android-launch: ## Launch the installed Android sample app on USB device
+	@./scripts/usb-android-test.sh launch
+
+usb-android-logs: ## Follow Android sample app logs from USB device
+	@./scripts/usb-android-test.sh logs
+
+usb-android-status: ## Show USB device info, port forwarding, and app status
+	@./scripts/usb-android-test.sh status
+
+usb-android-test: ## Build, deploy, and test on USB device (use CMD= for subcommands)
+	@./scripts/usb-android-test.sh $(CMD)

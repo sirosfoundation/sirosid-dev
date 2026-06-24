@@ -122,3 +122,57 @@ with other docker-compose projects on the same host.
   going to stdout and getting captured. All shell helper functions must use `>&2`.
 - APK key hash wrong → developer has a different debug keystore from the one
   used to generate the hardcoded default. Run `make android-setup`.
+
+## WSCA Lifecycle Test Automation
+
+### Overview
+
+The `sirosid-tests` repo contains automated WSCA/WSCD lifecycle conformance
+tests driven via ADB intents. They exercise the real Android sample app — no
+mocks, no backend bypass.
+
+### How It Works
+
+1. Test code sends an ADB intent with action
+   `org.sirosfoundation.sdk.sample.WSCA_TEST` and extra `wsca_action`
+2. Sample app's `MainActivity` receives the intent (debug builds only)
+3. `dispatchWscaTestAction()` calls the real ViewModel lifecycle methods
+4. ViewModel emits results as JSON on logcat tag `WSCA_TEST_RESULT`
+5. Test code polls logcat for the structured result
+
+### Running WSCA Tests
+
+```bash
+cd sirosid-tests
+
+# Softkey plugin only (no external dependencies)
+make test-wsca-softkey
+
+# R2PS plugin (requires R2PS service running)
+make test-wsca-r2ps R2PS_URL=http://192.168.240.1:9443
+
+# Physical device: set ANDROID_DEVICE_SERIAL
+ANDROID_DEVICE_SERIAL=ABC123 make test-wsca-softkey
+```
+
+### Key Repos
+
+| Repo | Role |
+|------|------|
+| `siros-sdk-kotlin` | Sample app with WSCA_TEST intent handler + WscaDeveloperScreen |
+| `siros-wscd-manager` | UniFFI Rust crate providing lifecycle API |
+| `sirosid-tests` | Playwright + ADB test specs (`helpers/wsca-automation.ts`) |
+| `sirosid-dev` | Docker environment orchestration |
+
+### Agent Guidelines for WSCA Tests
+
+- The test automation only works with **debug builds** of the sample app.
+  The intent filter is in `src/debug/AndroidManifest.xml` — not in release.
+- `ensureAuthenticatedForTesting()` handles passkey login/registration
+  automatically when deep links arrive. No manual auth step needed.
+- Results are **always** JSON on logcat tag `WSCA_TEST_RESULT`. Parse with:
+  `adb logcat -d -s WSCA_TEST_RESULT:*`
+- To add new test actions: add a case in `MainActivity.dispatchWscaTestAction()`
+  and a matching ViewModel method.
+- For physical devices, use `make usb-android-setup` which sets up
+  `adb reverse` port forwarding automatically.
