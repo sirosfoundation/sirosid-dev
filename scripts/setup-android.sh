@@ -88,6 +88,26 @@ if [[ -z "$FINGERPRINT" ]]; then
     if [[ -z "$KEYTOOL" ]]; then
         warn "keytool not found (install a JDK or set JAVA_HOME)."
         warn "Skipping fingerprint extraction."
+    elif [[ -n "${WWWALLET_ANDROID_STORE_B64:-}" ]] && [[ -n "${WWWALLET_ANDROID_STORE_PASSWORD:-}" ]] && [[ -n "${WWWALLET_ANDROID_KEY_ALIAS:-}" ]]; then
+        # Use the custom keystore from wallet-android-wrapper when available.
+        # This is the keystore actually used to sign the APK.
+        info "Extracting SHA256 fingerprint from custom keystore (WWWALLET_ANDROID_STORE_B64)..."
+        TMP_STORE=$(mktemp /tmp/keystore.XXXXXX)
+        printf '%s' "$WWWALLET_ANDROID_STORE_B64" | base64 -d > "$TMP_STORE"
+        FINGERPRINT=$("$KEYTOOL" -list -v \
+            -keystore "$TMP_STORE" \
+            -storepass "$WWWALLET_ANDROID_STORE_PASSWORD" \
+            -alias "$WWWALLET_ANDROID_KEY_ALIAS" 2>/dev/null \
+            | grep 'SHA256:' \
+            | sed 's/.*SHA256: //' \
+            | tr -d '[:space:]')
+        rm -f "$TMP_STORE"
+
+        if [[ -n "$FINGERPRINT" ]]; then
+            info "  Fingerprint: $FINGERPRINT"
+        else
+            warn "Could not extract fingerprint from custom keystore."
+        fi
     elif [[ ! -f "$DEBUG_KEYSTORE" ]]; then
         warn "Debug keystore not found at $DEBUG_KEYSTORE"
         warn "Build an Android project first, or provide --fingerprint."
@@ -114,10 +134,10 @@ fi
 if [[ -n "$FINGERPRINT" ]]; then
     # Compute the base64url APK key hash used in WALLET_SERVER_RP_ORIGINS.
     # Format: remove colon separators, hex-decode, base64url-encode (no padding).
+    # See: https://developer.android.com/identity/passkeys/create-passkeys#verify
     APK_KEY_HASH=$(printf '%s' "$FINGERPRINT" \
         | tr -d ':' \
-        | fold -w2 \
-        | while IFS= read -r byte; do printf "\\x$byte"; done \
+        | xxd -r -p \
         | base64 \
         | tr '+/' '-_' \
         | tr -d '=')
