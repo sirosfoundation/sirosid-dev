@@ -114,7 +114,10 @@ fi
 if [[ -n "$FINGERPRINT" ]]; then
     # Compute the base64url APK key hash used in WALLET_SERVER_RP_ORIGINS.
     # Format: remove colon separators, hex-decode, base64url-encode (no padding).
-    APK_KEY_HASH=$(printf '%s' "$FINGERPRINT" \
+    # NOTE: the trailing \n in printf is required — without it, `fold`'s last
+    # line has no newline, so `while read` (which exits nonzero past EOF) skips
+    # the final byte, silently truncating the hash by one byte.
+    APK_KEY_HASH=$(printf '%s\n' "$FINGERPRINT" \
         | tr -d ':' \
         | fold -w2 \
         | while IFS= read -r byte; do printf "\\x$byte"; done \

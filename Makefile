@@ -413,6 +413,17 @@ ifneq ($(call _truthy,$(VC)),)
 		echo "$(YELLOW)VC PKI not found — generating...$(NC)"; \
 		$(MAKE) --no-print-directory pki; \
 	fi
+	@# Pre-flight: (re)build the gobuild base image from local ../vc source.
+	@# The docker.sunet.se/iam_vc/gobuild:local image on the registry can lag
+	@# behind ../vc's go.mod (observed: registry image had go1.26.1 while
+	@# go.mod required go1.26.4), and dockerfiles/worker sets GOPROXY=off, so
+	@# the mismatch fails as "toolchain not available" instead of downloading
+	@# the right Go version. Building locally guarantees a matching toolchain
+	@# on any architecture.
+	@_VC_DIR="$${VC_PATH:-../vc}"; \
+		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
+		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
+			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
 endif
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
