@@ -47,6 +47,7 @@ WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
 R2PS_COMPOSE := docker-compose.r2ps.yml
 DOMAIN_COMPOSE := docker-compose.domain.yml
 TUNNEL_COMPOSE := docker-compose.tunnel.yml
+TUNNEL_VC_COMPOSE := docker-compose.tunnel-vc.yml
 GOLDEN_COMPOSE := docker-compose.golden.yml
 GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
 GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
@@ -185,6 +186,9 @@ endif
 # Cloudflare quick tunnels (host-managed, not container-managed)
 ifneq ($(call _truthy,$(TUNNELS)),)
 	COMPOSE_FILES += -f $(TUNNEL_COMPOSE)
+  ifneq ($(call _truthy,$(VC)),)
+	COMPOSE_FILES += -f $(TUNNEL_VC_COMPOSE)
+  endif
 	_TUNNELS_LABEL := yes
 else
 	_TUNNELS_LABEL := no
@@ -411,6 +415,16 @@ ifneq ($(call _truthy,$(TUNNELS)),)
 		exit 1; \
 	fi
 	@$(MAKE) --no-print-directory ensure-tunnels
+ifneq ($(call _truthy,$(VC)),)
+	@# Generate tunnel-patched VC config (tunnels VC verifier/apigw for mobile access)
+	@if [ -f .env.tunnel ] && grep -q TUNNEL_VC_VERIFIER_URL .env.tunnel; then \
+		./scripts/generate-vc-tunnel-config.sh; \
+	else \
+		echo "$(YELLOW)VC tunnel URLs not found — creating VC tunnels...$(NC)"; \
+		TUNNEL_VC=yes ./scripts/tunnel.sh start; \
+		./scripts/generate-vc-tunnel-config.sh; \
+	fi
+endif
 endif
 ifneq ($(call _truthy,$(VC)),)
 	@# Pre-flight: ../vc must exist for VC service builds
@@ -457,7 +471,7 @@ endif
 	@echo "$(YELLOW)Building and starting containers...$(NC)"
 ifneq ($(GOLDEN),)
 	set -a && . ./.env.golden && set +a && \
-		{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; } && \
+		{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; } && \
 		{ [ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; } && \
 	WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
@@ -471,7 +485,7 @@ ifneq ($(call _truthy,$(REBUILD)),)
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
 endif
 	@_LOG=$$(mktemp /tmp/compose.XXXXXX); \
-	[ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+	[ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 	[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
@@ -491,9 +505,13 @@ endif
 		. ./.env.tunnel; \
 		echo ""; \
 		echo "$(GREEN)Tunnel URLs:$(NC)"; \
-		echo "  Frontend: $$TUNNEL_FRONTEND_URL"; \
-		echo "  Backend:  $$TUNNEL_BACKEND_URL"; \
-		echo "  Engine:   $$TUNNEL_ENGINE_URL"; \
+		echo "  Frontend:    $$TUNNEL_FRONTEND_URL"; \
+		echo "  Backend:     $$TUNNEL_BACKEND_URL"; \
+		echo "  Engine:      $$TUNNEL_ENGINE_URL"; \
+		if [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ]; then \
+			echo "  VC Verifier: $$TUNNEL_VC_VERIFIER_URL"; \
+			echo "  VC API GW:   $$TUNNEL_VC_APIGW_URL"; \
+		fi; \
 	fi
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
@@ -528,13 +546,13 @@ endif
 
 down: ## Stop all services
 	@echo "$(YELLOW)Stopping all services...$(NC)"
-	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 		docker compose $(COMPOSE_FILES) down; }
 	@echo "$(GREEN)Done.$(NC)"
 
 logs: ## View service logs
-	@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+	@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 		docker compose $(COMPOSE_FILES) logs -f; }
 
@@ -620,17 +638,24 @@ register-vc-services: ## Register VC issuer and verifier with backend
 			-H "Authorization: Bearer $(ADMIN_TOKEN)" >/dev/null 2>&1 && break; \
 		sleep 2; \
 	done
-	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
+	@_VC_APIGW_REG_URL="$(VC_APIGW_INTERNAL_URL)"; \
+	_VC_VERIFIER_REG_URL="$(VC_VERIFIER_INTERNAL_URL)"; \
+	if [ -f .env.tunnel ]; then \
+		. ./.env.tunnel; \
+		if [ -n "$${TUNNEL_VC_APIGW_URL:-}" ]; then _VC_APIGW_REG_URL="$$TUNNEL_VC_APIGW_URL"; fi; \
+		if [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ]; then _VC_VERIFIER_REG_URL="$$TUNNEL_VC_VERIFIER_URL"; fi; \
+	fi; \
+	curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d '{"credential_issuer_identifier":"$(VC_APIGW_INTERNAL_URL)","visible":true}' && \
-		echo "  $(GREEN)✓ VC issuer registered$(NC)" || \
-		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"
-	@curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
+		-d "{\"credential_issuer_identifier\":\"$$_VC_APIGW_REG_URL\",\"visible\":true}" && \
+		echo "  $(GREEN)✓ VC issuer registered ($$_VC_APIGW_REG_URL)$(NC)" || \
+		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"; \
+	curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d '{"name":"VC Verifier","url":"$(VC_VERIFIER_INTERNAL_URL)"}' && \
-		echo "  $(GREEN)✓ VC verifier registered$(NC)" || \
+		-d "{\"name\":\"VC Verifier\",\"url\":\"$$_VC_VERIFIER_REG_URL\"}" && \
+		echo "  $(GREEN)✓ VC verifier registered ($$_VC_VERIFIER_REG_URL)$(NC)" || \
 		echo "  $(YELLOW)Warning: Could not register VC verifier$(NC)"
 
 # =============================================================================
@@ -688,10 +713,10 @@ fetch-golden-env:
 
 clean: ## Remove all containers, volumes and build cache
 	@echo "$(YELLOW)Cleaning up...$(NC)"
-	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 		docker compose $(COMPOSE_FILES) down -v --remove-orphans; }
-	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
+	-@{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 		[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
 		docker compose $(COMPOSE_FILES) down -v --remove-orphans 2>/dev/null; }
 	@echo "$(YELLOW)Pruning build cache for project images...$(NC)"

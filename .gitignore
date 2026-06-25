@@ -39,3 +39,4 @@ fixtures/vc-config-android.yaml
 .env.tunnel
 .tunnel.pids
 .tunnel-logs/
+fixtures/.vc-config.tunnel.yaml

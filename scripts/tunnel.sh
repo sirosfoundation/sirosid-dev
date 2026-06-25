@@ -35,6 +35,10 @@ FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 ENGINE_PORT="${ENGINE_PORT:-8082}"
 
+# VC service ports (only tunnelled when VC=yes)
+VC_VERIFIER_PORT="${VC_VERIFIER_PORT:-9001}"
+VC_APIGW_PORT="${VC_APIGW_PORT:-9003}"
+
 # ---------------------------------------------------------------------------
 # Colors
 # ---------------------------------------------------------------------------
@@ -130,9 +134,13 @@ show_status() {
     echo -e "${CYAN}Active Cloudflare Tunnels:${NC}"
     # shellcheck disable=SC1090
     source "$TUNNEL_ENV_FILE"
-    echo "  Frontend: ${TUNNEL_FRONTEND_URL:-not set}"
-    echo "  Backend:  ${TUNNEL_BACKEND_URL:-not set}"
-    echo "  Engine:   ${TUNNEL_ENGINE_URL:-not set}"
+    echo "  Frontend:    ${TUNNEL_FRONTEND_URL:-not set}"
+    echo "  Backend:     ${TUNNEL_BACKEND_URL:-not set}"
+    echo "  Engine:      ${TUNNEL_ENGINE_URL:-not set}"
+    if [[ -n "${TUNNEL_VC_VERIFIER_URL:-}" ]]; then
+        echo "  VC Verifier: ${TUNNEL_VC_VERIFIER_URL}"
+        echo "  VC API GW:   ${TUNNEL_VC_APIGW_URL:-not set}"
+    fi
     echo ""
 
     if [[ -f "$TUNNEL_PID_FILE" ]]; then
@@ -202,6 +210,14 @@ start_tunnels() {
     backend_url=$(start_tunnel "backend" "$BACKEND_PORT")
     engine_url=$(start_tunnel "engine" "$ENGINE_PORT")
 
+    # VC service tunnels (only if VC services are running)
+    local vc_verifier_url="" vc_apigw_url=""
+    if curl -sf "http://localhost:${VC_VERIFIER_PORT}/health" >/dev/null 2>&1 || \
+       [[ "${TUNNEL_VC:-}" == "yes" ]]; then
+        vc_verifier_url=$(start_tunnel "vc-verifier" "$VC_VERIFIER_PORT")
+        vc_apigw_url=$(start_tunnel "vc-apigw" "$VC_APIGW_PORT")
+    fi
+
     # Write .env.tunnel
         local tunnel_rpid
         tunnel_rpid=$(printf '%s' "$frontend_url" | sed 's|https://||')
@@ -214,12 +230,24 @@ TUNNEL_ENGINE_URL=${engine_url}
     TUNNEL_RPID=${tunnel_rpid}
 EOF
 
+    # Append VC tunnel URLs if created
+    if [[ -n "$vc_verifier_url" ]]; then
+        cat >> "$TUNNEL_ENV_FILE" <<EOF
+TUNNEL_VC_VERIFIER_URL=${vc_verifier_url}
+TUNNEL_VC_APIGW_URL=${vc_apigw_url}
+EOF
+    fi
+
     echo ""
     ok "Tunnels created successfully!"
     echo ""
     echo -e "  ${CYAN}Frontend:${NC} ${frontend_url}"
     echo -e "  ${CYAN}Backend:${NC}  ${backend_url}"
     echo -e "  ${CYAN}Engine:${NC}   ${engine_url}"
+    if [[ -n "$vc_verifier_url" ]]; then
+        echo -e "  ${CYAN}VC Verifier:${NC} ${vc_verifier_url}"
+        echo -e "  ${CYAN}VC API GW:${NC}   ${vc_apigw_url}"
+    fi
     echo ""
     info "URLs written to ${TUNNEL_ENV_FILE}"
     info "Run 'make up TUNNELS=yes' to reconfigure services with tunnel URLs"
