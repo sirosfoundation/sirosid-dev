@@ -55,19 +55,21 @@ sed \
 # If APIGW tunnel URL is available, also patch the apigw public_url
 # (currently uses https://vc-proxy:8443 which is Docker-internal)
 if [[ -n "${TUNNEL_VC_APIGW_URL:-}" ]]; then
-    sed -i \
+    tmp=$(mktemp)
+    sed \
         -e "s|public_url: \"https://vc-proxy:8443\"|public_url: \"${TUNNEL_VC_APIGW_URL}\"|g" \
         -e "s|token_endpoint: \"https://vc-proxy:8443/token\"|token_endpoint: \"${TUNNEL_VC_APIGW_URL}/token\"|g" \
         -e "s|issuer_url: \"https://vc-proxy:8443\"|issuer_url: \"${TUNNEL_VC_APIGW_URL}\"|g" \
-        "$OUTPUT_CONFIG"
+        "$OUTPUT_CONFIG" > "$tmp" && mv "$tmp" "$OUTPUT_CONFIG"
 fi
 
 # Patch redirect URIs to use the frontend tunnel URL if available
 if [[ -n "${TUNNEL_FRONTEND_URL:-}" ]]; then
-    sed -i \
+    tmp=$(mktemp)
+    sed \
         -e "s|redirect_uri: \"http://localhost:3000/cb\"|redirect_uri: \"${TUNNEL_FRONTEND_URL}/cb\"|g" \
         -e "s|redirect_uri: \"http://localhost:3000/callback\"|redirect_uri: \"${TUNNEL_FRONTEND_URL}/callback\"|g" \
-        "$OUTPUT_CONFIG"
+        "$OUTPUT_CONFIG" > "$tmp" && mv "$tmp" "$OUTPUT_CONFIG"
 fi
 
 echo "Generated tunnel VC config: ${OUTPUT_CONFIG}"
