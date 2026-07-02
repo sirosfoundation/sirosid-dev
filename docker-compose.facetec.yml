@@ -47,10 +47,6 @@ services:
       # vc-apigw, reached over the internal Docker network (no TLS needed).
       - ISSUER_ADDR=http://vc-apigw:8080
       - ISSUER_TLS=false
-      # Matches the "siros_id" entry in fixtures/vc-config.yaml's
-      # common.credential_metadata map (backed by fixtures/vc-metadata/vctm_siros_id.json).
-      # ISSUER_VCT is no longer read by facetec-api (vc-apigw resolves the VCT from the
-      # scope-keyed credential_metadata config server-side, not from a client-supplied vct).
       - ISSUER_SCOPE=siros_id
       - ISSUER_FORMAT=sdjwt
       # Rules are baked into the image at /app/rules by facetec-api's own Dockerfile.
