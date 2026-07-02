@@ -19,11 +19,6 @@ services:
       - OPENID4VCI_REDIRECT_URI=${TUNNEL_FRONTEND_URL}/
       - STATIC_PUBLIC_URL=${TUNNEL_FRONTEND_URL}
       - VCT_REGISTRY_URL=${TUNNEL_BACKEND_URL}/registry/type-metadata
-      # Local-dev-only: allows fetching the siros_id VCTM/SVG template from our
-      # demo-credentials fork while the upstream PR is pending. Not for production —
-      # once the PR merges and registry.siros.org republishes, vct goes back to the
-      # registry (already covered by VCT_REGISTRY_URL above) and this can be removed.
-      - NGINX_CSP_EXTRA_CONNECT_SRC=https://raw.githubusercontent.com
 
   wallet-backend:
     environment:
