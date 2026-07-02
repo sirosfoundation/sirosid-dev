@@ -57,7 +57,7 @@ ISSUER_CLIENT_ID="${ISSUER_CLIENT_ID:-e2e-test-client}"
 
 # Ports to forward via adb reverse (device localhost → host)
 # These match the services in docker-compose.test.yml and overlays.
-USB_FORWARD_PORTS="${USB_FORWARD_PORTS:-3000 8080 8081 8082 9000 9001 9003 9004 9005 9011 9081 9095}"
+USB_FORWARD_PORTS="${USB_FORWARD_PORTS:-3000 8080 8081 8082 8443 9000 9001 9003 9004 9005 9011 9081 9095}"
 
 # Docker Compose files — USB overlay instead of Waydroid overlay
 COMPOSE_FILES=(
@@ -266,6 +266,39 @@ do_status() {
     fi
 }
 
+# ── WSCA Conformance Tests ───────────────────────────────────────────────────
+
+TESTS_DIR="${WORKSPACE}/sirosid-tests"
+
+do_test_wsca() {
+    info "Running WSCA lifecycle conformance tests..."
+    info "  Plugins: softkey (always)${R2PS_URL:+ + r2ps ($R2PS_URL)}${FIDO2_ENABLED:+ + fido2}"
+
+    if [[ ! -d "$TESTS_DIR" ]]; then
+        fail "sirosid-tests not found at $TESTS_DIR"
+        exit 1
+    fi
+
+    # Ensure app is running
+    if ! $ADB shell pidof "$PACKAGE" &>/dev/null; then
+        info "App not running — launching..."
+        do_launch
+        sleep 3
+    fi
+
+    (
+        cd "$TESTS_DIR"
+        env \
+            ANDROID_WALLET_PACKAGE="$PACKAGE" \
+            ADB_PATH="$(command -v adb || echo "$ANDROID_HOME/platform-tools/adb")" \
+            ${ADB_SERIAL:+ANDROID_DEVICE_SERIAL="$ADB_SERIAL"} \
+            ${R2PS_URL:+R2PS_URL="$R2PS_URL"} \
+            ${FIDO2_ENABLED:+FIDO2_ENABLED="$FIDO2_ENABLED"} \
+            npx playwright test specs/conformance/wsca-lifecycle-android.spec.ts
+    )
+    ok "WSCA lifecycle tests completed"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 CMD="${1:-full}"
@@ -317,6 +350,9 @@ case "$CMD" in
     config)
         do_generate_config
         ;;
+    test-wsca)
+        do_test_wsca
+        ;;
     full|"")
         do_generate_config
         do_setup_port_forwarding
@@ -332,7 +368,7 @@ case "$CMD" in
         do_logs_snapshot
         ;;
     *)
-        echo "Usage: $0 {full|setup|teardown|status|config|build|rebuild|deploy|launch|register|restart|logs|snapshot}"
+        echo "Usage: $0 {full|setup|teardown|status|config|build|rebuild|deploy|launch|register|restart|logs|snapshot|test-wsca}"
         exit 1
         ;;
 esac
