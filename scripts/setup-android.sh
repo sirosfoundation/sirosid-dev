@@ -2,14 +2,31 @@
 # setup-android.sh — Configure the local dev environment for Android SDK testing.
 #
 # What this does:
-#   1. Generates .well-known/assetlinks.json from your debug keystore
+#   1. Generates .well-known/assetlinks.json with the target package's REAL signing
+#      certificate — preferring the actually-installed APK (via adb + apksigner) over
+#      guessing from the generic ~/.android/debug.keystore, since apps built with a
+#      custom keystore (as opposed to the Android Studio default) have a different
+#      cert entirely. Using the wrong cert here makes passkey creation fail before
+#      the app even shows a biometric prompt.
 #   2. Configures ADB to bypass HTTPS Digital Asset Links validation
 #      (required because the local dev env runs over plain HTTP)
 #
+# Fingerprint resolution order:
+#   1. --fingerprint, if given explicitly
+#   2. The installed APK's actual signing cert, via `adb` + `apksigner` (falls back to
+#      `keytool -printcert -jarfile` if apksigner isn't found, though that only detects
+#      the older JAR/v1 signing scheme — most modern Gradle builds are v2/v3-only, so
+#      apksigner is strongly preferred)
+#   3. ~/.android/debug.keystore (only correct if the app is actually signed with the
+#      stock Android Studio debug key, which custom-keystore apps are not)
+#
 # Prerequisites (all optional — the script skips steps it can't do):
-#   - Android SDK with adb and keytool on PATH (or ANDROID_HOME set)
-#   - A running Android device or emulator connected via adb
-#   - ~/.android/debug.keystore (created automatically by Android Studio / Gradle)
+#   - Android SDK with adb and apksigner on PATH, or ANDROID_HOME set, or installed at
+#     the default ~/Library/Android/sdk (macOS) / ~/Android/Sdk (Linux) location
+#   - A running Android device or emulator connected via adb, with the target package
+#     installed (for method 2 above)
+#   - ~/.android/debug.keystore (created automatically by Android Studio / Gradle, only
+#     used as the last-resort fallback)
 #
 # Usage:
 #   ./scripts/setup-android.sh                    # auto-detect everything
@@ -27,6 +44,11 @@ PACKAGE_NAME="org.sirosfoundation.sdk.sample"
 FINGERPRINT=""
 DEBUG_KEYSTORE="${HOME}/.android/debug.keystore"
 SKIP_ADB=false
+# Common Android SDK install locations, checked when ANDROID_HOME isn't set.
+SDK_FALLBACK_PATHS=(
+    "${HOME}/Library/Android/sdk"
+    "${HOME}/Android/Sdk"
+)
 
 # Colors
 GREEN='\033[0;32m'
@@ -66,15 +88,47 @@ done
 
 # ── Step 1: Find tools ──────────────────────────────────────────────
 
-# Resolve adb
+# Resolve adb: PATH, then ANDROID_HOME, then common SDK install locations.
 ADB=""
 if command -v adb &>/dev/null; then
     ADB="adb"
 elif [[ -n "${ANDROID_HOME:-}" ]] && [[ -x "$ANDROID_HOME/platform-tools/adb" ]]; then
     ADB="$ANDROID_HOME/platform-tools/adb"
+else
+    for sdk in "${SDK_FALLBACK_PATHS[@]}"; do
+        if [[ -x "$sdk/platform-tools/adb" ]]; then
+            ADB="$sdk/platform-tools/adb"
+            break
+        fi
+    done
 fi
 
-# Resolve keytool (ships with JDK, not Android SDK)
+# Resolve apksigner (ships with Android SDK build-tools): PATH, then ANDROID_HOME,
+# then common SDK install locations. Picks the highest installed build-tools version.
+APKSIGNER=""
+find_apksigner() {
+    local root="$1"
+    [[ -d "$root/build-tools" ]] || return 1
+    # Sort versions descending so the newest build-tools wins.
+    local candidate
+    candidate=$(find "$root/build-tools" -maxdepth 2 -name apksigner -type f 2>/dev/null | sort -rV | head -1)
+    [[ -n "$candidate" && -x "$candidate" ]] && echo "$candidate"
+}
+if command -v apksigner &>/dev/null; then
+    APKSIGNER="apksigner"
+elif [[ -n "${ANDROID_HOME:-}" ]]; then
+    APKSIGNER=$(find_apksigner "$ANDROID_HOME" || true)
+fi
+if [[ -z "$APKSIGNER" ]]; then
+    for sdk in "${SDK_FALLBACK_PATHS[@]}"; do
+        APKSIGNER=$(find_apksigner "$sdk" || true)
+        [[ -n "$APKSIGNER" ]] && break
+    done
+fi
+
+# Resolve keytool (ships with JDK, not Android SDK) — used only as a last-resort
+# fallback for extracting a cert, since it can't read APKs signed with the modern
+# v2/v3 APK Signature Scheme (most current Gradle builds).
 KEYTOOL=""
 if command -v keytool &>/dev/null; then
     KEYTOOL="keytool"
@@ -83,9 +137,49 @@ elif [[ -n "${JAVA_HOME:-}" ]] && [[ -x "$JAVA_HOME/bin/keytool" ]]; then
 fi
 
 # ── Step 2: Extract fingerprint ─────────────────────────────────────
+#
+# Preferred: pull the actually-installed APK for $PACKAGE_NAME off the connected
+# device and read its real signing certificate. This is the only method that's
+# correct for apps signed with a custom (non-default-debug) keystore.
+extract_fingerprint_from_installed_apk() {
+    [[ -n "$ADB" ]] || return 1
+    [[ "$("$ADB" devices 2>/dev/null | grep -c 'device$' || true)" -gt 0 ]] || return 1
+
+    local apk_path
+    apk_path=$("$ADB" shell pm path "$PACKAGE_NAME" 2>/dev/null | head -1 | sed 's/^package://' | tr -d '\r')
+    [[ -n "$apk_path" ]] || return 1
+
+    local tmp_apk
+    tmp_apk=$(mktemp /tmp/setup-android-XXXXXX.apk)
+    trap 'rm -f "$tmp_apk"' RETURN
+
+    if ! "$ADB" pull "$apk_path" "$tmp_apk" &>/dev/null; then
+        return 1
+    fi
+
+    local fp=""
+    if [[ -n "$APKSIGNER" ]]; then
+        fp=$("$APKSIGNER" verify --print-certs "$tmp_apk" 2>/dev/null \
+            | grep -i 'SHA-256 digest' | head -1 \
+            | sed 's/.*: //' | tr -d '[:space:]' \
+            | tr 'a-f' 'A-F' | sed 's/../&:/g; s/:$//')
+    elif [[ -n "$KEYTOOL" ]]; then
+        fp=$("$KEYTOOL" -printcert -jarfile "$tmp_apk" 2>/dev/null \
+            | grep 'SHA256:' | head -1 \
+            | sed 's/.*SHA256: //' | tr -d '[:space:]')
+    fi
+
+    [[ -n "$fp" ]] || return 1
+    echo "$fp"
+}
 
 if [[ -z "$FINGERPRINT" ]]; then
-    if [[ -z "$KEYTOOL" ]]; then
+    INSTALLED_FP=""
+    if INSTALLED_FP=$(extract_fingerprint_from_installed_apk); then
+        info "Extracting SHA256 fingerprint from the installed APK for $PACKAGE_NAME..."
+        FINGERPRINT="$INSTALLED_FP"
+        info "  Fingerprint: $FINGERPRINT (from installed APK — correct even for custom keystores)"
+    elif [[ -z "$KEYTOOL" ]]; then
         warn "keytool not found (install a JDK or set JAVA_HOME)."
         warn "Skipping fingerprint extraction."
     elif [[ -n "${WWWALLET_ANDROID_STORE_B64:-}" ]] && [[ -n "${WWWALLET_ANDROID_STORE_PASSWORD:-}" ]] && [[ -n "${WWWALLET_ANDROID_KEY_ALIAS:-}" ]]; then
@@ -112,6 +206,10 @@ if [[ -z "$FINGERPRINT" ]]; then
         warn "Debug keystore not found at $DEBUG_KEYSTORE"
         warn "Build an Android project first, or provide --fingerprint."
     else
+        warn "Could not read the installed APK's cert (no device connected, package not"
+        warn "installed, or adb/apksigner unavailable) — falling back to $DEBUG_KEYSTORE."
+        warn "This is only correct if $PACKAGE_NAME is actually signed with the stock"
+        warn "Android Studio debug key, not a custom keystore."
         info "Extracting SHA256 fingerprint from $DEBUG_KEYSTORE..."
         FINGERPRINT=$("$KEYTOOL" -list -v \
             -keystore "$DEBUG_KEYSTORE" \
@@ -135,7 +233,10 @@ if [[ -n "$FINGERPRINT" ]]; then
     # Compute the base64url APK key hash used in WALLET_SERVER_RP_ORIGINS.
     # Format: remove colon separators, hex-decode, base64url-encode (no padding).
     # See: https://developer.android.com/identity/passkeys/create-passkeys#verify
-    APK_KEY_HASH=$(printf '%s' "$FINGERPRINT" \
+    # NOTE: the trailing \n in printf is required — without it, `fold`'s last
+    # line has no newline, so `while read` (which exits nonzero past EOF) skips
+    # the final byte, silently truncating the hash by one byte.
+    APK_KEY_HASH=$(printf '%s\n' "$FINGERPRINT" \
         | tr -d ':' \
         | xxd -r -p \
         | base64 \
