@@ -20,7 +20,7 @@ WALLET_NAME ?= SIROS ID (dev)
         register-mocks register-vc-services clean show-branches show-images build-info pki \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
-	usb-android-test-wsca usb-android-test-wsca-softkey usb-android-test-wsca-r2ps usb-android-test-wsca-fido2 usb-android-test-wsca-all \
+	usb-android-test-wsca \
 	install tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
 
 # =============================================================================
@@ -262,11 +262,9 @@ help: ## Show this help
 	@echo "  make usb-android-status              Show device info, port forwarding, app status"
 	@echo ""
 	@echo "$(GREEN)USB Android WSCA Tests (physical device):$(NC)"
-	@echo "  make usb-android-test-wsca           Run WSCA lifecycle tests (softkey, default)"
-	@echo "  make usb-android-test-wsca-softkey   Softkey plugin lifecycle tests"
-	@echo "  make usb-android-test-wsca-r2ps      R2PS plugin lifecycle tests (needs R2PS_URL)"
-	@echo "  make usb-android-test-wsca-fido2     FIDO2/YubiKey plugin lifecycle tests"
-	@echo "  make usb-android-test-wsca-all       All available WSCA plugin tests"
+	@echo "  make usb-android-test-wsca           Run WSCA lifecycle conformance tests"
+	@echo "    R2PS_URL=http://...                include R2PS plugin (default: auto from R2PS stack)"
+	@echo "    FIDO2_ENABLED=true                 include FIDO2/YubiKey plugin"
 	@echo ""
 	@echo "$(GREEN)Stack Options:$(NC)  (pass on the make command line to 'make up')"
 	@echo ""
@@ -905,17 +903,5 @@ usb-android-status: ## Show USB device info, port forwarding, and app status
 usb-android-test: ## Build, deploy, and test on USB device (use CMD= for subcommands)
 	@./scripts/usb-android-test.sh $(CMD)
 
-usb-android-test-wsca: usb-android-test-wsca-softkey ## Run WSCA lifecycle tests on USB device (softkey)
-
-usb-android-test-wsca-softkey: ## Run WSCA softkey lifecycle tests on USB device
-	@./scripts/usb-android-test.sh test-wsca softkey
-
-usb-android-test-wsca-r2ps: ## Run WSCA R2PS lifecycle tests on USB device (needs R2PS_URL)
-	@test -n "$(R2PS_URL)" || { echo "ERROR: R2PS_URL is required"; exit 1; }
-	@R2PS_URL=$(R2PS_URL) ./scripts/usb-android-test.sh test-wsca r2ps
-
-usb-android-test-wsca-fido2: ## Run WSCA FIDO2/YubiKey lifecycle tests on USB device
-	@FIDO2_ENABLED=true ./scripts/usb-android-test.sh test-wsca fido2
-
-usb-android-test-wsca-all: ## Run all available WSCA plugin tests on USB device
-	@R2PS_URL=$(R2PS_URL) FIDO2_ENABLED=$(FIDO2_ENABLED) ./scripts/usb-android-test.sh test-wsca-all
+usb-android-test-wsca: ## Run WSCA lifecycle conformance tests on USB device (R2PS_URL / FIDO2_ENABLED)
+	@./scripts/usb-android-test.sh test-wsca
