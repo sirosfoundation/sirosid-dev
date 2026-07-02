@@ -266,6 +266,62 @@ do_status() {
     fi
 }
 
+# ── WSCA Conformance Tests ───────────────────────────────────────────────────
+
+TESTS_DIR="${WORKSPACE}/sirosid-tests"
+
+do_test_wsca() {
+    local plugin="${1:-softkey}"
+    info "Running WSCA lifecycle tests (plugin: $plugin)..."
+
+    if [[ ! -d "$TESTS_DIR" ]]; then
+        fail "sirosid-tests not found at $TESTS_DIR"
+        exit 1
+    fi
+
+    # Ensure app is running
+    if ! $ADB shell pidof "$PACKAGE" &>/dev/null; then
+        info "App not running — launching..."
+        do_launch
+        sleep 3
+    fi
+
+    local env_vars=""
+    case "$plugin" in
+        softkey)
+            ;;
+        r2ps)
+            if [[ -z "${R2PS_URL:-}" ]]; then
+                fail "R2PS_URL is required for r2ps plugin tests"
+                exit 1
+            fi
+            env_vars="R2PS_URL=$R2PS_URL"
+            ;;
+        fido2)
+            env_vars="FIDO2_ENABLED=true"
+            ;;
+        all)
+            env_vars="${R2PS_URL:+R2PS_URL=$R2PS_URL} ${FIDO2_ENABLED:+FIDO2_ENABLED=$FIDO2_ENABLED}"
+            ;;
+        *)
+            fail "Unknown plugin: $plugin (use softkey, r2ps, fido2, or all)"
+            exit 1
+            ;;
+    esac
+
+    (
+        cd "$TESTS_DIR"
+        # shellcheck disable=SC2086
+        env \
+            ANDROID_WALLET_PACKAGE="$PACKAGE" \
+            ADB_PATH="$(command -v adb || echo "$ANDROID_HOME/platform-tools/adb")" \
+            ${ADB_SERIAL:+ANDROID_DEVICE_SERIAL="$ADB_SERIAL"} \
+            $env_vars \
+            npx playwright test specs/conformance/wsca-lifecycle-android.spec.ts
+    )
+    ok "WSCA lifecycle tests ($plugin) completed"
+}
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 CMD="${1:-full}"
@@ -317,6 +373,12 @@ case "$CMD" in
     config)
         do_generate_config
         ;;
+    test-wsca)
+        do_test_wsca "${2:-softkey}"
+        ;;
+    test-wsca-all)
+        do_test_wsca all
+        ;;
     full|"")
         do_generate_config
         do_setup_port_forwarding
@@ -332,7 +394,7 @@ case "$CMD" in
         do_logs_snapshot
         ;;
     *)
-        echo "Usage: $0 {full|setup|teardown|status|config|build|rebuild|deploy|launch|register|restart|logs|snapshot}"
+        echo "Usage: $0 {full|setup|teardown|status|config|build|rebuild|deploy|launch|register|restart|logs|snapshot|test-wsca [plugin]|test-wsca-all}"
         exit 1
         ;;
 esac
