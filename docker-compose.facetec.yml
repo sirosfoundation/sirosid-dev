@@ -1,0 +1,69 @@
+# facetec-api Docker Compose overlay
+#
+# Adds the facetec-api service (FaceTec SDK <-> vc issuer bridge, used by the
+# wallet Android app's Photo ID Match flow) to the dev stack. Requires the VC
+# services overlay (docker-compose.vc-services.yml) for credential issuance via
+# vc-apigw — enabling FACETEC=yes automatically enables VC=yes (see Makefile).
+#
+# Usage:
+#   export FACETEC_SERVER_URL="https://user:pass@your-facetec-server.example.org"
+#   make up FACETEC=yes
+#
+# FACETEC_SERVER_URL is REQUIRED and has no default — it is a live credential
+# and must never be committed to this repo. Credentials embedded as URL
+# userinfo (https://user:pass@host) are sent to the FaceTec Server as HTTP
+# Basic Auth by facetec-api itself; nothing needs to be split out here.
+#
+# To let a real device (e.g. the wallet Android app) reach this service,
+# expose it with a Cloudflare quick tunnel:
+#   make tunnel                     # also tunnels facetec-api once FACETEC=yes is up
+#   make tunnel-status               # prints TUNNEL_FACETEC_API_URL
+#
+# Configuration (via environment variables):
+#   FACETEC_PATH       - Path to facetec-api source (default: ../facetec-api)
+#   FACETEC_SERVER_URL - FaceTec Server URL, optionally with embedded user:pass (required)
+
+services:
+  facetec-api:
+    build:
+      context: ${FACETEC_PATH:-../facetec-api}
+      dockerfile: Dockerfile
+    image: facetec-api-e2e-test:local
+    container_name: facetec-api-e2e
+    ports:
+      - "8085:8080"
+    volumes:
+      # The image's default CMD passes -config /app/configs/config.yaml, so a file
+      # must exist at that path. This one is intentionally near-empty — every real
+      # value below comes from environment variables (envconfig overrides apply
+      # over whatever, or nothing, is in the file).
+      - ./fixtures/facetec-config.yaml:/app/configs/config.yaml:ro
+    environment:
+      # Required, no default — see header comment. Fails config validation
+      # loudly at container startup if unset, rather than starting silently
+      # misconfigured.
+      - FACETEC_SERVER_URL=${FACETEC_SERVER_URL:?FACETEC_SERVER_URL must be set — see docker-compose.facetec.yml}
+      - LOG_LEVEL=${FACETEC_LOG_LEVEL:-debug}
+      # vc-apigw, reached over the internal Docker network (no TLS needed).
+      - ISSUER_ADDR=http://vc-apigw:8080
+      - ISSUER_TLS=false
+      # Matches the "siros_id" entry in fixtures/vc-config.yaml's
+      # common.credential_metadata map (backed by fixtures/vc-metadata/vctm_siros_id.json).
+      # ISSUER_VCT is no longer read by facetec-api (vc-apigw resolves the VCT from the
+      # scope-keyed credential_metadata config server-side, not from a client-supplied vct).
+      - ISSUER_SCOPE=siros_id
+      - ISSUER_FORMAT=sdjwt
+      # Rules are baked into the image at /app/rules by facetec-api's own Dockerfile.
+      - POLICY_RULES_DIR=/app/rules
+    depends_on:
+      vc-apigw:
+        condition: service_healthy
+    networks:
+      - e2e-test-network
+    # Note: distroless image has no shell/wget/curl, so no in-container
+    # healthcheck — `make status` checks /livez from the host instead.
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true

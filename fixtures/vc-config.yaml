@@ -39,6 +39,9 @@ common:
     diploma:
       vctm_file_path: "/metadata/vctm_diploma.json"
       format: "dc+sd-jwt"
+    siros_id:
+      vctm_file_path: "/metadata/vctm_siros_id.json"
+      format: "dc+sd-jwt"
 
 kafka:
   enabled: false

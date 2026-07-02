@@ -31,6 +31,7 @@ GITHUB_ORG ?= git@github.com:sirosfoundation
 # Workspace paths - defaults assume sibling directories
 FRONTEND_PATH ?= ../wallet-frontend
 BACKEND_PATH ?= ../go-wallet-backend
+FACETEC_PATH ?= ../facetec-api
 
 # Docker compose files
 PRIMARY_COMPOSE := docker-compose.test.yml
@@ -46,6 +47,8 @@ WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
 R2PS_COMPOSE := docker-compose.r2ps.yml
 DOMAIN_COMPOSE := docker-compose.domain.yml
 TUNNEL_COMPOSE := docker-compose.tunnel.yml
+TUNNEL_VC_COMPOSE := docker-compose.tunnel-vc.yml
+FACETEC_COMPOSE := docker-compose.facetec.yml
 GOLDEN_COMPOSE := docker-compose.golden.yml
 GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
 GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
@@ -60,6 +63,7 @@ DOMAIN ?=
 TUNNELS ?=
 GOLDEN ?=
 REBUILD ?=
+FACETEC ?=
 
 # Golden release configuration
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
@@ -76,6 +80,7 @@ export ADMIN_URL ?= http://$(_HOST):8081
 export MOCK_VERIFIER_URL ?= http://$(_HOST):9011
 export MOCK_PDP_URL ?= http://$(_HOST):9081
 export VCTM_REGISTRY_URL ?= http://$(_HOST):8080/registry
+export FACETEC_API_URL ?= http://$(_HOST):8085
 
 # R2PS service URLs
 export R2PS_URL ?= http://$(_HOST):8443
@@ -138,6 +143,19 @@ else
   _VC_LABEL := no
 endif
 
+# facetec-api (FaceTec SDK <-> vc issuer bridge). Requires VC services for
+# credential issuance via vc-apigw, so it implies VC=yes.
+ifneq ($(call _truthy,$(FACETEC)),)
+  ifeq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
+    COMPOSE_FILES += -f $(VC_SERVICES_COMPOSE)
+    _VC_LABEL := yes (via facetec)
+  endif
+  COMPOSE_FILES += -f $(FACETEC_COMPOSE)
+  _FACETEC_LABEL := yes
+else
+  _FACETEC_LABEL := no
+endif
+
 # Transport override
 ifeq ($(TRANSPORT),wmp)
   COMPOSE_FILES += -f $(WMP_TRANSPORT_COMPOSE)
@@ -185,8 +203,20 @@ endif
 ifneq ($(call _truthy,$(TUNNELS)),)
 	COMPOSE_FILES += -f $(TUNNEL_COMPOSE)
 	_TUNNELS_LABEL := yes
+	# When VC services are also in the stack, vc-apigw/vc-issuer need a tunnel-patched
+	# config too — the base fixtures/vc-config.yaml hardcodes "https://vc-proxy:8443"
+	# (only reachable when the separate conformance overlay is active), which would
+	# otherwise end up embedded as an unreachable credential_issuer in every credential
+	# offer. See scripts/generate-tunnel-config.py and the config-regeneration step below.
+	ifneq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
+		COMPOSE_FILES += -f $(TUNNEL_VC_COMPOSE)
+		_TUNNEL_VC_LABEL := yes
+	else
+		_TUNNEL_VC_LABEL := no
+	endif
 else
 	_TUNNELS_LABEL := no
+	_TUNNEL_VC_LABEL := no
 endif
 
 # Golden release: use pre-built images instead of local builds
@@ -275,6 +305,11 @@ help: ## Show this help
 	@echo "  $(YELLOW)GOLDEN=$(NC)<yes|release-name>"
 	@echo "                     Use pre-built images from golden releases"
 	@echo ""
+	@echo "  $(YELLOW)FACETEC=$(NC)<yes|no>"
+	@echo "                     Enable facetec-api (FaceTec SDK <-> vc issuer bridge)"
+	@echo "                     Implies VC=yes. Requires FACETEC_SERVER_URL to be exported"
+	@echo "                     in your shell (a live credential — never committed here)."
+	@echo ""
 	@echo "  $(YELLOW)REBUILD=$(NC)<yes|no>"
 	@echo "                     Force no-cache image rebuild before startup"
 	@echo ""
@@ -294,6 +329,7 @@ help: ## Show this help
 	@echo "  make up DOMAIN=myhost.local VC=yes"
 	@echo "  make up TUNNELS=yes VC=yes"
 	@echo "  make up GOLDEN=beta_r2 VC=yes"
+	@echo "  FACETEC_SERVER_URL=https://user:pass@ft.example.org make up FACETEC=yes"
 	@echo "  make android-setup APP_PACKAGE=com.example.app"
 	@echo ""
 	@echo "$(GREEN)Current Default URLs:$(NC)"
@@ -301,6 +337,7 @@ help: ## Show this help
 	@echo "  Backend API:   $(BACKEND_URL)"
 	@echo "  Admin API:     $(ADMIN_URL)"
 	@echo "  Engine:        $(ENGINE_URL)"
+	@echo "  facetec-api:   $(FACETEC_API_URL)  (FACETEC=yes only)"
 	@echo ""
 	@echo "$(GREEN)Source Path Overrides:$(NC)"
 	@echo ""
@@ -308,6 +345,7 @@ help: ## Show this help
 	@echo "  $(YELLOW)BACKEND_PATH=$(NC)    go-wallet-backend source (default: $(GREEN)../go-wallet-backend$(NC))"
 	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
 	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
+	@echo "  $(YELLOW)FACETEC_PATH=$(NC)     facetec-api source     (default: $(GREEN)../facetec-api$(NC))"
 	@echo ""
 	@echo "$(GREEN)Other Variables:$(NC)"
 	@echo ""
@@ -346,6 +384,9 @@ show-branches:
 	@if [ -d "$(BACKEND_PATH)/.git" ]; then \
 		printf "  %-24s %s\n" "go-wallet-backend:" "$$(git -C $(BACKEND_PATH) branch --show-current)"; \
 	fi
+	@if [ -d "$(FACETEC_PATH)/.git" ]; then \
+		printf "  %-24s %s\n" "facetec-api:" "$$(git -C $(FACETEC_PATH) branch --show-current)"; \
+	fi
 	@echo ""
 
 # Print docker images used by the running stack
@@ -362,6 +403,7 @@ build-info:
 	for repo_info in \
 		"wallet-frontend:$(FRONTEND_PATH)" \
 		"go-wallet-backend:$(BACKEND_PATH)" \
+		"facetec-api:$(FACETEC_PATH)" \
 		"sirosid-dev:."; \
 	do \
 		name=$${repo_info%%:*}; \
@@ -399,6 +441,13 @@ ifneq ($(call _truthy,$(TUNNELS)),)
 		exit 1; \
 	fi
 	@$(MAKE) --no-print-directory ensure-tunnels
+ifneq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
+	@# Regenerate the tunnel-patched vc-config now that .env.tunnel is populated
+	@# (either just now, or reused from an already-running tunnel session).
+	@. ./.env.tunnel && python3 scripts/generate-tunnel-config.py \
+		--apigw-url "$$TUNNEL_VC_APIGW_URL" \
+		--frontend-url "$$TUNNEL_FRONTEND_URL"
+endif
 endif
 ifneq ($(call _truthy,$(VC)),)
 	@# Pre-flight: ../vc must exist for VC service builds
@@ -425,6 +474,22 @@ ifneq ($(call _truthy,$(VC)),)
 		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
 endif
+ifneq ($(call _truthy,$(FACETEC)),)
+	@# Pre-flight: ../facetec-api must exist for the facetec-api build
+	@if [ ! -d "$(FACETEC_PATH)" ]; then \
+		echo "$(RED)Error: FACETEC=yes requires the 'facetec-api' repo at $(FACETEC_PATH)$(NC)"; \
+		echo "  Run: make setup   (clones all required sibling repos)"; \
+		echo "  Or:  git clone $(GITHUB_ORG)/facetec-api.git $(FACETEC_PATH)"; \
+		exit 1; \
+	fi
+	@# Pre-flight: FACETEC_SERVER_URL is a live credential with no safe default;
+	@# fail fast with a clear message rather than letting the container crash-loop.
+	@if [ -z "$$FACETEC_SERVER_URL" ]; then \
+		echo "$(RED)Error: FACETEC=yes requires FACETEC_SERVER_URL to be set.$(NC)"; \
+		echo "  export FACETEC_SERVER_URL=\"https://user:pass@your-facetec-server.example.org\""; \
+		exit 1; \
+	fi
+endif
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
 endif
@@ -439,6 +504,10 @@ endif
 	@echo "  R2PS:        $(_R2PS_LABEL)"
 	@echo "  Domain:      $(_DOMAIN_LABEL)"
 	@echo "  Tunnels:     $(_TUNNELS_LABEL)"
+	@echo "  facetec-api: $(_FACETEC_LABEL)"
+ifneq ($(call _truthy,$(TUNNELS)),)
+	@echo "  vc-config:   $(_TUNNEL_VC_LABEL) (tunnel-patched credential_issuer/token_endpoint/CORS)"
+endif
 ifneq ($(GOLDEN),)
 	@echo "  Golden:      $(_GOLDEN_LABEL)"
 endif
@@ -464,7 +533,7 @@ ifneq ($(GOLDEN),)
 else
 ifneq ($(call _truthy,$(REBUILD)),)
 	@echo "$(YELLOW)Force-rebuilding all images (no cache)...$(NC)"
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) FACETEC_PATH=$(FACETEC_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) build --no-cache 2>&1 | \
 		grep -E '^\s*(✔|=>|Building|Container|Network|Image)' || true
@@ -472,7 +541,7 @@ endif
 	@_LOG=$$(mktemp /tmp/compose.XXXXXX); \
 	[ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID || true; \
 	[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
-	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) \
+	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) FACETEC_PATH=$(FACETEC_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build >$$_LOG 2>&1; \
 	_EXIT=$$?; \
@@ -490,9 +559,11 @@ endif
 		. ./.env.tunnel; \
 		echo ""; \
 		echo "$(GREEN)Tunnel URLs:$(NC)"; \
-		echo "  Frontend: $$TUNNEL_FRONTEND_URL"; \
-		echo "  Backend:  $$TUNNEL_BACKEND_URL"; \
-		echo "  Engine:   $$TUNNEL_ENGINE_URL"; \
+		echo "  Frontend:    $$TUNNEL_FRONTEND_URL"; \
+		echo "  Backend:     $$TUNNEL_BACKEND_URL"; \
+		echo "  Engine:      $$TUNNEL_ENGINE_URL"; \
+		echo "  facetec-api: $$TUNNEL_FACETEC_API_URL"; \
+		echo "  vc-apigw:    $$TUNNEL_VC_APIGW_URL"; \
 	fi
 	@$(MAKE) --no-print-directory show-images
 	@$(MAKE) --no-print-directory status
@@ -523,6 +594,9 @@ endif
 	@echo "$(GREEN)Environment ready!$(NC)"
 	@echo "  Frontend: $(FRONTEND_URL)"
 	@echo "  Backend:  $(BACKEND_URL)"
+ifneq ($(call _truthy,$(FACETEC)),)
+	@echo "  facetec-api: $(FACETEC_API_URL)"
+endif
 	@echo ""
 
 down: ## Stop all services
@@ -563,6 +637,8 @@ status: ## Check core service health
 		printf "  %-20s $(GREEN)%s$(NC)\n" "mock-verifier" "✓ running" || true
 	@curl -sf $(VCTM_REGISTRY_URL)/status >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vctm-registry" "✓ running" || true
+	@curl -sf $(FACETEC_API_URL)/livez >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "facetec-api" "✓ running" || true
 	@echo ""
 
 status-vc: ## Check VC service health
@@ -715,7 +791,8 @@ SETUP_REPOS := \
 	wallet-common:release/sirosid \
 	go-wallet-backend:main \
 	go-trust:main \
-	vc:main
+	vc:main \
+	facetec-api:main
 
 setup: ## Clone sibling repos needed for local development
 	@echo "$(GREEN)Setting up sibling repositories...$(NC)"

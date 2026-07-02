@@ -34,6 +34,8 @@ TUNNEL_LOG_DIR=".tunnel-logs"
 FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 ENGINE_PORT="${ENGINE_PORT:-8082}"
+FACETEC_API_PORT="${FACETEC_API_PORT:-8085}"
+VC_APIGW_PORT="${VC_APIGW_PORT:-9003}"
 
 # ---------------------------------------------------------------------------
 # Colors
@@ -130,9 +132,11 @@ show_status() {
     echo -e "${CYAN}Active Cloudflare Tunnels:${NC}"
     # shellcheck disable=SC1090
     source "$TUNNEL_ENV_FILE"
-    echo "  Frontend: ${TUNNEL_FRONTEND_URL:-not set}"
-    echo "  Backend:  ${TUNNEL_BACKEND_URL:-not set}"
-    echo "  Engine:   ${TUNNEL_ENGINE_URL:-not set}"
+    echo "  Frontend:    ${TUNNEL_FRONTEND_URL:-not set}"
+    echo "  Backend:     ${TUNNEL_BACKEND_URL:-not set}"
+    echo "  Engine:      ${TUNNEL_ENGINE_URL:-not set}"
+    echo "  facetec-api: ${TUNNEL_FACETEC_API_URL:-not set}"
+    echo "  vc-apigw:    ${TUNNEL_VC_APIGW_URL:-not set}"
     echo ""
 
     if [[ -f "$TUNNEL_PID_FILE" ]]; then
@@ -196,11 +200,13 @@ start_tunnels() {
     info "Creating Cloudflare quick tunnels (no account required)..."
     echo ""
 
-    local frontend_url backend_url engine_url
+    local frontend_url backend_url engine_url facetec_api_url vc_apigw_url
 
     frontend_url=$(start_tunnel "frontend" "$FRONTEND_PORT")
     backend_url=$(start_tunnel "backend" "$BACKEND_PORT")
     engine_url=$(start_tunnel "engine" "$ENGINE_PORT")
+    facetec_api_url=$(start_tunnel "facetec-api" "$FACETEC_API_PORT")
+    vc_apigw_url=$(start_tunnel "vc-apigw" "$VC_APIGW_PORT")
 
     # Write .env.tunnel
         local tunnel_rpid
@@ -211,18 +217,26 @@ start_tunnels() {
 TUNNEL_FRONTEND_URL=${frontend_url}
 TUNNEL_BACKEND_URL=${backend_url}
 TUNNEL_ENGINE_URL=${engine_url}
+TUNNEL_FACETEC_API_URL=${facetec_api_url}
+TUNNEL_VC_APIGW_URL=${vc_apigw_url}
     TUNNEL_RPID=${tunnel_rpid}
 EOF
 
     echo ""
     ok "Tunnels created successfully!"
     echo ""
-    echo -e "  ${CYAN}Frontend:${NC} ${frontend_url}"
-    echo -e "  ${CYAN}Backend:${NC}  ${backend_url}"
-    echo -e "  ${CYAN}Engine:${NC}   ${engine_url}"
+    echo -e "  ${CYAN}Frontend:${NC}    ${frontend_url}"
+    echo -e "  ${CYAN}Backend:${NC}     ${backend_url}"
+    echo -e "  ${CYAN}Engine:${NC}      ${engine_url}"
+    echo -e "  ${CYAN}facetec-api:${NC} ${facetec_api_url}"
+    echo -e "  ${CYAN}vc-apigw:${NC}    ${vc_apigw_url}"
     echo ""
     info "URLs written to ${TUNNEL_ENV_FILE}"
     info "Run 'make up TUNNELS=yes' to reconfigure services with tunnel URLs"
+    info "For the wallet Android app, build with:"
+    info "  WWWALLET_FACETEC_API_BASE_URL=\"${facetec_api_url}/process-request\""
+    info "vc-apigw's config (credential_issuer, token_endpoint, CORS) is regenerated"
+    info "automatically by 'make up TUNNELS=yes VC=yes' — see scripts/generate-tunnel-config.py"
     info "Run 'make tunnel-stop' to tear down tunnels"
 }
 

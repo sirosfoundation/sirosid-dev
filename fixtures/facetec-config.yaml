@@ -1,0 +1,9 @@
+# Minimal config for the sirosid-dev facetec-api container.
+#
+# All real values (FACETEC_SERVER_URL, ISSUER_ADDR, ISSUER_SCOPE, ISSUER_VCT,
+# LOG_LEVEL, POLICY_RULES_DIR, ...) come from environment variables set in
+# docker-compose.facetec.yml's `environment:` block — envconfig applies them
+# on top of whatever (or nothing) is in this file. This file only needs to
+# exist and parse as valid YAML, since facetec-api's -config flag (baked into
+# the image's default CMD) expects a file at this bind-mounted path.
+{}
