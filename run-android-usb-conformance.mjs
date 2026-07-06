@@ -21,7 +21,13 @@
  *   - wallet-backend running and accessible from device at localhost (via adb reverse)
  *
  * Usage:
- *   node run-android-usb-conformance.mjs [--plan vci|vp|all] [--serial DEVICE_SERIAL]
+ *   node run-android-usb-conformance.mjs [--plan vci|vp|all] [--serial DEVICE_SERIAL] [--results-dir DIR]
+ *
+ * Output:
+ *   Writes conformance results to <results-dir>/ (default: ./conformance-results/):
+ *     - <profile>-summary.json  (compatible with siros-conformance publish-pages.mjs)
+ *     - conformance-report-<planId>.zip  (HTML report from conformance suite)
+ *   To publish results: make publish-conformance-results
  *
  * Environment:
  *   CONFORMANCE_URL    - Conformance suite URL (default: https://localhost.emobix.co.uk:8443/)
@@ -32,8 +38,8 @@
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import { readFileSync } from 'fs';
-import { resolve, dirname } from 'path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, unlinkSync } from 'fs';
+import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
 const execFileAsync = promisify(execFile);
@@ -53,6 +59,9 @@ const EXEC_TIMEOUT = 15_000;
 const args = process.argv.slice(2);
 const planArg = args.includes('--plan') ? args[args.indexOf('--plan') + 1] : 'vci';
 const serialArg = args.includes('--serial') ? args[args.indexOf('--serial') + 1] : process.env.ADB_SERIAL || '';
+const RESULTS_DIR = args.includes('--results-dir')
+  ? resolve(args[args.indexOf('--results-dir') + 1])
+  : resolve(__dirname, 'conformance-results');
 
 // Build adb command prefix
 const ADB_CMD = serialArg ? ['adb', '-s', serialArg] : ['adb'];
@@ -85,7 +94,85 @@ async function getLogcat(lines = 200) {
 
 async function sendDeepLink(url) {
   console.log(`  → Sending deep link: ${url.slice(0, 100)}...`);
-  await shell('am', 'start', '-a', 'android.intent.action.VIEW', '-d', url, '-n', ACTIVITY);
+  // Quote the URL to prevent shell metacharacter expansion (& in openid4vp:// URIs)
+  const escapedUrl = `'${url.replace(/'/g, "'\\''")}'`;
+  await shell('am', 'start', '-a', 'android.intent.action.VIEW', '-d', escapedUrl, '-n', ACTIVITY);
+}
+
+// =============================================================================
+// Screenshot capture and upload
+// =============================================================================
+
+async function captureScreenshot() {
+  const remotePath = '/sdcard/conformance-screenshot.png';
+  const localPath = join(RESULTS_DIR, `screenshot-${Date.now()}.png`);
+  try {
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    await shell('screencap', '-p', remotePath);
+    await execFileAsync(ADB_CMD[0], [...ADB_CMD.slice(1), 'pull', remotePath, localPath], { timeout: 15000 });
+    await shell('rm', '-f', remotePath);
+    return localPath;
+  } catch (err) {
+    console.log(`  ⚠ Screenshot capture failed: ${err.message}`);
+    return null;
+  }
+}
+
+async function getPendingImageUploads(moduleId) {
+  try {
+    const images = await apiRequest('GET', `api/log/${moduleId}/images`);
+    return images.filter(item => item.upload);
+  } catch (err) {
+    console.log(`  ⚠ Could not fetch pending images: ${err.message}`);
+    return [];
+  }
+}
+
+async function uploadScreenshot(moduleId, uploadId, screenshotPath) {
+  try {
+    const imageData = readFileSync(screenshotPath);
+    const base64 = imageData.toString('base64');
+    const dataUrl = `data:image/png;base64,${base64}`;
+
+    const url = `${CONFORMANCE_URL}api/log/${encodeURIComponent(moduleId)}/images/${encodeURIComponent(uploadId)}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      body: dataUrl,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.log(`  ⚠ Screenshot upload failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      return false;
+    }
+    console.log(`  ✓ Screenshot uploaded for ${uploadId}`);
+    return true;
+  } catch (err) {
+    console.log(`  ⚠ Screenshot upload error: ${err.message}`);
+    return false;
+  }
+}
+
+async function captureAndUploadScreenshots(moduleId) {
+  const pending = await getPendingImageUploads(moduleId);
+  if (pending.length === 0) return 0;
+
+  console.log(`  📷 ${pending.length} screenshot(s) required`);
+  // Small delay to let the error screen render
+  await new Promise(r => setTimeout(r, 1000));
+
+  const screenshotPath = await captureScreenshot();
+  if (!screenshotPath) return 0;
+
+  let uploaded = 0;
+  for (const item of pending) {
+    if (await uploadScreenshot(moduleId, item._id, screenshotPath)) {
+      uploaded++;
+    }
+  }
+
+  // Clean up local screenshot
+  try { unlinkSync(screenshotPath); } catch { /* ignore */ }
+  return uploaded;
 }
 
 async function waitForFlowCompletion(timeoutMs = 90000) {
@@ -217,6 +304,41 @@ async function getWalletInteractionUrl(moduleId) {
   return null;
 }
 
+async function getModuleConditions(moduleId) {
+  const logs = await getTestLog(moduleId);
+  const counts = {};
+  const failures = [];
+  for (const entry of logs) {
+    const result = entry.result;
+    if (result && result !== 'FINISHED') {
+      counts[result] = (counts[result] || 0) + 1;
+      if (result === 'FAILURE') {
+        failures.push({ src: entry.src || '', msg: entry.msg || '' });
+      }
+    }
+  }
+  return { counts, failures };
+}
+
+async function exportPlanResults(planId) {
+  const url = `${CONFORMANCE_URL}api/plan/exporthtml/${planId}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`);
+    const buffer = await res.arrayBuffer();
+    mkdirSync(RESULTS_DIR, { recursive: true });
+    const filename = `conformance-report-${planId}.zip`;
+    const outputPath = join(RESULTS_DIR, filename);
+    writeFileSync(outputPath, Buffer.from(buffer));
+    const sizeKB = (buffer.byteLength / 1024).toFixed(1);
+    console.log(`  Exported report: ${outputPath} (${sizeKB}KB)`);
+    return outputPath;
+  } catch (err) {
+    console.log(`  Warning: could not export HTML report: ${err.message}`);
+    return null;
+  }
+}
+
 // =============================================================================
 // Plan configs
 // =============================================================================
@@ -298,16 +420,31 @@ async function runPlan(planDef, label) {
   console.log(`Plan created: ${plan.id} (${modules.length} modules)`);
   console.log(`Detail: ${CONFORMANCE_URL}plan-detail.html?plan=${plan.id}\n`);
 
-  // Ensure app is running
-  await shell('am', 'force-stop', PACKAGE).catch(() => {});
-  await new Promise(r => setTimeout(r, 1000));
-  await shell('am', 'start', '-n', ACTIVITY);
-  await new Promise(r => setTimeout(r, 3000));
+  // Ensure app is running (don't force-stop — preserves in-memory credentials from prior plans)
+  const pid = await shell('pidof', PACKAGE).catch(() => '');
+  if (!pid.trim()) {
+    await shell('am', 'start', '-n', ACTIVITY);
+    await new Promise(r => setTimeout(r, 3000));
+  }
 
   const results = [];
 
   for (const moduleName of modules) {
     console.log(`\n─── Module: ${moduleName} ───`);
+
+    // Flush the backend's issuer metadata cache before each VCI module.
+    // The conformance suite serves different metadata per test module at the
+    // same URL (e.g. notification_endpoint is only present in the notification
+    // module). Without this, the backend would use stale cached metadata from
+    // the previous module.
+    if (ADMIN_TOKEN && planDef.planName.includes('vci')) {
+      try {
+        await fetch(`${ADMIN_URL}/admin/cache/metadata`, {
+          method: 'DELETE',
+          headers: { 'Authorization': `Bearer ${ADMIN_TOKEN}` },
+        });
+      } catch { /* best-effort */ }
+    }
 
     const moduleInfo = await createModule(plan.id, moduleName);
     const moduleId = moduleInfo.id;
@@ -317,15 +454,16 @@ async function runPlan(planDef, label) {
       state = await waitForState(moduleId, ['WAITING', 'FINISHED'], 60000);
     } catch (err) {
       console.log(`  ✗ Timeout creating module: ${err.message}`);
-      results.push({ module: moduleName, result: 'TIMEOUT', passed: false });
+      results.push({ module: moduleName, status: 'TIMEOUT', result: 'TIMEOUT', passed: false, conditions: {}, failures: [] });
       continue;
     }
 
     if (state === 'FINISHED') {
       const info = await getModuleInfo(moduleId);
+      const { counts, failures } = await getModuleConditions(moduleId);
       const icon = info.result === 'PASSED' ? '✓' : info.result === 'SKIPPED' ? '○' : '✗';
       console.log(`  ${icon} ${info.result} (no interaction needed)`);
-      results.push({ module: moduleName, result: info.result, passed: info.result === 'PASSED' || info.result === 'SKIPPED' });
+      results.push({ module: moduleName, status: info.status, result: info.result, passed: info.result === 'PASSED' || info.result === 'SKIPPED', conditions: counts, failures });
       continue;
     }
 
@@ -335,7 +473,7 @@ async function runPlan(planDef, label) {
       console.log('  ✗ No interaction URL found in logs');
       const logs = await getRecentSdkLogs();
       if (logs) console.log(`  SDK logs:\n${logs}`);
-      results.push({ module: moduleName, result: 'NO_URL', passed: false });
+      results.push({ module: moduleName, status: 'NO_URL', result: 'NO_URL', passed: false, conditions: {}, failures: [] });
       continue;
     }
 
@@ -353,28 +491,88 @@ async function runPlan(planDef, label) {
       if (logs) console.log(`  Recent SDK logs:\n${logs}`);
     }
 
+    // For negative/REVIEW tests: capture and upload a screenshot of the error page
+    // The conformance suite requires screenshots showing the wallet rejected the request.
+    const isNegativeTest = moduleName.includes('negative-test') || moduleName.includes('multisigned');
+    if (isNegativeTest || !flowResult.success) {
+      const uploaded = await captureAndUploadScreenshots(moduleId);
+      if (uploaded > 0) {
+        // Give the suite a moment to process the upload and transition state
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
     // Wait for conformance suite final verdict
+    // Negative tests need longer — the suite waits for a request that should never come
+    const suiteTimeout = isNegativeTest ? 180000 : 60000;
     try {
-      await waitForState(moduleId, ['FINISHED'], 60000);
+      await waitForState(moduleId, ['FINISHED'], suiteTimeout);
     } catch {
       console.log('  ⚠ Suite did not finish evaluating in time');
     }
 
     const finalInfo = await getModuleInfo(moduleId);
+    const { counts, failures } = await getModuleConditions(moduleId);
     const icon = finalInfo.result === 'PASSED' ? '✓' : finalInfo.result === 'SKIPPED' ? '○' : '✗';
     console.log(`  ${icon} Suite verdict: ${finalInfo.result}`);
     results.push({
       module: moduleName,
+      status: finalInfo.status || 'UNKNOWN',
       result: finalInfo.result || 'UNKNOWN',
       passed: finalInfo.result === 'PASSED' || finalInfo.result === 'SKIPPED',
+      conditions: counts,
+      failures,
     });
 
     await new Promise(r => setTimeout(r, 2000));
   }
 
-  // Summary
+  // Export HTML report ZIP
+  await exportPlanResults(plan.id);
+
+  // Determine profile name for summary
+  const profile = planDef.planName.includes('vci') ? 'wallet-vci-android' : 'wallet-vp-android';
+  const variantParts = Object.values(planDef.variant || {});
+  const variantLabel = variantParts.join(' / ');
+
+  // Write summary JSON (siros-conformance compatible)
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed).length;
+
+  const summary = {
+    profile,
+    plan: planDef.planName,
+    planId: plan.id,
+    variant: variantLabel,
+    timestamp: new Date().toISOString(),
+    planDetailUrl: `${CONFORMANCE_URL}plan-detail.html?plan=${plan.id}`,
+    total: results.length,
+    passed,
+    failed,
+    modules: results,
+    metadata: {
+      targetRepo: process.env.TARGET_REPO || 'sirosfoundation/sirosid-dev',
+      targetPr: process.env.TARGET_PR || '',
+      runId: process.env.GITHUB_RUN_ID || `local-${Date.now()}`,
+      actor: process.env.GITHUB_ACTOR || process.env.USER || 'local',
+      sha: process.env.GITHUB_SHA || '',
+      ref: process.env.GITHUB_REF || '',
+      source: 'sirosid-dev/usb-device',
+      device: serialArg || 'default',
+      images: {
+        'wallet-frontend': process.env.WALLET_FRONTEND_IMAGE || '',
+        'go-wallet-backend': process.env.WALLET_BACKEND_IMAGE || '',
+        'go-trust': process.env.GO_TRUST_IMAGE || '',
+      },
+      goldenRelease: process.env.GOLDEN_RELEASE || '',
+    },
+  };
+
+  mkdirSync(RESULTS_DIR, { recursive: true });
+  const summaryPath = join(RESULTS_DIR, `${profile}-summary.json`);
+  writeFileSync(summaryPath, JSON.stringify(summary, null, 2));
+  console.log(`  Summary written: ${summaryPath}`);
+
   console.log(`\n${'─'.repeat(60)}`);
   console.log(`  ${label} Summary: ${passed} passed, ${failed} failed (${results.length} total)`);
   console.log(`  Plan detail: ${CONFORMANCE_URL}plan-detail.html?plan=${plan.id}`);
@@ -394,6 +592,7 @@ console.log(`\nConformance URL: ${CONFORMANCE_URL}`);
 console.log(`Plan: ${planArg}`);
 console.log(`Admin URL: ${ADMIN_URL}`);
 console.log(`ADB target: ${serialArg || '(default device)'}`);
+console.log(`Results dir: ${RESULTS_DIR}`);
 console.log('');
 
 try {
@@ -449,7 +648,9 @@ try {
 
   const totalPassed = allResults.reduce((s, r) => s + r.passed, 0);
   const totalFailed = allResults.reduce((s, r) => s + r.failed, 0);
-  console.log(`\n═══ TOTAL: ${totalPassed} passed, ${totalFailed} failed ═══\n`);
+  console.log(`\n═══ TOTAL: ${totalPassed} passed, ${totalFailed} failed ═══`);
+  console.log(`\nResults saved to: ${RESULTS_DIR}`);
+  console.log(`To publish: make publish-conformance-results\n`);
 
   process.exit(totalFailed > 0 ? 1 : 0);
 } catch (err) {
