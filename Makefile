@@ -21,6 +21,7 @@ WALLET_NAME ?= SIROS ID (dev)
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
+	usb-android-conformance publish-conformance-results \
 	install tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
 
 # =============================================================================
@@ -981,3 +982,21 @@ usb-android-test: ## Build, deploy, and test on USB device (use CMD= for subcomm
 
 usb-android-test-wsca: ## Run WSCA lifecycle conformance tests on USB device (R2PS_URL / FIDO2_ENABLED)
 	@./scripts/usb-android-test.sh test-wsca
+
+# =============================================================================
+# Conformance Results
+# =============================================================================
+
+CONFORMANCE_RESULTS_DIR ?= ./conformance-results
+SIROS_CONFORMANCE_DIR ?= ../siros-conformance
+
+usb-android-conformance: ## Run OID4VCI/VP conformance tests on USB device (PLAN=vci|vp|all)
+	node run-android-usb-conformance.mjs --plan $(or $(PLAN),all) --results-dir $(CONFORMANCE_RESULTS_DIR)
+
+publish-conformance-results: ## Publish conformance results to siros-conformance GitHub Pages
+	@test -d "$(CONFORMANCE_RESULTS_DIR)" || { echo "ERROR: No results in $(CONFORMANCE_RESULTS_DIR). Run 'make usb-android-conformance' first."; exit 1; }
+	@test -d "$(SIROS_CONFORMANCE_DIR)" || { echo "ERROR: siros-conformance repo not found at $(SIROS_CONFORMANCE_DIR)"; exit 1; }
+	cd $(SIROS_CONFORMANCE_DIR) && node scripts/publish-pages.mjs \
+		$(abspath $(CONFORMANCE_RESULTS_DIR)) \
+		--run-id "local-$$(date +%Y%m%d-%H%M%S)" \
+		--run-url ""
