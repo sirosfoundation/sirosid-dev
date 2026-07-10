@@ -1,9 +1,0 @@
-{
-  "name": "mini-oidc-provider",
-  "version": "1.0.0",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "jose": "^6.0.0"
-  }
-}

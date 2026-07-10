@@ -166,19 +166,46 @@ services:
       - e2e-test-network
 
   mini-oidc:
-    build: ./mini-oidc-provider
+    image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:-main}
     container_name: mini-oidc-e2e
+    command: ["/usr/local/bin/op"]
     ports:
       - "9005:9005"
     environment:
-      - PORT=9005
+      - CONFIG_FILE=/etc/mini-oidc/configs/config.production.yaml
+      - USERS_FILE=/etc/mini-oidc/users.yaml
       - ISSUER=${MINI_OIDC_ISSUER:-http://mini-oidc:9005}
+      - RP_BASE_URL=${MINI_OIDC_RP_URL:-http://mini-oidc-rp:9006}
+      - CLIENT_ID=${MINI_OIDC_CLIENT_ID:-mini-oidc-rp}
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://localhost:9005/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))\""]
+      test: ["CMD", "/usr/local/bin/healthcheck", "9005"]
       interval: 5s
-      timeout: 5s
+      timeout: 3s
       retries: 10
-      start_period: 5s
+      start_period: 2s
+    networks:
+      - e2e-test-network
+
+  mini-oidc-rp:
+    image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:-main}
+    container_name: mini-oidc-rp-e2e
+    command: ["/usr/local/bin/rp"]
+    ports:
+      - "9006:9006"
+    environment:
+      - CONFIG_FILE=/etc/mini-oidc/configs/config.production.yaml
+      - ISSUER=${MINI_OIDC_ISSUER:-http://mini-oidc:9005}
+      - RP_BASE_URL=${MINI_OIDC_RP_URL:-http://mini-oidc-rp:9006}
+      - CLIENT_ID=${MINI_OIDC_CLIENT_ID:-mini-oidc-rp}
+    depends_on:
+      mini-oidc:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/healthcheck", "9006"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
     networks:
       - e2e-test-network
 
