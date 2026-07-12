@@ -113,6 +113,8 @@ services:
       - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
       # Built-in Authorization Server (AS) — passkey login/register + token endpoint
       - WALLET_AS_ENABLED=true
+      - WALLET_AS_INSECURE_COOKIES=true
+      - WALLET_AS_DEFAULT_MAX_TAC=rwlidk
       - WALLET_AS_SIGNING_KEY_PATH=/app/fixtures/signing_ec_private.pem
       - WALLET_AS_EXTERNAL_URL=http://localhost:8080
       - WALLET_AS_ISSUER=http://localhost:8080
