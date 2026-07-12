@@ -118,6 +118,57 @@ with other docker-compose projects on the same host.
 - Containers start but services not running → usually a missing volume file
   (e.g. `.well-known/assetlinks.json` must exist before `make up`; it is
   created empty automatically if missing).
+
+## CRITICAL: Read Before Troubleshooting
+
+**Before manually hacking URLs, ports, or network config:**
+1. Read `README.md` sections: "Cloudflare Tunnels", "Android SDK Testing"
+2. Run `make help` to see all available targets
+3. Use the documented infrastructure (tunnels, `make android-setup`) instead of
+   patching BuildConfig or hardcoding IPs
+
+## Port Architecture
+
+The wallet-backend exposes services on SEPARATE ports:
+- **8080**: HTTP API (auth, backend, admin endpoints)
+- **8081**: Admin API (issuer/verifier registration)
+- **8082**: WebSocket engine (WMP v2 protocol at `/api/v2/wallet`)
+- **8443**: Conformance suite (TLS, self-signed cert)
+
+The SDK's `WalletConfig.engineUrl` must point to port 8082 if the backend
+is on 8080. In production (single-port deployments), both are on the same port.
+In the dev environment, they are always separate.
+
+## USB vs WiFi ADB
+
+- **USB (`make usb-android-*`)**: `adb reverse` works. The device accesses
+  host services via `127.0.0.1:<port>`. This is the recommended approach
+  for local conformance testing.
+- **WiFi ADB**: `adb reverse` does NOT work reliably on Android 11+.
+  Use **Cloudflare tunnels** (`make up TUNNELS=yes`) instead. The tunnels
+  provide real HTTPS URLs accessible from any network.
+- **Never hardcode host IPs** (`10.0.0.x`) in BuildConfig — use either
+  `127.0.0.1` (USB) or tunnel URLs (WiFi).
+
+## Conformance Testing
+
+```bash
+# USB device (recommended):
+make usb-android-setup
+make usb-android-full SDK_REBUILD=yes  # builds + deploys + starts stack
+make usb-android-conformance PLAN=all
+
+# WiFi device (requires tunnels):
+make android-setup
+make up TUNNELS=yes VC=yes CONFORMANCE=yes
+# Then point the app at the tunnel backend URL
+```
+
+The conformance suite needs:
+1. Issuer registered in wallet-backend admin API (done by `make usb-android-full`)
+2. ADB reverse port forwarding for 13 ports (USB) or tunnel URLs (WiFi)
+3. App data cleared before first run (`adb shell pm clear <package>`)
+4. `DEVELOPMENT_PASSKEY_REGISTRATION` ADB flag set on device
 - `make tunnel` produces garbled `.env.tunnel` → `info()/warn()` output was
   going to stdout and getting captured. All shell helper functions must use `>&2`.
 - APK key hash wrong → developer has a different debug keystore from the one

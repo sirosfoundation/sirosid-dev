@@ -111,6 +111,12 @@ services:
       - WALLET_HTTP_CLIENT_ALLOW_PRIVATE_IPS=true
       - WALLET_HTTP_CLIENT_ALLOW_HTTP=true
       - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
+      # Built-in Authorization Server (AS) — passkey login/register + token endpoint
+      - WALLET_AS_ENABLED=true
+      - WALLET_AS_SIGNING_KEY_PATH=/app/fixtures/signing_ec_private.pem
+      - WALLET_AS_EXTERNAL_URL=http://localhost:8080
+      - WALLET_AS_ISSUER=http://localhost:8080
+      - WALLET_AS_RULES_DIR=/app/fixtures/as-rules
       # Registry configuration (served via --mode=all on the same port)
       - REGISTRY_SOURCE_URL=https://registry.siros.org/.well-known/vctm-registry.json
       - REGISTRY_SOURCE_POLL_INTERVAL=5m
@@ -129,6 +135,9 @@ services:
         condition: service_healthy
     networks:
       - e2e-test-network
+    volumes:
+      - ./fixtures/vc-pki/signing_ec_private.pem:/app/fixtures/signing_ec_private.pem:ro
+      - ./fixtures/as-rules:/app/fixtures/as-rules:ro
     # Note: distroless image has no shell/wget, healthcheck done by make up
     # For credential issuance tests, start VC services overlay:
     #   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d
