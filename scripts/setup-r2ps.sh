@@ -19,6 +19,7 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 R2PS_URL="${R2PS_URL:-http://localhost:8443}"
 R2PS_ADMIN_URL="${R2PS_ADMIN_URL:-http://localhost:8444}"
+R2PS_ADMIN_DEV_TOKEN="${R2PS_ADMIN_DEV_TOKEN:-r2ps-e2e-dev-token-for-testing-only}"
 MAX_RETRIES=30
 RETRY_INTERVAL=2
 
@@ -68,7 +69,9 @@ wait_for_r2ps() {
 verify_admin_api() {
     info "Verifying R2PS admin API at ${R2PS_ADMIN_URL} ..."
     local status
-    status=$(curl -sf -o /dev/null -w "%{http_code}" "${R2PS_ADMIN_URL}/admin/store/keys" 2>&1) || true
+    status=$(curl -sf -o /dev/null -w "%{http_code}" \
+        -H "Authorization: Bearer ${R2PS_ADMIN_DEV_TOKEN}" \
+        "${R2PS_ADMIN_URL}/admin/store/keys" 2>&1) || true
     if [[ "$status" == "200" ]]; then
         ok "R2PS admin API accessible"
     else
@@ -85,13 +88,15 @@ show_status() {
     echo "  Admin API: ${R2PS_ADMIN_URL}"
 
     local key_count
-    key_count=$(curl -sf "${R2PS_ADMIN_URL}/admin/store/keys" 2>/dev/null \
+    key_count=$(curl -sf -H "Authorization: Bearer ${R2PS_ADMIN_DEV_TOKEN}" \
+        "${R2PS_ADMIN_URL}/admin/store/keys" 2>/dev/null \
         | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null) || key_count="?"
     echo "  HSM keys:  ${key_count}"
 
     for category in ka wia; do
         local cat_count
-        cat_count=$(curl -sf "${R2PS_ADMIN_URL}/admin/store/statuses/${category}" 2>/dev/null \
+        cat_count=$(curl -sf -H "Authorization: Bearer ${R2PS_ADMIN_DEV_TOKEN}" \
+            "${R2PS_ADMIN_URL}/admin/store/statuses/${category}" 2>/dev/null \
             | python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('entries',d)) if isinstance(d,dict) else len(d))" 2>/dev/null) || cat_count="?"
         echo "  Status list (${category}): ${cat_count} entries"
     done
