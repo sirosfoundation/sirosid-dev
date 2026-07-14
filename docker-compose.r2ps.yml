@@ -72,6 +72,7 @@ services:
       R2PS_SESSION_TTL: "5m"
       # Admin API
       R2PS_ADMIN_LISTEN: ":8081"
+      R2PS_ADMIN_DEV_TOKEN: ${R2PS_ADMIN_DEV_TOKEN:-r2ps-e2e-dev-token-for-testing-only}
       # In-memory store for dev (no MongoDB needed)
     volumes:
       - r2ps-softhsm-tokens:/var/lib/softhsm/tokens

@@ -88,6 +88,7 @@ export FACETEC_API_URL ?= http://$(_HOST):8085
 # R2PS service URLs
 export R2PS_URL ?= http://$(_HOST):8443
 export R2PS_ADMIN_URL ?= http://$(_HOST):8444
+export R2PS_ADMIN_DEV_TOKEN ?= r2ps-e2e-dev-token-for-testing-only
 
 # VC Services URLs (external, for health checks from host)
 export VC_ISSUER_URL ?= http://$(_HOST):9000
