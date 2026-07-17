@@ -373,7 +373,7 @@ help: ## Show this help
 	@echo "$(GREEN)Other Variables:$(NC)"
 	@echo ""
 	@echo "  $(YELLOW)WALLET_NAME=$(NC)      Wallet display name (default: $(GREEN)SIROS ID (dev)$(NC))"
-	@echo "  $(YELLOW)APP_PACKAGE=$(NC)     Used by make android-setup (default: $(GREEN)org.sirosfoundation.sdk.sample$(NC))"
+	@echo "  $(YELLOW)APP_PACKAGE=$(NC)     Used by make android-setup (default: $(GREEN)org.siros.sdk.sample$(NC))"
 	@echo ""
 	@echo "$(GREEN)Integration:$(NC)"
 	@echo "  Run tests with: cd ../sirosid-tests && make test"
@@ -886,7 +886,7 @@ restart-with-tunnels: ## Restart the stack using Cloudflare tunnel URLs
 # =============================================================================
 
 SDK_PATH ?= ../siros-sdk-kotlin
-APP_PACKAGE ?= org.sirosfoundation.sdk.sample
+APP_PACKAGE ?= org.siros.sdk.sample
 
 android-setup: ## Configure local env for Android SDK testing (generates assetlinks.json, configures ADB)
 	@./scripts/setup-android.sh --package $(APP_PACKAGE)

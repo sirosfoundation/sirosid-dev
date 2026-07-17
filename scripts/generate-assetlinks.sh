@@ -4,7 +4,7 @@
 set -euo pipefail
 
 OUTPUT_DIR="${1:-$(dirname "$0")/../fixtures/well-known}"
-PACKAGE="${2:-org.sirosfoundation.sdk.sample}"
+PACKAGE="${2:-org.siros.sdk.sample}"
 KEYSTORE="${ANDROID_DEBUG_KEYSTORE:-$HOME/.android/debug.keystore}"
 
 if [[ ! -f "$KEYSTORE" ]]; then
