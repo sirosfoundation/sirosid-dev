@@ -40,7 +40,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 WELL_KNOWN_DIR="$PROJECT_DIR/.well-known"
 
 # Defaults
-PACKAGE_NAME="org.sirosfoundation.sdk.sample"
+PACKAGE_NAME="org.siros.sdk.sample"
 FINGERPRINT=""
 DEBUG_KEYSTORE="${HOME}/.android/debug.keystore"
 SKIP_ADB=false

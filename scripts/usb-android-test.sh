@@ -27,7 +27,7 @@ WORKSPACE="$(dirname "$DEVENV_DIR")"
 SDK_DIR="${WORKSPACE}/siros-sdk-kotlin"
 WSCD_DIR="${WORKSPACE}/siros-wscd-manager"
 APK="${SDK_DIR}/sample-app/build/outputs/apk/debug/sample-app-debug.apk"
-PACKAGE="org.sirosfoundation.sdk.sample"
+PACKAGE="org.siros.sdk.sample"
 ACTIVITY="${PACKAGE}/.MainActivity"
 
 export JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
