@@ -8,13 +8,14 @@
 #
 # Usage:
 #   ./create-pki.sh
+#   PKI_DIR_OVERRIDE=/path/to/env-pki ./create-pki.sh   # e.g. per Fly environment
 #
 # The generated keys are for testing only and should not be used in production.
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PKI_DIR="${SCRIPT_DIR}/vc-pki"
+PKI_DIR="${PKI_DIR_OVERRIDE:-${SCRIPT_DIR}/vc-pki}"
 
 echo "Creating PKI directory: ${PKI_DIR}"
 mkdir -p "${PKI_DIR}"

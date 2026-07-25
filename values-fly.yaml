@@ -1,0 +1,36 @@
+# Helm values overlay used ONLY to render config for Fly.io environments via
+# `make fly-up ENV=<name>` / scripts/fly-up.py (which calls
+# scripts/render-helm-config.py --target fly --env <name>).
+#
+# Static parts only - anything that embeds the environment name (hostnames,
+# the PDP whitelist) is generated per-env by
+# render-helm-config.py:build_fly_values_overlay() and layered on top of this
+# file, not baked in here (see scripts/fly-up.py).
+#
+# This is never applied to a real cluster.
+
+features:
+  generateSecrets: false
+  credentialTypes: {}
+
+# Not consumed by sirosid-dev's Fly deployment yet (issuer/verifier alignment
+# beyond vc-services' existing fixtures/vc-config.yaml is a follow-up), but
+# 04-issuer.yaml `fail`s the whole render without one of these set.
+issuer:
+  apiAuth:
+    jwks:
+      enabled: true
+
+replicas:
+  pdp: 1
+  walletBackend: 1
+
+global:
+  certManager:
+    createIssuers: false
+
+images:
+  # Pinned values.yaml tag predates the AllowHTTP whitelist fix
+  # (sirosfoundation/go-trust#112) that the Fly-hosted PDP's config-file
+  # whitelist needs. Bumped once v0.9.2 publishes to ghcr.io.
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.9.2"

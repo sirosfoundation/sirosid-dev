@@ -54,3 +54,7 @@ fixtures/vc-config-android-usb.yaml
 # Helm-rendered config + generated secrets (PDP=helm, scripts/render-helm-config.py)
 fixtures/rendered/
 fixtures/rendered-secrets/
+
+# Python bytecode cache
+__pycache__/
+*.pyc

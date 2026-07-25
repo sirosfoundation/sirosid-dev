@@ -18,7 +18,7 @@ WALLET_NAME ?= SIROS ID (dev)
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
-        render-helm-config \
+        render-helm-config fly-up fly-down fly-status \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
@@ -849,6 +849,40 @@ render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-i
 		exit 1; \
 	fi
 	python3 scripts/render-helm-config.py --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack"
+
+# =============================================================================
+# Fly.io — named ephemeral environments (see scripts/fly-up.py, fly-down.py)
+# =============================================================================
+
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name>)
+	@if [ -z "$(ENV)" ]; then \
+		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
+		exit 1; \
+	fi
+	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
+		echo "$(RED)Error: helm-charts repo not found at $(HELM_CHARTS_PATH)$(NC)"; \
+		echo "  Run: make setup   (clones all required sibling repos)"; \
+		exit 1; \
+	fi
+	@command -v flyctl >/dev/null 2>&1 || { echo "$(RED)Error: flyctl not found - https://fly.io/docs/flyctl/install/$(NC)"; exit 1; }
+	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack"
+
+fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
+	@if [ -z "$(ENV)" ]; then \
+		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-down ENV=demo1$(NC)"; \
+		exit 1; \
+	fi
+	python3 scripts/fly-down.py --env "$(ENV)"
+
+fly-status: ## Show Fly app status for a named environment (make fly-status ENV=<name>)
+	@if [ -z "$(ENV)" ]; then \
+		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-status ENV=demo1$(NC)"; \
+		exit 1; \
+	fi
+	@for c in mongodb vc-registry vc-issuer vc-verifier vc-apigw pdp wallet-backend wallet-proxy wallet-frontend; do \
+		flyctl status -a "sirosid-$(ENV)-$$c" 2>&1 | head -5; \
+		echo ""; \
+	done
 
 # =============================================================================
 # Setup — clone sibling repositories
