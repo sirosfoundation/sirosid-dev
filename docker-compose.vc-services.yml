@@ -20,7 +20,10 @@
 services:
   # MongoDB - persistent storage for VC services
   mongodb:
-    image: mongo:7.0
+    # Pinned to match helm-charts/siros-id-stack values.yaml's
+    # images.mongoCommunityVersion, so local testing uses the same Mongo
+    # version production runs (via the MongoDB Community Operator).
+    image: mongo:7.0.24
     container_name: vc-mongodb-e2e
     ports:
       - "27017:27017"

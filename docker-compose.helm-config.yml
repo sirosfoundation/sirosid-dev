@@ -1,0 +1,90 @@
+# Docker Compose overlay: run wallet-backend and PDP off config rendered
+# straight from helm-charts/siros-id-stack instead of hand-maintained env vars
+# / CLI flags (docker-compose.test.yml's wallet-backend, docker-compose.go-trust*.yml).
+#
+# This is the transitional/opt-in step towards removing that hand-maintained,
+# independently-drifting config entirely - see scripts/render-helm-config.py
+# for exactly what's shared verbatim from the chart vs. genuinely local-only.
+#
+# Usage:
+#   make render-helm-config   # or: make up HELM_CONFIG=yes (runs it for you)
+#   docker compose -f docker-compose.test.yml -f docker-compose.go-trust.yml \
+#     -f docker-compose.helm-config.yml up -d
+#
+# Requires a sibling `../helm-charts` checkout (HELM_CHARTS_PATH) and `../go-trust`
+# with https://github.com/sirosfoundation/go-trust/pull/112 (merged to main
+# 2026-07-25) - the config-file-driven whitelist registry has no way to allow
+# HTTP JWKS fetch without it, so go-trust-config would otherwise register 0
+# usable issuers/verifiers.
+#
+# NOT covered by this overlay (no Helm equivalent - see scripts/render-helm-config.py
+# docstring): wallet-backend's built-in Authorization Server (passkey login) and
+# permissive http_client settings are sirosid-dev/testing-only, so they stay as
+# plain environment vars here rather than moving into the rendered config file.
+
+services:
+  wallet-backend:
+    # docker-compose.test.yml's `environment:` is a list, and Compose merges
+    # lists additively across files (later file wins per-key, but keys it
+    # doesn't mention still survive from the base file) - it does NOT let a
+    # later file drop keys. Since go-wallet-backend's envconfig layer always
+    # overrides file config, any stale base env var here (WALLET_JWT_SECRET,
+    # WALLET_TRUST_PDP_URL=http://go-trust-allow:6001, WALLET_SERVER_RP_ID,
+    # ...) would silently win over the rendered config file below. `!override`
+    # replaces the field wholesale instead of merging it - see
+    # docker-compose.golden.yml's `build: !reset null` for the same pattern.
+    environment: !override
+      # Everything else (JWT secret, RP id/origins, PDP url, mongo uri, admin
+      # token, registry source) now comes from the mounted config files below.
+      - WALLET_HTTP_CLIENT_ALLOW_PRIVATE_IPS=true
+      - WALLET_HTTP_CLIENT_ALLOW_HTTP=true
+      - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
+      - WALLET_AS_ENABLED=true
+      - WALLET_AS_INSECURE_COOKIES=true
+      - WALLET_AS_DEFAULT_MAX_TAC=rwlidk
+      - WALLET_AS_SIGNING_KEY_PATH=/app/fixtures/signing_ec_private.pem
+      - WALLET_AS_EXTERNAL_URL=http://localhost:8080
+      - WALLET_AS_ISSUER=http://localhost:8080
+      - WALLET_AS_RULES_DIR=/app/fixtures/as-rules
+    command: ["--mode=all", "--config=/app/config.yaml", "--registry-config=/app/registry.yaml"]
+    volumes:
+      - ./fixtures/rendered/wallet-backend.yaml:/app/config.yaml:ro
+      - ./fixtures/rendered/wallet-backend-registry.yaml:/app/registry.yaml:ro
+      - ./fixtures/rendered-secrets/jwtSecret:/main-secrets/jwtSecret:ro
+      - ./fixtures/rendered-secrets/adminToken:/main-secrets/adminToken:ro
+      - ./fixtures/rendered/vctms:/vctms:ro
+      # Helm mounts an emptyDir at /cache for registry.yaml's cache.path;
+      # bind-mounted (not a named volume, which Docker creates root-owned and
+      # the container's non-root uid 65532 can't write into).
+      - ./fixtures/rendered/cache:/cache
+      - ./fixtures/vc-pki/signing_ec_private.pem:/app/fixtures/signing_ec_private.pem:ro
+      - ./fixtures/as-rules:/app/fixtures/as-rules:ro
+    depends_on:
+      go-trust-config:
+        condition: service_healthy
+
+  # Go Trust PDP - config-file-driven whitelist (same shape Helm renders),
+  # in place of docker-compose.go-trust.yml's --whitelist flag-driven services.
+  go-trust-config:
+    build:
+      context: ${GO_TRUST_PATH:-../go-trust}
+      dockerfile: Dockerfile
+    image: go-trust-e2e-test:local
+    container_name: go-trust-config-e2e-test
+    ports:
+      - "9098:8080"
+    command: ["--config", "/main-config/config.yaml"]
+    volumes:
+      - ./fixtures/rendered/pdp.yaml:/main-config/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://localhost:8080/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true

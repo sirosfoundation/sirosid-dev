@@ -1,0 +1,81 @@
+# Helm values overlay used ONLY to render local dev config via
+# `make render-helm-config` / `scripts/render-helm-config.py`.
+#
+# This is never applied to a real cluster. It exists so sirosid-dev can feed
+# wallet-backend and go-trust (PDP) the exact same config schema Helm renders
+# in production (helm-charts/siros-id-stack), instead of a hand-maintained,
+# independently-drifting set of env vars.
+#
+# Fields the renderer post-processes after `helm template` (see
+# scripts/render-helm-config.py for the exact rewrites and why):
+#   - storage.mongodb / mongo: Helm renders x509 mTLS against the MongoDB
+#     Community Operator. Locally we run a single plain `mongo` container
+#     (see docker-compose.vc-services.yml), so the renderer swaps the URI
+#     for a plain one and drops the TLS/cert fields. This is a deliberate,
+#     documented exception - not something values overrides can express.
+#   - trust.pdp_url / rp_origins / base_url: k8s Service DNS + https
+#     hostnames get rewritten to the docker-compose service names and
+#     http://localhost ports sirosid-dev already uses.
+tenant:
+  id: dev
+  namespace: sirosid-dev
+
+domain:
+  root: localhost
+
+features:
+  generateSecrets: false
+  credentialTypes: {}
+
+pdp:
+  # The chart's own default_whitelist always whitelists https://<tenant>.issuer.<domain>
+  # and https://<tenant>.verifier.<domain> - hardcoded https, unreachable locally.
+  # Since there's no values-level toggle for scheme, we disable it and supply an
+  # equivalent whitelist directly via extraRegistries, using real sirosid-dev
+  # compose service URLs (both container-internal and host-mapped forms, matching
+  # mock-trust-pdp's existing TRUSTED_ISSUERS/TRUSTED_VERIFIERS in docker-compose.test.yml).
+  default_whitelist: false
+  externalUrl: "http://go-trust-config:6001"
+  extraRegistries:
+    whitelist:
+      enabled: true
+      name: "sirosid-dev local whitelist"
+      description: "docker-compose vc-services URLs (rendered from helm-charts schema)"
+      # Local vc-services are plain http, but the whitelist registry's JWKS
+      # auto-discovery refuses http by default (pkg/registry/static/whitelist.go:123,
+      # "testing only" per its own comment) - without this, every whitelisted
+      # entity fails key discovery and ends up with 0 usable issuers/verifiers.
+      allow_http: true
+      lists:
+        pid-issuers:
+          - http://vc-issuer:8080
+          - http://localhost:9000
+          - http://vc-apigw:8080
+          - http://localhost:9003
+        verifiers:
+          - http://vc-issuer:8080
+          - http://localhost:9000
+          - http://vc-apigw:8080
+          - http://localhost:9003
+          - http://vc-verifier:8080
+          - http://localhost:9001
+      actions:
+        pid-provider: pid-issuers
+        credential-issuer: pid-issuers
+        verifier: verifiers
+        credential-verifier: verifiers
+
+# Not consumed by sirosid-dev yet (issuer/verifier alignment is a follow-up),
+# but 04-issuer.yaml `fail`s the whole render without one of these set.
+issuer:
+  apiAuth:
+    jwks:
+      enabled: true
+
+replicas:
+  pdp: 1
+  walletBackend: 1
+
+global:
+  certManager:
+    createIssuers: false

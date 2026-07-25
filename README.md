@@ -49,7 +49,8 @@ make help          # Full option reference
   ├── go-wallet-backend/    # wallet backend (Go)
   ├── go-trust/             # trust PDP
   ├── wallet-common/        # shared TypeScript types
-  └── vc/                   # VC services (optional, for VC=yes)
+  ├── vc/                   # VC services (optional, for VC=yes)
+  └── helm-charts/          # production Helm chart (optional, for PDP=helm)
   ```
 
 The `install.sh` script clones all of these automatically. Alternatively,
@@ -232,10 +233,15 @@ adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.sirosfoundation.
 | `scripts/setup-android.sh` | Script behind `make android-setup` |
 | `docker-compose.tunnel.yml` | Injects `TUNNEL_FRONTEND_URL`, `TUNNEL_RPID` (hostname only), `APK_KEY_HASH` |
 
-### Trust PDP Modes) |
+### Trust PDP Modes
+
+| Mode | Description |
+|------|-------------|
+| `PDP=allow` (default) | go-trust allow-all — every entity is trusted |
 | `PDP=whitelist` | go-trust whitelist — only entities in `fixtures/vc-go-trust-whitelist.yaml` are trusted |
 | `PDP=deny` | go-trust deny-all — rejects everything (negative testing) |
 | `PDP=mock` | Legacy mock-trust-pdp (no go-trust) |
+| `PDP=helm` | go-trust whitelist + wallet-backend, both configured from config files rendered off `helm-charts/siros-id-stack` (see `scripts/render-helm-config.py`) instead of hand-maintained env vars/flags. Requires a sibling `../helm-charts` checkout. This is the transitional step towards aligning sirosid-dev's config with the production Helm chart — over time the other PDP modes' hand-maintained env vars are meant to be replaced by this path, not kept alongside it indefinitely. |
 
 ## VC Services
 

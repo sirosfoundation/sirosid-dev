@@ -18,6 +18,7 @@ WALLET_NAME ?= SIROS ID (dev)
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
+        render-helm-config \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
@@ -35,6 +36,8 @@ GITHUB_ORG ?= git@github.com:sirosfoundation
 FRONTEND_PATH ?= ../wallet-frontend
 BACKEND_PATH ?= ../go-wallet-backend
 FACETEC_PATH ?= ../facetec-api
+GO_TRUST_PATH ?= ../go-trust
+HELM_CHARTS_PATH ?= ../helm-charts
 
 # Docker compose files
 PRIMARY_COMPOSE := docker-compose.test.yml
@@ -42,6 +45,7 @@ GO_TRUST_COMPOSE := docker-compose.go-trust.yml
 GO_TRUST_ALLOW_COMPOSE := docker-compose.go-trust-allow.yml
 GO_TRUST_WHITELIST_COMPOSE := docker-compose.go-trust-whitelist.yml
 GO_TRUST_DENY_COMPOSE := docker-compose.go-trust-deny.yml
+HELM_CONFIG_COMPOSE := docker-compose.helm-config.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
@@ -129,8 +133,14 @@ else ifeq ($(PDP),deny)
   _PDP_LABEL := go-trust deny-all
 else ifeq ($(PDP),mock)
   _PDP_LABEL := mock-trust-pdp
+else ifeq ($(PDP),helm)
+  # wallet-backend + PDP config rendered from helm-charts/siros-id-stack
+  # (see scripts/render-helm-config.py) instead of hand-maintained env vars /
+  # CLI flags. Transitional/opt-in step towards removing the latter entirely.
+  COMPOSE_FILES += -f $(HELM_CONFIG_COMPOSE)
+  _PDP_LABEL := go-trust (helm-rendered config)
 else
-  $(error Unknown PDP mode '$(PDP)'. Use: allow, whitelist, deny, mock)
+  $(error Unknown PDP mode '$(PDP)'. Use: allow, whitelist, deny, mock, helm)
 endif
 
 # VC services
@@ -299,9 +309,12 @@ help: ## Show this help
 	@echo ""
 	@echo "$(GREEN)Stack Options:$(NC)  (pass on the make command line to 'make up')"
 	@echo ""
-	@echo "  $(YELLOW)PDP=$(NC)<allow|whitelist|deny|mock>"
+	@echo "  $(YELLOW)PDP=$(NC)<allow|whitelist|deny|mock|helm>"
 	@echo "                     Select trust policy provider"
 	@echo "                     default: $(GREEN)allow$(NC)"
+	@echo "                     helm: wallet-backend + PDP config rendered from"
+	@echo "                     helm-charts/siros-id-stack instead of hand-maintained"
+	@echo "                     env vars/flags - requires HELM_CHARTS_PATH (../helm-charts)"
 	@echo ""
 	@echo "  $(YELLOW)VC=$(NC)<yes|no>"
 	@echo "                     Enable production-like VC services"
@@ -369,6 +382,7 @@ help: ## Show this help
 	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
 	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
 	@echo "  $(YELLOW)FACETEC_PATH=$(NC)     facetec-api source     (default: $(GREEN)../facetec-api$(NC))"
+	@echo "  $(YELLOW)HELM_CHARTS_PATH=$(NC) helm-charts source      (default: $(GREEN)../helm-charts$(NC)) - PDP=helm only"
 	@echo ""
 	@echo "$(GREEN)Other Variables:$(NC)"
 	@echo ""
@@ -496,6 +510,16 @@ ifneq ($(call _truthy,$(VC)),)
 		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
 		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
+endif
+ifeq ($(PDP),helm)
+	@# Pre-flight: $(HELM_CHARTS_PATH)/siros-id-stack must exist to render config from
+	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
+		echo "$(RED)Error: PDP=helm requires the 'helm-charts' repo at $(HELM_CHARTS_PATH)$(NC)"; \
+		echo "  Run: make setup   (clones all required sibling repos)"; \
+		echo "  Or:  git clone $(GITHUB_ORG)/helm-charts.git $(HELM_CHARTS_PATH)"; \
+		exit 1; \
+	fi
+	@$(MAKE) --no-print-directory render-helm-config
 endif
 ifneq ($(call _truthy,$(FACETEC)),)
 	@# Pre-flight: ../facetec-api must exist for the facetec-api build
@@ -815,10 +839,26 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 	cd fixtures && ./create-pki.sh
 
 # =============================================================================
+# Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
+# =============================================================================
+
+render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-id-stack
+	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
+		echo "$(RED)Error: helm-charts repo not found at $(HELM_CHARTS_PATH)$(NC)"; \
+		echo "  Run: make setup   (clones all required sibling repos)"; \
+		exit 1; \
+	fi
+	python3 scripts/render-helm-config.py --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack"
+
+# =============================================================================
 # Setup — clone sibling repositories
 # =============================================================================
 
 # repo:branch pairs — override GITHUB_ORG to use a different remote
+# helm-charts is NOT in this list - it's consumed read-only as a config-
+# rendering source (PDP=helm), not branched for local feature work like the
+# repos below, so it gets its own clone-or-update step in `setup` instead of
+# the generic "exists -> leave alone" handling.
 SETUP_REPOS := \
 	wallet-frontend:release/sirosid \
 	wallet-common:release/sirosid \
@@ -842,6 +882,28 @@ setup: ## Clone sibling repos needed for local development
 				printf "  %-24s $(RED)failed$(NC)\n" "$$repo"; \
 		fi; \
 	done
+	@# helm-charts: clone if missing; if present and on main, fast-forward it -
+	@# a stale chart would silently render outdated/wrong config for PDP=helm.
+	@# Left alone (with a note) if checked out to something other than main,
+	@# e.g. a PR branch someone's deliberately testing against.
+	@if [ -d "$(HELM_CHARTS_PATH)" ]; then \
+		branch="$$(git -C $(HELM_CHARTS_PATH) branch --show-current 2>/dev/null)"; \
+		if [ "$$branch" = "main" ]; then \
+			if git -C $(HELM_CHARTS_PATH) fetch origin --quiet && \
+				git -C $(HELM_CHARTS_PATH) pull --ff-only --quiet; then \
+				printf "  %-24s $(GREEN)updated$(NC) (main)\n" "helm-charts"; \
+			else \
+				printf "  %-24s $(RED)update failed$(NC) (main - check for local changes)\n" "helm-charts"; \
+			fi; \
+		else \
+			printf "  %-24s $(YELLOW)exists$(NC) (on '%s', not main — skipping auto-update)\n" "helm-charts" "$$branch"; \
+		fi; \
+	else \
+		echo "  Cloning helm-charts (branch main)..."; \
+		git clone -b main "$(GITHUB_ORG)/helm-charts.git" "$(HELM_CHARTS_PATH)" && \
+			printf "  %-24s $(GREEN)cloned$(NC) (main)\n" "helm-charts" || \
+			printf "  %-24s $(RED)failed$(NC)\n" "helm-charts"; \
+	fi
 	@echo ""
 	@echo "$(GREEN)Done.$(NC) Run 'make install' to install dependencies, then 'make up' to start the stack."
 
