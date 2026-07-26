@@ -349,6 +349,12 @@ help: ## Show this help
 	@echo "  $(YELLOW)REBUILD=$(NC)<yes|no>"
 	@echo "                     Force no-cache image rebuild before startup"
 	@echo ""
+	@echo "  $(YELLOW)ANDROID_APPS=$(NC)<pkg=fingerprint,...>"
+	@echo "                     Extra Android package+signing-key pairs to trust (debug"
+	@echo "                     builds and/or Play Store keys), on top of .android-apps"
+	@echo "                     (see .android-apps.example) - honored by 'make up' (any"
+	@echo "                     PDP mode) and 'make fly-up' alike. See scripts/android_apps.py."
+	@echo ""
 	@echo "$(GREEN)Interaction Rules:$(NC)"
 	@echo "  - $(YELLOW)TUNNELS=yes$(NC) and $(YELLOW)DOMAIN=...$(NC) are mutually exclusive"
 	@echo "  - $(YELLOW)CONFORMANCE=yes$(NC) automatically enables VC services with allow-all trust"
@@ -574,6 +580,8 @@ ifneq ($(GOLDEN),)
 	set -a && . ./.env.golden && set +a && \
 		{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; } && \
 		{ [ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; } && \
+		{ _ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
+		  [ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; } && \
 	WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
@@ -588,6 +596,8 @@ endif
 	@_LOG=$$(mktemp /tmp/compose.XXXXXX); \
 	[ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 	[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
+	_ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
+	[ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) FACETEC_PATH=$(FACETEC_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build >$$_LOG 2>&1; \
@@ -842,13 +852,16 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
 # =============================================================================
 
-render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-id-stack
+render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-id-stack (use ANDROID_APPS=pkg=fingerprint,... to add debug/Play Store keys)
 	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
 		echo "$(RED)Error: helm-charts repo not found at $(HELM_CHARTS_PATH)$(NC)"; \
 		echo "  Run: make setup   (clones all required sibling repos)"; \
 		exit 1; \
 	fi
-	python3 scripts/render-helm-config.py --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack"
+	@_HASHES=$$(python3 scripts/android_apps.py --apk-key-hashes $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
+	_FLAGS=""; \
+	for h in $$_HASHES; do _FLAGS="$$_FLAGS --android-apk-key-hash $$h"; done; \
+	python3 scripts/render-helm-config.py --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack" $$_FLAGS
 
 # =============================================================================
 # Fly.io — named ephemeral environments (see scripts/fly-up.py, fly-down.py)

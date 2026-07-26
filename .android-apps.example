@@ -1,0 +1,21 @@
+# Copy this file to .android-apps (gitignored, per-developer/per-checkout) to
+# list Android package+signing-key pairs that should be trusted by every
+# environment you bring up - Fly (make fly-up) or local docker-compose
+# testing - regardless of which one you're using. Read by
+# scripts/android_apps.py.
+#
+# One entry per line: package=fingerprint
+# fingerprint is the SHA-256 cert fingerprint as printed by `keytool -list -v`
+# (colon-separated hex) - no manual encoding needed, the scripts convert it.
+#
+# The same package can appear more than once with a different fingerprint -
+# e.g. a debug build and a Play Store upload key for the same app.
+#
+# Entries here are added ON TOP of:
+#   - the production fingerprints helm-charts/siros-id-stack already carries
+#     (walletBackend.extraRpOrigins) - always included, Fly only.
+#   - .env.android (from `make android-setup`) - your own local debug build,
+#     still honored alongside this file, not replaced by it.
+#
+# com.example.debug=AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99
+# com.example=11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00

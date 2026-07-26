@@ -83,9 +83,17 @@ def gen_secret(path: Path, length: int = 32) -> str:
     return value
 
 
-def patch_wallet_backend_compose(config: dict) -> dict:
+def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: list = None) -> dict:
     config["server"]["rp_id"] = "localhost"
     android_origins = [o for o in config["server"]["rp_origins"] if o.startswith("android:")]
+    # Same reasoning as patch_wallet_backend_fly: debug builds / Play Store
+    # signing keys (scripts/android_apps.py's .android-apps / --android-app)
+    # are added on top of, not instead of, the production fingerprints
+    # helm-charts' extraRpOrigins already carries.
+    for apk_key_hash in extra_android_apk_key_hashes or []:
+        origin = f"android:apk-key-hash:{apk_key_hash}"
+        if origin not in android_origins:
+            android_origins.append(origin)
     config["server"]["rp_origins"] = ["http://localhost:3000"] + android_origins
     config["server"]["base_url"] = "http://localhost:8080"
     config["server"]["cors"]["allowed_origins"] = ["http://localhost:3000"]
@@ -181,8 +189,10 @@ def main():
     parser.add_argument("--android-apk-key-hash", action="append", default=[],
                          help="base64url apk-key-hash (no padding) to add to wallet-backend's "
                               "rp_origins, on top of the production ones helm-charts already "
-                              "carries - repeatable. See fly-up.py's --android-app for the "
-                              "developer-facing (colon-hex) form of this.")
+                              "carries - repeatable, applies to both --target compose and "
+                              "--target fly. See scripts/android_apps.py (.android-apps / "
+                              "--android-app) for the developer-facing (colon-hex) form of this "
+                              "- the Makefile passes its output through here for both targets.")
     parser.add_argument("--namespace", default="sirosid-dev")
     parser.add_argument("--out-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered"))
     parser.add_argument("--secrets-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"))
@@ -221,7 +231,7 @@ def main():
     wb_data = extract_configmap_data(docs, "wallet-backend-main")
     backend_cfg = yaml.safe_load(wb_data["backend.yaml"])
     if args.target == "compose":
-        backend_cfg = patch_wallet_backend_compose(backend_cfg)
+        backend_cfg = patch_wallet_backend_compose(backend_cfg, args.android_apk_key_hash)
     else:
         backend_cfg = patch_wallet_backend_fly(backend_cfg, args.env, args.android_apk_key_hash)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))

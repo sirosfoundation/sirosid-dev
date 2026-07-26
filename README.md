@@ -568,6 +568,39 @@ they're not redundant, each solves a problem the other can't:
   entirely, and PDP goes back to being sourced from the chart exactly like
   every other component - no permanent special-casing.
 
+### Android app identities (debug builds + Play Store keys)
+
+wallet-backend's server-side WebAuthn accept list (`server.rp_origins`) must
+carry an `android:apk-key-hash:...` entry for every Android app/signing-key
+pair you want to test passkeys with - registering a package in
+`assetlinks.json` alone passes Android's OS-level Digital Asset Links check
+but still fails the actual WebAuthn ceremony if `rp_origins` doesn't also
+have it (see `scripts/android_apps.py`'s docstring).
+
+Copy `.android-apps.example` to `.android-apps` (gitignored, per-developer/
+per-checkout) and list every package=fingerprint pair you want trusted -
+several debug builds and/or Play Store upload keys at once:
+
+```
+com.example.debug=AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99
+com.example=11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00
+```
+
+This one file is read by **both** targets, regardless of which one you use:
+
+```bash
+make up                              # default local docker-compose
+make up PDP=helm                    # helm-rendered local config
+make fly-up ENV=alice                # Fly.io
+```
+
+`ANDROID_APPS=pkg=fingerprint,...` (comma-separated, repeatable-by-comma) adds
+one-off entries on the command line without touching `.android-apps`, and
+`.env.android` (from `make android-setup`) is still honored on top of both -
+none of these replace each other, they all merge. See
+`scripts/android_apps.py` for the exact precedence and the hex/base64url
+conversion every consumer needs.
+
 ## Directory Structure
 
 ```
