@@ -90,7 +90,8 @@ def run(cmd, **kwargs):
     subprocess.run(cmd, check=True, **kwargs)
 
 
-def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str) -> list:
+def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
+                    conformance: bool = False) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -103,7 +104,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     # for a debug/sideloaded build's passkeys to actually work; only the
     # assetlinks.json half was wired in the first pass at this.
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
-                   out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password)
+                   out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
+                   conformance=conformance)
     run([sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password],
         cwd=SIROSID_DEV_ROOT)
     return docs
@@ -578,7 +580,8 @@ def main():
     # docs is the full rendered manifest (not just wallet-backend/pdp) -
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
-    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password)
+    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
+                           args.conformance)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")
@@ -645,6 +648,15 @@ def main():
     for comp in all_components:
         if any(p["public"] for p in comp["ports"]):
             print(f"  {comp['name']}: {app_url(args.env, comp['name'])}")
+    print()
+    print("To run sirosid-tests' CDP-based WebAuthn conformance specs against this")
+    print("environment instead of localhost (see sirosid-tests/specs/conformance/):")
+    print(f"  export FRONTEND_URL={app_url(args.env, 'wallet-frontend')}")
+    print(f"  export ADMIN_URL={app_url(args.env, 'wallet-proxy')}")
+    print(f"  export ADMIN_TOKEN={_persistent_secret(out_dir, 'adminToken')}")
+    if args.conformance:
+        print(f"  export CONFORMANCE_URL={app_url(args.env, 'conformance')}")
+        print("  export NODE_TLS_REJECT_UNAUTHORIZED=0  # conformance suite's self-signed cert")
     print()
     print(f"Tear down with: make fly-down ENV={args.env}")
 

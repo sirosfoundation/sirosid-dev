@@ -150,7 +150,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     return config
 
 
-def build_fly_values_overlay(env: str) -> dict:
+def build_fly_values_overlay(env: str, conformance: bool = False) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
@@ -168,6 +168,27 @@ def build_fly_values_overlay(env: str) -> dict:
     apigw_url = f"https://sirosid-{env}-vc-apigw.fly.dev"
     verifier_url = f"https://sirosid-{env}-vc-verifier.fly.dev"
 
+    pid_issuers = [apigw_url]
+    verifiers = [apigw_url, verifier_url]
+    if conformance:
+        # go-wallet-backend calls PDP for issuer trust at credential-offer
+        # ACCEPTANCE time (internal/engine/oid4vci.go's evaluateTrust, keyed
+        # on the offer's credential_issuer URL) - a separate, later check
+        # from admin issuer registration, which grants no trust by itself.
+        # Without this, every OID4VCI conformance module fails with
+        # "untrusted issuer" the moment the wallet tries to accept the
+        # suite's own offer, even though it was registered via
+        # POST /admin/tenants/:id/issuers. The suite mints a fresh path per
+        # test plan (https://.../test/a/<alias>/, alias varies), so a single
+        # fixed URL can't cover it - go-trust's whitelist supports a
+        # trailing-`*` prefix match (see pkg/registry/static/whitelist.go's
+        # matchesList), which does. Added to both lists since the suite acts
+        # as issuer (OID4VCI) and verifier (OID4VP) from the same domain,
+        # and both spec suites already exist in sirosid-tests.
+        conformance_prefix = f"https://sirosid-{env}-conformance.fly.dev/*"
+        pid_issuers.append(conformance_prefix)
+        verifiers.append(conformance_prefix)
+
     return {
         "tenant": {"id": env},
         "pdp": {
@@ -179,8 +200,8 @@ def build_fly_values_overlay(env: str) -> dict:
                     "name": f"sirosid-{env} Fly whitelist",
                     "description": "Fly-hosted vc-services URLs (rendered from helm-charts schema)",
                     "lists": {
-                        "pid-issuers": [apigw_url],
-                        "verifiers": [apigw_url, verifier_url],
+                        "pid-issuers": pid_issuers,
+                        "verifiers": verifiers,
                     },
                     "actions": {
                         "pid-provider": "pid-issuers",
@@ -196,7 +217,7 @@ def build_fly_values_overlay(env: str) -> dict:
 
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
-           mongo_password: str = None) -> list:
+           mongo_password: str = None, conformance: bool = False) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -217,7 +238,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         out_dir = out_dir / f"fly-{env}"
         out_dir.mkdir(parents=True, exist_ok=True)
         overlay_path = out_dir / "values.generated.yaml"
-        overlay_path.write_text(yaml.dump(build_fly_values_overlay(env), sort_keys=False))
+        overlay_path.write_text(yaml.dump(build_fly_values_overlay(env, conformance), sort_keys=False))
         values_files.append(overlay_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")
@@ -285,6 +306,11 @@ def main():
                          help="--target fly only: mongodb root password (fly-up.py generates and sets "
                               "this as a Fly secret on the mongodb app itself; passed here so "
                               "wallet-backend's config embeds a matching authenticated connection URI).")
+    parser.add_argument("--conformance", action="store_true",
+                         help="--target fly only: also whitelist the conformance suite's issuer/verifier "
+                              "identity (https://sirosid-<env>-conformance.fly.dev/*) with PDP, so the "
+                              "wallet accepts credential offers/presentation requests from it during "
+                              "OID4VCI/OID4VP conformance testing - see build_fly_values_overlay().")
     parser.add_argument("--namespace", default="sirosid-dev")
     parser.add_argument("--out-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered"))
     parser.add_argument("--secrets-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"))
@@ -303,7 +329,7 @@ def main():
 
     render(args.target, chart_dir, env=args.env, android_apk_key_hashes=args.android_apk_key_hash,
            namespace=args.namespace, out_dir=Path(args.out_dir), secrets_dir=Path(args.secrets_dir),
-           mongo_password=args.mongo_password)
+           mongo_password=args.mongo_password, conformance=args.conformance)
 
 
 if __name__ == "__main__":

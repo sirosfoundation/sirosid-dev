@@ -554,15 +554,20 @@ def wallet_proxy_conf(env: str) -> str:
     known/apple-app-site-association returns the real file, not a 404 or the
     SPA fallback, once WELLKNOWN_APPLE_APPIDS is actually set on the deploy).
 
-    Also proxies exactly two admin-API paths (`register_vc_services()`
-    below calls these right after deploy, mirroring the local Makefile's
-    register-vc-services target) - wallet-backend's admin port (8081) is
-    otherwise 6PN-internal only and unreachable from fly-up.py's own
-    process. Deliberately NOT a blanket `/admin/` proxy: wallet-backend's
-    admin API also covers user/instance management, which has no reason to
-    be reachable from the public internet even bearer-token-gated - `location
-    =` exact-matches only these two paths, everything else under /admin/
-    stays unreachable through wallet-proxy.
+    Proxies the /admin/tenants/* subtree (tenant create/read/delete plus
+    issuer/verifier registration for ANY tenant id, not just "default") -
+    wallet-backend's admin port (8081) is otherwise 6PN-internal only and
+    unreachable from outside the environment's network. Widened from an
+    earlier version that exact-matched only /admin/tenants/default/issuers|
+    verifiers (all `register_vc_services()` needed) once CDP-based WebAuthn
+    conformance testing (sirosid-tests' tenant-setup-fixture.ts) needed to
+    create/delete its OWN per-test tenants (POST /admin/tenants, GET/DELETE
+    /admin/tenants/:id) rather than reusing the fixed "default" one. Still
+    deliberately NOT a blanket `/admin/` proxy: wallet-backend's admin API
+    also covers user/instance management, which has no reason to be
+    reachable from the public internet even bearer-token-gated - only
+    /admin/tenants and its immediate id/issuers/verifiers children match;
+    everything else under /admin/ stays unreachable through wallet-proxy.
     """
     backend = f"{app_name(env, 'wallet-backend')}.internal"
     return f"""server {{
@@ -573,12 +578,17 @@ def wallet_proxy_conf(env: str) -> str:
         default_type application/json;
     }}
 
-    location = /admin/tenants/default/issuers {{
+    location = /admin/tenants {{
         proxy_pass http://{backend}:8081;
         proxy_set_header Host $host;
     }}
 
-    location = /admin/tenants/default/verifiers {{
+    location ~ ^/admin/tenants/[^/]+$ {{
+        proxy_pass http://{backend}:8081;
+        proxy_set_header Host $host;
+    }}
+
+    location ~ ^/admin/tenants/[^/]+/(issuers|verifiers)$ {{
         proxy_pass http://{backend}:8081;
         proxy_set_header Host $host;
     }}
