@@ -9,14 +9,27 @@ serving /.well-known/assetlinks.json for Android passkey verification and
 proxying everything else through to wallet-backend, matching how local
 Android/tunnel testing already works.
 """
+import base64
 import json
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 FLY_ORG = "sirosfoundation"
 FLY_REGION = "arn"
+
+# mini-oidc's OIDC client registered for vc-apigw's auth_providers.oidc (PID/EHIC
+# issuance) - a single source of truth for both sides of this pairing:
+# mini_oidc_config() (below) sets these as the client mini-oidc itself knows
+# about, and scripts/patch-vc-config-fly.py sets the SAME values explicitly in
+# apigw's oidc config, instead of each independently hardcoding a literal that
+# only works because it happens to match the other (previously: vc-config.yaml's
+# base fixture hardcoded "apigw-oidc-client"/"test-secret", and this module's
+# ${VAR:-default} fallbacks coincidentally matched it - nothing enforced that).
+MINI_OIDC_APIGW_CLIENT_ID = "apigw-oidc-client"
+MINI_OIDC_APIGW_CLIENT_SECRET = "test-secret"
 
 # Deployment order matters - no `depends_on` equivalent on Fly, so components
 # are deployed strictly in this order and each `fly deploy` blocks until its
@@ -27,6 +40,12 @@ COMPONENTS = [
         "image": "mongo:{mongo_version}",
         "ports": [{"internal": 27017, "public": False}],
         "checks": None,
+        # No HTTP endpoint to check - a TCP check on mongod's own port, so
+        # `deploy_component()` can wait for an actual accept-connections
+        # signal instead of the fixed sleep() this replaces (see its comment
+        # in fly-up.py's git history for the "connection refused" crash-loop
+        # that motivated the original sleep in the first place).
+        "internal_check": {"type": "tcp", "port": 27017},
     },
     {
         # Not part of helm-charts (sirosid-dev/testing-only, see
@@ -52,6 +71,10 @@ COMPONENTS = [
         "image_from_helm_deployment": "issuer-core",
         "ports": [{"internal": 8080, "public": False}, {"internal": 8090, "public": False}],
         "checks": None,
+        # Internal-only (no [http_service]), so nothing previously blocked a
+        # deploy on this actually becoming healthy before vc-verifier/vc-apigw
+        # (which call it over 6PN) started deploying right after.
+        "internal_check": {"type": "http", "port": 8080, "path": "/health"},
     },
     {
         "name": "vc-verifier",
@@ -70,12 +93,18 @@ COMPONENTS = [
         "image_from_helm_deployment": "pdp",
         "ports": [{"internal": 8080, "public": False}],
         "checks": None,
+        # Same reasoning as vc-issuer - wallet-backend calls pdp over 6PN
+        # right after this, with nothing previously confirming it came up.
+        "internal_check": {"type": "http", "port": 8080, "path": "/healthz"},
     },
     {
         "name": "wallet-backend",
         "image_from_helm_deployment": "wallet-backend",
         "ports": [{"internal": 8080, "public": False}, {"internal": 8081, "public": False}, {"internal": 8082, "public": False}],
         "checks": None,
+        # Same reasoning - wallet-proxy (deployed right after) proxies to
+        # this over 6PN with no prior confirmation it was actually healthy.
+        "internal_check": {"type": "http", "port": 8080, "path": "/health"},
     },
     {
         "name": "wallet-proxy",
@@ -120,11 +149,26 @@ def app_exists(name: str) -> bool:
     return any(a.get("Name") == name for a in apps)
 
 
-def ensure_app(name: str):
+def network_name(env: str) -> str:
+    """A dedicated 6PN network per environment - apps in one org otherwise
+    share ONE flat private network by default (any app can resolve/reach any
+    other app's `.internal` address), which would mean any other developer's
+    environment - or any other app in `sirosfoundation` - could reach this
+    one's mongodb/pdp/wallet-backend directly. `--network` on `apps create`
+    puts every component for this env in its own segment instead, so naming
+    (`sirosid-<env>-*`) isn't the only thing preventing cross-environment
+    reachability."""
+    return f"sirosid-{env}"
+
+
+def ensure_app(name: str, network: str = None):
     if app_exists(name):
         print(f"app {name} already exists")
         return
-    run_fly("apps", "create", name, "-o", FLY_ORG, "--yes")
+    args = ["apps", "create", name, "-o", FLY_ORG, "--yes"]
+    if network:
+        args += ["--network", network]
+    run_fly(*args)
 
 
 def ensure_running(app: str):
@@ -147,6 +191,37 @@ def ensure_running(app: str):
             run_fly("machine", "start", m["id"], "-a", app, check=False)
 
 
+def wait_for_checks(app: str, timeout: int = 90, poll_interval: int = 3):
+    """Polls `flyctl checks list` until every check on `app` reports healthy,
+    or gives up after `timeout` seconds (printing a warning, not failing the
+    whole deploy - a slow-to-report check shouldn't block the rest of the
+    environment when the machine itself did start).
+
+    Generalizes what used to be a single `time.sleep(10)` after mongodb's
+    deploy specifically (a pragmatic guess at how long Fly's 6PN DNS/routing
+    takes to propagate for a brand-new machine) into an actual wait for a
+    real signal, for every internal-only component that now has a machine
+    check (write_fly_toml's `internal_check`) - not just mongodb.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        result = run_fly("checks", "list", "-a", app, "--json", check=False, capture=True)
+        if result.returncode == 0:
+            try:
+                # {machine_id: [check, ...], ...} - NOT a flat list.
+                by_machine = json.loads(result.stdout or "{}")
+            except ValueError:
+                by_machine = {}
+            checks = [c for machine_checks in by_machine.values() for c in machine_checks]
+            if checks and all(c.get("status") == "passing" for c in checks):
+                print(f"{app}: all checks passing")
+                return
+        time.sleep(poll_interval)
+    print(f"{app}: checks did not report passing within {timeout}s - continuing anyway "
+          f"(check `flyctl checks list -a {app}` if the next component fails to reach it)",
+          file=sys.stderr)
+
+
 def destroy_app(name: str):
     if not app_exists(name):
         print(f"app {name} does not exist, skipping")
@@ -164,20 +239,44 @@ def existing_secret_names(app: str) -> set:
         return set()
 
 
-def ensure_secret(app: str, key: str, value: str):
-    """Idempotent: never rotates a secret that's already set, mirroring
-    render-helm-config.py's gen_secret() file-based idempotency. Staged
-    (not applied immediately) - the `flyctl deploy` call that follows in
-    fly-up.py picks up staged secrets on its own, so there's no running
-    machine yet to redundantly restart here on a first-ever deploy."""
-    if key in existing_secret_names(app):
+def ensure_secret(app: str, key: str, value: str, force: bool = False):
+    """Idempotent by default: never rotates a secret that's already set,
+    mirroring render-helm-config.py's gen_secret() file-based idempotency.
+    Staged (not applied immediately) - the `flyctl deploy` call that follows
+    in fly-up.py picks up staged secrets on its own, so there's no running
+    machine yet to redundantly restart here on a first-ever deploy.
+
+    force=True skips the existing-value check entirely - only correct for a
+    secret whose consumers ALL get redeployed together in the same run with
+    the same freshly-generated value (e.g. mongodb's root password: mongo has
+    no persistent volume, so every deploy starts from empty data anyway,
+    meaning there's no old state a stale password would need to keep
+    matching - unlike, say, the VC signing key, where an old private key
+    deployed to only some consumers alongside new public certs on others
+    would break credential verification).
+
+    Every current caller mounts this secret into a file via `--file-secret`
+    (not consumed as a plain env var) - and `--file-secret` base64-DECODES
+    the stored secret value when writing the destination file (confirmed
+    empirically: a plaintext value came out the other end as binary garbage;
+    storing the base64 encoding of that same value produced the correct
+    plaintext file). So the value handed to `flyctl secrets set` here must
+    already be base64-encoded, or every `--file-secret`-mounted consumer
+    silently gets a corrupted file - previously unnoticed for jwtSecret/
+    adminToken only because they're opaque random tokens nothing else needs
+    to match; it broke mongodb's root password and the VC signing key
+    outright (auth failures / would-be signing failures) since those must
+    equal a SPECIFIC value another component also holds.
+    """
+    if not force and key in existing_secret_names(app):
         print(f"secret {key} already set on {app}, leaving as-is")
         return
-    run_fly("secrets", "set", f"{key}={value}", "-a", app, "--stage")
+    encoded = base64.b64encode(value.encode()).decode()
+    run_fly("secrets", "set", f"{key}={encoded}", "-a", app, "--stage")
 
 
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
-                    health_check_path: str | None = None, memory_mb: int = 256):
+                    health_check_path: str | None = None, memory_mb: int = 256, internal_check: dict | None = None):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -236,6 +335,28 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
                 f"    path = '{health_check_path}'",
                 "",
             ]
+    if internal_check is not None:
+        # Machine-level check (distinct from [[http_service.checks]] above) -
+        # works for apps with NO [http_service] at all, so an internal-only
+        # component (vc-issuer, pdp, wallet-backend) can still have
+        # deploy_component()'s post-deploy wait_for_checks() confirm it's
+        # actually healthy before the next component - which calls it over
+        # 6PN - starts deploying right after.
+        lines += [
+            "[checks]",
+            "  [checks.internal]",
+            f"    port = {internal_check['port']}",
+            f"    type = '{internal_check['type']}'",
+            "    interval = '10s'",
+            "    timeout = '5s'",
+            "    grace_period = '15s'",
+        ]
+        if internal_check["type"] == "http":
+            lines += [
+                "    method = 'GET'",
+                f"    path = '{internal_check['path']}'",
+            ]
+        lines += [""]
     if memory_mb != 256:
         lines += [
             "[[vm]]",
@@ -280,9 +401,9 @@ clients:
       - "${RP_BASE_URL}/callback"
     token_endpoint_auth_method: "none"
 
-  - client_id: "${APIGW_CLIENT_ID:-apigw-oidc-client}"
+  - client_id: "${APIGW_CLIENT_ID}"
     client_name: "VC API Gateway"
-    client_secret: "${APIGW_CLIENT_SECRET:-test-secret}"
+    client_secret: "${APIGW_CLIENT_SECRET}"
     redirect_uris:
       - "${APIGW_REDIRECT_URI:-http://localhost:8091/oidcrp/callback}"
     token_endpoint_auth_method: "client_secret_basic"
@@ -303,6 +424,16 @@ def wallet_proxy_conf(env: str) -> str:
     (wallet-proxy, per patch_wallet_backend_fly's rp_id), same as Android's
     assetlinks.json - wallet-frontend generates its own copy too (for
     Universal Links on its own domain), but that doesn't cover the RP ID.
+
+    Also proxies exactly two admin-API paths (`register_vc_services()`
+    below calls these right after deploy, mirroring the local Makefile's
+    register-vc-services target) - wallet-backend's admin port (8081) is
+    otherwise 6PN-internal only and unreachable from fly-up.py's own
+    process. Deliberately NOT a blanket `/admin/` proxy: wallet-backend's
+    admin API also covers user/instance management, which has no reason to
+    be reachable from the public internet even bearer-token-gated - `location
+    =` exact-matches only these two paths, everything else under /admin/
+    stays unreachable through wallet-proxy.
     """
     backend = f"{app_name(env, 'wallet-backend')}.internal"
     return f"""server {{
@@ -316,6 +447,16 @@ def wallet_proxy_conf(env: str) -> str:
     location /.well-known/apple-app-site-association {{
         alias /etc/nginx/well-known/apple-app-site-association;
         default_type application/json;
+    }}
+
+    location = /admin/tenants/default/issuers {{
+        proxy_pass http://{backend}:8081;
+        proxy_set_header Host $host;
+    }}
+
+    location = /admin/tenants/default/verifiers {{
+        proxy_pass http://{backend}:8081;
+        proxy_set_header Host $host;
     }}
 
     location /api/v2/wallet {{

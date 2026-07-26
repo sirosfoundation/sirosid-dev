@@ -893,7 +893,7 @@ fly-status: ## Show Fly app status for a named environment (make fly-status ENV=
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-status ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	@for c in mongodb vc-registry vc-issuer vc-verifier vc-apigw pdp wallet-backend wallet-proxy wallet-frontend; do \
+	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import COMPONENTS; print(' '.join(c['name'] for c in COMPONENTS))"); do \
 		flyctl status -a "sirosid-$(ENV)-$$c" 2>&1 | head -5; \
 		echo ""; \
 	done

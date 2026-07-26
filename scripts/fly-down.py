@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Tear down a named Fly.io environment for sirosid-dev: `make fly-down ENV=<name>`.
 
-Destroys all 9 Fly apps for the environment (see scripts/fly_common.py's
+Destroys all Fly apps for the environment (see scripts/fly_common.py's
 COMPONENTS table) and removes the local rendered-config directory. Order
 doesn't matter for teardown (unlike fly-up.py) - Fly apps don't fail to
 destroy just because another app was still calling them.

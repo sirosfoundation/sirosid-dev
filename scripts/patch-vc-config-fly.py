@@ -40,9 +40,13 @@ parse/mutate/dump - the output is a new, gitignored, per-environment file
 hand-edited.
 """
 import argparse
+import sys
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fly_common import MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET  # noqa: E402
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 
@@ -55,13 +59,17 @@ def fly_internal(env: str, component: str, port: int) -> str:
     return f"sirosid-{env}-{component}.internal:{port}"
 
 
-def patch(config: dict, env: str) -> dict:
+def patch(config: dict, env: str, mongo_password: str = None) -> dict:
     apigw_url = fly_url(env, "vc-apigw")
     registry_url = fly_url(env, "vc-registry")
     verifier_url = fly_url(env, "vc-verifier")
     frontend_url = fly_url(env, "wallet-frontend")
 
-    config["common"]["mongo"]["uri"] = f"mongodb://{fly_internal(env, 'mongodb', 27017)}"
+    # Authenticated - see render-helm-config.py's patch_wallet_backend_fly
+    # for why (mongodb has no auth otherwise, reachable by any app in the
+    # shared sirosfoundation org over Fly's 6PN network).
+    mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
+    config["common"]["mongo"]["uri"] = f"mongodb://{mongo_auth}{fly_internal(env, 'mongodb', 27017)}/?authSource=admin"
 
     apigw = config["apigw"]
     if frontend_url not in apigw["api_server"]["cors"]["allowed_origins"]:
@@ -87,6 +95,12 @@ def patch(config: dict, env: str) -> dict:
     # env vars (fly-up.py) set APIGW_REDIRECT_URI to this same value.
     apigw["auth_providers"]["oidc"]["issuer_url"] = fly_url(env, "mini-oidc")
     apigw["auth_providers"]["oidc"]["redirect_uri"] = f"{apigw_url}/oidcrp/callback"
+    # Explicit, not relying on the base vc-config.yaml's client_id/secret
+    # happening to match mini-oidc's own defaults - see
+    # fly_common.MINI_OIDC_APIGW_CLIENT_ID/_SECRET (fly-up.py sets the same
+    # constants as mini-oidc's APIGW_CLIENT_ID/_SECRET env vars).
+    apigw["auth_providers"]["oidc"]["registration"]["preconfigured"]["client_id"] = MINI_OIDC_APIGW_CLIENT_ID
+    apigw["auth_providers"]["oidc"]["registration"]["preconfigured"]["client_secret"] = MINI_OIDC_APIGW_CLIENT_SECRET
 
     issuer = config["issuer"]
     # issuer's public identity is deliberately the same as apigw's (matches
@@ -116,13 +130,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env", required=True)
     parser.add_argument("--base", default=str(SIROSID_DEV_ROOT / "fixtures" / "vc-config.yaml"))
+    parser.add_argument("--mongo-password", default=None,
+                         help="mongodb root password (see render-helm-config.py --mongo-password) - "
+                              "fly-up.py passes the same value it set as the mongodb app's Fly secret.")
     parser.add_argument("--out", default=None,
                          help="default: fixtures/rendered/fly-<env>/vc-config.yaml")
     args = parser.parse_args()
 
     base_path = Path(args.base)
     config = yaml.safe_load(base_path.read_text())
-    patched = patch(config, args.env)
+    patched = patch(config, args.env, args.mongo_password)
 
     out_path = Path(args.out) if args.out else (
         SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}" / "vc-config.yaml"

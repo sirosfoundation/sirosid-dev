@@ -56,8 +56,6 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 import argparse
 import secrets
 import string
-import sys
-import tempfile
 from pathlib import Path
 
 import yaml
@@ -106,7 +104,8 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
     return config
 
 
-def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None) -> dict:
+def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None,
+                              mongo_password: str = None) -> dict:
     # wallet-proxy is wallet-backend's public identity on Fly (see module docstring).
     proxy_url = f"https://sirosid-{env}-wallet-proxy.fly.dev"
     frontend_url = f"https://sirosid-{env}-wallet-frontend.fly.dev"
@@ -128,8 +127,13 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     config["server"]["cors"]["allowed_origins"] = [frontend_url]
     config["trust"]["pdp_url"] = f"http://sirosid-{env}-pdp.internal:8080"
     config["trust"]["registry_url"] = f"{proxy_url}/registry"
+    # Authenticated - mongodb's own root user/password (fly-up.py generates
+    # one per deploy and sets it via Fly secret + MONGO_INITDB_ROOT_* env
+    # vars). Any app in the sirosfoundation org could otherwise reach this
+    # database over Fly's shared 6PN network with zero credentials.
+    mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
     config["storage"]["mongodb"] = {
-        "uri": f"mongodb://sirosid-{env}-mongodb.internal:27017/wallet-backend",
+        "uri": f"mongodb://{mongo_auth}sirosid-{env}-mongodb.internal:27017/wallet-backend?authSource=admin",
         "tls_enabled": False,
         "database": "wallet-backend",
     }
@@ -180,49 +184,33 @@ def build_fly_values_overlay(env: str) -> dict:
     }
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "helm-charts" / "siros-id-stack"),
-                         help="Path to the siros-id-stack chart (default: ../helm-charts/siros-id-stack)")
-    parser.add_argument("--target", choices=["compose", "fly"], default="compose")
-    parser.add_argument("--env", help="Environment name, required for --target fly (e.g. test1)")
-    parser.add_argument("--android-apk-key-hash", action="append", default=[],
-                         help="base64url apk-key-hash (no padding) to add to wallet-backend's "
-                              "rp_origins, on top of the production ones helm-charts already "
-                              "carries - repeatable, applies to both --target compose and "
-                              "--target fly. See scripts/android_apps.py (.android-apps / "
-                              "--android-app) for the developer-facing (colon-hex) form of this "
-                              "- the Makefile passes its output through here for both targets.")
-    parser.add_argument("--namespace", default="sirosid-dev")
-    parser.add_argument("--out-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered"))
-    parser.add_argument("--secrets-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"))
-    args = parser.parse_args()
+def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
+           namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
+           mongo_password: str = None) -> list:
+    """Does the actual `helm template` + extract + patch + write-files work for
+    one target; returns the rendered manifest's docs so a caller that also
+    needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
+    version, wallet-frontend's Android/iOS wellknown values) can reuse this
+    one render instead of invoking `helm template` a second time.
+    """
+    if target == "fly" and not env:
+        raise ValueError("target 'fly' requires env")
 
-    if args.target == "fly" and not args.env:
-        parser.error("--target fly requires --env <name>")
-
-    chart_dir = Path(args.chart_dir)
-    if not chart_dir.is_dir():
-        raise SystemExit(
-            f"Chart not found at {chart_dir} - clone sibling repo "
-            f"'helm-charts' next to sirosid-dev, or pass --chart-dir "
-            f"(see HELM_CHARTS_PATH in the Makefile)"
-        )
+    out_dir = Path(out_dir) if out_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered"
 
     # helm template applies the chart's own values.yaml automatically; only
     # overrides need to be passed explicitly.
-    if args.target == "compose":
+    if target == "compose":
         values_files = [SIROSID_DEV_ROOT / "values-dev.yaml"]
-        out_dir = Path(args.out_dir)
     else:
         values_files = [SIROSID_DEV_ROOT / "values-fly.yaml"]
-        out_dir = Path(args.out_dir) / f"fly-{args.env}"
+        out_dir = out_dir / f"fly-{env}"
         out_dir.mkdir(parents=True, exist_ok=True)
         overlay_path = out_dir / "values.generated.yaml"
-        overlay_path.write_text(yaml.dump(build_fly_values_overlay(args.env), sort_keys=False))
+        overlay_path.write_text(yaml.dump(build_fly_values_overlay(env), sort_keys=False))
         values_files.append(overlay_path)
 
-    manifest = helm_template(chart_dir, values_files, args.namespace if args.target == "compose" else f"sirosid-{args.env}")
+    manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")
     docs = load_manifest_docs(manifest)
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -230,10 +218,10 @@ def main():
     # --- wallet-backend ---
     wb_data = extract_configmap_data(docs, "wallet-backend-main")
     backend_cfg = yaml.safe_load(wb_data["backend.yaml"])
-    if args.target == "compose":
-        backend_cfg = patch_wallet_backend_compose(backend_cfg, args.android_apk_key_hash)
+    if target == "compose":
+        backend_cfg = patch_wallet_backend_compose(backend_cfg, android_apk_key_hashes)
     else:
-        backend_cfg = patch_wallet_backend_fly(backend_cfg, args.env, args.android_apk_key_hash)
+        backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
     (out_dir / "wallet-backend-registry.yaml").write_text(wb_data["registry.yaml"])
     print(f"wrote {out_dir / 'wallet-backend.yaml'}")
@@ -258,14 +246,54 @@ def main():
     (out_dir / "pdp.yaml").write_text(pdp_data["config.yaml"])
     print(f"wrote {out_dir / 'pdp.yaml'}")
 
-    if args.target == "compose":
+    if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
-        secrets_dir = Path(args.secrets_dir)
+        secrets_dir = Path(secrets_dir) if secrets_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"
         for name in WALLET_BACKEND_SECRETS:
             gen_secret(secrets_dir / name)
         print(f"secrets ready in {secrets_dir} ({', '.join(WALLET_BACKEND_SECRETS)})")
     else:
         print("--target fly: secrets are handled by fly-up.py (fly secrets set), not here")
+
+    return docs
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "helm-charts" / "siros-id-stack"),
+                         help="Path to the siros-id-stack chart (default: ../helm-charts/siros-id-stack)")
+    parser.add_argument("--target", choices=["compose", "fly"], default="compose")
+    parser.add_argument("--env", help="Environment name, required for --target fly (e.g. test1)")
+    parser.add_argument("--android-apk-key-hash", action="append", default=[],
+                         help="base64url apk-key-hash (no padding) to add to wallet-backend's "
+                              "rp_origins, on top of the production ones helm-charts already "
+                              "carries - repeatable, applies to both --target compose and "
+                              "--target fly. See scripts/android_apps.py (.android-apps / "
+                              "--android-app) for the developer-facing (colon-hex) form of this "
+                              "- the Makefile passes its output through here for both targets.")
+    parser.add_argument("--mongo-password", default=None,
+                         help="--target fly only: mongodb root password (fly-up.py generates and sets "
+                              "this as a Fly secret on the mongodb app itself; passed here so "
+                              "wallet-backend's config embeds a matching authenticated connection URI).")
+    parser.add_argument("--namespace", default="sirosid-dev")
+    parser.add_argument("--out-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered"))
+    parser.add_argument("--secrets-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"))
+    args = parser.parse_args()
+
+    if args.target == "fly" and not args.env:
+        parser.error("--target fly requires --env <name>")
+
+    chart_dir = Path(args.chart_dir)
+    if not chart_dir.is_dir():
+        raise SystemExit(
+            f"Chart not found at {chart_dir} - clone sibling repo "
+            f"'helm-charts' next to sirosid-dev, or pass --chart-dir "
+            f"(see HELM_CHARTS_PATH in the Makefile)"
+        )
+
+    render(args.target, chart_dir, env=args.env, android_apk_key_hashes=args.android_apk_key_hash,
+           namespace=args.namespace, out_dir=Path(args.out_dir), secrets_dir=Path(args.secrets_dir),
+           mongo_password=args.mongo_password)
 
 
 if __name__ == "__main__":
