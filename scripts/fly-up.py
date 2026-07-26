@@ -23,6 +23,14 @@ Supports both web (wallet-frontend) and native app clients:
   provider pointed at an Android-emulator-only bridge address, unreachable
   by any client (web or native) once actually deployed on Fly.
 
+Multiple developers can each run their own fully isolated environment
+simultaneously (`make fly-up ENV=alice`, `make fly-up ENV=bob`) - app names
+are prefixed per-env, so nothing collides. `--images` (or `make fly-up
+ENV=alice IMAGES=...`) lets one environment pin different image tags per
+component than another - e.g. testing your own branch build of
+wallet-backend - without touching values-fly.yaml (which would affect every
+environment) or the shared helm-charts pin.
+
 No `depends_on` equivalent on Fly - components are deployed strictly in
 COMPONENTS order and each `fly deploy` blocks on its own health checks
 (fly.toml `[[http_service.checks]]`) before the next one starts.
@@ -121,12 +129,19 @@ def debug_android_fingerprint(args) -> tuple | None:
 
 
 def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_dir: Path, pki_dir: Path,
-                      assetlinks_path: Path, aasa_path: Path):
+                      assetlinks_path: Path, aasa_path: Path, image_overrides: dict):
     name = comp["name"]
     app = app_name(env, name)
     ensure_app(app)
 
-    if "image_from_helm_deployment" in comp:
+    if name in image_overrides:
+        # Explicit --images override (e.g. a dev testing their own branch
+        # build of one component) always wins, regardless of where the image
+        # would otherwise come from - one override point covering all 10
+        # components uniformly, not a Helm-values override for some and a
+        # separate CLI flag for the two non-Helm ones (mongodb, mini-oidc).
+        image = image_overrides[name]
+    elif "image_from_helm_deployment" in comp:
         deployment = comp["image_from_helm_deployment"]
         image = (extract_init_container_image(docs, deployment)
                  if name == "wallet-frontend" else extract_deployment_image(docs, deployment))
@@ -316,7 +331,26 @@ def main():
                               ".env.android if neither flag is passed and that file exists.")
     parser.add_argument("--android-fingerprint",
                          help="SHA-256 cert fingerprint (colon-separated hex) for --android-package.")
+    parser.add_argument("--images", default="",
+                         help="Comma-separated component=image overrides for this environment only "
+                              "(e.g. 'wallet-backend=ghcr.io/sirosfoundation/go-wallet-backend:pr-123'), "
+                              "so two developers running their own ENV=<name> can each pin different "
+                              "versions without touching values-fly.yaml or colliding with each other. "
+                              "Component names match scripts/fly_common.py's COMPONENTS list.")
     args = parser.parse_args()
+
+    image_overrides = {}
+    for pair in args.images.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise SystemExit(f"--images entry {pair!r} must be component=image")
+        component, image = pair.split("=", 1)
+        component = component.strip()
+        if component not in {c["name"] for c in COMPONENTS}:
+            raise SystemExit(f"--images: unknown component {component!r} - see fly_common.COMPONENTS")
+        image_overrides[component] = image.strip()
 
     if not shutil.which("flyctl"):
         raise SystemExit("flyctl not found - install it first (https://fly.io/docs/flyctl/install/)")
@@ -346,10 +380,14 @@ def main():
     print(f"=== Generating iOS apple-app-site-association ===")
     aasa_path = generate_ios_assets(docs, out_dir)
 
+    if image_overrides:
+        print(f"=== Image overrides for this environment: {image_overrides} ===")
+
     print(f"=== Deploying {len(COMPONENTS)} apps to Fly (org: {FLY_ORG}) ===")
     for comp in COMPONENTS:
         print(f"--- {comp['name']} ---")
-        deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path, aasa_path)
+        deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path, aasa_path,
+                          image_overrides)
 
     print()
     print(f"=== Environment '{args.env}' is up ===")
