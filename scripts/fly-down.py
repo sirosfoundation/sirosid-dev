@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fly_common import COMPONENTS, app_name, destroy_app  # noqa: E402
+from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS, app_name, destroy_app  # noqa: E402
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 
@@ -22,7 +22,11 @@ def main():
     parser.add_argument("--env", required=True)
     args = parser.parse_args()
 
-    for comp in COMPONENTS:
+    # Always attempt the conformance apps too, regardless of whether
+    # --conformance was used at fly-up time - destroy_app() already tolerates
+    # "does not exist" for every other component, so there's no need to track
+    # whether this particular environment ever had them.
+    for comp in COMPONENTS + CONFORMANCE_COMPONENTS:
         app = app_name(args.env, comp["name"])
         print(f"--- destroying {app} ---")
         destroy_app(app)

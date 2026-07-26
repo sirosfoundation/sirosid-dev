@@ -867,7 +867,7 @@ render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-i
 # Fly.io — named ephemeral environments (see scripts/fly-up.py, fly-down.py)
 # =============================================================================
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...])
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes])
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -879,7 +879,8 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 	fi
 	@command -v flyctl >/dev/null 2>&1 || { echo "$(RED)Error: flyctl not found - https://fly.io/docs/flyctl/install/$(NC)"; exit 1; }
 	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack" --images "$(IMAGES)" \
-		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)")
+		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") \
+		$(if $(call _truthy,$(CONFORMANCE)),--conformance)
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \
@@ -893,7 +894,7 @@ fly-status: ## Show Fly app status for a named environment (make fly-status ENV=
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-status ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import COMPONENTS; print(' '.join(c['name'] for c in COMPONENTS))"); do \
+	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS; print(' '.join(c['name'] for c in COMPONENTS + CONFORMANCE_COMPONENTS))"); do \
 		flyctl status -a "sirosid-$(ENV)-$$c" 2>&1 | head -5; \
 		echo ""; \
 	done

@@ -20,10 +20,11 @@ Supports both web (wallet-frontend) and native app clients:
   check) AND wallet-backend's rp_origins (the server-side WebAuthn
   accept-list) - both are required, one without the other passes the OS
   check but still fails the actual passkey ceremony.
-- iOS: wallet-proxy also serves apple-app-site-association (Associated
-  Domains / passkey webcredentials at the RP ID's own domain), and
-  wallet-frontend gets WELLKNOWN_APPLE_APPIDS set so it serves its own copy
-  too (Universal Links on its own domain).
+- iOS: wallet-frontend gets WELLKNOWN_APPLE_APPIDS set, and its own image
+  generates a complete apple-app-site-association from it (both applinks,
+  for Universal Links, and webcredentials, for the passkey RP ID check) -
+  served at wallet-frontend's own domain, which is also wallet-backend's
+  rp_id (see render-helm-config.py's patch_wallet_backend_fly).
 - OIDC-backed issuance (pid/pid_1_5/pid_1_8/ehic scopes): mini-oidc stands
   in for a real government/eIDAS IdP - without it, vc-apigw's OIDC auth
   provider pointed at an Android-emulator-only bridge address, unreachable
@@ -61,10 +62,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from fly_common import (  # noqa: E402
-    COMPONENTS, FLY_ORG, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
-    aasa_json, app_exists, app_name, app_url, assetlinks_json,
-    ensure_app, ensure_running, ensure_secret, existing_secret_names, mini_oidc_config, network_name,
-    wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
+    COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
+    app_exists, app_name, app_url, assetlinks_json,
+    ensure_app, ensure_running, ensure_secret, existing_secret_names, machine_private_ip, mini_oidc_config,
+    network_name, wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf,
+    write_fly_toml,
 )
 from helm_render_lib import (  # noqa: E402
     extract_configmap_data, extract_deployment_image, extract_init_container_image, extract_mongo_version,
@@ -157,19 +159,11 @@ def generate_android_assets(docs: list, out_dir: Path, identities: list) -> Path
     return assetlinks_path
 
 
-def generate_ios_assets(docs: list, out_dir: Path) -> Path:
-    fe_data = extract_configmap_data(docs, "wallet-frontend-main")
-    wellknown = fe_data.get("wellknownAppleAppIds", "")
-    aasa_path = out_dir / "apple-app-site-association"
-    aasa_path.write_text(aasa_json(wellknown))
-    return aasa_path
-
-
 def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_dir: Path, pki_dir: Path,
-                      assetlinks_path: Path, aasa_path: Path, image_overrides: dict, mongo_password: str):
+                      assetlinks_path: Path, image_overrides: dict, mongo_password: str, conformance: bool = False):
     name = comp["name"]
     app = app_name(env, name)
-    ensure_app(app, network=network_name(env))
+    ensure_app(app, network=network_name(env), allocate_public_ips=(name == "conformance"))
 
     if name in image_overrides:
         # Explicit --images override (e.g. a dev testing their own branch
@@ -198,6 +192,9 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # enabled (off by default in mongod) - confirmed by checking
         # /proc/net/tcp{,6} on the machine itself: only tcp4 had a listener.
         "mongodb": "mongod --bind_ip_all --ipv6 --auth",
+        # Same IPv6 reasoning as mongodb, no --auth (see deploy_args below -
+        # this one deliberately isn't authenticated, unlike the main mongodb).
+        "conformance-mongodb": "mongod --bind_ip_all --ipv6",
         # ENTRYPOINT [] in mini-oidc's Dockerfile - CMD must be the full
         # binary path (docker-compose.vc-services.yml's `command: ["/usr/local/bin/op"]`
         # for the same reason).
@@ -217,10 +214,24 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     # "Out of memory: Killed process ... (mongosh)"), which silently never
     # let root-user creation complete. Not needed before mongo auth was added
     # (no entrypoint init logic runs at all with no MONGO_INITDB_ROOT_* set).
-    memory_mb = {"vc-registry": 1024, "mongodb": 512}.get(name, 256)
+    #
+    # conformance-server: a Java/Spring Boot app (the whole OpenID conformance
+    # suite plus all its test modules) - confirmed OOM-killed at 256MB
+    # (dmesg: "Out of memory: Killed process ... (java)", anon-rss >150MB
+    # just from startup, before finishing Spring context init).
+    memory_mb = {"vc-registry": 1024, "mongodb": 512, "conformance-server": 1024}.get(name, 256)
+    tcp_passthrough_port = None
+    if name == "conformance":
+        # See CONFORMANCE_COMPONENTS: this image's baked-in nginx.conf
+        # insists on terminating its own self-signed TLS on 8443 - the
+        # normal [http_service] path (Fly forwards plain HTTP to
+        # internal_port) doesn't apply here, so override what the generic
+        # "public port -> http_service" computation above would otherwise do.
+        primary_public_port = None
+        tcp_passthrough_port = 8443
     write_fly_toml(toml_path, app, primary_public_port, process_cmd=process_cmd,
                     health_check_path=comp["checks"], memory_mb=memory_mb,
-                    internal_check=comp.get("internal_check"))
+                    internal_check=comp.get("internal_check"), tcp_passthrough_port=tcp_passthrough_port)
 
     deploy_args = ["deploy", "-a", app, "-c", str(toml_path), "-i", image,
                    "--ha=false", "--strategy", "immediate", "--yes"]
@@ -296,18 +307,60 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/etc/nginx/well-known/assetlinks.json={assetlinks_path}",
-            "--file-local", f"/etc/nginx/well-known/apple-app-site-association={aasa_path}",
         ]
     elif name == "wallet-frontend":
         conf_path = out_dir / "wallet-frontend.conf"
-        conf_path.write_text(wallet_frontend_conf(env))
+        conf_path.write_text(wallet_frontend_conf(env, conformance))
         dashboard_path = out_dir / "wallet-frontend-dashboard.html"
-        dashboard_path.write_text(wallet_frontend_dashboard_html(env))
+        # Reuse the exact identities already wired into assetlinks_path
+        # (generate_android_assets(), same merge as rp_origins) rather than
+        # re-deriving them a second way that could drift out of sync.
+        android_entries = json.loads(assetlinks_path.read_text())
+        android_identities = {
+            e["target"]["package_name"]: e["target"]["sha256_cert_fingerprints"] for e in android_entries
+        }
+        fe_data = extract_configmap_data(docs, "wallet-frontend-main")
+        apple_app_ids = [a.strip() for a in fe_data.get("wellknownAppleAppIds", "").split(",") if a.strip()]
+        conformance_url = app_url(env, "conformance") if conformance else None
+        dashboard_path.write_text(
+            wallet_frontend_dashboard_html(env, android_identities, apple_app_ids, conformance_url))
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
         ]
         deploy_args += _wallet_frontend_env(env, docs)
+    elif name == "conformance-server":
+        deploy_args += [
+            "--env", f"BASE_URL={app_url(env, 'conformance')}",
+            "--env", f"MONGODB_HOST={app_name(env, 'conformance-mongodb')}.internal",
+            # Matches docker-compose.conformance.yml exactly - devmode means
+            # no real OAuth login is needed, so these never actually get used.
+            "--env", "SPRING_PROFILES_ACTIVE=",
+            "--env", "FINTECHLABS_DEVMODE=true",
+            "--env", "OIDC_GOOGLE_CLIENTID=google-client",
+            "--env", "OIDC_GOOGLE_SECRET=google-secret",
+            "--env", "OIDC_GITLAB_CLIENTID=gitlab-client",
+            "--env", "OIDC_GITLAB_SECRET=gitlab-secret",
+        ]
+    elif name == "conformance":
+        # conformance-suite-nginx's baked-in nginx.conf hardcodes
+        # `proxy_pass http://server:8080` (no env var to retarget it -
+        # confirmed via `docker run --entrypoint cat ... nginx.conf`) - "server"
+        # isn't a real Fly hostname, so it's resolved via a /etc/hosts entry
+        # instead, using conformance-server's actual 6PN IP (static proxy_pass
+        # targets resolve via the system resolver at nginx startup, which
+        # checks /etc/hosts before the image's own `resolver 127.0.0.11`
+        # directive even applies - that directive only matters for
+        # variable-based proxy_pass targets, not this static one).
+        server_ip = machine_private_ip(app_name(env, "conformance-server"))
+        if not server_ip:
+            raise SystemExit(
+                f"Could not determine {app_name(env, 'conformance-server')}'s private IP - "
+                "it must be deployed (and have a running machine) before 'conformance'."
+            )
+        hosts_path = out_dir / "conformance-hosts"
+        hosts_path.write_text(f"{server_ip} server\n")
+        deploy_args += ["--file-local", f"/etc/hosts={hosts_path}"]
 
     run(["flyctl"] + deploy_args, cwd=SIROSID_DEV_ROOT)
     ensure_running(app)
@@ -325,7 +378,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # "connection refused" crash-loop was observed there once).
         wait_for_checks(app)
 
-    if primary_public_port is not None:
+    if primary_public_port is not None or tcp_passthrough_port is not None:
         print(f"{name}: {app_url(env, name)}")
 
 
@@ -489,6 +542,10 @@ def main():
                               "so two developers running their own ENV=<name> can each pin different "
                               "versions without touching values-fly.yaml or colliding with each other. "
                               "Component names match scripts/fly_common.py's COMPONENTS list.")
+    parser.add_argument("--conformance", action="store_true",
+                         help="Also deploy the OpenID Conformance Suite (matches local dev's "
+                              "CONFORMANCE=yes) - 3 extra apps: conformance-mongodb, conformance-server, "
+                              "and the public 'conformance' nginx front. See fly_common.CONFORMANCE_COMPONENTS.")
     args = parser.parse_args()
 
     image_overrides = {}
@@ -529,20 +586,39 @@ def main():
 
     print(f"=== Generating Android assetlinks.json ===")
     assetlinks_path = generate_android_assets(docs, out_dir, identities)
-
-    print(f"=== Generating iOS apple-app-site-association ===")
-    aasa_path = generate_ios_assets(docs, out_dir)
+    # No separate iOS asset here - wallet-frontend's own image generates its
+    # complete apple-app-site-association (applinks + webcredentials) from
+    # WELLKNOWN_APPLE_APPIDS (_wallet_frontend_env), served at its own
+    # domain - see wallet_proxy_conf()'s docstring for why an earlier version
+    # of this deployment served a second, wrong-domain copy from wallet-proxy.
 
     if image_overrides:
         print(f"=== Image overrides for this environment: {image_overrides} ===")
 
-    print(f"=== Deploying {len(COMPONENTS)} apps to Fly (org: {FLY_ORG}) ===")
+    if args.conformance:
+        # conformance-mongodb/conformance-server MUST deploy before
+        # wallet-frontend - its nginx config statically proxy_passes to
+        # conformance-server.internal (see wallet_frontend_conf()'s
+        # docstring: a static, non-variable proxy_pass target that doesn't
+        # resolve yet means nginx refuses to start AT ALL, not just that one
+        # location). "conformance" (nginx) deploys last of all - it needs
+        # conformance-server's machine to already exist to look up its
+        # private IP (see deploy_component()'s "conformance" branch).
+        non_frontend = [c for c in COMPONENTS if c["name"] != "wallet-frontend"]
+        frontend = [c for c in COMPONENTS if c["name"] == "wallet-frontend"]
+        conf_before, conf_after = [], []
+        for c in CONFORMANCE_COMPONENTS:
+            (conf_after if c["name"] == "conformance" else conf_before).append(c)
+        all_components = non_frontend + conf_before + frontend + conf_after
+    else:
+        all_components = COMPONENTS
+    print(f"=== Deploying {len(all_components)} apps to Fly (org: {FLY_ORG}) ===")
     deployed = []
     try:
-        for comp in COMPONENTS:
+        for comp in all_components:
             print(f"--- {comp['name']} ---")
-            deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path, aasa_path,
-                              image_overrides, mongo_password)
+            deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path,
+                              image_overrides, mongo_password, args.conformance)
             deployed.append(comp["name"])
     except subprocess.CalledProcessError as e:
         # No auto-rollback - components deployed so far are left running
@@ -550,7 +626,7 @@ def main():
         # incomplete), since silently tearing down a partially-up environment
         # the operator may still want to inspect/debug is worse than leaving
         # it and saying so clearly.
-        failed = COMPONENTS[len(deployed)]["name"]
+        failed = all_components[len(deployed)]["name"]
         print(file=sys.stderr)
         print(f"=== Deploy failed at '{failed}' (exit {e.returncode}) ===", file=sys.stderr)
         print(f"Already deployed and left running: {', '.join(deployed) or '(none)'}", file=sys.stderr)
@@ -566,7 +642,7 @@ def main():
 
     print()
     print(f"=== Environment '{args.env}' is up ===")
-    for comp in COMPONENTS:
+    for comp in all_components:
         if any(p["public"] for p in comp["ports"]):
             print(f"  {comp['name']}: {app_url(args.env, comp['name'])}")
     print()

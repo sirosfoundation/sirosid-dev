@@ -16,6 +16,8 @@ import sys
 import time
 from pathlib import Path
 
+from android_apps import hex_to_apk_key_hash
+
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 FLY_ORG = "sirosfoundation"
 FLY_REGION = "arn"
@@ -120,6 +122,63 @@ COMPONENTS = [
     },
 ]
 
+# Opt-in (--conformance), deployed AFTER the 10 above, matching local dev's
+# CONFORMANCE=yes overlay - the real, functional piece of that overlay is
+# just these 3 (the third component in the local compose file,
+# "conformance-runner", is a documented placeholder with no actual API - see
+# conformance-runner/Dockerfile's own comment - so there's nothing to port).
+# vc-proxy (the local overlay's 4th component, a self-signed TLS front for
+# otherwise-plain-HTTP vc-services) also isn't needed here: every Fly-public
+# vc-service already has real TLS via Fly's own *.fly.dev certs, so the
+# conformance suite can test against vc-apigw/vc-verifier's public URLs
+# directly - no proxy required.
+CONFORMANCE_COMPONENTS = [
+    {
+        "name": "conformance-mongodb",
+        # Pinned to the same fixed tag docker-compose.conformance.yml uses -
+        # a requirement of this specific (older) conformance suite version,
+        # not templated from helm-charts' mongoCommunityVersion like the
+        # main mongodb component.
+        "image": "mongo:6",
+        "ports": [{"internal": 27017, "public": False}],
+        "checks": None,
+        "internal_check": {"type": "tcp", "port": 27017},
+    },
+    {
+        "name": "conformance-server",
+        "image": "registry.gitlab.com/openid/conformance-suite:latest",
+        # Port 8080 confirmed via `docker inspect` (image's own
+        # ExposedPorts/default BASE_URL=https://localhost:8443 env just
+        # describes what it expects to be FRONTED by - the process itself
+        # listens on plain 8080, TLS is entirely conformance-nginx's job).
+        "ports": [{"internal": 8080, "public": False}],
+        "checks": None,
+        # Deliberately a plain TCP check, not HTTP against /api/runner/available
+        # (matching the local Makefile's own readiness probe) - the app
+        # itself REJECTS any request that doesn't carry X-Forwarded-Proto:
+        # https (confirmed: "java.lang.RuntimeException: A non-https request
+        # has been received by the conformance suite" in its logs), which a
+        # bare Fly machine HTTP check can't set. TCP-open is a weaker signal
+        # (doesn't confirm the Spring app finished initializing) but avoids
+        # tripping that guard - wait_for_checks()'s timeout tolerance covers
+        # the gap.
+        "internal_check": {"type": "tcp", "port": 8080},
+    },
+    {
+        "name": "conformance",
+        "image": "registry.gitlab.com/openid/conformance-suite/nginx:latest",
+        # No "public": True port here - this component is public via raw TCP
+        # passthrough (write_fly_toml's tcp_passthrough_port), not
+        # [http_service], since the image's baked-in nginx.conf hardcodes
+        # `listen 8443 ssl` with its own self-signed cert (confirmed via
+        # `docker run --entrypoint cat ... /etc/nginx/nginx.conf`) - Fly's
+        # normal http_service forwards plain HTTP to internal_port, which
+        # would fail the TLS handshake against an app that only speaks TLS.
+        "ports": [{"internal": 8443, "public": True}],
+        "checks": None,
+    },
+]
+
 
 def app_name(env: str, component: str) -> str:
     return f"sirosid-{env}-{component}"
@@ -161,14 +220,27 @@ def network_name(env: str) -> str:
     return f"sirosid-{env}"
 
 
-def ensure_app(name: str, network: str = None):
+def ensure_app(name: str, network: str = None, allocate_public_ips: bool = False):
+    """allocate_public_ips=True is only needed for a raw TCP-passthrough
+    component (write_fly_toml's tcp_passthrough_port, e.g. "conformance") -
+    confirmed empirically: unlike [http_service], a [[services]] block does
+    NOT trigger Fly's usual automatic public IP allocation (`flyctl ips list`
+    came back completely empty for such an app after a normal deploy, and its
+    hostname didn't resolve anywhere, even though the machine itself was
+    healthy). Both allocate-v4/v6 calls are idempotent (a no-op printing the
+    existing IP if one's already allocated), so this is safe to call on
+    every deploy, not just the first.
+    """
     if app_exists(name):
         print(f"app {name} already exists")
-        return
-    args = ["apps", "create", name, "-o", FLY_ORG, "--yes"]
-    if network:
-        args += ["--network", network]
-    run_fly(*args)
+    else:
+        args = ["apps", "create", name, "-o", FLY_ORG, "--yes"]
+        if network:
+            args += ["--network", network]
+        run_fly(*args)
+    if allocate_public_ips:
+        run_fly("ips", "allocate-v4", "--shared", "-a", name)
+        run_fly("ips", "allocate-v6", "-a", name)
 
 
 def ensure_running(app: str):
@@ -189,6 +261,27 @@ def ensure_running(app: str):
     for m in machines:
         if m.get("state") != "started":
             run_fly("machine", "start", m["id"], "-a", app, check=False)
+
+
+def machine_private_ip(app: str) -> str | None:
+    """The 6PN IPv6 address of an app's (first) machine - queried via the
+    Fly API, not DNS (no need to be on the WireGuard mesh to run this from a
+    developer's own laptop, unlike an actual `.internal` lookup). Used for
+    conformance-suite-nginx's hardcoded `proxy_pass http://server:8080` (no
+    env var to retarget it - see CONFORMANCE_COMPONENTS): baking this literal
+    IP into that app's own /etc/hosts as "server" lets its unmodified,
+    published config resolve correctly without either forking the image or
+    relying on a Docker-only `resolver 127.0.0.11` directive that doesn't
+    exist on Fly's network.
+    """
+    result = run_fly("machine", "list", "-a", app, "--json", check=False, capture=True)
+    if result.returncode != 0:
+        return None
+    try:
+        machines = json.loads(result.stdout or "[]")
+    except ValueError:
+        return None
+    return machines[0]["private_ip"] if machines else None
 
 
 def wait_for_checks(app: str, timeout: int = 90, poll_interval: int = 3):
@@ -276,7 +369,8 @@ def ensure_secret(app: str, key: str, value: str, force: bool = False):
 
 
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
-                    health_check_path: str | None = None, memory_mb: int = 256, internal_check: dict | None = None):
+                    health_check_path: str | None = None, memory_mb: int = 256, internal_check: dict | None = None,
+                    tcp_passthrough_port: int | None = None):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -304,6 +398,32 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
         lines += [
             "[processes]",
             f"  app = '{process_cmd}'",
+            "",
+        ]
+    if tcp_passthrough_port is not None:
+        # Raw TCP passthrough (no Fly-terminated TLS) - for an image that
+        # insists on speaking TLS itself with its OWN (self-signed) cert,
+        # e.g. the OpenID conformance suite's published nginx image (baked-in
+        # `listen 8443 ssl` with a self-signed cert) - Fly's normal
+        # [http_service] forwards plain HTTP to internal_port, which would
+        # fail the TLS handshake against an app that only ever speaks TLS.
+        # Passthrough means the browser sees the self-signed cert directly
+        # (a warning to click through) instead of Fly's own valid cert -
+        # matches local dev's own conformance-suite UX exactly (same
+        # self-signed cert there too), not a regression.
+        lines += [
+            "[[services]]",
+            f"  internal_port = {tcp_passthrough_port}",
+            "  protocol = 'tcp'",
+            "",
+            "  [[services.ports]]",
+            "    port = 443",
+            "    handlers = []",
+            "",
+            "  [[services.tcp_checks]]",
+            "    interval = '10s'",
+            "    timeout = '5s'",
+            "    grace_period = '15s'",
             "",
         ]
     if primary_public_port is not None:
@@ -419,20 +539,20 @@ def wallet_proxy_conf(env: str) -> str:
     """Fly-hostname variant of fixtures/wallet-proxy.conf's first server block
     (assetlinks.json + proxy to wallet-backend) - the second block (Android
     issuer proxy via vc-proxy) is conformance-suite-only, not part of this
-    deployment. Also serves apple-app-site-association here at wallet-proxy's
-    own domain.
+    deployment.
 
-    KNOWN GAP, not yet fixed: iOS checks Associated Domains / passkey
-    webcredentials at the RP ID's own domain, and patch_wallet_backend_fly's
-    rp_id is now wallet-frontend's domain (moved there to fix the exact same
-    class of bug for web/Android - see that function's docstring), not
-    wallet-proxy's - this AASA copy is consequently at the wrong domain for
-    iOS passkeys specifically. Unverified/untested (no iOS device tested
-    against this deployment yet); wallet-frontend already generates its own
-    AASA copy for Universal Links (WELLKNOWN_APPLE_APPIDS), but that's a
-    different section (applinks) than the one iOS passkeys need
-    (webcredentials) - fixing this properly means adding a webcredentials
-    section to wallet-frontend's own AASA, not just moving this file wholesale.
+    Does NOT serve apple-app-site-association (an earlier version of this
+    function did) - iOS checks Associated Domains / passkey webcredentials at
+    the RP ID's own domain, which is wallet-frontend's domain (see
+    patch_wallet_backend_fly's rp_id), not wallet-proxy's, so a copy served
+    here would be at the wrong domain to ever be consulted. wallet-frontend's
+    own image already generates a complete AASA (both applinks AND
+    webcredentials sections - see wallet-frontend/config/files/well-known.ts)
+    from the same WELLKNOWN_APPLE_APPIDS env var fly-up.py already sets on it
+    (_wallet_frontend_env), served correctly at its own domain automatically -
+    confirmed live (GET https://sirosid-<env>-wallet-frontend.fly.dev/.well-
+    known/apple-app-site-association returns the real file, not a 404 or the
+    SPA fallback, once WELLKNOWN_APPLE_APPIDS is actually set on the deploy).
 
     Also proxies exactly two admin-API paths (`register_vc_services()`
     below calls these right after deploy, mirroring the local Makefile's
@@ -450,11 +570,6 @@ def wallet_proxy_conf(env: str) -> str:
 
     location /.well-known/assetlinks.json {{
         alias /etc/nginx/well-known/assetlinks.json;
-        default_type application/json;
-    }}
-
-    location /.well-known/apple-app-site-association {{
-        alias /etc/nginx/well-known/apple-app-site-association;
         default_type application/json;
     }}
 
@@ -492,7 +607,7 @@ def wallet_proxy_conf(env: str) -> str:
 """
 
 
-def wallet_frontend_conf(env: str) -> str:
+def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     """nginx config for wallet-frontend's own image on Fly (mirrors
     sirosid-dev's local nginx-e2e.conf: same dashboard-at-/, same asset
     prefix-stripping - see wallet_frontend_dashboard_html() for what differs
@@ -512,6 +627,17 @@ def wallet_frontend_conf(env: str) -> str:
     edge stops routing to the machine entirely ("no known healthy instances
     found"). Serving the dashboard directly at / (matching local exactly)
     satisfies the health check AND gives the same landing page as local dev.
+
+    conformance=True adds one more health-check proxy (conformance-server) -
+    IMPORTANT ordering requirement: every one of these proxy_pass targets is
+    a static (non-variable) hostname, which nginx resolves ONCE at config
+    load/startup, not per-request - if the target doesn't exist/resolve yet,
+    nginx refuses to start AT ALL (not just that one location), taking down
+    the whole app including the dashboard and the actual wallet SPA. This is
+    why every target here is always deployed before wallet-frontend in
+    fly-up.py's sequence - conformance-server included, which is why
+    main() interleaves CONFORMANCE_COMPONENTS around wallet-frontend instead
+    of simply appending them at the very end.
     """
     backend = f"{app_name(env, 'wallet-backend')}.internal"
     pdp = f"{app_name(env, 'pdp')}.internal"
@@ -520,6 +646,20 @@ def wallet_frontend_conf(env: str) -> str:
     vc_issuer = f"{app_name(env, 'vc-issuer')}.internal"
     vc_verifier = f"{app_name(env, 'vc-verifier')}.internal"
     vc_apigw = f"{app_name(env, 'vc-apigw')}.internal"
+    conformance_server = f"{app_name(env, 'conformance-server')}.internal"
+    conformance_health = (
+        f"    location = /_health/conformance-server {{ proxy_pass "
+        f"http://{conformance_server}:8080/api/runner/available; "
+        # conformance-server rejects any request without this header
+        # ("A non-https request has been received by the conformance
+        # suite") - true here in spirit: this hop only happens because the
+        # BROWSER already reached wallet-frontend over real https, exactly
+        # what conformance-nginx's own X-Forwarded-Proto (set for real
+        # external traffic) is meant to convey.
+        f"proxy_set_header X-Forwarded-Proto https; "
+        f"proxy_connect_timeout 2s; proxy_read_timeout 2s; }}\n"
+        if conformance else ""
+    )
     return f"""server {{
     listen 80;
     absolute_redirect off;
@@ -551,7 +691,7 @@ def wallet_frontend_conf(env: str) -> str:
     location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-
+{conformance_health}
     # Serve assets and static files from any /id/<tenant>/ prefix by
     # stripping the prefix and serving from the root - BASE_PATH's generated
     # index.html references everything as /id/default/assets/... but the
@@ -569,37 +709,71 @@ def wallet_frontend_conf(env: str) -> str:
 """
 
 
-def wallet_frontend_dashboard_html(env: str) -> str:
+def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[str]] | None = None,
+                                    apple_app_ids: list[str] | None = None,
+                                    conformance_url: str | None = None) -> str:
     """Fly-adapted version of sirosid-dev's local startup.html landing page
     (same navbar/branding/Quick-Links/Services-table styling, reusing its
     CSS near-verbatim), served at wallet-frontend's own bare / (see
     wallet_frontend_conf()).
 
-    What's dropped from the local version, and why: the Conformance Suite
-    tab (SSE-driven test-runner UI + log viewer) and Build Info card both
-    depend on services/data that only exist in the local docker-compose
-    stack (a conformance-runner container, git metadata from locally-built
-    images) - neither exists for a Fly environment pulling published images,
-    so there's nothing for them to show. The Services table stays, retargeted
-    at this environment's actual deployed services (see SERVICES below) -
-    mock-trust-pdp/mock-verifier are dropped (not deployed on Fly; pdp/
-    vc-verifier are the real equivalents), mini-oidc/vc-registry are added
-    (deployed on Fly, no local equivalent in the original list).
+    What's dropped from the local version, and why: the local Conformance
+    Suite tab (SSE-driven test-runner UI + log viewer) talks to a
+    "conformance-runner" container that's a documented placeholder with no
+    real API (see conformance-runner/Dockerfile) - there was never anything
+    working to port. The real, functional piece (the OpenID conformance
+    suite itself) IS deployed when conformance_url is given (--conformance -
+    see CONFORMANCE_COMPONENTS) - shown as a plain link, since driving test
+    runs happens through the suite's own web UI either way, locally or on
+    Fly. Build Info (git metadata from locally-built images) is dropped too -
+    nothing to show for a Fly environment pulling published images. The
+    Services table stays, retargeted at this environment's actual deployed
+    services (see SERVICES below) - mock-trust-pdp/mock-verifier are dropped
+    (not deployed on Fly; pdp/vc-verifier are the real equivalents), mini-oidc/
+    vc-registry are added (deployed on Fly, no local equivalent in the
+    original list).
+
+    What's ADDED beyond the local version: an Environment Info card (backend/
+    API URL, WebAuthn RP ID, tenant ID) and a Native App Setup card (every
+    android:apk-key-hash: identity and iOS app ID this environment's
+    wallet-backend actually accepts - android_identities is
+    merge_android_identities()'s output, so it's guaranteed to match
+    rp_origins exactly, not a second hand-maintained list that could drift)
+    - local dev doesn't need either (a developer already knows their own
+    localhost URLs and debug keystore), but a Fly environment's whole point
+    is often to hand to someone else/a native app that doesn't already know
+    any of this.
     """
+    backend_url = app_url(env, "wallet-proxy")
+    frontend_url = app_url(env, "wallet-frontend")
+    rp_id = f"{app_name(env, 'wallet-frontend')}.fly.dev"
+    android_rows = "".join(
+        f'<tr><td class="svc-name">{package}</td>'
+        f'<td class="meta"><code>android:apk-key-hash:{hex_to_apk_key_hash(fp)}</code></td></tr>'
+        for package, fingerprints in (android_identities or {}).items()
+        for fp in fingerprints
+    )
+    apple_rows = "".join(
+        f'<tr><td class="svc-name">{app_id}</td></tr>'
+        for app_id in (apple_app_ids or [])
+    )
+    service_list = [
+        ("wallet-backend", "backend", 8080),
+        ("wallet-admin", "admin", 8081),
+        ("wallet-engine", "engine", 8082),
+        ("vctm-registry", "registry", 8080),
+        ("pdp (go-trust)", "pdp", 8080),
+        ("mini-oidc", "mini-oidc", 9005),
+        ("vc-registry", "vc-registry", 8080),
+        ("vc-issuer", "vc-issuer", 8080),
+        ("vc-verifier", "vc-verifier", 8080),
+        ("vc-apigw", "vc-apigw", 8080),
+    ]
+    if conformance_url:
+        service_list.append(("conformance-server", "conformance-server", 8080))
     services_js = ",\n  ".join(
         f'{{ name: "{name}", check: "/_health/{check}", port: {port} }}'
-        for name, check, port in [
-            ("wallet-backend", "backend", 8080),
-            ("wallet-admin", "admin", 8081),
-            ("wallet-engine", "engine", 8082),
-            ("vctm-registry", "registry", 8080),
-            ("pdp (go-trust)", "pdp", 8080),
-            ("mini-oidc", "mini-oidc", 9005),
-            ("vc-registry", "vc-registry", 8080),
-            ("vc-issuer", "vc-issuer", 8080),
-            ("vc-verifier", "vc-verifier", 8080),
-            ("vc-apigw", "vc-apigw", 8080),
-        ]
+        for name, check, port in service_list
         if check
     )
     return f"""<!DOCTYPE html>
@@ -674,7 +848,35 @@ def wallet_frontend_dashboard_html(env: str) -> str:
       <div class="links">
         <a href="/id/default/login">Wallet Login</a>
         <a href="/id/default/">Wallet Dashboard</a>
+        {f'<a href="{conformance_url}" target="_blank">OpenID Conformance Suite &#x2197;</a>' if conformance_url else ''}
       </div>
+    </div>
+
+    <div class="card">
+      <h2>Environment Info</h2>
+      <table>
+        <tbody>
+          <tr><td class="svc-name">Backend / API URL</td><td class="meta"><code>{backend_url}</code></td></tr>
+          <tr><td class="svc-name">Frontend URL</td><td class="meta"><code>{frontend_url}</code></td></tr>
+          <tr><td class="svc-name">WebAuthn RP ID</td><td class="meta"><code>{rp_id}</code></td></tr>
+          <tr><td class="svc-name">Tenant ID</td><td class="meta"><code>default</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Native App Setup</h2>
+      <div class="meta" style="margin-bottom:0.75rem">Point your native app's API base URL at Backend / API URL
+        above, and its WebAuthn RP ID at the value above too - the ceremony origin must be in the list below
+        (see scripts/android_apps.py / .android-apps to add your own debug or Play Store key).</div>
+      <table>
+        <thead><tr><th>Android package</th><th>Trusted origin</th></tr></thead>
+        <tbody>{android_rows or '<tr><td colspan="2" class="meta">none configured</td></tr>'}</tbody>
+      </table>
+      <table style="margin-top:0.75rem">
+        <thead><tr><th>iOS app ID (TEAMID.bundleid)</th></tr></thead>
+        <tbody>{apple_rows or '<tr><td class="meta">none configured</td></tr>'}</tbody>
+      </table>
     </div>
 
     <div class="card">
@@ -761,6 +963,31 @@ setInterval(checkAll, 10000);
 """
 
 
+def merge_android_identities(wellknown_android: str, extra_identities: list | None = None) -> dict[str, list[str]]:
+    """package -> [fingerprint_hex, ...], merging helm-charts' production
+    `package::fingerprint,...` string with extra_identities (package,
+    fingerprint) pairs (e.g. .android-apps) - shared by assetlinks_json()
+    and the dashboard's Native App Setup card, so both show the exact same
+    identities actually wired into rp_origins (see fly-up.py's
+    generate_android_assets()/render_configs()) - one source of truth
+    instead of two independent merges that could drift apart.
+    """
+    by_package: dict[str, list[str]] = {}
+    for pair in wellknown_android.split(","):
+        pair = pair.strip()
+        if not pair or "::" not in pair:
+            continue
+        package, fingerprint = pair.split("::", 1)
+        by_package.setdefault(package, []).append(fingerprint)
+
+    for package, fingerprint in extra_identities or []:
+        by_package.setdefault(package, [])
+        if fingerprint not in by_package[package]:
+            by_package[package].append(fingerprint)
+
+    return by_package
+
+
 def assetlinks_json(wellknown_android: str, extra_identities: list | None = None) -> str:
     """Build a Digital Asset Links JSON array from the same
     `package::fingerprint,...` string helm-charts' walletFrontend.
@@ -779,19 +1006,7 @@ def assetlinks_json(wellknown_android: str, extra_identities: list | None = None
     same package can appear more than once with different fingerprints
     (e.g. a debug key and a Play Store upload key for the same app).
     """
-    by_package: dict[str, list[str]] = {}
-    for pair in wellknown_android.split(","):
-        pair = pair.strip()
-        if not pair or "::" not in pair:
-            continue
-        package, fingerprint = pair.split("::", 1)
-        by_package.setdefault(package, []).append(fingerprint)
-
-    for package, fingerprint in extra_identities or []:
-        by_package.setdefault(package, [])
-        if fingerprint not in by_package[package]:
-            by_package[package].append(fingerprint)
-
+    by_package = merge_android_identities(wellknown_android, extra_identities)
     entries = [
         {
             "relation": ["delegate_permission/common.handle_all_urls", "delegate_permission/common.get_login_creds"],
@@ -806,28 +1021,3 @@ def assetlinks_json(wellknown_android: str, extra_identities: list | None = None
     return json.dumps(entries, indent=2)
 
 
-def aasa_json(wellknown_apple: str) -> str:
-    """Build apple-app-site-association content from the same comma-separated
-    `TEAMID.bundleid,...` string helm-charts' walletFrontend.wellknownAppleAppIds
-    carries - matches wallet-frontend's own generateAppleAppLinks()
-    (wallet-frontend/config/files/well-known.ts:98-139) format exactly, so
-    the same app IDs get both applinks (Universal Links, served by
-    wallet-frontend itself) and webcredentials (passkey RP association) -
-    called from wallet_proxy_conf()'s deploy site, which now has a KNOWN GAP:
-    this is served at wallet-proxy's domain, but wallet-backend's rp_id is
-    wallet-frontend's domain (see patch_wallet_backend_fly) - see that
-    function's docstring for why this needs fixing (not yet done).
-    """
-    app_ids = [a.strip() for a in wellknown_apple.split(",") if a.strip()]
-    doc = {
-        "applinks": {
-            "details": [
-                {
-                    "appIDs": app_ids,
-                    "components": [{"/": "/*", "comment": "Matches any URL with a path that starts with /."}],
-                },
-            ],
-        },
-        "webcredentials": {"apps": app_ids},
-    }
-    return json.dumps(doc, indent=2)
