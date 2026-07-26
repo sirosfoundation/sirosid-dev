@@ -419,11 +419,20 @@ def wallet_proxy_conf(env: str) -> str:
     """Fly-hostname variant of fixtures/wallet-proxy.conf's first server block
     (assetlinks.json + proxy to wallet-backend) - the second block (Android
     issuer proxy via vc-proxy) is conformance-suite-only, not part of this
-    deployment. Also serves apple-app-site-association: iOS checks
-    Associated Domains / passkey webcredentials at the RP ID's own domain
-    (wallet-proxy, per patch_wallet_backend_fly's rp_id), same as Android's
-    assetlinks.json - wallet-frontend generates its own copy too (for
-    Universal Links on its own domain), but that doesn't cover the RP ID.
+    deployment. Also serves apple-app-site-association here at wallet-proxy's
+    own domain.
+
+    KNOWN GAP, not yet fixed: iOS checks Associated Domains / passkey
+    webcredentials at the RP ID's own domain, and patch_wallet_backend_fly's
+    rp_id is now wallet-frontend's domain (moved there to fix the exact same
+    class of bug for web/Android - see that function's docstring), not
+    wallet-proxy's - this AASA copy is consequently at the wrong domain for
+    iOS passkeys specifically. Unverified/untested (no iOS device tested
+    against this deployment yet); wallet-frontend already generates its own
+    AASA copy for Universal Links (WELLKNOWN_APPLE_APPIDS), but that's a
+    different section (applinks) than the one iOS passkeys need
+    (webcredentials) - fixing this properly means adding a webcredentials
+    section to wallet-frontend's own AASA, not just moving this file wholesale.
 
     Also proxies exactly two admin-API paths (`register_vc_services()`
     below calls these right after deploy, mirroring the local Makefile's
@@ -483,6 +492,275 @@ def wallet_proxy_conf(env: str) -> str:
 """
 
 
+def wallet_frontend_conf(env: str) -> str:
+    """nginx config for wallet-frontend's own image on Fly (mirrors
+    sirosid-dev's local nginx-e2e.conf: same dashboard-at-/, same asset
+    prefix-stripping - see wallet_frontend_dashboard_html() for what differs
+    about the dashboard itself).
+
+    Without the prefix-stripping location, the image's OWN generated
+    default.conf (root + `try_files $uri /index.html` with no location for
+    the BASE_PATH prefix) can't find ANY file under /id/default/ - every
+    request, including the JS bundle itself, silently falls through to
+    index.html (confirmed: nginx access log showed 200 for
+    /id/default/assets/index-*.js at the exact byte size of index.html) -
+    the browser tries to execute HTML as a JavaScript module and the app
+    never mounts, a blank page with no error surfaced anywhere server-side.
+
+    Bare / must return a real 200 (not a redirect) - Fly's own health check
+    hits GET / and expects 2xx; a 302 to /id/default/ fails it and Fly's
+    edge stops routing to the machine entirely ("no known healthy instances
+    found"). Serving the dashboard directly at / (matching local exactly)
+    satisfies the health check AND gives the same landing page as local dev.
+    """
+    backend = f"{app_name(env, 'wallet-backend')}.internal"
+    pdp = f"{app_name(env, 'pdp')}.internal"
+    mini_oidc = f"{app_name(env, 'mini-oidc')}.internal"
+    vc_registry = f"{app_name(env, 'vc-registry')}.internal"
+    vc_issuer = f"{app_name(env, 'vc-issuer')}.internal"
+    vc_verifier = f"{app_name(env, 'vc-verifier')}.internal"
+    vc_apigw = f"{app_name(env, 'vc-apigw')}.internal"
+    return f"""server {{
+    listen 80;
+    absolute_redirect off;
+
+    root /usr/share/nginx/html;
+
+    # Dashboard landing page (see wallet_frontend_dashboard_html()) - a real
+    # 200, not a redirect (see docstring above for why that matters).
+    location = / {{
+        root /usr/share/nginx;
+        try_files /startup.html =404;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    }}
+
+    # Health-check proxies for the dashboard above - same-origin fetch()
+    # calls from the BROWSER hit these (not wallet-frontend's own process),
+    # which then proxy server-side to each Fly app's 6PN .internal address -
+    # reachable because every component in this environment shares one
+    # --network (see fly_common.network_name), unlike the browser itself,
+    # which can only ever reach *.fly.dev public URLs.
+    location = /_health/backend  {{ proxy_pass http://{backend}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/admin    {{ proxy_pass http://{backend}:8081/admin/status; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/engine   {{ proxy_pass http://{backend}:8082/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/registry {{ proxy_pass http://{backend}:8080/registry/status; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/pdp        {{ proxy_pass http://{pdp}:8080/healthz; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/mini-oidc  {{ proxy_pass http://{mini_oidc}:9005/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-registry {{ proxy_pass http://{vc_registry}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+
+    # Serve assets and static files from any /id/<tenant>/ prefix by
+    # stripping the prefix and serving from the root - BASE_PATH's generated
+    # index.html references everything as /id/default/assets/... but the
+    # config-gen step writes files directly under the docroot, not nested
+    # under a matching id/default/ subdirectory.
+    location ~ ^/id/[^/]+/(.+\\.(js|css|svg|png|ico|json|woff2?|ttf|webmanifest|map|webm))$ {{
+        try_files /$1 =404;
+    }}
+
+    # SPA fallback: every other /id/<tenant>/* route serves index.html.
+    location / {{
+        try_files $uri /index.html;
+    }}
+}}
+"""
+
+
+def wallet_frontend_dashboard_html(env: str) -> str:
+    """Fly-adapted version of sirosid-dev's local startup.html landing page
+    (same navbar/branding/Quick-Links/Services-table styling, reusing its
+    CSS near-verbatim), served at wallet-frontend's own bare / (see
+    wallet_frontend_conf()).
+
+    What's dropped from the local version, and why: the Conformance Suite
+    tab (SSE-driven test-runner UI + log viewer) and Build Info card both
+    depend on services/data that only exist in the local docker-compose
+    stack (a conformance-runner container, git metadata from locally-built
+    images) - neither exists for a Fly environment pulling published images,
+    so there's nothing for them to show. The Services table stays, retargeted
+    at this environment's actual deployed services (see SERVICES below) -
+    mock-trust-pdp/mock-verifier are dropped (not deployed on Fly; pdp/
+    vc-verifier are the real equivalents), mini-oidc/vc-registry are added
+    (deployed on Fly, no local equivalent in the original list).
+    """
+    services_js = ",\n  ".join(
+        f'{{ name: "{name}", check: "/_health/{check}", port: {port} }}'
+        for name, check, port in [
+            ("wallet-backend", "backend", 8080),
+            ("wallet-admin", "admin", 8081),
+            ("wallet-engine", "engine", 8082),
+            ("vctm-registry", "registry", 8080),
+            ("pdp (go-trust)", "pdp", 8080),
+            ("mini-oidc", "mini-oidc", 9005),
+            ("vc-registry", "vc-registry", 8080),
+            ("vc-issuer", "vc-issuer", 8080),
+            ("vc-verifier", "vc-verifier", 8080),
+            ("vc-apigw", "vc-apigw", 8080),
+        ]
+        if check
+    )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sirosid-{env}</title>
+<style>
+  *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{
+    font-family: 'Helvetica Neue', Arial, system-ui, sans-serif;
+    min-height: 100vh; color: #1a1a1a; background: #fff;
+    font-size: 14px; line-height: 1.5;
+  }}
+  .navbar {{ background: #fff; border-bottom: 1px solid #e0e0e0; position: sticky; top: 0; z-index: 100; }}
+  .navbar-inner {{ max-width: 1200px; margin: 0 auto; padding: 0.6rem 2rem; display: flex; align-items: center; }}
+  .navbar-brand {{ display: flex; align-items: center; gap: 0.6rem; text-decoration: none; color: #1C4587; font-weight: 600; font-size: 1.1rem; }}
+  .navbar-brand svg {{ height: 32px; width: auto; }}
+  .navbar-links {{ margin-left: auto; display: flex; gap: 1.25rem; align-items: center; }}
+  .navbar-links a {{ color: #555; text-decoration: none; font-size: 0.875rem; font-weight: 500; transition: color 0.2s; }}
+  .navbar-links a:hover {{ color: #1C4587; }}
+  .content {{ max-width: 1200px; margin: 2rem auto; padding: 0 2rem; }}
+  h1 {{ color: #1C4587; font-size: 1.6rem; margin-bottom: 0.5rem; font-weight: 700; }}
+  .subtitle {{ color: #555; margin-bottom: 1.5rem; font-size: 0.95rem; }}
+  a {{ color: #1C4587; text-decoration: none; }}
+  a:hover {{ text-decoration: underline; }}
+  .card {{ background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 1.25rem; margin-bottom: 1.25rem; }}
+  .card h2 {{ font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; color: #555; font-weight: 600; margin-bottom: 0.75rem; }}
+  .links {{ display: flex; gap: 0.75rem; flex-wrap: wrap; }}
+  .links a {{ display: inline-block; padding: 0.5rem 1.25rem; background: #1C4587; border: none; border-radius: 6px; color: #fff; font-weight: 500; font-size: 0.9rem; transition: background 0.15s; }}
+  .links a:hover {{ background: #163a70; text-decoration: none; }}
+  table {{ width: 100%; border-collapse: collapse; }}
+  th {{ text-align: left; color: #555; font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0; background: #f8f9fa; }}
+  td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid #e0e0e0; vertical-align: top; }}
+  .svc-name {{ font-weight: 500; color: #1a1a1a; white-space: nowrap; }}
+  .status-dot {{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }}
+  .dot-up {{ background: #22c55e; }}
+  .dot-down {{ background: #ccc; }}
+  .dot-checking {{ background: #f59e0b; animation: pulse 1s ease-in-out infinite; }}
+  @keyframes pulse {{ 50% {{ opacity: 0.4; }} }}
+  .meta {{ color: #555; font-size: 0.8rem; }}
+  .footer {{ border-top: 1px solid #e0e0e0; margin-top: 2rem; padding: 1.5rem 0; font-size: 0.8rem; color: #555; }}
+  .footer-inner {{ max-width: 1200px; margin: 0 auto; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; }}
+  .footer a {{ color: #555; transition: color 0.2s; }}
+  .footer a:hover {{ color: #1C4587; text-decoration: none; }}
+  .port {{ color: #888; font-size: 0.75rem; font-weight: normal; }}
+</style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a class="navbar-brand" href="/">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 239 234" width="32" height="32">
+          <path fill="#1C4587" d="M 51.746094 89.585938 C 85.816406 84.324219 85.816406 84.324219 91.074219 50.246094 C 96.335938 84.324219 96.335938 84.324219 130.40625 89.585938 C 96.328125 94.84375 96.335938 94.910156 91.074219 128.929688 C 85.816406 94.847656 85.816406 94.847656 51.746094 89.585938 M 162.640625 217.410156 C 153.421875 157.6875 153.421875 157.6875 93.714844 148.46875 C 153.421875 139.246094 153.421875 139.246094 162.640625 79.523438 C 171.621094 137.710938 171.863281 139.207031 227.089844 147.773438 C 229.964844 137.921875 231.511719 127.503906 231.511719 116.71875 C 231.511719 55.589844 181.964844 6.03125 120.847656 6.03125 C 59.734375 6.03125 10.1875 55.589844 10.1875 116.71875 C 10.1875 177.851562 59.734375 227.410156 120.847656 227.410156 C 170.65625 227.410156 212.777344 194.496094 226.660156 149.226562 C 171.84375 157.730469 171.597656 159.472656 162.640625 217.410156"/>
+        </svg>
+        sirosid-{env}
+      </a>
+      <div class="navbar-links">
+        <a href="/id/default/login">Login</a>
+        <a href="/id/default/">Dashboard</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="content">
+    <h1>Fly.io Environment: {env}</h1>
+    <div class="subtitle">sirosid-dev &middot; ephemeral deployment &middot; <code>make fly-down ENV={env}</code> to tear down</div>
+
+    <div class="card">
+      <h2>Quick Links</h2>
+      <div class="links">
+        <a href="/id/default/login">Wallet Login</a>
+        <a href="/id/default/">Wallet Dashboard</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Services</h2>
+      <table>
+        <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
+        <tbody id="svc-table"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div class="footer-inner">
+      <span>&copy; SIROS Foundation &middot; Auto-refreshes every 10s</span>
+      <a href="#" onclick="checkAll();return false;">Refresh now</a>
+    </div>
+  </div>
+
+<script>
+var SERVICES = [
+  {services_js}
+];
+
+var svcStatus = {{}};
+
+function renderTable() {{
+  var tbody = document.getElementById("svc-table");
+  tbody.innerHTML = "";
+  SERVICES.forEach(function(svc) {{
+    var s = svcStatus[svc.name] || {{ state: "checking", detail: null }};
+    var dotClass = s.state === "up" ? "dot-up" : s.state === "down" ? "dot-down" : "dot-checking";
+    var label = s.state === "up" ? "running" : s.state === "down" ? "not reachable" : "checking\\u2026";
+    var detail = "";
+    if (s.detail) {{
+      var parts = [];
+      if (s.detail.service) parts.push(s.detail.service);
+      if (s.detail.roles) parts.push("roles: " + s.detail.roles.join(", "));
+      if (s.detail.capabilities) parts.push(s.detail.capabilities.length + " capabilities");
+      if (s.detail.mode) parts.push("mode: " + s.detail.mode);
+      detail = parts.join(" &middot; ");
+    }}
+    var tr = document.createElement("tr");
+    tr.innerHTML =
+      '<td class="svc-name">' + svc.name + ' <span class="port">:' + svc.port + '</span></td>' +
+      '<td><span class="status-dot ' + dotClass + '"></span>' + label + '</td>' +
+      '<td class="meta">' + detail + '</td>';
+    tbody.appendChild(tr);
+  }});
+}}
+
+function checkService(svc) {{
+  svcStatus[svc.name] = {{ state: "checking", detail: null }};
+  fetch(svc.check)
+    .then(function(r) {{
+      if (!r.ok) throw new Error(r.status);
+      return r.text().then(function(text) {{
+        try {{ return JSON.parse(text); }} catch(e) {{ return null; }}
+      }});
+    }})
+    .then(function(data) {{
+      svcStatus[svc.name] = {{ state: "up", detail: data }};
+      renderTable();
+    }})
+    .catch(function() {{
+      svcStatus[svc.name] = {{ state: "down", detail: null }};
+      renderTable();
+    }});
+}}
+
+function checkAll() {{ SERVICES.forEach(checkService); }}
+
+// Unregister any service workers that might intercept navigation to /
+if ('serviceWorker' in navigator) {{
+  navigator.serviceWorker.getRegistrations().then(function(regs) {{
+    regs.forEach(function(r) {{ r.unregister(); }});
+  }});
+}}
+
+checkAll();
+setInterval(checkAll, 10000);
+</script>
+</body>
+</html>
+"""
+
+
 def assetlinks_json(wellknown_android: str, extra_identities: list | None = None) -> str:
     """Build a Digital Asset Links JSON array from the same
     `package::fingerprint,...` string helm-charts' walletFrontend.
@@ -534,8 +812,11 @@ def aasa_json(wellknown_apple: str) -> str:
     carries - matches wallet-frontend's own generateAppleAppLinks()
     (wallet-frontend/config/files/well-known.ts:98-139) format exactly, so
     the same app IDs get both applinks (Universal Links, served by
-    wallet-frontend itself) and webcredentials (passkey RP association,
-    served here at wallet-proxy's domain, wallet-backend's rp_id).
+    wallet-frontend itself) and webcredentials (passkey RP association) -
+    called from wallet_proxy_conf()'s deploy site, which now has a KNOWN GAP:
+    this is served at wallet-proxy's domain, but wallet-backend's rp_id is
+    wallet-frontend's domain (see patch_wallet_backend_fly) - see that
+    function's docstring for why this needs fixing (not yet done).
     """
     app_ids = [a.strip() for a in wellknown_apple.split(",") if a.strip()]
     doc = {

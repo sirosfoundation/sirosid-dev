@@ -64,7 +64,7 @@ from fly_common import (  # noqa: E402
     COMPONENTS, FLY_ORG, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
     aasa_json, app_exists, app_name, app_url, assetlinks_json,
     ensure_app, ensure_running, ensure_secret, existing_secret_names, mini_oidc_config, network_name,
-    wait_for_checks, wallet_proxy_conf, write_fly_toml,
+    wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
 )
 from helm_render_lib import (  # noqa: E402
     extract_configmap_data, extract_deployment_image, extract_init_container_image, extract_mongo_version,
@@ -299,6 +299,14 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--file-local", f"/etc/nginx/well-known/apple-app-site-association={aasa_path}",
         ]
     elif name == "wallet-frontend":
+        conf_path = out_dir / "wallet-frontend.conf"
+        conf_path.write_text(wallet_frontend_conf(env))
+        dashboard_path = out_dir / "wallet-frontend-dashboard.html"
+        dashboard_path.write_text(wallet_frontend_dashboard_html(env))
+        deploy_args += [
+            "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
+            "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
+        ]
         deploy_args += _wallet_frontend_env(env, docs)
 
     run(["flyctl"] + deploy_args, cwd=SIROSID_DEV_ROOT)
@@ -357,7 +365,11 @@ def _wallet_frontend_env(env: str, docs: list) -> list:
     values = {
         "WALLET_BACKEND_URL": proxy,
         "WALLET_ENGINE_URL": proxy,
-        "WEBAUTHN_RPID": f"sirosid-{env}-wallet-proxy.fly.dev",
+        # Must equal wallet-backend's server.rp_id (render-helm-config.py's
+        # patch_wallet_backend_fly) - the passkey ceremony runs in the
+        # browser at THIS app's own origin, not wallet-proxy's, so rp_id has
+        # to be wallet-frontend's domain or every passkey registration fails.
+        "WEBAUTHN_RPID": f"sirosid-{env}-wallet-frontend.fly.dev",
         "STATIC_PUBLIC_URL": frontend,
         # For Universal Links on wallet-frontend's own domain (separate from
         # the AASA wallet-proxy serves for the passkey RP ID - see

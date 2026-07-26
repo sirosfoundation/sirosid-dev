@@ -106,10 +106,20 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
 
 def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None,
                               mongo_password: str = None) -> dict:
-    # wallet-proxy is wallet-backend's public identity on Fly (see module docstring).
+    # wallet-proxy is wallet-backend's public identity on Fly for the ACTUAL
+    # API (see module docstring) - but NOT for WebAuthn. The passkey ceremony
+    # (navigator.credentials.create/get) executes in the browser at
+    # wallet-frontend's own origin, and WebAuthn requires rp_id to equal (or
+    # be a registrable-domain ancestor of) that calling origin - wallet-proxy
+    # and wallet-frontend are unrelated sibling *.fly.dev subdomains sharing
+    # no such ancestor, so an rp_id of wallet-proxy's domain can never work
+    # from a page served at wallet-frontend's domain (confirmed: "passkey
+    # creation failed" on every attempt). rp_id/rp_origins must reference
+    # wallet-frontend's own domain instead - fly-up.py's WEBAUTHN_RPID env
+    # var for the frontend must match this exactly.
     proxy_url = f"https://sirosid-{env}-wallet-proxy.fly.dev"
     frontend_url = f"https://sirosid-{env}-wallet-frontend.fly.dev"
-    config["server"]["rp_id"] = f"sirosid-{env}-wallet-proxy.fly.dev"
+    config["server"]["rp_id"] = f"sirosid-{env}-wallet-frontend.fly.dev"
     android_origins = [o for o in config["server"]["rp_origins"] if o.startswith("android:")]
     # Debug builds / Play Store signing keys the operator wants THIS
     # environment to also authenticate (fly-up.py's --android-app / auto-read
@@ -122,7 +132,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
         origin = f"android:apk-key-hash:{apk_key_hash}"
         if origin not in android_origins:
             android_origins.append(origin)
-    config["server"]["rp_origins"] = [proxy_url] + android_origins
+    config["server"]["rp_origins"] = [frontend_url] + android_origins
     config["server"]["base_url"] = proxy_url
     config["server"]["cors"]["allowed_origins"] = [frontend_url]
     config["trust"]["pdp_url"] = f"http://sirosid-{env}-pdp.internal:8080"
