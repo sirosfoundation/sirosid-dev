@@ -513,6 +513,61 @@ for k in keys:
 "
 ```
 
+## Fly.io Deployment
+
+Spin up a full, independently addressable wallet stack (frontend, backend,
+PDP, issuer, verifier, apigw, registry, mongo, mini-oidc) on Fly.io under the
+shared `sirosfoundation` org - each named environment gets its own set of
+`sirosid-<env>-*` apps and `*.fly.dev` URLs, fully isolated from every other
+environment. Config is rendered from `helm-charts/siros-id-stack` (same
+mechanism as `PDP=helm`, see below) and images are pulled straight from that
+chart's `values.yaml` - no local Docker build.
+
+```bash
+make fly-up ENV=alice              # deploy a new environment
+make fly-status ENV=alice          # check all 10 apps
+make fly-down ENV=alice            # tear it down
+```
+
+Requires `flyctl` installed and authenticated, and a sibling `../helm-charts`
+checkout (`make setup` clones it).
+
+### Multiple developers, multiple environments
+
+Environments are fully isolated by name - two developers can run
+`make fly-up ENV=alice` and `make fly-up ENV=bob` at the same time with zero
+collision (verified with two concurrent full deploys).
+
+### Overriding image versions
+
+Two different override mechanisms exist, for two different purposes -
+they're not redundant, each solves a problem the other can't:
+
+- **`IMAGES=` (ad-hoc, per-environment, opt-in)** - override any one of the
+  10 components' image for *your* environment only, e.g. to test your own
+  branch build:
+  ```bash
+  make fly-up ENV=alice IMAGES="wallet-backend=ghcr.io/sirosfoundation/go-wallet-backend:pr-123"
+  # comma-separate multiple: IMAGES="wallet-backend=...,pdp=..."
+  ```
+  This never touches any checked-in file - it only affects the one
+  environment you passed it to.
+
+- **`values-fly.yaml`'s `images:` block (shared default, checked in)** -
+  currently overrides only `images.pdp`, because `helm-charts`' own pin
+  (`images.pdp` in `siros-id-stack/values.yaml`) is a pre-release commit-sha
+  tag that predates a fix ([sirosfoundation/go-trust#112](https://github.com/sirosfoundation/go-trust/pull/112))
+  the PDP's whitelist needs to function *at all* once deployed on Fly
+  (without it, JWKS fetch fails for every whitelisted issuer/verifier and
+  the whitelist never becomes healthy - not a "nice to have," a hard
+  requirement). This is deliberately **not** handled by asking every
+  developer to remember `IMAGES=pdp=...` on every `make fly-up` - a broken
+  default should be fixed at the default, not worked around per-invocation.
+  It's a temporary stopgap: once `helm-charts` bumps its own `images.pdp`
+  pin past `v0.9.2`, this override should be deleted from `values-fly.yaml`
+  entirely, and PDP goes back to being sourced from the chart exactly like
+  every other component - no permanent special-casing.
+
 ## Directory Structure
 
 ```

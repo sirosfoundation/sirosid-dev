@@ -30,7 +30,18 @@ global:
     createIssuers: false
 
 images:
-  # Pinned values.yaml tag predates the AllowHTTP whitelist fix
-  # (sirosfoundation/go-trust#112) that the Fly-hosted PDP's config-file
-  # whitelist needs. Bumped once v0.9.2 publishes to ghcr.io.
+  # TEMPORARY STOPGAP, not a permanent special case for pdp - see README.md's
+  # "Overriding image versions" section for the full explanation and the
+  # per-environment IMAGES= override (for ad-hoc testing, e.g. your own
+  # branch build - this is NOT that, this is fixing a broken shared default).
+  #
+  # helm-charts' own images.pdp pin (siros-id-stack/values.yaml) is a
+  # pre-release commit-sha tag that predates the AllowHTTP fix
+  # (sirosfoundation/go-trust#112) the PDP's config-file whitelist needs to
+  # become healthy at all once deployed on Fly - not optional polish, every
+  # environment needs this or JWKS fetch fails for every whitelisted entity.
+  #
+  # DELETE this override once helm-charts bumps images.pdp past v0.9.2 -
+  # pdp should be sourced from the chart like every other component, with
+  # zero special-casing here.
   pdp: "ghcr.io/sirosfoundation/go-trust:0.9.2"
