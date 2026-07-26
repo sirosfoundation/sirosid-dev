@@ -342,21 +342,23 @@ def wallet_proxy_conf(env: str) -> str:
 """
 
 
-def assetlinks_json(wellknown_android: str, extra_fingerprint: tuple | None = None) -> str:
+def assetlinks_json(wellknown_android: str, extra_identities: list | None = None) -> str:
     """Build a Digital Asset Links JSON array from the same
     `package::fingerprint,...` string helm-charts' walletFrontend.
     wellknownAndroidPackageNamesAndFingerprints already carries (see
     scripts/fly-up.py - pulled straight from the rendered wallet-frontend-main
-    ConfigMap), so already-published native apps (wwwwallet, org.siros.id,
+    ConfigMap), so already-published Play Store apps (wwwwallet, org.siros.id,
     ...) can validate against this Fly environment out of the box, not just
     a locally-built debug APK (unlike scripts/generate-assetlinks.sh, which
     is keyed of the developer's own debug keystore).
 
-    extra_fingerprint, if given, is a (package, fingerprint) pair - e.g. a
-    developer's own local debug keystore, added alongside the production
-    ones (see fly-up.py's --android-package/--android-fingerprint flags)
-    rather than replacing them, so this one environment can authenticate
-    both a locally-built debug APK and the published apps.
+    extra_identities, if given, is a list of (package, fingerprint) pairs -
+    e.g. several developers' own local debug keystores, or additional Play
+    Store signing keys - added alongside the production ones (see
+    fly-up.py's repeatable --android-app flag), so one environment can
+    authenticate a mix of debug builds and Play Store builds at once. The
+    same package can appear more than once with different fingerprints
+    (e.g. a debug key and a Play Store upload key for the same app).
     """
     by_package: dict[str, list[str]] = {}
     for pair in wellknown_android.split(","):
@@ -366,8 +368,7 @@ def assetlinks_json(wellknown_android: str, extra_fingerprint: tuple | None = No
         package, fingerprint = pair.split("::", 1)
         by_package.setdefault(package, []).append(fingerprint)
 
-    if extra_fingerprint:
-        package, fingerprint = extra_fingerprint
+    for package, fingerprint in extra_identities or []:
         by_package.setdefault(package, [])
         if fingerprint not in by_package[package]:
             by_package[package].append(fingerprint)

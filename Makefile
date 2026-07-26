@@ -854,7 +854,7 @@ render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-i
 # Fly.io — named ephemeral environments (see scripts/fly-up.py, fly-down.py)
 # =============================================================================
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...])
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...])
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -865,7 +865,8 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		exit 1; \
 	fi
 	@command -v flyctl >/dev/null 2>&1 || { echo "$(RED)Error: flyctl not found - https://fly.io/docs/flyctl/install/$(NC)"; exit 1; }
-	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack" --images "$(IMAGES)"
+	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack" --images "$(IMAGES)" \
+		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)")
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \

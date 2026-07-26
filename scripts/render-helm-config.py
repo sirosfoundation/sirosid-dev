@@ -98,12 +98,23 @@ def patch_wallet_backend_compose(config: dict) -> dict:
     return config
 
 
-def patch_wallet_backend_fly(config: dict, env: str) -> dict:
+def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None) -> dict:
     # wallet-proxy is wallet-backend's public identity on Fly (see module docstring).
     proxy_url = f"https://sirosid-{env}-wallet-proxy.fly.dev"
     frontend_url = f"https://sirosid-{env}-wallet-frontend.fly.dev"
     config["server"]["rp_id"] = f"sirosid-{env}-wallet-proxy.fly.dev"
     android_origins = [o for o in config["server"]["rp_origins"] if o.startswith("android:")]
+    # Debug builds / Play Store signing keys the operator wants THIS
+    # environment to also authenticate (fly-up.py's --android-app / auto-read
+    # .env.android) - these are on top of, not instead of, the production
+    # fingerprints helm-charts' extraRpOrigins already carries. Registering
+    # only in assetlinks.json without also adding the origin here would pass
+    # Android's OS-level Digital Asset Links check but still fail the actual
+    # WebAuthn ceremony (wallet-backend never accepts the origin).
+    for apk_key_hash in extra_android_apk_key_hashes or []:
+        origin = f"android:apk-key-hash:{apk_key_hash}"
+        if origin not in android_origins:
+            android_origins.append(origin)
     config["server"]["rp_origins"] = [proxy_url] + android_origins
     config["server"]["base_url"] = proxy_url
     config["server"]["cors"]["allowed_origins"] = [frontend_url]
@@ -167,6 +178,11 @@ def main():
                          help="Path to the siros-id-stack chart (default: ../helm-charts/siros-id-stack)")
     parser.add_argument("--target", choices=["compose", "fly"], default="compose")
     parser.add_argument("--env", help="Environment name, required for --target fly (e.g. test1)")
+    parser.add_argument("--android-apk-key-hash", action="append", default=[],
+                         help="base64url apk-key-hash (no padding) to add to wallet-backend's "
+                              "rp_origins, on top of the production ones helm-charts already "
+                              "carries - repeatable. See fly-up.py's --android-app for the "
+                              "developer-facing (colon-hex) form of this.")
     parser.add_argument("--namespace", default="sirosid-dev")
     parser.add_argument("--out-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered"))
     parser.add_argument("--secrets-dir", default=str(SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"))
@@ -207,7 +223,7 @@ def main():
     if args.target == "compose":
         backend_cfg = patch_wallet_backend_compose(backend_cfg)
     else:
-        backend_cfg = patch_wallet_backend_fly(backend_cfg, args.env)
+        backend_cfg = patch_wallet_backend_fly(backend_cfg, args.env, args.android_apk_key_hash)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
     (out_dir / "wallet-backend-registry.yaml").write_text(wb_data["registry.yaml"])
     print(f"wrote {out_dir / 'wallet-backend.yaml'}")
