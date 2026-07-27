@@ -123,15 +123,16 @@ COMPONENTS = [
 ]
 
 # Opt-in (--conformance), deployed AFTER the 10 above, matching local dev's
-# CONFORMANCE=yes overlay - the real, functional piece of that overlay is
-# just these 3 (the third component in the local compose file,
-# "conformance-runner", is a documented placeholder with no actual API - see
-# conformance-runner/Dockerfile's own comment - so there's nothing to port).
-# vc-proxy (the local overlay's 4th component, a self-signed TLS front for
-# otherwise-plain-HTTP vc-services) also isn't needed here: every Fly-public
-# vc-service already has real TLS via Fly's own *.fly.dev certs, so the
-# conformance suite can test against vc-apigw/vc-verifier's public URLs
-# directly - no proxy required.
+# CONFORMANCE=yes overlay. conformance-runner drives sirosid-tests' own
+# Playwright conformance specs (ghcr.io/sirosfoundation/conformance-runner,
+# published from sirosid-tests/conformance-runner/) against this
+# environment's public wallet-frontend/wallet-proxy URLs, relaying live
+# progress to the dashboard - see wallet_frontend_dashboard_html()'s
+# Conformance tab. vc-proxy (the local overlay's 4th component, a
+# self-signed TLS front for otherwise-plain-HTTP vc-services) isn't needed
+# here: every Fly-public vc-service already has real TLS via Fly's own
+# *.fly.dev certs, so the conformance suite can test against
+# vc-apigw/vc-verifier's public URLs directly - no proxy required.
 CONFORMANCE_COMPONENTS = [
     {
         "name": "conformance-mongodb",
@@ -176,6 +177,19 @@ CONFORMANCE_COMPONENTS = [
         # would fail the TLS handshake against an app that only speaks TLS.
         "ports": [{"internal": 8443, "public": True}],
         "checks": None,
+    },
+    {
+        "name": "conformance-runner",
+        "image": "ghcr.io/sirosfoundation/conformance-runner:main",
+        "ports": [{"internal": 3001, "public": False}],
+        "checks": None,
+        # Internal-only - reached solely via wallet-frontend's own
+        # /_conformance/ proxy over 6PN (see wallet_frontend_conf()), never
+        # a direct public URL, same as pdp/vc-issuer. /health is a plain
+        # unconditional 200 (deliberately NOT /api/status, which depends on
+        # the conformance suite itself being reachable - the container's own
+        # liveness shouldn't be coupled to that).
+        "internal_check": {"type": "http", "port": 3001, "path": "/health"},
     },
 ]
 
@@ -657,6 +671,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     vc_verifier = f"{app_name(env, 'vc-verifier')}.internal"
     vc_apigw = f"{app_name(env, 'vc-apigw')}.internal"
     conformance_server = f"{app_name(env, 'conformance-server')}.internal"
+    conformance_runner = f"{app_name(env, 'conformance-runner')}.internal"
     conformance_health = (
         f"    location = /_health/conformance-server {{ proxy_pass "
         f"http://{conformance_server}:8080/api/runner/available; "
@@ -668,6 +683,25 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
         # external traffic) is meant to convey.
         f"proxy_set_header X-Forwarded-Proto https; "
         f"proxy_connect_timeout 2s; proxy_read_timeout 2s; }}\n"
+        if conformance else ""
+    )
+    conformance_proxy = (
+        # Mirrors nginx-e2e.conf's local /_conformance/ block exactly, so
+        # startup.html's JS (ported verbatim into
+        # wallet_frontend_dashboard_html()) needs zero changes - same-origin
+        # same path, same prefix-stripping rewrite, same SSE-safe buffering
+        # settings (proxy_buffering off / long proxy_read_timeout - this is
+        # a long-lived text/event-stream connection, not a normal request).
+        f"    location /_conformance/ {{\n"
+        f"        proxy_pass http://{conformance_runner}:3001/;\n"
+        f"        proxy_connect_timeout 5s;\n"
+        f"        proxy_read_timeout 300s;\n"
+        f"        proxy_http_version 1.1;\n"
+        f"        proxy_set_header Connection '';\n"
+        f"        proxy_buffering off;\n"
+        f"        proxy_cache off;\n"
+        f"        chunked_transfer_encoding off;\n"
+        f"    }}\n"
         if conformance else ""
     )
     return f"""server {{
@@ -702,6 +736,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
 {conformance_health}
+{conformance_proxy}
     # Serve assets and static files from any /id/<tenant>/ prefix by
     # stripping the prefix and serving from the root - BASE_PATH's generated
     # index.html references everything as /id/default/assets/... but the
@@ -786,6 +821,539 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         for name, check, port in service_list
         if check
     )
+
+    # Everything below is plain text (not an f-string) - ported near-verbatim
+    # from startup.html, so no {{/}} brace-escaping is needed; it's spliced
+    # into the outer f-string by reference below. Gated on conformance_url:
+    # without --conformance there's no conformance-runner to talk to, so the
+    # whole tab (and its CSS/JS) is simply omitted rather than shown dead,
+    # unlike local dev's startup.html, which always shows it (and always did,
+    # even when it was dead - see this function's docstring).
+    conformance_css = """
+  /* Conformance card styles */
+  .conf-btn {
+    display: inline-block;
+    padding: 0.4rem 1rem;
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-weight: 500;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: background 0.15s, opacity 0.15s;
+  }
+  .conf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .conf-btn-primary { background: #1C4587; }
+  .conf-btn-primary:hover:not(:disabled) { background: #163a70; }
+  .conf-btn-secondary { background: #555; }
+  .conf-btn-secondary:hover:not(:disabled) { background: #444; }
+  .conf-run-grid { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .conf-status { margin-bottom: 0.75rem; font-size: 0.9rem; }
+  .conf-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  .conf-results { margin-top: 0.75rem; }
+  .conf-results table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .conf-results th { text-align: left; color: #555; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; padding: 0.35rem 0.5rem; border-bottom: 1px solid #e0e0e0; background: #f8f9fa; }
+  .conf-results td { padding: 0.35rem 0.5rem; border-bottom: 1px solid #e0e0e0; }
+  .conf-results td a { color: #1C4587; text-decoration: none; font-size: 0.75rem; }
+  .conf-results td a:hover { text-decoration: underline; }
+  .badge { display: inline-block; padding: 0.1rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; }
+  .badge-pass { background: #dcfce7; color: #166534; }
+  .badge-fail { background: #fee2e2; color: #991b1b; }
+  .badge-warn { background: #fef9c3; color: #854d0e; }
+  .badge-run  { background: #dbeafe; color: #1e40af; }
+  .badge-skip { background: #f0f0f0; color: #555; }
+  .run-header { cursor: pointer; padding: 0.6rem 0; border-bottom: 1px solid #e0e0e0; user-select: none; }
+  .run-header:hover { background: #f8f9fa; }
+  .run-toggle { display: inline-block; width: 1em; font-size: 0.8rem; color: #888; margin-right: 0.3rem; }
+  .run-time { font-size: 0.75rem; color: #888; margin-left: 0.5rem; }
+  .run-body { padding: 0.5rem 0; }
+  .run-body.collapsed { display: none; }
+  .run-summary { display: inline-flex; gap: 0.5rem; align-items: center; }
+  /* Log viewer panel */
+  .log-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.3); z-index: 200; }
+  .log-overlay.active { display: block; }
+  .log-panel {
+    position: fixed; top: 0; right: 0; bottom: 0; width: min(75vw, 900px);
+    background: #fff; box-shadow: -4px 0 20px rgba(0,0,0,0.15); z-index: 201;
+    display: flex; flex-direction: column; transform: translateX(100%);
+    transition: transform 0.2s ease;
+  }
+  .log-panel.active { transform: translateX(0); }
+  .log-panel-header {
+    display: flex; align-items: center; gap: 0.75rem; padding: 1rem 1.25rem;
+    border-bottom: 1px solid #e0e0e0; background: #f8f9fa; flex-shrink: 0;
+  }
+  .log-panel-header h3 { font-size: 0.95rem; font-weight: 600; color: #1a1a1a; flex: 1; margin: 0; }
+  .log-panel-close {
+    background: none; border: none; font-size: 1.4rem; cursor: pointer;
+    color: #888; padding: 0 0.3rem; line-height: 1;
+  }
+  .log-panel-close:hover { color: #333; }
+  .log-panel-body { flex: 1; overflow-y: auto; padding: 1rem 1.25rem; }
+  .log-entry { margin-bottom: 0.75rem; border: 1px solid #e8e8e8; border-radius: 6px; overflow: hidden; }
+  .log-entry-header {
+    display: flex; align-items: center; gap: 0.5rem; padding: 0.4rem 0.75rem;
+    background: #f8f9fa; cursor: pointer; font-size: 0.82rem; user-select: none;
+  }
+  .log-entry-header:hover { background: #f0f0f0; }
+  .log-src { font-weight: 600; color: #555; min-width: 5em; }
+  .log-msg { flex: 1; color: #1a1a1a; word-break: break-word; }
+  .log-entry-body { display: none; padding: 0.5rem 0.75rem; font-size: 0.78rem; background: #fafafa; border-top: 1px solid #e8e8e8; }
+  .log-entry-body.open { display: block; }
+  .log-entry-body pre {
+    white-space: pre-wrap; word-break: break-all; margin: 0;
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace; font-size: 0.78rem;
+    color: #333; max-height: 400px; overflow-y: auto;
+  }
+  .log-entry.log-fail { border-left: 3px solid #ef4444; }
+  .log-entry.log-pass { border-left: 3px solid #22c55e; }
+  .log-entry.log-warn { border-left: 3px solid #f59e0b; }
+  .log-entry.log-info { border-left: 3px solid #3b82f6; }
+  .log-module-info { margin-bottom: 1rem; padding: 0.75rem; background: #f8f9fa; border-radius: 6px; font-size: 0.85rem; }
+  .log-module-info dt { font-weight: 600; color: #555; display: inline; }
+  .log-module-info dd { display: inline; margin: 0 1rem 0 0.3rem; }
+  /* Tabs */
+  .tabs { display: flex; gap: 0; border-bottom: 2px solid #e0e0e0; margin-bottom: 1.25rem; }
+  .tab {
+    padding: 0.6rem 1.5rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #555;
+    cursor: pointer;
+    border: none;
+    background: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .tab:hover { color: #1C4587; }
+  .tab.active { color: #1C4587; border-bottom-color: #1C4587; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+""" if conformance_url else ""
+
+    tabs_bar = """
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('status')">Status</button>
+      <button class="tab" onclick="switchTab('conformance')">Conformance</button>
+    </div>""" if conformance_url else ""
+    status_panel_open = '    <div id="tab-status" class="tab-panel active">' if conformance_url else ""
+    status_panel_close = "    </div>" if conformance_url else ""
+
+    conformance_tab = """
+    <div id="tab-conformance" class="tab-panel">
+      <div class="card" id="conformance-card">
+        <h2>Conformance Suite</h2>
+        <div class="conf-status" id="conf-status">
+          <span class="conf-status-dot dot-checking"></span>Checking conformance suite&hellip;
+        </div>
+        <div class="conf-run-grid" id="conf-buttons"></div>
+        <div class="conf-results" id="conf-results"></div>
+      </div>
+    </div>""" if conformance_url else ""
+
+    conformance_log_viewer_html = """
+<div id="log-overlay" class="log-overlay" onclick="closeLogPanel()"></div>
+<div id="log-panel" class="log-panel" onclick="event.stopPropagation()">
+  <div class="log-panel-header">
+    <h3 id="log-panel-title">Log</h3>
+    <button class="log-panel-close" onclick="closeLogPanel()" title="Close">&times;</button>
+  </div>
+  <div class="log-panel-body" id="log-panel-body"></div>
+</div>""" if conformance_url else ""
+
+    conformance_js = """
+function switchTab(name) {
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelector('.tab[onclick*="' + name + '"]').classList.add('active');
+}
+
+function esc(s) {
+  var d = document.createElement("div");
+  d.appendChild(document.createTextNode(s));
+  return d.innerHTML;
+}
+
+// =========================================================================
+// Conformance Dashboard
+// =========================================================================
+
+var confBase = "/_conformance";
+var confAvailable = false;
+var confRuns = {};       // runId -> run state
+var confEventSource = null;
+
+function confStatusEl() { return document.getElementById("conf-status"); }
+
+function checkConformance() {
+  fetch(confBase + "/api/status")
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      confAvailable = data.conformance_suite === "connected";
+      var dot = confAvailable ? "dot-up" : "dot-down";
+      var label = confAvailable ? "Connected" : "Not available";
+      confStatusEl().innerHTML =
+        '<span class="conf-status-dot ' + dot + '"></span>' + label +
+        ' <span class="meta">(' + esc(data.url || "") + ')</span>';
+      if (confAvailable) {
+        loadConfPlans();
+        if (!confEventSource) connectSSE();
+      }
+    })
+    .catch(function() {
+      confAvailable = false;
+      confStatusEl().innerHTML =
+        '<span class="conf-status-dot dot-down"></span>Runner not available';
+    });
+}
+
+function loadConfPlans() {
+  fetch(confBase + "/api/plans")
+    .then(function(r) { return r.json(); })
+    .then(function(plans) {
+      var el = document.getElementById("conf-buttons");
+      el.innerHTML = "";
+      plans.forEach(function(p) {
+        var btn = document.createElement("button");
+        btn.className = "conf-btn " + (p.phase === 1 ? "conf-btn-primary" : "conf-btn-secondary");
+        btn.textContent = p.label;
+        btn.title = p.planName + " (Phase " + p.phase + ")";
+        btn.onclick = function() { startConfRun(p.id, btn); };
+        el.appendChild(btn);
+      });
+    })
+    .catch(function() {});
+}
+
+function startConfRun(planType, btn) {
+  if (btn) btn.disabled = true;
+  fetch(confBase + "/api/runs", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ planType: planType })
+  })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data.error) {
+        alert("Error: " + data.error);
+        if (btn) btn.disabled = false;
+        return;
+      }
+      confRuns[data.id] = {
+        id: data.id,
+        planType: data.planType,
+        status: "creating",
+        startedAt: Date.now(),
+        modules: [],
+        results: []
+      };
+      renderConfResults();
+      setTimeout(function() { if (btn) btn.disabled = false; }, 5000);
+    })
+    .catch(function(err) {
+      alert("Failed to start run: " + err);
+      if (btn) btn.disabled = false;
+    });
+}
+
+function connectSSE() {
+  if (confEventSource) confEventSource.close();
+  confEventSource = new EventSource(confBase + "/api/events");
+
+  confEventSource.addEventListener("run_start", function(e) {
+    var d = JSON.parse(e.data);
+    confRuns[d.id] = confRuns[d.id] || { id: d.id, planType: d.planType, status: "creating", startedAt: Date.now(), modules: [], results: [] };
+    confRuns[d.id].label = d.label;
+    collapsedRuns[d.id] = false; // new runs start expanded
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_update", function(e) {
+    var d = JSON.parse(e.data);
+    if (confRuns[d.id]) {
+      confRuns[d.id].status = d.status;
+      if (d.modules) confRuns[d.id].modules = d.modules;
+      if (d.planId) confRuns[d.id].planId = d.planId;
+      if (d.planDetailUrl) confRuns[d.id].planDetailUrl = d.planDetailUrl;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_state", function(e) {
+    var d = JSON.parse(e.data);
+    confRuns[d.id] = d;
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("module_event", function(e) {
+    var d = JSON.parse(e.data);
+    var run = confRuns[d.runId];
+    if (!run) return;
+    if (d.type === "module_start") {
+      run.currentModule = d.module;
+    } else if (d.type === "module_result") {
+      run.results = run.results || [];
+      var idx = run.results.findIndex(function(r) { return r.module === d.module; });
+      var entry = { module: d.module, status: d.status, result: d.result, moduleId: d.moduleId };
+      if (idx >= 0) run.results[idx] = entry;
+      else run.results.push(entry);
+      run.currentModule = null;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_finished", function(e) {
+    var d = JSON.parse(e.data);
+    if (confRuns[d.id]) {
+      confRuns[d.id].status = "finished";
+      confRuns[d.id].passed = d.passed;
+      confRuns[d.id].failed = d.failed;
+      confRuns[d.id].total = d.total;
+      confRuns[d.id].finishedAt = Date.now();
+      confRuns[d.id].planDetailUrl = d.planDetailUrl;
+      // Auto-expand finished runs
+      collapsedRuns[d.id] = false;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.addEventListener("run_error", function(e) {
+    var d = JSON.parse(e.data);
+    if (confRuns[d.id]) {
+      confRuns[d.id].status = "error";
+      confRuns[d.id].error = d.error;
+    }
+    renderConfResults();
+  });
+
+  confEventSource.onerror = function() {
+    setTimeout(function() { if (confAvailable) connectSSE(); }, 5000);
+  };
+}
+
+function resultBadge(result) {
+  if (!result) return '<span class="badge badge-run">running</span>';
+  var cls = result === "PASSED" ? "badge-pass"
+          : result === "WARNING" ? "badge-warn"
+          : result === "SKIPPED" || result === "REVIEW" ? "badge-skip"
+          : "badge-fail";
+  return '<span class="badge ' + cls + '">' + esc(result) + '</span>';
+}
+
+function formatTime(ts) {
+  if (!ts) return "";
+  var d = new Date(ts);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatDuration(start, end) {
+  if (!start || !end) return "";
+  var secs = Math.round((end - start) / 1000);
+  if (secs < 60) return secs + "s";
+  return Math.floor(secs / 60) + "m " + (secs % 60) + "s";
+}
+
+var collapsedRuns = {};
+
+function toggleRunCollapse(id) {
+  collapsedRuns[id] = !collapsedRuns[id];
+  var body = document.getElementById("run-body-" + id);
+  if (body) body.classList.toggle("collapsed", !!collapsedRuns[id]);
+  var toggle = document.getElementById("run-toggle-" + id);
+  if (toggle) toggle.textContent = collapsedRuns[id] ? "▶" : "▼";
+}
+
+function renderConfResults() {
+  var el = document.getElementById("conf-results");
+  var ids = Object.keys(confRuns).sort(function(a, b) {
+    return (confRuns[b].startedAt || 0) - (confRuns[a].startedAt || 0);
+  });
+  if (ids.length === 0) {
+    el.innerHTML = '<span class="meta">No runs yet. Click a button above to start a conformance test plan.</span>';
+    return;
+  }
+  var html = "";
+  ids.forEach(function(id) {
+    var run = confRuns[id];
+    var isActive = run.status === "running" || run.status === "creating";
+    if (!(id in collapsedRuns)) collapsedRuns[id] = !isActive && run.status !== "finished";
+    var collapsed = collapsedRuns[id];
+
+    var statusBadge = "";
+    if (run.status === "finished") {
+      var passCount = (run.results || []).filter(function(r) { return r.result === "PASSED"; }).length;
+      var failCount = (run.results || []).filter(function(r) { return r.result !== "PASSED" && r.result !== "SKIPPED"; }).length;
+      var total = (run.results || []).length;
+      if (failCount === 0) {
+        statusBadge = '<span class="badge badge-pass">' + passCount + '/' + total + ' passed</span>';
+      } else {
+        statusBadge = '<span class="badge badge-fail">' + failCount + ' failed</span> <span class="badge badge-pass">' + passCount + ' passed</span>';
+      }
+    } else if (run.status === "error") {
+      statusBadge = '<span class="badge badge-fail">error</span>';
+    } else if (run.status === "running") {
+      statusBadge = '<span class="badge badge-run">running</span>';
+    } else {
+      statusBadge = '<span class="badge badge-run">' + esc(run.status) + '</span>';
+    }
+
+    var timeInfo = formatTime(run.startedAt);
+    if (run.finishedAt) timeInfo += " (" + formatDuration(run.startedAt, run.finishedAt) + ")";
+
+    html += '<div style="margin-bottom:0.5rem">';
+    html += '<div class="run-header" onclick="toggleRunCollapse(\\'' + esc(id) + '\\')">';
+    html += '<span class="run-toggle" id="run-toggle-' + esc(id) + '">' + (collapsed ? '▶' : '▼') + '</span>';
+    html += '<strong>' + esc(run.label || run.planType) + '</strong> ';
+    html += '<span class="run-summary">' + statusBadge + '</span>';
+    if (timeInfo) html += '<span class="run-time">' + esc(timeInfo) + '</span>';
+    if (run.planDetailUrl) {
+      html += ' <a href="' + esc(run.planDetailUrl) + '" target="_blank" style="font-size:0.75rem;color:#1C4587" onclick="event.stopPropagation()">↗ suite</a>';
+    }
+    html += '</div>';
+
+    html += '<div class="run-body' + (collapsed ? ' collapsed' : '') + '" id="run-body-' + esc(id) + '">';
+
+    if (run.status === "error") {
+      html += '<div style="color:#991b1b;font-size:0.85rem;padding:0.4rem 0">Error: ' + esc(run.error || "unknown") + '</div>';
+    }
+
+    var modules = run.modules || [];
+    var results = run.results || [];
+    if (modules.length > 0 || results.length > 0) {
+      html += '<table><thead><tr><th>Module</th><th>Result</th><th></th></tr></thead><tbody>';
+      results.forEach(function(r) {
+        html += '<tr><td class="svc-name">' + esc(r.module) + '</td><td>' + resultBadge(r.result) + '</td>';
+        html += '<td>';
+        if (r.moduleId) {
+          html += '<a href="#" onclick="event.preventDefault();showLog(\\'' + esc(r.moduleId) + '\\',\\'' + esc(r.module) + '\\')">view log</a>';
+        }
+        html += '</td></tr>';
+      });
+      var completedModules = results.map(function(r) { return r.module; });
+      modules.forEach(function(m) {
+        if (completedModules.indexOf(m) >= 0) return;
+        var badge = m === run.currentModule
+          ? '<span class="badge badge-run">running</span>'
+          : '<span class="meta">pending</span>';
+        html += '<tr><td class="svc-name">' + esc(m) + '</td><td>' + badge + '</td><td></td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+  el.innerHTML = html;
+}
+
+function loadConfRuns() {
+  fetch(confBase + "/api/runs")
+    .then(function(r) { return r.json(); })
+    .then(function(list) {
+      list.forEach(function(run) { confRuns[run.id] = run; });
+      renderConfResults();
+    })
+    .catch(function() {});
+}
+
+checkConformance();
+loadConfRuns();
+setInterval(checkConformance, 30000);
+
+// =========================================================================
+// Log Viewer
+// =========================================================================
+
+function showLog(moduleId, moduleName) {
+  var overlay = document.getElementById("log-overlay");
+  var panel = document.getElementById("log-panel");
+  var body = document.getElementById("log-panel-body");
+  var title = document.getElementById("log-panel-title");
+
+  title.textContent = moduleName || moduleId;
+  body.innerHTML = '<span class="meta">Loading log&hellip;</span>';
+  overlay.classList.add("active");
+  requestAnimationFrame(function() { panel.classList.add("active"); });
+
+  Promise.all([
+    fetch(confBase + "/api/info/" + encodeURIComponent(moduleId)).then(function(r) { return r.json(); }),
+    fetch(confBase + "/api/log/" + encodeURIComponent(moduleId)).then(function(r) { return r.json(); })
+  ]).then(function(results) {
+    var info = results[0];
+    var log = results[1];
+    renderLogPanel(info, log);
+  }).catch(function(err) {
+    body.innerHTML = '<div style="color:#991b1b">Failed to load log: ' + esc(String(err)) + '</div>';
+  });
+}
+
+function closeLogPanel() {
+  var panel = document.getElementById("log-panel");
+  var overlay = document.getElementById("log-overlay");
+  panel.classList.remove("active");
+  setTimeout(function() { overlay.classList.remove("active"); }, 200);
+}
+
+function renderLogPanel(info, log) {
+  var body = document.getElementById("log-panel-body");
+  var html = "";
+
+  html += '<div class="log-module-info"><dl style="margin:0">';
+  html += '<dt>Status:</dt><dd>' + resultBadge(info.result || info.status) + '</dd>';
+  if (info.testModule) { html += '<dt>Module:</dt><dd>' + esc(info.testModule) + '</dd>'; }
+  if (info.testName) { html += '<dt>Test:</dt><dd>' + esc(info.testName) + '</dd>'; }
+  if (info.description) { html += '<dt>Description:</dt><dd>' + esc(info.description) + '</dd>'; }
+  html += '</dl></div>';
+
+  if (!Array.isArray(log) || log.length === 0) {
+    html += '<span class="meta">No log entries.</span>';
+  } else {
+    log.forEach(function(entry, idx) {
+      var src = entry.src || "";
+      var msg = entry.msg || "";
+      var result = entry.result || "";
+      var entryClass = "log-info";
+      if (result === "FAILURE") entryClass = "log-fail";
+      else if (result === "WARNING") entryClass = "log-warn";
+      else if (result === "SUCCESS") entryClass = "log-pass";
+      else if (msg.toLowerCase().indexOf("error") >= 0 || msg.toLowerCase().indexOf("fail") >= 0) entryClass = "log-fail";
+
+      html += '<div class="log-entry ' + entryClass + '">';
+      html += '<div class="log-entry-header" onclick="toggleLogEntry(' + idx + ')">';
+      if (result) html += resultBadge(result === "FAILURE" ? "FAILED" : result) + ' ';
+      html += '<span class="log-src">' + esc(src) + '</span>';
+      html += '<span class="log-msg">' + esc(msg.substring(0, 200)) + (msg.length > 200 ? "..." : "") + '</span>';
+      html += '</div>';
+
+      html += '<div class="log-entry-body" id="log-entry-' + idx + '">';
+      if (msg.length > 200) {
+        html += '<p><strong>Message:</strong></p><pre>' + esc(msg) + '</pre>';
+      }
+      var skipKeys = {"src":1, "msg":1, "result":1, "_type":1};
+      var details = Object.keys(entry).filter(function(k) { return !skipKeys[k] && entry[k]; });
+      if (details.length > 0) {
+        details.forEach(function(k) {
+          var val = entry[k];
+          if (typeof val === "object") val = JSON.stringify(val, null, 2);
+          else val = String(val);
+          html += '<p style="margin:0.3rem 0"><strong>' + esc(k) + ':</strong></p>';
+          html += '<pre>' + esc(val) + '</pre>';
+        });
+      }
+      html += '</div>';
+      html += '</div>';
+    });
+  }
+  body.innerHTML = html;
+}
+
+function toggleLogEntry(idx) {
+  var el = document.getElementById("log-entry-" + idx);
+  if (el) el.classList.toggle("open");
+}
+""" if conformance_url else ""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -831,7 +1399,7 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
   .footer a {{ color: #555; transition: color 0.2s; }}
   .footer a:hover {{ color: #1C4587; text-decoration: none; }}
   .port {{ color: #888; font-size: 0.75rem; font-weight: normal; }}
-</style>
+{conformance_css}</style>
 </head>
 <body>
   <nav class="navbar">
@@ -861,7 +1429,8 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         {f'<a href="{conformance_url}" target="_blank">OpenID Conformance Suite &#x2197;</a>' if conformance_url else ''}
       </div>
     </div>
-
+{tabs_bar}
+{status_panel_open}
     <div class="card">
       <h2>Environment Info</h2>
       <table>
@@ -896,6 +1465,8 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         <tbody id="svc-table"></tbody>
       </table>
     </div>
+{status_panel_close}
+{conformance_tab}
   </div>
 
   <div class="footer">
@@ -967,7 +1538,9 @@ if ('serviceWorker' in navigator) {{
 
 checkAll();
 setInterval(checkAll, 10000);
+{conformance_js}
 </script>
+{conformance_log_viewer_html}
 </body>
 </html>
 """

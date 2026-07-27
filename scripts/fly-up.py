@@ -221,7 +221,13 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     # suite plus all its test modules) - confirmed OOM-killed at 256MB
     # (dmesg: "Out of memory: Killed process ... (java)", anon-rss >150MB
     # just from startup, before finishing Spring context init).
-    memory_mb = {"vc-registry": 1024, "mongodb": 512, "conformance-server": 1024}.get(name, 256)
+    # conformance-runner runs headless Chromium via Playwright to drive the
+    # actual wallet UI - a real browser rendering real pages needs more than
+    # the 256MB default (same OOM risk already hit and fixed for
+    # conformance-server's JVM process).
+    memory_mb = {
+        "vc-registry": 1024, "mongodb": 512, "conformance-server": 1024, "conformance-runner": 1024,
+    }.get(name, 256)
     tcp_passthrough_port = None
     if name == "conformance":
         # See CONFORMANCE_COMPONENTS: this image's baked-in nginx.conf
@@ -363,6 +369,30 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         hosts_path = out_dir / "conformance-hosts"
         hosts_path.write_text(f"{server_ip} server\n")
         deploy_args += ["--file-local", f"/etc/hosts={hosts_path}"]
+    elif name == "conformance-runner":
+        # Same FRONTEND_URL/ADMIN_URL/ADMIN_TOKEN values already printed in
+        # main()'s "run sirosid-tests manually" summary block below - this
+        # just automates the same thing sirosid-tests' own Makefile targets
+        # do by hand, from the dashboard. ADMIN_TOKEN goes through
+        # ensure_secret() (becomes a real env var once set via `flyctl
+        # secrets set`, same as jwtSecret/adminToken on wallet-backend) -
+        # not --env, since it's a credential, not a plain URL.
+        ensure_secret(app, "ADMIN_TOKEN", _persistent_secret(out_dir, "adminToken"))
+        deploy_args += [
+            "--env", f"CONFORMANCE_URL={app_url(env, 'conformance')}",
+            "--env", f"FRONTEND_URL={app_url(env, 'wallet-frontend')}",
+            "--env", f"ADMIN_URL={app_url(env, 'wallet-proxy')}",
+            # helpers/vc-services.ts's checkVCServicesHealth() (used by the
+            # issuer/verifier specs) defaults to localhost:900x - meaningless
+            # from inside a Fly machine. Override with 6PN .internal
+            # addresses (reachable regardless of whether the target has a
+            # public Fly URL too - vc-issuer doesn't, see COMPONENTS).
+            "--env", f"VC_ISSUER_URL=http://{app_name(env, 'vc-issuer')}.internal:8080",
+            "--env", f"VC_VERIFIER_URL=http://{app_name(env, 'vc-verifier')}.internal:8080",
+            "--env", f"VC_APIGW_URL=http://{app_name(env, 'vc-apigw')}.internal:8080",
+            # Conformance suite's self-signed cert - matches docker-compose.conformance.yml locally.
+            "--env", "NODE_TLS_REJECT_UNAUTHORIZED=0",
+        ]
 
     run(["flyctl"] + deploy_args, cwd=SIROSID_DEV_ROOT)
     ensure_running(app)
@@ -599,12 +629,18 @@ def main():
         print(f"=== Image overrides for this environment: {image_overrides} ===")
 
     if args.conformance:
-        # conformance-mongodb/conformance-server MUST deploy before
-        # wallet-frontend - its nginx config statically proxy_passes to
-        # conformance-server.internal (see wallet_frontend_conf()'s
+        # conformance-mongodb/conformance-server/conformance-runner MUST
+        # deploy before wallet-frontend - its nginx config statically
+        # proxy_passes to both conformance-server.internal AND
+        # conformance-runner.internal (see wallet_frontend_conf()'s
         # docstring: a static, non-variable proxy_pass target that doesn't
         # resolve yet means nginx refuses to start AT ALL, not just that one
-        # location). "conformance" (nginx) deploys last of all - it needs
+        # location). conformance-runner itself has no such constraint of its
+        # own (it's a plain Node process, not nginx) - it only needs
+        # FRONTEND_URL/ADMIN_URL to be reachable when a run is actually
+        # triggered later, long after everything is up - but it still needs
+        # to exist before wallet-frontend deploys, for wallet-frontend's own
+        # sake. "conformance" (nginx) deploys last of all - it needs
         # conformance-server's machine to already exist to look up its
         # private IP (see deploy_component()'s "conformance" branch).
         non_frontend = [c for c in COMPONENTS if c["name"] != "wallet-frontend"]
@@ -657,6 +693,9 @@ def main():
     if args.conformance:
         print(f"  export CONFORMANCE_URL={app_url(args.env, 'conformance')}")
         print("  export NODE_TLS_REJECT_UNAUTHORIZED=0  # conformance suite's self-signed cert")
+        print()
+        print("Or run them from the dashboard's Conformance tab (same specs, driven by")
+        print(f"conformance-runner): {app_url(args.env, 'wallet-frontend')}")
     print()
     print(f"Tear down with: make fly-down ENV={args.env}")
 
