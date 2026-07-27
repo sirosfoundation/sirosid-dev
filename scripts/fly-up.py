@@ -294,7 +294,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     elif name == "vc-verifier":
         deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=True, presentation_requests=True)
     elif name == "vc-apigw":
-        deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=True)
+        deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=True, bootstrapping=True)
     elif name == "pdp":
         deploy_args += ["--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
     elif name == "wallet-backend":
@@ -415,7 +415,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
 
 
 def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
-                       presentation_requests: bool = False) -> list:
+                       presentation_requests: bool = False, bootstrapping: bool = False) -> list:
     # The private key authenticates every credential this environment issues -
     # a Fly secret (encrypted, write-only), not a --file-local file (stored
     # in the app's plain config/release object, readable via e.g. `flyctl
@@ -440,6 +440,13 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
         pr_dir = SIROSID_DEV_ROOT / "fixtures" / "vc-presentation-requests"
         for f in sorted(pr_dir.glob("*.yaml")):
             args += ["--file-local", f"/presentation_requests/{f.name}={f}"]
+    if bootstrapping:
+        # identity_mapping_import/data_sources.datastore.import in vc-config.yaml
+        # point at these paths - see that file's comment for why apigw needs its
+        # own fixtures rather than reusing vc repo's bootstrapping/ directory.
+        bootstrap_dir = SIROSID_DEV_ROOT / "fixtures" / "vc-bootstrapping"
+        for f in sorted(bootstrap_dir.glob("*.json")):
+            args += ["--file-local", f"/bootstrapping/{f.name}={f}"]
     return args
 
 
@@ -541,7 +548,22 @@ def register_vc_services(env: str, admin_token: str):
     last_err = None
     for _ in range(30):
         try:
-            post("/admin/tenants/default/issuers", {"credential_issuer_identifier": apigw_url, "visible": True})
+            post("/admin/tenants/default/issuers", {
+                "credential_issuer_identifier": apigw_url,
+                "visible": True,
+                # Without this, wallet-backend has no registered client_id for
+                # this issuer and falls back to the "unregistered client"
+                # convention (client_id = redirect_uri) for the OID4VCI
+                # authorization_code flow - which vc-apigw's PAR endpoint
+                # rejects (401 invalid_client) since that string isn't a
+                # client_id it knows about. "e2e-test-client" is already
+                # configured in vc-apigw's own config (fixtures/vc-config.yaml)
+                # as a public+PKCE client matching the native app's redirect_uri
+                # and every credential scope - the same client local dev and
+                # CI conformance tests already use successfully for this exact
+                # flow, not a Fly-specific workaround.
+                "client_id": "e2e-test-client",
+            })
             post("/admin/tenants/default/verifiers", {"name": "VC Verifier", "url": verifier_url})
             print(f"registered vc-apigw ({apigw_url}) and vc-verifier ({verifier_url}) "
                   "with wallet-backend's default tenant")

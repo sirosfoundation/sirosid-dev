@@ -1,0 +1,35 @@
+{
+  "alice-001": [
+    {
+      "authentic_source_person_id": "alice-001",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Alice",
+        "family_name": "Wonderland"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "bob-002": [
+    {
+      "authentic_source_person_id": "bob-002",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Bob",
+        "family_name": "Builder"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "carol-003": [
+    {
+      "authentic_source_person_id": "carol-003",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Carol",
+        "family_name": "Danvers"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ]
+}

@@ -77,6 +77,15 @@ apigw:
     addr: "vc-issuer:8090"
   registry_client:
     addr: "vc-registry:8090"
+  # Imports identity mappings + datastore documents for the mini-oidc test
+  # users (alice-001/bob-002/carol-003) at startup, so the "diploma" scope
+  # (datastore-backed, auth_provider: oidc below) can resolve a document for
+  # whoever actually logs into mini-oidc - vc repo's own bootstrapping/
+  # fixtures only cover a disjoint set of synthetic Skatteverket/SUNET/Ladok
+  # identities, none of which match mini-oidc's users.
+  identity_mapping_import:
+    file_paths:
+      - "/bootstrapping/identity_mappings.json"
   auth_providers:
     oidc:
       enable: true
@@ -105,6 +114,9 @@ apigw:
         diploma:
           auth_provider: oidc
           auth_claims: ["given_name", "family_name"]
+      import:
+        file_paths:
+          - "/bootstrapping/diploma.json"
   delivery:
     openid4vci:
       token_endpoint: "https://vc-proxy:8443/token"

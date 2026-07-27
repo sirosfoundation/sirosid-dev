@@ -607,6 +607,14 @@ def wallet_proxy_conf(env: str) -> str:
         proxy_set_header Host $host;
     }}
 
+    # Individual issuer/verifier resource (PUT to update client_id/client_jwk,
+    # DELETE) - the collection-only match above doesn't cover these since it's
+    # an exact ($) match, not a prefix.
+    location ~ ^/admin/tenants/[^/]+/(issuers|verifiers)/[^/]+$ {{
+        proxy_pass http://{backend}:8081;
+        proxy_set_header Host $host;
+    }}
+
     location /api/v2/wallet {{
         proxy_pass http://{backend}:8082;
         proxy_http_version 1.1;
