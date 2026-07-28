@@ -336,7 +336,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
         ]
-        deploy_args += _wallet_frontend_env(env, docs)
+        deploy_args += _wallet_frontend_env(env, docs, android_identities)
     elif name == "conformance-server":
         deploy_args += [
             "--env", f"BASE_URL={app_url(env, 'conformance')}",
@@ -450,10 +450,23 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
     return args
 
 
-def _wallet_frontend_env(env: str, docs: list) -> list:
+def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, list[str]] | None = None) -> list:
     proxy = app_url(env, "wallet-proxy")
     frontend = app_url(env, "wallet-frontend")
     fe_data = extract_configmap_data(docs, "wallet-frontend-main")
+    # Android's Digital Asset Links check (assetlinks.json) must be served at
+    # the RP ID's OWN domain (wallet-frontend's, same as WEBAUTHN_RPID below) -
+    # wallet-proxy also serves a copy (wallet_proxy_conf), but that's the
+    # wrong domain to ever be consulted for THIS rp_id, exactly like the
+    # apple-app-site-association situation described below. Reuses the same
+    # android_identities dict deploy_component() already built from
+    # assetlinks_path (single source of truth, matches rp_origins exactly)
+    # rather than re-deriving it a second way that could drift.
+    wellknown_android = ",".join(
+        f"{package}::{fingerprint}"
+        for package, fingerprints in (android_identities or {}).items()
+        for fingerprint in fingerprints
+    )
     values = {
         "WALLET_BACKEND_URL": proxy,
         "WALLET_ENGINE_URL": proxy,
@@ -463,6 +476,7 @@ def _wallet_frontend_env(env: str, docs: list) -> list:
         # to be wallet-frontend's domain or every passkey registration fails.
         "WEBAUTHN_RPID": f"sirosid-{env}-wallet-frontend.fly.dev",
         "STATIC_PUBLIC_URL": frontend,
+        "WELLKNOWN_ANDROID_PACKAGE_NAMES_AND_FINGERPRINTS": wellknown_android,
         # For Universal Links on wallet-frontend's own domain (separate from
         # the AASA wallet-proxy serves for the passkey RP ID - see
         # fly_common.wallet_proxy_conf). Helm already sets this in production

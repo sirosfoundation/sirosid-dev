@@ -108,6 +108,12 @@ def patch(config: dict, env: str, mongo_password: str = None) -> dict:
     # directly, only via apigw).
     issuer["issuer_url"] = apigw_url
     issuer["jwt_attribute"]["issuer"] = apigw_url
+    # issuer calls vc-registry directly (not just apigw) to allocate a status
+    # list entry when issuing a credential - the base config's docker-compose
+    # service name ("vc-registry:8090") doesn't resolve on Fly's 6PN network,
+    # which fails every real credential issuance with a gRPC "name resolver
+    # error: produced zero addresses" (confirmed live).
+    issuer["registry_client"]["addr"] = fly_internal(env, "vc-registry", 8090)
 
     verifier = config["verifier"]
     verifier["public_url"] = verifier_url
