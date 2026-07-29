@@ -150,7 +150,8 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     return config
 
 
-def build_fly_values_overlay(env: str, conformance: bool = False) -> dict:
+def build_fly_values_overlay(env: str, conformance: bool = False,
+                              extra_trusted_issuers: list = None) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
@@ -189,6 +190,13 @@ def build_fly_values_overlay(env: str, conformance: bool = False) -> dict:
         pid_issuers.append(conformance_prefix)
         verifiers.append(conformance_prefix)
 
+    # Ad-hoc external issuers for interop testing (e.g. a third-party mdoc
+    # issuer at a conference/plugfest) - trusted as issuers only, not
+    # verifiers, since there's no equivalent need to accept presentation
+    # requests from them.
+    if extra_trusted_issuers:
+        pid_issuers.extend(extra_trusted_issuers)
+
     return {
         "tenant": {"id": env},
         "pdp": {
@@ -217,7 +225,8 @@ def build_fly_values_overlay(env: str, conformance: bool = False) -> dict:
 
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
-           mongo_password: str = None, conformance: bool = False) -> list:
+           mongo_password: str = None, conformance: bool = False,
+           extra_trusted_issuers: list = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -238,7 +247,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         out_dir = out_dir / f"fly-{env}"
         out_dir.mkdir(parents=True, exist_ok=True)
         overlay_path = out_dir / "values.generated.yaml"
-        overlay_path.write_text(yaml.dump(build_fly_values_overlay(env, conformance), sort_keys=False))
+        overlay_path.write_text(yaml.dump(
+            build_fly_values_overlay(env, conformance, extra_trusted_issuers), sort_keys=False))
         values_files.append(overlay_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")

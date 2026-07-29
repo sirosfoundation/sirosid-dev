@@ -91,7 +91,7 @@ def run(cmd, **kwargs):
 
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
-                    conformance: bool = False) -> list:
+                    conformance: bool = False, extra_trusted_issuers: list = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -105,7 +105,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     # assetlinks.json half was wired in the first pass at this.
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
                    out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
-                   conformance=conformance)
+                   conformance=conformance, extra_trusted_issuers=extra_trusted_issuers)
     run([sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password],
         cwd=SIROSID_DEV_ROOT)
     return docs
@@ -626,7 +626,16 @@ def main():
                          help="Also deploy the OpenID Conformance Suite (matches local dev's "
                               "CONFORMANCE=yes) - 3 extra apps: conformance-mongodb, conformance-server, "
                               "and the public 'conformance' nginx front. See fly_common.CONFORMANCE_COMPONENTS.")
+    parser.add_argument("--trusted-issuer", action="append",
+                         help="Extra credential issuer URL to trust via PDP's whitelist, in addition to "
+                              "this environment's own vc-apigw - for interop testing against a "
+                              "third-party issuer (e.g. a conference/plugfest mdoc issuer). Repeatable, "
+                              "and each value may be a comma-separated list.")
     args = parser.parse_args()
+
+    extra_trusted_issuers = []
+    for pair in (args.trusted_issuer or []):
+        extra_trusted_issuers.extend(v.strip() for v in pair.split(",") if v.strip())
 
     image_overrides = {}
     for pair in args.images.split(","):
@@ -659,7 +668,7 @@ def main():
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
-                           args.conformance)
+                           args.conformance, extra_trusted_issuers)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

@@ -42,6 +42,15 @@ common:
     siros_id:
       vctm_file_path: "/metadata/vctm_siros_id.json"
       format: "dc+sd-jwt"
+    # mdl (mso_mdoc / MDDLSchema) intentionally omitted: this deployed image
+    # (v0.6.5-sirosid.9) has no MddlFilePath field in its CredentialMetadata
+    # Go struct at all (only VCTMFilePath) - MDDLSchema support only exists
+    # on the unmerged sirosfoundation/vc branch feature/support-mdoc-schema-driven
+    # (PR#23), which has no published image yet. Configuring an "mdl" scope
+    # here makes LoadVCTMetadata try to read an empty vctm_file_path and
+    # panic on every boot ("unexpected end of JSON input"), crash-looping
+    # the entire apigw service. Re-add once a tag/image with MDDLSchema
+    # support is published.
 
 kafka:
   enabled: false
@@ -105,8 +114,6 @@ apigw:
           auth_provider: oidc
         pid_1_5:
           auth_provider: oidc
-        pid_1_8:
-          auth_provider: oidc
         ehic:
           auth_provider: oidc
     datastore:
@@ -114,9 +121,20 @@ apigw:
         diploma:
           auth_provider: oidc
           auth_claims: ["given_name", "family_name"]
+        # pid_1_8's VCTM (vctm_pid_arf_1_8.json) declares "date_of_expiry" as
+        # a mandatory top-level claim - mini-oidc (an authentication provider,
+        # not a document issuer) has no such field, so the "assertion" data
+        # source (which builds the credential directly from auth-provider
+        # claims per the VCTM) can never satisfy it. Moved to "datastore"
+        # (like diploma/mdl), backed by a full document with every mandatory
+        # claim, mirroring vc's own bootstrapping/pid.json.
+        pid_1_8:
+          auth_provider: oidc
+          auth_claims: ["given_name", "family_name"]
       import:
         file_paths:
           - "/bootstrapping/diploma.json"
+          - "/bootstrapping/pid_1_8.json"
   delivery:
     openid4vci:
       token_endpoint: "https://vc-proxy:8443/token"
