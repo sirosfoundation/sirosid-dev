@@ -257,6 +257,54 @@ def ensure_app(name: str, network: str = None, allocate_public_ips: bool = False
         run_fly("ips", "allocate-v6", "-a", name)
 
 
+def is_local_docker_image(ref: str) -> bool:
+    """True only for a bare image reference with no registry/namespace
+    prefix (no '/') that's also present in the local Docker daemon - e.g.
+    wallet-backend-e2e-test:local, exactly what `make up REBUILD=yes` /
+    docker compose build already produce. The no-'/' check is deliberate:
+    a real registry ref always has at least one ('ghcr.io/org/image', or
+    even bare 'org/image'), so this never mistakes an intentionally-remote
+    --images value for a local build just because it also happens to be
+    cached locally (e.g. from a prior `docker pull` done only to inspect it).
+    """
+    if "/" in ref:
+        return False
+    try:
+        result = subprocess.run(["docker", "image", "inspect", ref], capture_output=True)
+    except FileNotFoundError:
+        return False  # no local `docker` at all - fall through to a normal pull attempt
+    return result.returncode == 0
+
+
+_docker_authed_to_fly = False
+
+
+def push_local_image(app: str, local_ref: str) -> str:
+    """Tags and pushes a locally-built image (see is_local_docker_image) into
+    `app`'s own registry.fly.io namespace and returns the pushed ref, so the
+    caller can deploy it with a normal `-i <ref>` exactly like any other
+    --images override - no manual `docker tag`/`docker push`/`flyctl auth
+    docker` required from the developer. registry.fly.io namespaces images
+    per Fly app, so `app` must already exist (ensure_app() always runs
+    before this is called in deploy_component()) - Fly rejects a push
+    against an app name it doesn't recognize. Tagged with the push time
+    rather than reused as-is: repushing under a fixed tag would still work
+    (Fly resolves the manifest fresh on every deploy, no client-side image
+    cache involved), but a unique tag makes it obvious in the Fly dashboard
+    which push a given deploy actually came from.
+    """
+    global _docker_authed_to_fly
+    if not _docker_authed_to_fly:
+        # One-time per run - reuses the developer's own `flyctl auth login`
+        # session, no separate registry credential to manage.
+        run_fly("auth", "docker")
+        _docker_authed_to_fly = True
+    remote_ref = f"registry.fly.io/{app}:local-{int(time.time())}"
+    subprocess.run(["docker", "tag", local_ref, remote_ref], check=True)
+    subprocess.run(["docker", "push", remote_ref], check=True)
+    return remote_ref
+
+
 def ensure_running(app: str):
     """`fly deploy` on a previously-stopped machine (e.g. crash-looped in an
     earlier attempt, or a service-less internal app with no autostart path

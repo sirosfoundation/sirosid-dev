@@ -553,6 +553,26 @@ they're not redundant, each solves a problem the other can't:
   This never touches any checked-in file - it only affects the one
   environment you passed it to.
 
+  **Testing a local build, with no registry to push to by hand**: if the
+  value is a bare, unqualified tag (no `/`) that's already present in your
+  local Docker daemon - exactly what `make up REBUILD=yes` / plain
+  `docker-compose build` already produce (`wallet-backend-e2e-test:local`,
+  `vc-issuer-e2e-test:local`, etc.) - `fly-up.py` pushes it into that
+  environment's own `registry.fly.io/sirosid-<env>-<component>` namespace for
+  you and deploys from there:
+  ```bash
+  make fly-up ENV=alice IMAGES="wallet-backend=wallet-backend-e2e-test:local"
+  ```
+  No manual `docker tag`/`docker push`/`flyctl auth docker` needed - it
+  reuses your existing `flyctl auth login` session. A fully-qualified ref
+  (anything with a `/`, e.g. `ghcr.io/sirosfoundation/...`) is always passed
+  through untouched, even if that exact tag also happens to be cached
+  locally, so this never reinterprets an intentionally-remote value.
+
+  Images pushed this way live in that Fly app's own registry namespace, so
+  they're torn down for free with the environment itself
+  (`make fly-down ENV=alice`) - no separate cleanup/expiry job needed.
+
 - **`values-fly.yaml`'s `images:` block (shared default, checked in)** -
   currently overrides only `images.pdp`, because `helm-charts`' own pin
   (`images.pdp` in `siros-id-stack/values.yaml`) is a pre-release commit-sha

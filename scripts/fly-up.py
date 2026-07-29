@@ -64,9 +64,9 @@ from android_apps import load_android_apps  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
     app_exists, app_name, app_url, assetlinks_json,
-    ensure_app, ensure_running, ensure_secret, existing_secret_names, machine_private_ip, mini_oidc_config,
-    network_name, wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf,
-    write_fly_toml,
+    ensure_app, ensure_running, ensure_secret, existing_secret_names, is_local_docker_image, machine_private_ip,
+    mini_oidc_config, network_name, push_local_image, wait_for_checks, wallet_frontend_conf,
+    wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
 )
 from helm_render_lib import (  # noqa: E402
     extract_configmap_data, extract_deployment_image, extract_init_container_image, extract_mongo_version,
@@ -174,6 +174,14 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # components uniformly, not a Helm-values override for some and a
         # separate CLI flag for the two non-Helm ones (mongodb, mini-oidc).
         image = image_overrides[name]
+        if is_local_docker_image(image):
+            # A bare local build tag (e.g. what `make up REBUILD=yes` /
+            # docker-compose already produced, like wallet-backend-e2e-test:local)
+            # - push it into this app's own registry.fly.io namespace so `-i`
+            # below can deploy it like any other ref, with no manual `docker
+            # tag`/`docker push`/`flyctl auth docker` from the developer.
+            print(f"{name}: {image!r} is a local Docker image - pushing to registry.fly.io/{app}")
+            image = push_local_image(app, image)
     elif "image_from_helm_deployment" in comp:
         deployment = comp["image_from_helm_deployment"]
         image = (extract_init_container_image(docs, deployment)
@@ -609,7 +617,11 @@ def main():
                               "(e.g. 'wallet-backend=ghcr.io/sirosfoundation/go-wallet-backend:pr-123'), "
                               "so two developers running their own ENV=<name> can each pin different "
                               "versions without touching values-fly.yaml or colliding with each other. "
-                              "Component names match scripts/fly_common.py's COMPONENTS list.")
+                              "Component names match scripts/fly_common.py's COMPONENTS list. A bare, "
+                              "unqualified value that's already present in the local Docker daemon (e.g. "
+                              "'wallet-backend=wallet-backend-e2e-test:local', what `make up REBUILD=yes` "
+                              "already builds) is pushed to this environment's own registry.fly.io "
+                              "namespace automatically - no manual docker tag/push/auth needed.")
     parser.add_argument("--conformance", action="store_true",
                          help="Also deploy the OpenID Conformance Suite (matches local dev's "
                               "CONFORMANCE=yes) - 3 extra apps: conformance-mongodb, conformance-server, "
