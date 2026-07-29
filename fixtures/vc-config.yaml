@@ -42,15 +42,13 @@ common:
     siros_id:
       vctm_file_path: "/metadata/vctm_siros_id.json"
       format: "dc+sd-jwt"
-    # mdl (mso_mdoc / MDDLSchema) intentionally omitted: this deployed image
-    # (v0.6.5-sirosid.9) has no MddlFilePath field in its CredentialMetadata
-    # Go struct at all (only VCTMFilePath) - MDDLSchema support only exists
-    # on the unmerged sirosfoundation/vc branch feature/support-mdoc-schema-driven
-    # (PR#23), which has no published image yet. Configuring an "mdl" scope
-    # here makes LoadVCTMetadata try to read an empty vctm_file_path and
-    # panic on every boot ("unexpected end of JSON input"), crash-looping
-    # the entire apigw service. Re-add once a tag/image with MDDLSchema
-    # support is published.
+    # mso_mdoc / MDDLSchema, per sirosfoundation/vc#23 (feature/support-mdoc-schema-driven,
+    # commit 1d9b23a2) - only usable with a custom-built image
+    # (IMAGES=vc-issuer=...,vc-apigw=... at deploy time), since no published
+    # tag has this yet.
+    mdl:
+      mddl_file_path: "/metadata/mdl.mdoc.json"
+      format: "mso_mdoc"
 
 kafka:
   enabled: false
@@ -131,10 +129,14 @@ apigw:
         pid_1_8:
           auth_provider: oidc
           auth_claims: ["given_name", "family_name"]
+        mdl:
+          auth_provider: oidc
+          auth_claims: ["given_name", "family_name"]
       import:
         file_paths:
           - "/bootstrapping/diploma.json"
           - "/bootstrapping/pid_1_8.json"
+          - "/bootstrapping/mdl.json"
   delivery:
     openid4vci:
       token_endpoint: "https://vc-proxy:8443/token"
@@ -148,6 +150,7 @@ apigw:
             - "pid_1_8"
             - "diploma"
             - "ehic"
+            - "mdl"
         "e2e-test-client-2":
           type: "public"
           redirect_uri: "http://localhost:3000/cb"
@@ -157,6 +160,7 @@ apigw:
             - "pid_1_8"
             - "diploma"
             - "ehic"
+            - "mdl"
     credential_offers:
       issuer_url: "https://vc-proxy:8443"
       wallets:
@@ -191,6 +195,15 @@ issuer:
     enable_not_before: true
     valid_duration: 3600
     verifiable_credential_type: "https://credential.e2etest.local/identity_credential"
+  # mso_mdoc (ISO 18013-5) issuer config - without this, c.mdocIssuer stays
+  # nil and MakeMDoc fails with "mdoc issuer not configured" for any mdl-style
+  # scope, even though the rest of the mdl config (schema, datastore, client
+  # scopes) works fine. Reuses the same EC key/chain already generated for
+  # this environment's SD-JWT signing (key_config above) rather than a
+  # separate IACA-specific chain, since this is a test environment, not a
+  # real IACA-rooted trust anchor.
+  mdoc:
+    certificate_chain_path: "/pki/signing_ec_chain.pem"
 
 # =============================================================================
 # Verifier Service - OpenID4VP Verifier + OIDC Provider

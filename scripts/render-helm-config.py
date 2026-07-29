@@ -218,6 +218,22 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                         "credential-verifier": "verifiers",
                     },
                 },
+                # The whitelist registry above only ever caches JWT-signing
+                # keys (via jwt-vc-issuer/jwks_uri discovery) - it has no
+                # notion of an issuer's mdoc_iacas_uri. An mdoc issuer's
+                # extractIssuerKeyMaterial (go-wallet-backend) prioritizes
+                # mdoc_iacas_uri over JWKS, so any issuer offering mso_mdoc
+                # credentials needs this separate registry too, or trust
+                # evaluation permanently denies with "no keys cached for
+                # entity" regardless of whitelist membership. Reuses the same
+                # pid_issuers list as the trust boundary (not "trust any
+                # issuer that publishes a valid IACA").
+                "mdociaca": {
+                    "enabled": True,
+                    "name": f"sirosid-{env} mDOC IACA registry",
+                    "description": "IACA cert validation for mso_mdoc issuers (rendered from helm-charts schema)",
+                    "issuer_allowlist": pid_issuers,
+                },
             },
         },
     }
