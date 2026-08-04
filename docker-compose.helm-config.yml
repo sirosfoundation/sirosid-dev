@@ -59,6 +59,9 @@ services:
       - ./fixtures/rendered/cache:/cache
       - ./fixtures/vc-pki/signing_ec_private.pem:/app/fixtures/signing_ec_private.pem:ro
       - ./fixtures/as-rules:/app/fixtures/as-rules:ro
+      - ./fixtures/vc-pki/wallet_provider_ec_private.pem:/app/fixtures/wallet_provider_ec_private.pem:ro
+      - ./fixtures/vc-pki/wallet_provider_ec.crt:/app/fixtures/wallet_provider_ec.crt:ro
+      - ./fixtures/vc-pki/rootCA.crt:/app/fixtures/rootCA.crt:ro
     depends_on:
       go-trust-config:
         condition: service_healthy

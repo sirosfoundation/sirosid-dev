@@ -317,6 +317,21 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--file-secret", "/main-secrets/jwtSecret=jwtSecret",
             "--file-secret", "/main-secrets/adminToken=adminToken",
         ]
+        # Wallet Provider Key Attestation signing identity (OID4VCI
+        # "attestation" proof type) - private key is confidential (Fly
+        # secret, like vc-registry's vcSigningKey); the leaf cert and rootCA
+        # are public (--file-local, freshly written from pki_dir each deploy,
+        # same as vc-registry's rootCA.crt/signing_ec_chain.pem). Chains to
+        # the SAME per-environment rootCA vc-issuer/vc-verifier already trust
+        # (fixtures/create-pki.sh generates it as one more identity off that
+        # root), so a credential issuer that already trusts this
+        # environment's rootCA gets a Key Attestation trust anchor for free.
+        ensure_secret(app, "walletProviderKey", (pki_dir / "wallet_provider_ec_private.pem").read_text())
+        deploy_args += [
+            "--file-secret", "/main-secrets/walletProviderKey=walletProviderKey",
+            "--file-local", f"/main-config/walletProviderCert.pem={pki_dir / 'wallet_provider_ec.crt'}",
+            "--file-local", f"/main-config/walletProviderCA.pem={pki_dir / 'rootCA.crt'}",
+        ]
     elif name == "wallet-proxy":
         conf_path = out_dir / "wallet-proxy.conf"
         conf_path.write_text(wallet_proxy_conf(env))

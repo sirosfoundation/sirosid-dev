@@ -227,6 +227,12 @@ verifier:
       refresh_token_duration: 86400
       subject_type: "pairwise"
       subject_salt: "e2e-test-salt-change-in-production"
+  # W3C Digital Credentials API (browser navigator.credentials.get()) support,
+  # per sirosfoundation/vc#504 (feat/dc-api-polyfill). Enables the native DC
+  # API attempt in the verifier's own presentation-definition UI
+  # (dc-api-polyfill.js); falls back to QR/redirect when unavailable.
+  digital_credentials:
+    enable: true
   inbound:
     openid4vp:
       token_endpoint: "http://localhost:9001/token"
@@ -238,6 +244,7 @@ verifier:
             - "pid"
             - "diploma"
             - "ehic"
+            - "mdl"
       supported_credentials:
         - vct: "urn:eudi:pid:arf-1.8:1"
           scopes:
@@ -251,6 +258,13 @@ verifier:
         - vct: "urn:eudi:diploma:1"
           scopes:
             - "diploma"
+        # mso_mdoc (ISO 18013-5) - VCT here is unused for mdoc DCQL matching
+        # (the doctype comes from common.credential_metadata.mdl's MDDL
+        # schema instead), kept as the doctype string for readability since
+        # SupportedCredentialConfig.VCT is a required field.
+        - vct: "org.iso.18013.5.1.mDL"
+          scopes:
+            - "mdl"
       presentation_timeout: 300
       presentation_requests_dir: "/presentation_requests"
       preferred_vp_formats:

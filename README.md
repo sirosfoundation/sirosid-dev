@@ -588,6 +588,11 @@ they're not redundant, each solves a problem the other can't:
   entirely, and PDP goes back to being sourced from the chart exactly like
   every other component - no permanent special-casing.
 
+  The block also overrides `images.walletBackend` to `0.9.0`, ahead of
+  `helm-charts`' own pin (still `0.6.1`) - kept as a local override rather
+  than bumped upstream since `helm-charts` versions are maintained on their
+  own release process, independent of this repo's.
+
 ### Android app identities (debug builds + Play Store keys)
 
 wallet-backend's server-side WebAuthn accept list (`server.rp_origins`) must

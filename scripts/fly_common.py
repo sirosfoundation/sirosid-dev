@@ -635,6 +635,14 @@ def wallet_proxy_conf(env: str) -> str:
     return f"""server {{
     listen 8090;
 
+    # Matches go-wallet-backend's own MaxBodySize (pkg/middleware/bodysize.go)
+    # - the private-data blob (S.credentials[] in the encrypted container)
+    # grows unbounded as credentials accumulate, and mdoc/mDL credentials
+    # each embed a base64 portrait photo. nginx's compiled-in default of 1m
+    # was tight enough to 413 a real device after only a few mdoc
+    # batch-issuance rounds against the same test account.
+    client_max_body_size 10m;
+
     location /.well-known/assetlinks.json {{
         alias /etc/nginx/well-known/assetlinks.json;
         default_type application/json;

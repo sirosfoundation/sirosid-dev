@@ -119,6 +119,14 @@ services:
       - WALLET_AS_EXTERNAL_URL=http://localhost:8080
       - WALLET_AS_ISSUER=http://localhost:8080
       - WALLET_AS_RULES_DIR=/app/fixtures/as-rules
+      # Wallet Provider Key Attestation (OID4VCI "attestation" proof type) -
+      # real x5c-chained signing key, so the SDK gets a genuine trust anchor
+      # instead of the self-signed bare-jwk fallback. WIA is disabled since
+      # Key Attestation doesn't require it (wallet_instance_id is optional).
+      - WALLET_WALLET_PROVIDER_PRIVATE_KEY_PATH=/app/fixtures/wallet_provider_ec_private.pem
+      - WALLET_WALLET_PROVIDER_CERTIFICATE_PATH=/app/fixtures/wallet_provider_ec.crt
+      - WALLET_WALLET_PROVIDER_CA_CERT_PATH=/app/fixtures/rootCA.crt
+      - WALLET_WALLET_PROVIDER_WIA_ENABLED=false
       # Registry configuration (served via --mode=all on the same port)
       - REGISTRY_SOURCE_URL=https://registry.siros.org/.well-known/vctm-registry.json
       - REGISTRY_SOURCE_POLL_INTERVAL=5m
@@ -140,6 +148,9 @@ services:
     volumes:
       - ./fixtures/vc-pki/signing_ec_private.pem:/app/fixtures/signing_ec_private.pem:ro
       - ./fixtures/as-rules:/app/fixtures/as-rules:ro
+      - ./fixtures/vc-pki/wallet_provider_ec_private.pem:/app/fixtures/wallet_provider_ec_private.pem:ro
+      - ./fixtures/vc-pki/wallet_provider_ec.crt:/app/fixtures/wallet_provider_ec.crt:ro
+      - ./fixtures/vc-pki/rootCA.crt:/app/fixtures/rootCA.crt:ro
     # Note: distroless image has no shell/wget, healthcheck done by make up
     # For credential issuance tests, start VC services overlay:
     #   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d

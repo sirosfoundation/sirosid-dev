@@ -101,6 +101,19 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
         "tls_enabled": False,
         "database": "wallet-backend",
     }
+    # The chart renders cert-manager Secret-volume paths (/wallet-provider-cert/*)
+    # for a real Kubernetes deployment; docker-compose.helm-config.yml instead
+    # bind-mounts the same fixtures/vc-pki files docker-compose.test.yml's
+    # plain-env-var wallet-backend service uses, at these paths.
+    config["wallet_provider"]["private_key_path"] = "/app/fixtures/wallet_provider_ec_private.pem"
+    config["wallet_provider"]["certificate_path"] = "/app/fixtures/wallet_provider_ec.crt"
+    config["wallet_provider"]["ca_cert_path"] = "/app/fixtures/rootCA.crt"
+    # WIA-PoP aud claim validation (go-wallet-backend#221): must match
+    # whatever URL the wallet SDK treats as "the backend", i.e. server.base_url
+    # above - go-wallet-backend's config validation fails startup otherwise
+    # once wia.enabled is true (hardcoded in the chart) with signing keys
+    # configured (pkg/config/config.go).
+    config["wallet_provider"]["wia"]["wallet_provider_uri"] = config["server"]["base_url"]
     return config
 
 
@@ -147,6 +160,21 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
         "tls_enabled": False,
         "database": "wallet-backend",
     }
+    # The chart renders cert-manager Secret-volume paths (/wallet-provider-cert/*)
+    # for a real Kubernetes deployment; fly-up.py's wallet-backend deploy_args
+    # instead lands the private key as a Fly secret and the public cert/CA as
+    # --file-local files at these paths (see the `name == "wallet-backend"`
+    # branch in deploy_component()).
+    config["wallet_provider"]["private_key_path"] = "/main-secrets/walletProviderKey"
+    config["wallet_provider"]["certificate_path"] = "/main-config/walletProviderCert.pem"
+    config["wallet_provider"]["ca_cert_path"] = "/main-config/walletProviderCA.pem"
+    # WIA-PoP aud claim validation (go-wallet-backend#221): must match
+    # whatever URL the wallet SDK treats as "the backend" - on Fly that's
+    # proxy_url (server.base_url above), not wallet-backend's own
+    # .internal-only hostname. Startup fails hard without this once
+    # wia.enabled is true (hardcoded in the chart) with signing keys
+    # configured (pkg/config/config.go's validation).
+    config["wallet_provider"]["wia"]["wallet_provider_uri"] = config["server"]["base_url"]
     return config
 
 
@@ -194,6 +222,34 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     # issuer at a conference/plugfest) - trusted as issuers only, not
     # verifiers, since there's no equivalent need to accept presentation
     # requests from them.
+    #
+    # These MUST also land in pid_issuers (the whitelist registry), not only
+    # mdociaca.issuer_allowlist: go-wallet-backend's offer-acceptance-time
+    # issuer check (evaluateTrust -> AuthZEN "credential-issuer" action) is a
+    # *resolution-only* request (no key material yet), and go-trust's
+    # RegistryManager.getApplicableRegistriesWithPolicy() only queries
+    # registries where SupportsResolutionOnly() is true - mdociaca.Registry
+    # explicitly returns false there ("requires X5C chains"), so mdociaca is
+    # never even consulted for this check, whitelist-membership or not.
+    # Confirmed by a live PDP log: "Strategy[FirstMatch]: evaluating
+    # registry" only ever listed "... Fly whitelist", never mdociaca, for
+    # this action - mdociaca only matters for the LATER, key-bearing check at
+    # actual credential-response signature/cert-chain verification time.
+    #
+    # The whitelist registry's own Evaluate() only needs `r.resolvedLists`
+    # (a plain config string/pattern match) for a resolution-only request -
+    # it never touches `r.keyHashes` (the fetched-JWKS map) at all in that
+    # path - so membership alone is enough; a working JWKS endpoint for the
+    # entity is NOT required for this to pass. The cost of pid_issuers
+    # membership is purely go-trust's own missing-timeout bug: its initial,
+    # synchronous Refresh(context.Background()) at boot (StartRefreshLoop,
+    # called before cmd/gt's r.Run() starts the HTTP listener) will spend
+    # several minutes failing to fetch JWKS for an issuer with no such
+    # endpoint before giving up and continuing - slow (and compounding with
+    # vc-apigw/vc-verifier's own pre-existing slow-JWKS-timeout issue, see
+    # project_pdp_mdoc_issuer_whitelist_hang memory) but not fatal: the
+    # registry keeps working via resolution-only checks regardless of
+    # whether the fetch ever succeeds.
     if extra_trusted_issuers:
         pid_issuers.extend(extra_trusted_issuers)
 
