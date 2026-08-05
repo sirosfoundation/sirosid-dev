@@ -118,7 +118,7 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
 
 
 def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None,
-                              mongo_password: str = None) -> dict:
+                              mongo_password: str = None, wallet_attestation: bool = False) -> dict:
     # wallet-proxy is wallet-backend's public identity on Fly for the ACTUAL
     # API (see module docstring) - but NOT for WebAuthn. The passkey ceremony
     # (navigator.credentials.create/get) executes in the browser at
@@ -148,6 +148,18 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     config["server"]["rp_origins"] = [frontend_url] + android_origins
     config["server"]["base_url"] = proxy_url
     config["server"]["cors"]["allowed_origins"] = [frontend_url]
+    # Unlike local dev (where frontend/backend share an origin via nginx path
+    # routing, so the browser never sees a cross-origin request at all), Fly
+    # puts wallet-frontend and wallet-backend on genuinely different
+    # subdomains - every browser XHR from wallet-frontend is credentialed
+    # (withCredentials: true) and cross-origin, so AllowCredentials must be
+    # true or the browser rejects the CORS preflight outright (confirmed:
+    # every passkey register/login request failed client-side with
+    # "Access-Control-Allow-Credentials ... must be 'true'" before this was
+    # set - this was never exercised by real-browser testing against a Fly
+    # deployment before). Safe only because allowed_origins above is a
+    # specific origin, never "*".
+    config["server"]["cors"]["allow_credentials"] = True
     config["trust"]["pdp_url"] = f"http://sirosid-{env}-pdp.internal:8080"
     config["trust"]["registry_url"] = f"{proxy_url}/registry"
     # Authenticated - mongodb's own root user/password (fly-up.py generates
@@ -175,11 +187,44 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # wia.enabled is true (hardcoded in the chart) with signing keys
     # configured (pkg/config/config.go's validation).
     config["wallet_provider"]["wia"]["wallet_provider_uri"] = config["server"]["base_url"]
+    # Opt-in: authenticate to issuers via OAuth-Client-Attestation (the WIA
+    # itself) instead of a pre-registered client_id - see
+    # build_fly_values_overlay()'s wallet-providers whitelist entry, which
+    # this pairs with. Requires an iss claim (below) rather than TS03's
+    # x5c-derived identity: go-trust's whitelist registry only resolves
+    # trust via JWKS-URL fetch (issuer/verifier/subject entries), it has no
+    # custom-CA-pinning mechanism for a self-signed x5c chain, so x5c-based
+    # identity can never actually resolve against this environment's PDP.
+    if wallet_attestation:
+        config["wallet_provider"]["wia"]["issuer"] = config["server"]["base_url"]
+        config["wallet_provider"]["wia"]["omit_x5c"] = True
+        # AS.ExternalURL builds the JWKS URL go-tokenauth fetches to verify
+        # AS-issued access tokens (used by both HTTP resource endpoints and
+        # the WebSocket engine's handshake auth) - left unset, it's "" and
+        # the constructed URL is just the bare path "/auth/.well-known/jwks.json",
+        # which can never resolve, so every AS-issued token (anonymous or
+        # authenticated) fails signature verification with "Invalid or
+        # expired token". Confirmed live: WS handshake rejected a token
+        # /auth/token had just issued as 200 OK, for every retry.
+        config.setdefault("as", {})["external_url"] = proxy_url
+        # go-wallet-backend's own hardcoded fallback (ASConfig.SetDefaults,
+        # used only when this is unset) is "rwl" - stale relative to what
+        # wallet-frontend's real 'backend' token manifest requests
+        # (AuthTokens.ts: tac "rwlid", i.e. read/write/list/insert/delete).
+        # Every other real deployment already overrides this - both
+        # docker-compose.test.yml and docker-compose.helm-config.yml set
+        # WALLET_AS_DEFAULT_MAX_TAC=rwlidk (also including 'k'/delegate) -
+        # this Fly path is the only one that never carried the same value
+        # over, so passkey sessions here got MaxTAC=rwl and every real
+        # token request 403ed with "requested permissions exceed session
+        # maximum" the moment SPOCP/topology fixes let it get this far.
+        config["as"]["default_max_tac"] = "rwlidk"
     return config
 
 
 def build_fly_values_overlay(env: str, conformance: bool = False,
-                              extra_trusted_issuers: list = None) -> dict:
+                              extra_trusted_issuers: list = None,
+                              wallet_attestation: bool = False) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
@@ -253,6 +298,31 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     if extra_trusted_issuers:
         pid_issuers.extend(extra_trusted_issuers)
 
+    # This environment's own wallet-backend, trusted as a wallet_provider
+    # (go-trust's RoleWalletProvider) so SUNET/vc's WalletAttestationEvaluator
+    # can authenticate wallets via their WIA alone - no pre-registered
+    # client_id (see patch_wallet_backend_fly's wia.issuer/omit_x5c and
+    # patch-vc-config-fly.py's apigw.trust.wallet_attestation). Only added
+    # when wallet_attestation is requested, since it's new/unvalidated and
+    # every other environment should keep today's behavior unchanged.
+    wallet_providers = []
+    if wallet_attestation:
+        wallet_providers.append(f"https://sirosid-{env}-wallet-proxy.fly.dev")
+
+    lists = {
+        "pid-issuers": pid_issuers,
+        "verifiers": verifiers,
+    }
+    actions = {
+        "pid-provider": "pid-issuers",
+        "credential-issuer": "pid-issuers",
+        "verifier": "verifiers",
+        "credential-verifier": "verifiers",
+    }
+    if wallet_providers:
+        lists["wallet-providers"] = wallet_providers
+        actions["wallet_provider"] = "wallet-providers"
+
     return {
         "tenant": {"id": env},
         "pdp": {
@@ -263,16 +333,8 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                     "enabled": True,
                     "name": f"sirosid-{env} Fly whitelist",
                     "description": "Fly-hosted vc-services URLs (rendered from helm-charts schema)",
-                    "lists": {
-                        "pid-issuers": pid_issuers,
-                        "verifiers": verifiers,
-                    },
-                    "actions": {
-                        "pid-provider": "pid-issuers",
-                        "credential-issuer": "pid-issuers",
-                        "verifier": "verifiers",
-                        "credential-verifier": "verifiers",
-                    },
+                    "lists": lists,
+                    "actions": actions,
                 },
                 # The whitelist registry above only ever caches JWT-signing
                 # keys (via jwt-vc-issuer/jwks_uri discovery) - it has no
@@ -298,7 +360,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
-           extra_trusted_issuers: list = None) -> list:
+           extra_trusted_issuers: list = None, wallet_attestation: bool = False) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -320,7 +382,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         out_dir.mkdir(parents=True, exist_ok=True)
         overlay_path = out_dir / "values.generated.yaml"
         overlay_path.write_text(yaml.dump(
-            build_fly_values_overlay(env, conformance, extra_trusted_issuers), sort_keys=False))
+            build_fly_values_overlay(env, conformance, extra_trusted_issuers, wallet_attestation), sort_keys=False))
         values_files.append(overlay_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")
@@ -334,7 +396,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     if target == "compose":
         backend_cfg = patch_wallet_backend_compose(backend_cfg, android_apk_key_hashes)
     else:
-        backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password)
+        backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password,
+                                                wallet_attestation)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
     (out_dir / "wallet-backend-registry.yaml").write_text(wb_data["registry.yaml"])
     print(f"wrote {out_dir / 'wallet-backend.yaml'}")

@@ -59,11 +59,19 @@ def fly_internal(env: str, component: str, port: int) -> str:
     return f"sirosid-{env}-{component}.internal:{port}"
 
 
-def patch(config: dict, env: str, mongo_password: str = None) -> dict:
+def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation: bool = False) -> dict:
     apigw_url = fly_url(env, "vc-apigw")
     registry_url = fly_url(env, "vc-registry")
     verifier_url = fly_url(env, "vc-verifier")
     frontend_url = fly_url(env, "wallet-frontend")
+    # wallet-frontend runs with BASE_PATH=/id/default/ (fly-up.py's
+    # _wallet_frontend_env(), same hardcoded "default" tenant
+    # register_vc_services() uses) - its SPA router has no route for a bare
+    # /cb outside that base path, so redirect_uris must include it or the
+    # OID4VCI/OID4VP callback lands on a blank page (nginx serves the SPA
+    # shell fine at /cb, status 200 - the React router just never mounts
+    # anything for a path it doesn't recognize).
+    frontend_cb_url = f"{frontend_url}/id/default/cb"
 
     # Authenticated - see render-helm-config.py's patch_wallet_backend_fly
     # for why (mongodb has no auth otherwise, reachable by any app in the
@@ -79,9 +87,9 @@ def patch(config: dict, env: str, mongo_password: str = None) -> dict:
     apigw["issuer_client"]["addr"] = fly_internal(env, "vc-issuer", 8090)
     apigw["registry_client"]["addr"] = fly_internal(env, "vc-registry", 8090)
     apigw["delivery"]["openid4vci"]["token_endpoint"] = f"{apigw_url}/token"
-    apigw["delivery"]["openid4vci"]["clients"]["e2e-test-client-2"]["redirect_uri"] = f"{frontend_url}/cb"
+    apigw["delivery"]["openid4vci"]["clients"]["e2e-test-client-2"]["redirect_uri"] = frontend_cb_url
     apigw["delivery"]["credential_offers"]["issuer_url"] = apigw_url
-    apigw["delivery"]["credential_offers"]["wallets"]["local"]["redirect_uri"] = f"{frontend_url}/cb"
+    apigw["delivery"]["credential_offers"]["wallets"]["local"]["redirect_uri"] = frontend_cb_url
     # Standard OpenID4VCI same-device scheme (registered by both native
     # sample apps - AndroidManifest.xml/Info.plist) so a native wallet can be
     # handed an offer directly via the /offers/:scope/:wallet_id chooser,
@@ -102,6 +110,18 @@ def patch(config: dict, env: str, mongo_password: str = None) -> dict:
     apigw["auth_providers"]["oidc"]["registration"]["preconfigured"]["client_id"] = MINI_OIDC_APIGW_CLIENT_ID
     apigw["auth_providers"]["oidc"]["registration"]["preconfigured"]["client_secret"] = MINI_OIDC_APIGW_CLIENT_SECRET
 
+    # Opt-in: let wallets authenticate via OAuth-Client-Attestation (their WIA
+    # alone) instead of a pre-registered client_id, delegating the trust
+    # decision to the PDP - pairs with render-helm-config.py's
+    # build_fly_values_overlay() wallet-providers whitelist entry and
+    # patch_wallet_backend_fly's wia.issuer/omit_x5c. Leaves policy.rules
+    # unset (default open: any PDP-trusted wallet is authorized), since this
+    # is about proving the mechanism works, not restricting it yet.
+    if wallet_attestation:
+        apigw.setdefault("trust", {})
+        apigw["trust"]["pdp_url"] = f"http://{fly_internal(env, 'pdp', 8080)}"
+        apigw["trust"]["wallet_attestation"] = {"enabled": True}
+
     issuer = config["issuer"]
     # issuer's public identity is deliberately the same as apigw's (matches
     # the base config's existing pattern - wallets never reach vc-issuer
@@ -119,7 +139,7 @@ def patch(config: dict, env: str, mongo_password: str = None) -> dict:
     verifier["public_url"] = verifier_url
     verifier["outbound"]["oidc_provider"]["issuer"] = verifier_url
     verifier["inbound"]["openid4vp"]["token_endpoint"] = f"{verifier_url}/token"
-    verifier["inbound"]["openid4vp"]["clients"]["e2e-test-client"]["redirect_uri"] = f"{frontend_url}/cb"
+    verifier["inbound"]["openid4vp"]["clients"]["e2e-test-client"]["redirect_uri"] = frontend_cb_url
 
     config["registry"]["public_url"] = registry_url
     # Default section_size (1M decoys, built as one in-memory slice before a
@@ -141,11 +161,16 @@ def main():
                               "fly-up.py passes the same value it set as the mongodb app's Fly secret.")
     parser.add_argument("--out", default=None,
                          help="default: fixtures/rendered/fly-<env>/vc-config.yaml")
+    parser.add_argument("--wallet-attestation", action="store_true",
+                         help="Enable apigw.trust.wallet_attestation so wallets can authenticate via "
+                              "their WIA alone (no pre-registered client_id) - see render-helm-config.py's "
+                              "--wallet-attestation, which must be passed alongside this for the wallet "
+                              "side (wia.issuer/omit_x5c) to match.")
     args = parser.parse_args()
 
     base_path = Path(args.base)
     config = yaml.safe_load(base_path.read_text())
-    patched = patch(config, args.env, args.mongo_password)
+    patched = patch(config, args.env, args.mongo_password, args.wallet_attestation)
 
     out_path = Path(args.out) if args.out else (
         SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}" / "vc-config.yaml"

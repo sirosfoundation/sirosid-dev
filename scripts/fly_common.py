@@ -634,6 +634,14 @@ def wallet_proxy_conf(env: str) -> str:
     backend = f"{app_name(env, 'wallet-backend')}.internal"
     return f"""server {{
     listen 8090;
+    # Fly's 6PN inter-app network is IPv6-only - without this, this app was
+    # only ever reachable via Fly's public edge (which terminates externally
+    # and forwards regardless), never via another app's *.internal hostname.
+    # Confirmed live: wallet-frontend's own same-origin API proxy (added for
+    # the AS session cookie's SameSite=Strict requirement - see
+    # wallet_frontend_conf()) got a bare TCP connection reset dialing
+    # wallet-proxy.internal:8090 until this was added.
+    listen [::]:8090;
 
     # Matches go-wallet-backend's own MaxBodySize (pkg/middleware/bodysize.go)
     # - the private-data blob (S.credentials[] in the encrypted container)
@@ -728,6 +736,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     of simply appending them at the very end.
     """
     backend = f"{app_name(env, 'wallet-backend')}.internal"
+    wallet_proxy = f"{app_name(env, 'wallet-proxy')}.internal"
     pdp = f"{app_name(env, 'pdp')}.internal"
     mini_oidc = f"{app_name(env, 'mini-oidc')}.internal"
     vc_registry = f"{app_name(env, 'vc-registry')}.internal"
@@ -801,6 +810,36 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
 {conformance_health}
 {conformance_proxy}
+    # Same-origin proxy for wallet-frontend's own API calls (AuthServerClient,
+    # AuthZENClient, private-data sync, etc. - everything under BACKEND_URL,
+    # see fly-up.py's _wallet_frontend_env setting WALLET_BACKEND_URL to THIS
+    # app's own URL rather than wallet-proxy's directly).
+    #
+    # Required for the AS session cookie, not just a nice-to-have: it's set
+    # SameSite=Strict (internal/as/cookie.go), on the documented assumption
+    # that "login/register are same-origin API calls" - true in a
+    # single-domain production deployment, but wallet-frontend and
+    # wallet-proxy are separate *.fly.dev subdomains, which are genuinely
+    # cross-SITE (different registrable domains under the public suffix
+    # list), not merely cross-origin. A SameSite=Strict cookie can never be
+    # sent cross-site regardless of CORS/withCredentials settings, so every
+    # session-cookie-dependent call silently 401ed ("authentication
+    # required") without this - confirmed live, including
+    # OpenID4VCIHelper.getAuthorizationServerMetadata's anonymous-token
+    # bootstrap, which is why credential-issuance flows against a PAR-only
+    # issuer never even attempted PAR.
+    #
+    # Proxies to wallet-proxy's own internal address (not wallet-backend's
+    # directly) to reuse its existing admin-subtree/websocket-upgrade
+    # routing (fly_common.wallet_proxy_conf) rather than duplicating it here.
+    location ~ ^/(auth|v1|user|helper|issuer|oidc|presentation|storage|verifier|wallet-provider)/ {{
+        proxy_pass http://{wallet_proxy}:8090;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }}
+
     # Serve assets and static files from any /id/<tenant>/ prefix by
     # stripping the prefix and serving from the root - BASE_PATH's generated
     # index.html references everything as /id/default/assets/... but the

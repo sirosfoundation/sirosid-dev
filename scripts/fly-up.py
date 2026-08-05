@@ -91,7 +91,8 @@ def run(cmd, **kwargs):
 
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
-                    conformance: bool = False, extra_trusted_issuers: list = None) -> list:
+                    conformance: bool = False, extra_trusted_issuers: list = None,
+                    wallet_attestation: bool = False) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -105,9 +106,12 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     # assetlinks.json half was wired in the first pass at this.
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
                    out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
-                   conformance=conformance, extra_trusted_issuers=extra_trusted_issuers)
-    run([sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password],
-        cwd=SIROSID_DEV_ROOT)
+                   conformance=conformance, extra_trusted_issuers=extra_trusted_issuers,
+                   wallet_attestation=wallet_attestation)
+    patch_cmd = [sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password]
+    if wallet_attestation:
+        patch_cmd.append("--wallet-attestation")
+    run(patch_cmd, cwd=SIROSID_DEV_ROOT)
     return docs
 
 
@@ -162,7 +166,8 @@ def generate_android_assets(docs: list, out_dir: Path, identities: list) -> Path
 
 
 def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_dir: Path, pki_dir: Path,
-                      assetlinks_path: Path, image_overrides: dict, mongo_password: str, conformance: bool = False):
+                      assetlinks_path: Path, image_overrides: dict, mongo_password: str, conformance: bool = False,
+                      wallet_attestation: bool = False):
     name = comp["name"]
     app = app_name(env, name)
     ensure_app(app, network=network_name(env), allocate_public_ips=(name == "conformance"))
@@ -359,7 +364,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
         ]
-        deploy_args += _wallet_frontend_env(env, docs, android_identities)
+        deploy_args += _wallet_frontend_env(env, docs, android_identities, wallet_attestation)
     elif name == "conformance-server":
         deploy_args += [
             "--env", f"BASE_URL={app_url(env, 'conformance')}",
@@ -473,7 +478,8 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
     return args
 
 
-def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, list[str]] | None = None) -> list:
+def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, list[str]] | None = None,
+                          wallet_attestation: bool = False) -> list:
     proxy = app_url(env, "wallet-proxy")
     frontend = app_url(env, "wallet-frontend")
     fe_data = extract_configmap_data(docs, "wallet-frontend-main")
@@ -491,7 +497,19 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
         for fingerprint in fingerprints
     )
     values = {
-        "WALLET_BACKEND_URL": proxy,
+        # wallet-frontend's OWN origin, not wallet-proxy's directly - see
+        # wallet_frontend_conf()'s same-origin API proxy block for why: the
+        # AS session cookie is SameSite=Strict, which a browser will never
+        # send across the genuinely-different registrable domains of
+        # wallet-frontend.fly.dev and wallet-proxy.fly.dev. Routing BACKEND_URL
+        # through wallet-frontend's own nginx (which proxies on to
+        # wallet-proxy internally) makes every API call same-origin instead.
+        # WALLET_ENGINE_URL (websocket) is unaffected - the engine
+        # authenticates via a token embedded in the handshake payload
+        # (internal/engine/session.go's validateToken), not a cookie, so it
+        # has no SameSite exposure and can keep talking to wallet-proxy
+        # directly.
+        "WALLET_BACKEND_URL": frontend,
         "WALLET_ENGINE_URL": proxy,
         # Must equal wallet-backend's server.rp_id (render-helm-config.py's
         # patch_wallet_backend_fly) - the passkey ceremony runs in the
@@ -510,7 +528,13 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
         "OPENID4VCI_REDIRECT_URI": f"{frontend}/",
         "VCT_REGISTRY_URL": f"{proxy}/registry/type-metadata",
         "TRANSPORT_PREFERENCE": "websocket",
-        "ALLOWED_TRANSPORTS": "http,websocket,wmp",
+        # Must be wallet-frontend's own recognized tokens (src/config.ts:
+        # ALLOWED_TRANSPORTS.filter(['http_proxy','websocket','direct'])) -
+        # "http"/"wmp" aren't valid values and were silently dropped by that
+        # filter, leaving NO transport at all once the (also invalid) values
+        # were filtered out. websocket-only, no http_proxy fallback - this
+        # deployment runs the websocket transport exclusively (plus wmp).
+        "ALLOWED_TRANSPORTS": "websocket,wmp",
         "LOG_LEVEL": "info",
         "DISPLAY_CONSOLE": "false",
         "LOGIN_WITH_PASSWORD": "false",
@@ -523,6 +547,13 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
         "DISPLAY_ISSUANCE_WARNINGS": "false",
         "BASE_PATH": "/id/default/",
     }
+    if wallet_attestation:
+        # Pairs with patch_wallet_backend_fly's wia.issuer/omit_x5c and
+        # patch-vc-config-fly.py's apigw.trust.wallet_attestation - without
+        # this, wallet-backend never generates/attaches a WIA at all, so the
+        # OAuth-Client-Attestation headers vc-apigw is now configured to
+        # accept never get sent.
+        values["WIA_ENABLED"] = "true"
     args = []
     for k, v in values.items():
         args += ["--env", f"{k}={v}"]
@@ -641,6 +672,15 @@ def main():
                          help="Also deploy the OpenID Conformance Suite (matches local dev's "
                               "CONFORMANCE=yes) - 3 extra apps: conformance-mongodb, conformance-server, "
                               "and the public 'conformance' nginx front. See fly_common.CONFORMANCE_COMPONENTS.")
+    parser.add_argument("--wallet-attestation", action="store_true",
+                         help="Enable OAuth-Client-Attestation-based client authentication "
+                              "(draft-ietf-oauth-attestation-based-client-auth): wallets authenticate "
+                              "to vc-apigw via their WIA alone, no pre-registered client_id. Configures "
+                              "wallet-backend to issue an iss-based WIA (omitting the x5c chain, which "
+                              "go-trust's whitelist can't validate for a self-signed cert), whitelists "
+                              "this environment's own wallet-backend as a trusted wallet_provider in "
+                              "PDP, and enables apigw.trust.wallet_attestation. Unvalidated against real "
+                              "hardware/interop as of this flag's introduction.")
     parser.add_argument("--trusted-issuer", action="append",
                          help="Extra credential issuer URL to trust via PDP's whitelist, in addition to "
                               "this environment's own vc-apigw - for interop testing against a "
@@ -683,7 +723,7 @@ def main():
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
-                           args.conformance, extra_trusted_issuers)
+                           args.conformance, extra_trusted_issuers, args.wallet_attestation)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")
@@ -729,7 +769,7 @@ def main():
         for comp in all_components:
             print(f"--- {comp['name']} ---")
             deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path,
-                              image_overrides, mongo_password, args.conformance)
+                              image_overrides, mongo_password, args.conformance, args.wallet_attestation)
             deployed.append(comp["name"])
     except subprocess.CalledProcessError as e:
         # No auto-rollback - components deployed so far are left running
