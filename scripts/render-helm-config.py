@@ -222,7 +222,23 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     config["as"]["default_max_tac"] = "rwlidk"
     if wallet_attestation:
         config["wallet_provider"]["wia"]["issuer"] = config["server"]["base_url"]
-        config["wallet_provider"]["wia"]["omit_x5c"] = True
+        # go-wallet-backend v0.10.0 replaced the old "always include x5c,
+        # optionally also include iss" dual-flag design (the field this
+        # replaced, `omit_x5c`, isn't even referenced anywhere in current
+        # go-wallet-backend Go code - a silently-ignored dead YAML key) with
+        # a single mutually-exclusive wia.mode switch: "etsi" (default, no
+        # iss, x5c-only identity per TS03 v1.5) vs "ietf" (iss+kid-based,
+        # no x5c, draft-ietf-oauth-attestation-based-client-auth). Setting
+        # only `issuer` without also flipping `mode` to "ietf" silently fell
+        # back to "etsi" - the WIA still carried x5c but the iss claim this
+        # environment is supposed to have went missing entirely. Confirmed
+        # via a live geneva2026.mdoc.online conformance report: the resulting
+        # empty iss is suspected to be why the issuer's credential endpoint
+        # started rejecting c_nonce values its own nonce endpoint had just
+        # issued (see project_geneva2026_issuer_bugs memory finding #4) -
+        # this environment's WIA no longer matched the iss+kid identity
+        # shape it worked correctly with before this go-wallet-backend bump.
+        config["wallet_provider"]["wia"]["mode"] = "ietf"
     return config
 
 
