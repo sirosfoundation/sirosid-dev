@@ -50,4 +50,14 @@ images:
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
   # is exercising - kept as a local override rather than bumped upstream
   # since helm-charts versions are maintained on their own release process.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.9.0"
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.10.0"
+
+  # helm-charts' own vc.* pins (siros-id-stack/values.yaml) are still
+  # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
+  # this repo is exercising (see project_sirosid_dcapi_mdoc_cose_bugs and
+  # project_siros_verifier_cli_deviceauth_bug) - kept as local overrides for
+  # the same reason as walletBackend above, same release-process caveat.
+  issuerRegistry: "ghcr.io/sirosfoundation/vc/registry:0.7.0-sirosid.0"
+  issuerApigw: "ghcr.io/sirosfoundation/vc/apigw:0.7.0-sirosid.0"
+  issuerCore: "ghcr.io/sirosfoundation/vc/issuer:0.7.0-sirosid.0"
+  verifier: "ghcr.io/sirosfoundation/vc/verifier:0.7.0-sirosid.0"
