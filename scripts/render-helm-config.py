@@ -195,30 +195,34 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # trust via JWKS-URL fetch (issuer/verifier/subject entries), it has no
     # custom-CA-pinning mechanism for a self-signed x5c chain, so x5c-based
     # identity can never actually resolve against this environment's PDP.
+    # AS.ExternalURL builds the JWKS URL go-tokenauth fetches to verify
+    # AS-issued access tokens (used by both HTTP resource endpoints and
+    # the WebSocket engine's handshake auth) - left unset, it's "" and
+    # the constructed URL is just the bare path "/auth/.well-known/jwks.json",
+    # which can never resolve, so every AS-issued token (anonymous or
+    # authenticated) fails signature verification with "Invalid or
+    # expired token". Confirmed live: WS handshake rejected a token
+    # /auth/token had just issued as 200 OK, for every retry. Unconditional -
+    # this isn't specific to wallet_attestation, every Fly deployment using
+    # the AS/token-based auth path needs it (was previously gated behind
+    # `if wallet_attestation:`, which just meant every non-attestation
+    # environment silently had broken WS auth).
+    config.setdefault("as", {})["external_url"] = proxy_url
+    # go-wallet-backend's own hardcoded fallback (ASConfig.SetDefaults,
+    # used only when this is unset) is "rwl" - stale relative to what
+    # wallet-frontend's real 'backend' token manifest requests
+    # (AuthTokens.ts: tac "rwlid", i.e. read/write/list/insert/delete).
+    # Every other real deployment already overrides this - both
+    # docker-compose.test.yml and docker-compose.helm-config.yml set
+    # WALLET_AS_DEFAULT_MAX_TAC=rwlidk (also including 'k'/delegate) -
+    # this Fly path is the only one that never carried the same value
+    # over, so passkey sessions here got MaxTAC=rwl and every real
+    # token request 403ed with "requested permissions exceed session
+    # maximum" the moment SPOCP/topology fixes let it get this far.
+    config["as"]["default_max_tac"] = "rwlidk"
     if wallet_attestation:
         config["wallet_provider"]["wia"]["issuer"] = config["server"]["base_url"]
         config["wallet_provider"]["wia"]["omit_x5c"] = True
-        # AS.ExternalURL builds the JWKS URL go-tokenauth fetches to verify
-        # AS-issued access tokens (used by both HTTP resource endpoints and
-        # the WebSocket engine's handshake auth) - left unset, it's "" and
-        # the constructed URL is just the bare path "/auth/.well-known/jwks.json",
-        # which can never resolve, so every AS-issued token (anonymous or
-        # authenticated) fails signature verification with "Invalid or
-        # expired token". Confirmed live: WS handshake rejected a token
-        # /auth/token had just issued as 200 OK, for every retry.
-        config.setdefault("as", {})["external_url"] = proxy_url
-        # go-wallet-backend's own hardcoded fallback (ASConfig.SetDefaults,
-        # used only when this is unset) is "rwl" - stale relative to what
-        # wallet-frontend's real 'backend' token manifest requests
-        # (AuthTokens.ts: tac "rwlid", i.e. read/write/list/insert/delete).
-        # Every other real deployment already overrides this - both
-        # docker-compose.test.yml and docker-compose.helm-config.yml set
-        # WALLET_AS_DEFAULT_MAX_TAC=rwlidk (also including 'k'/delegate) -
-        # this Fly path is the only one that never carried the same value
-        # over, so passkey sessions here got MaxTAC=rwl and every real
-        # token request 403ed with "requested permissions exceed session
-        # maximum" the moment SPOCP/topology fixes let it get this far.
-        config["as"]["default_max_tac"] = "rwlidk"
     return config
 
 
