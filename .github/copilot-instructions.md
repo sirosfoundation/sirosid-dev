@@ -55,44 +55,38 @@ shows a filtered summary (✔/Building/Container/etc.), and on non-zero exit
 dumps the full log and fails. Do not revert to the `2>&1 | grep ... || true`
 pattern — that silently swallows errors.
 
-## Android SDK Testing Workflow
+## Android SDK Testing
 
-Full workflow for developers testing `siros-sdk-kotlin` sample app:
+Full setup/testing workflow, WSCD plugin configuration, and troubleshooting
+live in `ANDROID-TESTING.md` — read that before touching Android-related
+code or config. Quick orientation:
 
 ```bash
-# 1. One-time: generate .env.android and configure ADB
-make android-setup [APP_PACKAGE=com.example.app]
-
-# 2. Local network testing
-make up [VC=yes]                # backend URL: http://<host>:8090
-
-# 3. Remote / HTTPS testing (required for passkeys on physical devices)
-make up TUNNELS=yes             # auto creates/reuses tunnels and re-runs android-setup
+make android-setup [APP_PACKAGE=com.example.app]   # one-time: .env.android + ADB config
+make up [VC=yes]                                    # local network testing
+make up TUNNELS=yes                                 # HTTPS testing (required for passkeys)
 ```
-
-Key script: `scripts/setup-android.sh`
-- Reads `~/.android/debug.keystore` with `keytool`
-- Derives APK key hash: `SHA256 fingerprint → hex bytes → base64url (no padding)`
-- Writes `.well-known/assetlinks.json` (mounted into wallet-frontend nginx)
-- Writes `.env.android` with `APK_KEY_HASH` and `ANDROID_PACKAGE`
-- Runs `adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION <package>`
 
 ## COMPOSE_FILES Construction
 
-`COMPOSE_FILES` is assembled in `Makefile` lines 107–203 based on parameters:
+`COMPOSE_FILES` is assembled incrementally in the `Makefile` (search for
+`COMPOSE_FILES +=`, not a fixed line range - it moves) based on parameters:
 
 ```
-PDP=allow    → + docker-compose.go-trust.yml + docker-compose.go-trust-allow.yml
+PDP=allow     → + docker-compose.go-trust.yml + docker-compose.go-trust-allow.yml
 PDP=whitelist → + go-trust.yml + go-trust-whitelist.yml
-PDP=deny     → + go-trust.yml + go-trust-deny.yml
-PDP=mock     → nothing extra (mock-trust-pdp is in test.yml)
-VC=yes       → + docker-compose.vc-services.yml
-CONFORMANCE  → + vc-services + vc-go-trust + conformance (no HTTP transport - it's deprecated)
+PDP=deny      → + go-trust.yml + go-trust-deny.yml
+PDP=mock      → nothing extra (mock-trust-pdp is in test.yml)
+PDP=helm      → + docker-compose.helm-config.yml (requires ../helm-charts)
+VC=yes        → + docker-compose.vc-services.yml
+FACETEC=yes   → + vc-services (implied) + docker-compose.facetec.yml
+CONFORMANCE   → + vc-services + vc-go-trust + conformance (no HTTP transport - it's deprecated)
 TRANSPORT=wmp → + wmp-transport.yml
 TRANSPORT=http → + http-transport.yml (deprecated)
-R2PS=yes     → + r2ps.yml
-DOMAIN=<x>   → + domain.yml
-GOLDEN=yes   → + golden.yml [+ golden-go-trust.yml]
+R2PS=yes      → + r2ps.yml
+DOMAIN=<x>    → + domain.yml
+TUNNELS=yes   → + tunnel.yml [+ tunnel-vc.yml if VC services are present]
+GOLDEN=yes    → + golden.yml [+ golden-go-trust.yml]
 ```
 
 `docker-compose.vc-go-trust.yml` is intentionally NOT included when `VC=yes`
@@ -122,7 +116,8 @@ with other docker-compose projects on the same host.
 ## CRITICAL: Read Before Troubleshooting
 
 **Before manually hacking URLs, ports, or network config:**
-1. Read `README.md` sections: "Cloudflare Tunnels", "Android SDK Testing"
+1. Read `README.md`'s "Cloudflare Tunnels" section and `ANDROID-TESTING.md`
+   in full for anything Android-related
 2. Run `make help` to see all available targets
 3. Use the documented infrastructure (tunnels, `make android-setup`) instead of
    patching BuildConfig or hardcoding IPs
@@ -141,81 +136,27 @@ In the dev environment, they are always separate.
 
 ## USB vs WiFi ADB
 
-- **USB (`make usb-android-*`)**: `adb reverse` works. The device accesses
-  host services via `127.0.0.1:<port>`. This is the recommended approach
-  for local conformance testing.
-- **WiFi ADB**: `adb reverse` does NOT work reliably on Android 11+.
-  Use **Cloudflare tunnels** (`make up TUNNELS=yes`) instead. The tunnels
-  provide real HTTPS URLs accessible from any network.
-- **Never hardcode host IPs** (`10.0.0.x`) in BuildConfig — use either
-  `127.0.0.1` (USB) or tunnel URLs (WiFi).
+USB (`make usb-android-*`, `adb reverse` to `127.0.0.1`) is recommended over
+WiFi ADB (`adb reverse` is unreliable on Android 11+; use Cloudflare tunnels
+instead) — see ANDROID-TESTING.md's "Architecture: Waydroid vs Physical
+Device" for the full comparison. **Never hardcode host IPs** (`10.0.0.x`) in
+BuildConfig regardless of which path you're on.
 
 ## Conformance Testing
 
-```bash
-# USB device (recommended):
-make usb-android-setup
-make usb-android-full SDK_REBUILD=yes  # builds + deploys + starts stack
-make usb-android-conformance PLAN=all
-
-# WiFi device (requires tunnels):
-make android-setup
-make up TUNNELS=yes VC=yes CONFORMANCE=yes
-# Then point the app at the tunnel backend URL
-```
-
-The conformance suite needs:
-1. Issuer registered in wallet-backend admin API (done by `make usb-android-full`)
-2. ADB reverse port forwarding for 13 ports (USB) or tunnel URLs (WiFi)
-3. App data cleared before first run (`adb shell pm clear <package>`)
-4. `DEVELOPMENT_PASSKEY_REGISTRATION` ADB flag set on device
-- `make tunnel` produces garbled `.env.tunnel` → `info()/warn()` output was
-  going to stdout and getting captured. All shell helper functions must use `>&2`.
-- APK key hash wrong → developer has a different debug keystore from the one
-  used to generate the hardcoded default. Run `make android-setup`.
+See ANDROID-TESTING.md for the full workflow (USB vs WiFi setup,
+prerequisites, troubleshooting). Two gotchas not written down elsewhere:
+- `make tunnel` produced garbled `.env.tunnel` when `info()/warn()` output
+  went to stdout and got captured — all shell helper functions must use
+  `>&2` (already fixed; keep it that way in any new script).
+- APK key hash mismatch → developer has a different debug keystore from the
+  one used to generate the hardcoded default. Run `make android-setup`.
 
 ## WSCA Lifecycle Test Automation
 
-### Overview
-
-The `sirosid-tests` repo contains automated WSCA/WSCD lifecycle conformance
-tests driven via ADB intents. They exercise the real Android sample app — no
-mocks, no backend bypass.
-
-### How It Works
-
-1. Test code sends an ADB intent with action
-   `org.siros.sdk.sample.WSCA_TEST` and extra `wsca_action`
-2. Sample app's `MainActivity` receives the intent (debug builds only)
-3. `dispatchWscaTestAction()` calls the real ViewModel lifecycle methods
-4. ViewModel emits results as JSON on logcat tag `WSCA_TEST_RESULT`
-5. Test code polls logcat for the structured result
-
-### Running WSCA Tests
-
-```bash
-cd sirosid-tests
-
-# Softkey plugin only (no external dependencies)
-make test-wsca-softkey
-
-# R2PS plugin (requires R2PS service running)
-make test-wsca-r2ps R2PS_URL=http://192.168.240.1:9443
-
-# Physical device: set ANDROID_DEVICE_SERIAL
-ANDROID_DEVICE_SERIAL=ABC123 make test-wsca-softkey
-```
-
-### Key Repos
-
-| Repo | Role |
-|------|------|
-| `siros-sdk-kotlin` | Sample app with WSCA_TEST intent handler + WscaDeveloperScreen |
-| `siros-wscd-manager` | UniFFI Rust crate providing lifecycle API |
-| `sirosid-tests` | Playwright + ADB test specs (`helpers/wsca-automation.ts`) |
-| `sirosid-dev` | Docker environment orchestration |
-
-### Agent Guidelines for WSCA Tests
+Full architecture, available actions, running tests, and key repos are in
+ANDROID-TESTING.md's "WSCA Lifecycle Test Automation" section — read that
+first. Agent-specific guidance for extending this test automation:
 
 - The test automation only works with **debug builds** of the sample app.
   The intent filter is in `src/debug/AndroidManifest.xml` — not in release.
