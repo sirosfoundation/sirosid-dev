@@ -185,7 +185,7 @@ mocks, no backend bypass.
 ### How It Works
 
 1. Test code sends an ADB intent with action
-   `org.sirosfoundation.sdk.sample.WSCA_TEST` and extra `wsca_action`
+   `org.siros.sdk.sample.WSCA_TEST` and extra `wsca_action`
 2. Sample app's `MainActivity` receives the intent (debug builds only)
 3. `dispatchWscaTestAction()` calls the real ViewModel lifecycle methods
 4. ViewModel emits results as JSON on logcat tag `WSCA_TEST_RESULT`

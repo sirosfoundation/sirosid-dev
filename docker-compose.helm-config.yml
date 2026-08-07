@@ -7,7 +7,7 @@
 # for exactly what's shared verbatim from the chart vs. genuinely local-only.
 #
 # Usage:
-#   make render-helm-config   # or: make up HELM_CONFIG=yes (runs it for you)
+#   make render-helm-config   # or: make up PDP=helm (runs it for you)
 #   docker compose -f docker-compose.test.yml -f docker-compose.go-trust.yml \
 #     -f docker-compose.helm-config.yml up -d
 #

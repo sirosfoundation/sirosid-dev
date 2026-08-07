@@ -11,8 +11,10 @@ This repository provides a complete local development stack for the SIROS ID wal
 - **go-trust** — AuthZEN-compliant Trust PDP (allow / whitelist / deny modes)
 - **mock-verifier** — OpenID4VP verifier mock
 - **mock-trust-pdp** — Legacy AuthZEN PDP mock
-- **vctm-registry** — Verifiable Credential Type Metadata registry
-- **vc-issuer / vc-verifier / vc-apigw / vc-registry** — Production-like VC services (optional)
+- **vctm-registry** — Verifiable Credential Type Metadata registry (served by
+  go-wallet-backend itself in `--mode=all`, not a separate container)
+- **vc-issuer / vc-verifier / vc-apigw / vc-registry / mini-oidc** — Production-like VC services (optional)
+- **facetec-api** — FaceTec SDK ↔ vc-issuer bridge (optional, `FACETEC=yes`)
 
 ## Quick Start
 
@@ -50,7 +52,8 @@ make help          # Full option reference
   ├── go-trust/             # trust PDP
   ├── wallet-common/        # shared TypeScript types
   ├── vc/                   # VC services (optional, for VC=yes)
-  └── helm-charts/          # production Helm chart (optional, for PDP=helm)
+  ├── helm-charts/          # production Helm chart (optional, for PDP=helm)
+  └── facetec-api/          # FaceTec SDK bridge (optional, for FACETEC=yes)
   ```
 
 The `install.sh` script clones all of these automatically. Alternatively,
@@ -65,7 +68,7 @@ For the full list of options, targets, and usage patterns, run:
 make help
 ```
 
-This shows all available parameters (PDP, VC, TRANSPORT, CONFORMANCE, R2PS, DOMAIN, GOLDEN, TUNNELS, WALLET_NAME, APP_PACKAGE),
+This shows all available parameters (PDP, VC, TRANSPORT, CONFORMANCE, R2PS, DOMAIN, GOLDEN, TUNNELS, FACETEC, ANDROID_APPS, WALLET_NAME, APP_PACKAGE),
 interaction rules, and complete examples.
 
 ## Quickstart Examples
@@ -158,7 +161,7 @@ can be tested against the local dev environment using a physical Android device 
 make android-setup
 
 # For SDK sample app (siros-sdk-kotlin):
-make android-setup APP_PACKAGE=org.sirosfoundation.sdk.sample
+make android-setup APP_PACKAGE=org.siros.sdk.sample
 
 # For native wrapper apps:
 make android-setup APP_PACKAGE=com.example.mywalletapp
@@ -221,7 +224,7 @@ setup that may be needed for physical-device testing.
 
 **Manual ADB fallback** (if `make android-setup` can't set the flag automatically):
 ```bash
-adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.sirosfoundation.sdk.sample
+adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.siros.sdk.sample
 ```
 
 ### Key Files
@@ -321,6 +324,8 @@ environment variables or on the command line:
 | `BACKEND_PATH` | `../go-wallet-backend` | Wallet backend source |
 | `VC_PATH` | `../vc` | VC services source |
 | `GO_TRUST_PATH` | `../go-trust` | go-trust source |
+| `FACETEC_PATH` | `../facetec-api` | facetec-api source (`FACETEC=yes` only) |
+| `HELM_CHARTS_PATH` | `../helm-charts` | helm-charts source (`PDP=helm` / `make fly-up` only) |
 | `WALLET_NAME` | `SIROS ID (dev)` | Wallet display name |
 
 ```bash
@@ -389,135 +394,23 @@ cd ../sirosid-tests && make test-conformance
 
 ## R2PS (Remote PAKE-Protected Signing)
 
-The R2PS service provides a remote WSCD (Wallet Secure Cryptographic Device)
-backed by SoftHSM2. It enables the wallet to perform key generation, signing,
-and ECDH operations through a PAKE-authenticated protocol.
-
-### Starting R2PS
+An advanced, currently deprioritized WSCD option: a remote HSM-backed signing
+service (SoftHSM2 + PAKE-authenticated protocol), as an alternative to the
+default on-device keystore.
 
 ```bash
 make up R2PS=yes VC=yes
+make r2ps-setup          # verify health + list provisioned keys
 ```
 
-This adds:
-- `r2ps-server` — go-r2ps-service (WSCD + WSCA + admin, port 8443)
-- `r2ps-softhsm` — SoftHSM2 init (token label `r2ps-wscd`, PIN `1234`)
-- `attest-softhsm` — Separate HSM for wallet-backend attestation keys
-
-### Key Provisioning Flow
-
-R2PS keys are **not** provisioned via the admin API. Instead, the wallet SDK
-performs key provisioning through the R2PS protocol itself:
-
-1. **Registration** — The wallet registers with the R2PS server using OPAQUE
-   (password-authenticated key exchange). This creates a credential on the
-   server tied to the wallet's `client_id` and `context`.
-
-2. **Authentication** — On subsequent connections, the wallet authenticates
-   via OPAQUE to establish a session (with session ID and symmetric key).
-
-3. **Key Generation** — The authenticated wallet sends a `P256Generate`
-   request through the R2PS protocol. The server generates an EC P-256 key
-   pair in the HSM and returns confirmation. The public key is stored in the
-   key store for later retrieval.
-
-4. **Signing** — The wallet sends sign requests (with the key ID) through
-   the authenticated session. The server signs using the HSM-held private key.
-
-### Admin API (Monitoring)
-
-The admin API (port 8444 on host, 8081 inside container) provides read-only
-inspection and status list management:
-
-```bash
-# List all HSM-generated public keys
-curl -s http://localhost:8444/admin/store/keys | jq .
-
-# List keys for a specific wallet client
-curl -s http://localhost:8444/admin/store/keys?client_id=<wallet-id> | jq .
-
-# Get a specific key by KID
-curl -s http://localhost:8444/admin/store/keys/<kid> | jq .
-
-# List status entries (ka = key attestation, wia = wallet instance attestation)
-curl -s http://localhost:8444/admin/store/statuses/ka | jq .
-curl -s http://localhost:8444/admin/store/statuses/wia | jq .
-
-# Allocate a new status list index (for testing)
-curl -s -X POST http://localhost:8444/admin/store/allocate/ka | jq .
-
-# Verify R2PS health
-curl -s http://localhost:8443/healthz
-```
-
-### Wallet-Backend Integration
-
-The wallet-backend is made aware of R2PS via the `WALLET_R2PS_URL` environment
-variable (set automatically by `docker-compose.r2ps.yml`):
-
-```yaml
-environment:
-  - WALLET_R2PS_URL=http://r2ps-server:8443
-```
-
-### Android SDK Configuration
-
-For the native Android SDK (`siros-sdk-kotlin`), R2PS is configured in the
-sample app's `WalletViewModel`:
-
-- `BuildConfig.R2PS_ENABLED` — Toggle R2PS (requires native lib built with
-  `r2ps` Cargo feature in `siros-wscd-manager`)
-- `DEFAULT_R2PS_URL` — R2PS server URL (default: `http://192.168.240.1:9443`
-  for Waydroid, where `192.168.240.1` is the host gateway)
-
-When running conformance tests with R2PS, use the port remapping overlay to
-avoid conflicts with the conformance suite (both use 8443):
-
-```bash
-# R2PS remapped to 9443/9444 to coexist with conformance suite on 8443
-docker compose -f docker-compose.test.yml \
-  -f docker-compose.vc-services.yml \
-  -f docker-compose.go-trust.yml \
-  -f docker-compose.go-trust-allow.yml \
-  -f docker-compose.r2ps.yml \
-  -f docker-compose.r2ps-conformance.yml \
-  -f docker-compose.conformance.yml \
-  up -d
-```
-
-### HSM Details
-
-| Parameter | Value |
-|-----------|-------|
-| HSM module | `/usr/lib/softhsm/libsofthsm2.so` |
-| Token label | `r2ps-wscd` |
-| User PIN | `1234` |
-| SO PIN | `5678` |
-| Key type | EC P-256 |
-| Pool size | 4 sessions |
-
-### Verifying Provisioned Keys
-
-After the wallet has registered and generated a key:
-
-```bash
-# Run the setup script to check status
-make r2ps-setup
-
-# Or manually query the admin API
-curl -s http://localhost:8444/admin/store/keys | python3 -c "
-import sys, json
-keys = json.load(sys.stdin)
-for k in keys:
-    print(f\"  KID: {k['kid']}  Curve: {k['curve']}  Client: {k.get('client_id','?')}\")
-"
-```
+See [R2PS.md](R2PS.md) for the key-provisioning protocol, admin API
+cookbook, HSM parameters, and Android SDK plugin configuration.
 
 ## Fly.io Deployment
 
-Spin up a full, independently addressable wallet stack (frontend, backend,
-PDP, issuer, verifier, apigw, registry, mongo, mini-oidc) on Fly.io under the
-shared `sirosfoundation` org - each named environment gets its own set of
+Spin up a full, independently addressable wallet stack (frontend, wallet-proxy,
+backend, PDP, issuer, verifier, apigw, registry, mongo, mini-oidc) on Fly.io
+under the shared `sirosfoundation` org - each named environment gets its own set of
 `sirosid-<env>-*` apps and `*.fly.dev` URLs, fully isolated from every other
 environment. Config is rendered from `helm-charts/siros-id-stack` (same
 mechanism as `PDP=helm`, see below) and images are pulled straight from that
@@ -574,24 +467,25 @@ they're not redundant, each solves a problem the other can't:
   (`make fly-down ENV=alice`) - no separate cleanup/expiry job needed.
 
 - **`values-fly.yaml`'s `images:` block (shared default, checked in)** -
-  currently overrides only `images.pdp`, because `helm-charts`' own pin
-  (`images.pdp` in `siros-id-stack/values.yaml`) is a pre-release commit-sha
-  tag that predates a fix ([sirosfoundation/go-trust#112](https://github.com/sirosfoundation/go-trust/pull/112))
+  pins several components (currently `images.pdp`, `images.walletBackend`,
+  and the four `vc.*` image keys) ahead of `helm-charts`' own, slower-moving
+  pins, each because this repo needs a fix or feature the chart hasn't
+  caught up to yet - e.g. the `images.pdp` override exists because the
+  chart's own pin predates a fix
+  ([sirosfoundation/go-trust#112](https://github.com/sirosfoundation/go-trust/pull/112))
   the PDP's whitelist needs to function *at all* once deployed on Fly
   (without it, JWKS fetch fails for every whitelisted issuer/verifier and
-  the whitelist never becomes healthy - not a "nice to have," a hard
-  requirement). This is deliberately **not** handled by asking every
-  developer to remember `IMAGES=pdp=...` on every `make fly-up` - a broken
-  default should be fixed at the default, not worked around per-invocation.
-  It's a temporary stopgap: once `helm-charts` bumps its own `images.pdp`
-  pin past `v0.9.2`, this override should be deleted from `values-fly.yaml`
-  entirely, and PDP goes back to being sourced from the chart exactly like
-  every other component - no permanent special-casing.
+  the whitelist never becomes healthy). This is deliberately **not**
+  handled by asking every developer to remember `IMAGES=pdp=...` on every
+  `make fly-up` - a broken default should be fixed at the default, not
+  worked around per-invocation.
 
-  The block also overrides `images.walletBackend` to `0.9.0`, ahead of
-  `helm-charts`' own pin (still `0.6.1`) - kept as a local override rather
-  than bumped upstream since `helm-charts` versions are maintained on their
-  own release process, independent of this repo's.
+  Every entry in that file's `images:` block carries its own comment naming
+  the exact upstream condition under which it should be deleted (e.g. "once
+  helm-charts bumps images.pdp past vX.Y.Z") - read `values-fly.yaml`
+  directly for the current pinned versions and per-override rationale
+  rather than trusting a version number here; this prose already drifted
+  out of sync with the file once and will again.
 
 ### Android app identities (debug builds + Play Store keys)
 
@@ -630,46 +524,24 @@ conversion every consumer needs.
 
 ```
 sirosid-dev/
-├── install.sh                           # Bootstrap script (curl | bash)
-├── Makefile                             # Single entry point for all operations
-├── .env.android                         # Generated: APK key hash + package name (make android-setup)
-├── .env.tunnel                          # Generated: Cloudflare tunnel URLs (make tunnel)
-├── docker-compose.test.yml              # Primary dev environment
-├── docker-compose.go-trust.yml          # go-trust base overlay
-├── docker-compose.go-trust-allow.yml    # go-trust allow-all
-├── docker-compose.go-trust-whitelist.yml
-├── docker-compose.go-trust-deny.yml
-├── docker-compose.vc-services.yml       # VC services (issuer, verifier, apigw, registry)
-├── docker-compose.vc-go-trust.yml       # VC ↔ go-trust wiring
-├── docker-compose.conformance.yml       # OpenID Conformance Suite
-├── docker-compose.r2ps.yml              # R2PS service (go-r2ps-service + SoftHSM2)
-├── docker-compose.r2ps-conformance.yml  # R2PS port remapping for conformance coexistence
-├── docker-compose.android.yml           # Android SDK overlay
-├── docker-compose.domain.yml            # Custom domain overlay (DOMAIN= support)
-├── docker-compose.tunnel.yml           # Cloudflare tunnel URL overlay
-├── docker-compose.golden.yml            # Golden overlay: wallet images
-├── docker-compose.golden-go-trust.yml   # Golden overlay: go-trust image
-├── docker-compose.golden-vc.yml         # Golden overlay: VC service images
-├── docker-compose.http-transport.yml    # HTTP proxy transport
-├── docker-compose.wmp-transport.yml     # WMP transport
-├── nginx-e2e.conf                       # Frontend nginx config (dashboard + health proxies)
-├── fixtures/
-│   ├── create-pki.sh                    # PKI generation script
-│   ├── vc-config.yaml                   # Shared VC services config
-│   ├── vc-go-trust-whitelist.yaml       # Trust whitelist
-│   ├── vc-pki/                          # Signing keys and certificates
-│   ├── vc-metadata/                     # VCTM JSON files
-│   └── vc-presentation-requests/        # Presentation request templates
-├── mocks/
-│   ├── verifier/                        # OpenID4VP mock verifier
-│   └── trust-pdp/                       # AuthZEN PDP mock
-└── scripts/
-    ├── setup-android.sh             # Android dev setup: keystore → .env.android + assetlinks.json + ADB
-    ├── generate-android-config.py   # (legacy) Android config generator
-    ├── generate-assetlinks.sh       # (legacy) assetlinks.json generator
-    ├── start-soft-fido2.sh
-    ├── stop-soft-fido2.sh
-    └── tunnel.sh                    # Cloudflare quick tunnel management
+├── install.sh                     # Bootstrap script (curl | bash)
+├── Makefile                       # Single entry point for all operations
+├── docker-compose.test.yml        # Primary dev environment (always included)
+├── docker-compose.*.yml           # Optional overlays - one per make up flag
+│                                  # (go-trust modes, VC, R2PS, conformance,
+│                                  # Android/USB, tunnel, domain, golden
+│                                  # images, transports, FaceTec, helm-config)
+│                                  # -- run `make help` for which flag adds
+│                                  # which overlay; there are ~30 of these
+├── nginx-e2e.conf                 # Frontend nginx config (dashboard + health proxies)
+├── values-dev.yaml / values-fly.yaml   # Helm values overlays for render-helm-config.py
+├── fixtures/                      # VC/PDP config templates, PKI, presentation requests
+├── mocks/                         # mock-verifier (OpenID4VP) + trust-pdp (legacy AuthZEN) mocks
+└── scripts/                       # All Makefile-invoked automation (Fly deploy, Android/USB
+                                   # setup, helm config rendering, tunnels, PKI) - see each
+                                   # script's own header/--help; setup-android.sh is the
+                                   # actively-used Android setup path, generate-assetlinks.sh
+                                   # is its (unused) legacy predecessor
 ```
 
 ## Troubleshooting
@@ -707,6 +579,8 @@ cd sirosid-tests && make test-conformance
 
 ## See Also
 
+- [ANDROID-TESTING.md](ANDROID-TESTING.md) — Android SDK / Waydroid / USB device testing deep dive
+- [R2PS.md](R2PS.md) — Remote PAKE-Protected Signing deep dive
 - [Local Development Environment](https://developers.siros.org/howto/local-dev-environment) — full setup guide on the developer docs site
 - [sirosid-tests](https://github.com/sirosfoundation/sirosid-tests) — E2E test suites
 - [go-wallet-backend](https://github.com/sirosfoundation/go-wallet-backend) — Wallet backend

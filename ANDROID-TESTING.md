@@ -52,7 +52,7 @@ make android-launch
 
 ## Custom Package Name Configuration
 
-By default, the sample app uses `org.sirosfoundation.sdk.sample`. To test with different package names:
+By default, the sample app uses `org.siros.sdk.sample`. To test with different package names:
 
 ```bash
 # Run setup with a custom package name
@@ -96,7 +96,7 @@ cat > .well-known/assetlinks.json <<EOF
   "relation": ["delegate_permission/common.handle_all_urls"],
   "target": {
     "namespace": "android_app",
-    "package_name": "org.sirosfoundation.sdk.sample",
+    "package_name": "org.siros.sdk.sample",
     "sha256_cert_fingerprints": ["xAfybcO0yPlUA_Gko2tH6oIRb9Y-qa3uVtm0m_qW0w"]
   }
 }]
@@ -232,38 +232,42 @@ make usb-android-status
 
 ## WSCD Plugins Configuration
 
-The siros-wscd-manager AAR includes three signing backends:
+The sample app selects one of three signing backends at runtime via
+`WalletViewModel.selectPlugin("softkey" | "r2ps" | "fido2")` (see the
+sample app's Settings/WSCA developer screen, or drive it directly via the
+`config` WSCA_TEST action documented below). There is no build-time or
+shell-env-var switch — `export R2PS_ENABLED=true` has no effect; that name
+is only a Gradle `buildConfigField` baked in at compile time
+(`sample-app/build.gradle.kts`, currently `false` in both build types) used
+purely as the *initial* value before the user/test picks a plugin at runtime.
 
-### 1. plugin-softkey (Default)
+All three plugins sit behind `siros-sdk-keystore`'s `WscdManager` interface
+(`SirosWallet.wscdManager`, non-null only for a WSCD-backed keystore):
 
-```kotlin
-// JWE-encrypted container, stored locally on device
-val plugin = SoftkeyPlugin()
-plugin.createKey("key-1", algorithm = "P-256")
-val signature = plugin.sign("key-1", data)
-// Uses Android Keystore for encryption
-```
+### 1. softkey (Default)
+
+The default `KeystoreManager` — a JWE-encrypted container backed by the
+Android Keystore. No `WscdManager` registration needed; this is what you
+get without calling either `register*Plugin` method below.
 
 **When to use**: Development, testing without HSM
 **Security**: Medium (encrypted locally, no attestation)
 
-### 2. plugin-r2ps (Remote PAKE-Protected Signing)
+### 2. r2ps (Remote PAKE-Protected Signing)
 
 ```kotlin
-// Requires R2PS service running (make up R2PS=yes)
-val plugin = R2psPlugin(
-  serverUrl = "http://192.168.240.1:8443",  // or 9443 with conformance
-  clientId = "sdk-test",
-  context = "wallet"
+val config = R2psConfig(
+    serverUrl = "http://192.168.240.1:9443", // or :8443 without conformance
+    clientId = "sdk-test",
+    // ...clientKeyPem / serverPublicKeyPem / authMode - see
+    // sdk/keystore/src/main/kotlin/org/siros/sdk/keystore/WscdManager.kt
 )
-
-// Flow:
-// 1. Register: client registers credential with OPAQUE
-// 2. Authenticate: client sends OPAQUE response to get session key
-// 3. Generate Key: wallet sends P256Generate request
-// 4. Sign: wallet sends sign request with session key
-val signature = plugin.sign("remote-key-1", data)
+wscdManager.registerR2psPlugin(config, OkHttpR2psTransport(config.serverUrl))
 ```
+
+All CBOR/OPAQUE protocol handling happens in Rust (`siros-wscd-manager`,
+exposed via UniFFI) — the Kotlin side only supplies an HTTP transport and
+connection parameters.
 
 **When to use**: Production simulation, HSM-backed keys, audit trails
 **Security**: High (keys never leave HSM, PAKE authentication)
@@ -273,24 +277,24 @@ val signature = plugin.sign("remote-key-1", data)
 # Start with R2PS overlay
 make up R2PS=yes
 
-# Configure sample app
-export R2PS_ENABLED=true
-export DEFAULT_R2PS_URL="http://192.168.240.1:9443"  # if with conformance
+# Toggle the plugin and server URL at runtime (see "Available Actions" below)
+adb shell am start -n org.siros.sdk.sample/.MainActivity \
+  -a org.siros.sdk.sample.WSCA_TEST --es wsca_action config \
+  --ez r2ps_enabled true --es r2ps_url http://192.168.240.1:9443
 
 # View R2PS status
-curl -s http://r2ps-server:8443/admin/store/keys --cert ...
+curl -s http://localhost:8444/admin/store/keys | jq .
 ```
 
-### 3. plugin-fido2 (YubiKey rawSign/previewSign)
+### 3. fido2 (YubiKey previewSign/rawSign)
 
 ```kotlin
-// Requires FIDO2 device (YubiKey, etc.)
-val plugin = PreviewSignPlugin()
-
-// Uses Yubico's previewSign & rawSign extensions for credential signing
-val preview = plugin.previewSign(...)  // Get preview of what will be signed
-val signature = plugin.rawSign(...)     // Perform actual signing
+wscdManager.registerFido2Plugin(transport) // transport: Ctap2TransportProvider
 ```
+
+CTAP2 CBOR request-building/response-parsing happens in Rust; the Kotlin
+`Ctap2TransportProvider` only moves raw command/response bytes over
+USB/BLE/NFC.
 
 **When to use**: Hardware-backed signing, high security requirements
 **Security**: Highest (keys on hardware device, user-verified)
@@ -306,10 +310,13 @@ val signature = plugin.rawSign(...)     // Perform actual signing
    make up VC=yes CONFORMANCE=yes
    make android-setup
 
-2. Deploy sample app with R2PS enabled:
-   export R2PS_ENABLED=true
-   export DEFAULT_R2PS_URL="http://192.168.240.1:9443"
+2. Deploy sample app, then enable R2PS + set its server URL at runtime
+   (Settings/WSCA developer screen, or the `config` WSCA_TEST action -
+   see "WSCD Plugins Configuration" above):
    ./gradlew installDebug
+   adb shell am start -n org.siros.sdk.sample/.MainActivity \
+     -a org.siros.sdk.sample.WSCA_TEST --es wsca_action config \
+     --ez r2ps_enabled true --es r2ps_url http://192.168.240.1:9443
 
 3. Initiate credential offer from conformance suite:
    - Navigate to https://localhost.emobix.co.uk:8443/
@@ -359,7 +366,7 @@ the UI buttons.
 ```
 
 **Key design decisions:**
-- Intent action: `org.sirosfoundation.sdk.sample.WSCA_TEST`
+- Intent action: `org.siros.sdk.sample.WSCA_TEST`
 - Only available in **debug builds** (via `src/debug/AndroidManifest.xml`)
 - Results as structured JSON on logcat tag `WSCA_TEST_RESULT`
 - `ensureAuthenticatedForTesting()` auto-handles passkey registration/login
@@ -418,7 +425,7 @@ ANDROID_DEVICE_SERIAL=<serial> make test-wsca-softkey
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ANDROID_WALLET_PACKAGE` | `org.sirosfoundation.sdk.sample` | App package name |
+| `ANDROID_WALLET_PACKAGE` | `org.siros.sdk.sample` | App package name |
 | `ANDROID_WALLET_ACTIVITY` | `.MainActivity` | Activity class |
 | `ADB_PATH` | `adb` | Path to adb binary |
 | `ANDROID_DEVICE_SERIAL` | (auto) | Target specific device |
@@ -430,21 +437,21 @@ You can also drive WSCA actions manually for debugging:
 
 ```bash
 # Enroll
-adb shell am start -n org.sirosfoundation.sdk.sample/.MainActivity \
-  -a org.sirosfoundation.sdk.sample.WSCA_TEST \
+adb shell am start -n org.siros.sdk.sample/.MainActivity \
+  -a org.siros.sdk.sample.WSCA_TEST \
   --es wsca_action enroll
 
 # Check result
 adb logcat -d -s WSCA_TEST_RESULT:*
 
 # Status
-adb shell am start -n org.sirosfoundation.sdk.sample/.MainActivity \
-  -a org.sirosfoundation.sdk.sample.WSCA_TEST \
+adb shell am start -n org.siros.sdk.sample/.MainActivity \
+  -a org.siros.sdk.sample.WSCA_TEST \
   --es wsca_action status
 
 # Destroy with revoke
-adb shell am start -n org.sirosfoundation.sdk.sample/.MainActivity \
-  -a org.sirosfoundation.sdk.sample.WSCA_TEST \
+adb shell am start -n org.siros.sdk.sample/.MainActivity \
+  -a org.siros.sdk.sample.WSCA_TEST \
   --es wsca_action destroy --es mode revoke
 ```
 
@@ -687,7 +694,8 @@ docker exec -it wallet-db psql -U wallet -c "SELECT * FROM wallet_instance;"
 
 ---
 
-**Last Updated**: 2026-07-08  
-**Sample App**: siros-sdk-kotlin, branch feat/onboarding-provider (PR #34)  
-**WSCD Manager**: 0.1.0 with all plugins (softkey, r2ps, fido2)  
-**Test Automation**: sirosid-tests, branch feat/wsca-lifecycle-tests (PR #5)
+**Last Updated**: 2026-08-07
+**Sample App**: siros-sdk-kotlin, `main` (`org.siros.sdk.sample`)
+**WSCD Manager**: siros-wscd-manager, `main` — UniFFI/Rust-backed `WscdManager`
+plugins (softkey, r2ps, fido2); check `Cargo.toml` for the exact pinned version
+**Test Automation**: sirosid-tests, `main` (WSCA lifecycle tests)
