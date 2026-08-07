@@ -14,6 +14,7 @@
 #
 # Usage:
 #   ./scripts/tunnel.sh              # Start tunnels and write .env.tunnel
+#   ./scripts/tunnel.sh --ensure     # Reuse existing tunnels if still alive, else start fresh (used by make up TUNNELS=yes)
 #   ./scripts/tunnel.sh --restart    # Start tunnels and restart stack with tunnel URLs
 #   ./scripts/tunnel.sh --stop       # Stop running tunnels
 #   ./scripts/tunnel.sh --status     # Show tunnel status and URLs
@@ -35,7 +36,6 @@ FRONTEND_PORT="${FRONTEND_PORT:-3000}"
 BACKEND_PORT="${BACKEND_PORT:-8080}"
 ENGINE_PORT="${ENGINE_PORT:-8082}"
 FACETEC_API_PORT="${FACETEC_API_PORT:-8085}"
-VC_APIGW_PORT="${VC_APIGW_PORT:-9003}"
 
 # VC service ports (only tunnelled when VC=yes)
 VC_VERIFIER_PORT="${VC_VERIFIER_PORT:-9001}"
@@ -207,16 +207,18 @@ start_tunnels() {
     info "Creating Cloudflare quick tunnels (no account required)..."
     echo ""
 
-    local frontend_url backend_url engine_url facetec_api_url vc_apigw_url
+    local frontend_url backend_url engine_url facetec_api_url vc_apigw_url=""
 
     frontend_url=$(start_tunnel "frontend" "$FRONTEND_PORT")
     backend_url=$(start_tunnel "backend" "$BACKEND_PORT")
     engine_url=$(start_tunnel "engine" "$ENGINE_PORT")
     facetec_api_url=$(start_tunnel "facetec-api" "$FACETEC_API_PORT")
-    vc_apigw_url=$(start_tunnel "vc-apigw" "$VC_APIGW_PORT")
 
-    # VC service tunnels (only if VC services are running)
-    local vc_verifier_url="" vc_apigw_url=""
+    # VC service tunnels (only if VC services are running) - vc-apigw is
+    # started here, once, alongside vc-verifier; it must NOT also be started
+    # unconditionally above, or you get two competing tunnels for the same
+    # port and the URL from whichever ran first is silently discarded.
+    local vc_verifier_url=""
     if curl -sf "http://localhost:${VC_VERIFIER_PORT}/health" >/dev/null 2>&1 || \
        [[ "${TUNNEL_VC:-}" == "yes" ]]; then
         vc_verifier_url=$(start_tunnel "vc-verifier" "$VC_VERIFIER_PORT")
@@ -278,6 +280,10 @@ case "${1:-start}" in
         start_tunnels
         info "Restarting stack with tunnel URLs..."
         # This is handled by the Makefile target
+        ;;
+    -h|--help)
+        echo "Usage: $0 [start|ensure|stop|status|restart]"
+        exit 0
         ;;
     *)
         echo "Usage: $0 [start|ensure|stop|status|restart]"
