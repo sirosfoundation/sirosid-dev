@@ -76,6 +76,14 @@ def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation
     # Authenticated - see render-helm-config.py's patch_wallet_backend_fly
     # for why (mongodb has no auth otherwise, reachable by any app in the
     # shared sirosfoundation org over Fly's 6PN network).
+    if not mongo_password:
+        print(
+            f"WARNING: --mongo-password not set - rendering an UNAUTHENTICATED "
+            f"mongodb URI for env '{env}'. Only safe within the same fly-up.py "
+            f"invocation that set the matching Fly secret; for a one-off render, "
+            f"just re-run 'make fly-up ENV={env}' instead.",
+            file=sys.stderr,
+        )
     mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
     config["common"]["mongo"]["uri"] = f"mongodb://{mongo_auth}{fly_internal(env, 'mongodb', 27017)}/?authSource=admin"
 

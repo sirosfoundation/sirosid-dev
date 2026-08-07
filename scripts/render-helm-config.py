@@ -56,6 +56,7 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 import argparse
 import secrets
 import string
+import sys
 from pathlib import Path
 
 import yaml
@@ -166,6 +167,16 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # one per deploy and sets it via Fly secret + MONGO_INITDB_ROOT_* env
     # vars). Any app in the sirosfoundation org could otherwise reach this
     # database over Fly's shared 6PN network with zero credentials.
+    if not mongo_password:
+        print(
+            f"WARNING: --mongo-password not set - rendering an UNAUTHENTICATED "
+            f"mongodb URI for env '{env}'. This will not match the mongodb app's "
+            f"actual Fly secret (set per-invocation by fly-up.py) unless this "
+            f"render happens to run inside that same fly-up.py invocation. "
+            f"Re-run 'make fly-up ENV={env}' instead of hand-rendering a single "
+            f"component if you're not sure.",
+            file=sys.stderr,
+        )
     mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
     config["storage"]["mongodb"] = {
         "uri": f"mongodb://{mongo_auth}sirosid-{env}-mongodb.internal:27017/wallet-backend?authSource=admin",
@@ -470,7 +481,11 @@ def main():
     parser.add_argument("--mongo-password", default=None,
                          help="--target fly only: mongodb root password (fly-up.py generates and sets "
                               "this as a Fly secret on the mongodb app itself; passed here so "
-                              "wallet-backend's config embeds a matching authenticated connection URI).")
+                              "wallet-backend's config embeds a matching authenticated connection URI). "
+                              "Omitting this does NOT error - it silently renders an UNAUTHENTICATED "
+                              "mongo URI instead. Only safe within the same fly-up.py invocation that "
+                              "set the matching Fly secret; for a one-off render, just re-run "
+                              "'make fly-up ENV=<name>' instead.")
     parser.add_argument("--conformance", action="store_true",
                          help="--target fly only: also whitelist the conformance suite's issuer/verifier "
                               "identity (https://sirosid-<env>-conformance.fly.dev/*) with PDP, so the "
