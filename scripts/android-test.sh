@@ -3,12 +3,15 @@
 #
 # Usage:
 #   ./scripts/android-test.sh              # full cycle: build → deploy → register issuer → launch → watch logs
-#   ./scripts/android-test.sh deploy       # skip build, just deploy + launch
-#   ./scripts/android-test.sh logs         # just watch logs
-#   ./scripts/android-test.sh register     # just re-register issuer with backend
 #   ./scripts/android-test.sh build        # just build APK
+#   ./scripts/android-test.sh rebuild      # force no-cache rebuild of the APK
+#   ./scripts/android-test.sh deploy       # skip build, just deploy + launch
+#   ./scripts/android-test.sh launch       # just launch the already-installed app (alias: run)
+#   ./scripts/android-test.sh register     # just re-register issuer with backend
 #   ./scripts/android-test.sh restart      # restart backend + re-register issuer + relaunch app
-#   ./scripts/android-test.sh config        # generate Android vc-config only
+#   ./scripts/android-test.sh logs         # just watch logs
+#   ./scripts/android-test.sh snapshot     # take a one-shot log snapshot instead of following
+#   ./scripts/android-test.sh config       # generate Android vc-config only
 
 set -euo pipefail
 
@@ -252,6 +255,10 @@ case "$CMD" in
         do_launch
         sleep 3
         do_logs_snapshot
+        ;;
+    -h|--help)
+        echo "Usage: $0 {full|config|build|rebuild|deploy|launch|register|restart|logs|snapshot}"
+        exit 0
         ;;
     *)
         echo "Usage: $0 {full|config|build|rebuild|deploy|launch|register|restart|logs|snapshot}"

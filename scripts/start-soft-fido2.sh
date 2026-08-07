@@ -22,6 +22,18 @@
 
 set -e
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    echo "Usage: SOFT_FIDO2_PATH=/path/to/soft-fido2 $0"
+    echo ""
+    echo "Environment:"
+    echo "  SOFT_FIDO2_PATH    - Path to the soft-fido2 repository (required)"
+    echo "  SOFT_FIDO2_LOG     - Log file path (default: /tmp/soft-fido2.log)"
+    echo "  SOFT_FIDO2_PID     - PID file path (default: /tmp/soft-fido2.pid)"
+    echo "  SOFT_FIDO2_TIMEOUT - Seconds to wait for startup (default: 10)"
+    echo "  SOFT_FIDO2_REBUILD - Set to 1 to force rebuild even if binary exists"
+    exit 0
+fi
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'

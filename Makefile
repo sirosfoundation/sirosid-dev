@@ -290,6 +290,7 @@ help: ## Show this help
 	@echo "  make android-restart                 Restart Android test services + relaunch app"
 	@echo "  make android-launch                  Launch installed sample app + log snapshot"
 	@echo "  make android-logs                    Follow Android app logs"
+	@echo "  make android-test [CMD=...]          Build/deploy/test via subcommand (build|rebuild|deploy|launch|register|restart|logs|snapshot)"
 	@echo ""
 	@echo "$(GREEN)USB Android Targets (physical device):$(NC)"
 	@echo "  make usb-android-setup               Set up port forwarding + assetlinks + config"
@@ -301,6 +302,7 @@ help: ## Show this help
 	@echo "  make usb-android-launch              Launch installed sample app on USB device"
 	@echo "  make usb-android-logs                Follow Android app logs from USB device"
 	@echo "  make usb-android-status              Show device info, port forwarding, app status"
+	@echo "  make usb-android-test [CMD=...]      Build/deploy/test via subcommand (setup|teardown|status|build|rebuild|deploy|launch|register|restart|logs|snapshot|test-wsca)"
 	@echo ""
 	@echo "$(GREEN)USB Android WSCA Tests (physical device):$(NC)"
 	@echo "  make usb-android-test-wsca           Run WSCA lifecycle conformance tests"
@@ -869,7 +871,7 @@ render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-i
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [WALLET_ATTESTATION=no])
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [WALLET_ATTESTATION=no, default: yes])
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -1041,7 +1043,7 @@ android-launch: ## Launch the installed Android sample app and print a log snaps
 android-logs: ## Follow Android sample app logs
 	@./scripts/android-test.sh logs
 
-android-test: ## Build, deploy, and test Android SDK sample app (use CMD= for subcommands: build|deploy|register|restart|logs|snapshot)
+android-test: ## Build, deploy, and test Android SDK sample app (use CMD= for subcommands: build|rebuild|deploy|launch|register|restart|logs|snapshot)
 	@./scripts/android-test.sh $(CMD)
 
 # =============================================================================
@@ -1093,7 +1095,7 @@ usb-android-logs: ## Follow Android sample app logs from USB device
 usb-android-status: ## Show USB device info, port forwarding, and app status
 	@./scripts/usb-android-test.sh status
 
-usb-android-test: ## Build, deploy, and test on USB device (use CMD= for subcommands)
+usb-android-test: ## Build, deploy, and test on USB device (use CMD= for subcommands: setup|teardown|status|build|rebuild|deploy|launch|register|restart|logs|snapshot|test-wsca)
 	@./scripts/usb-android-test.sh $(CMD)
 
 usb-android-test-wsca: ## Run WSCA lifecycle conformance tests on USB device (R2PS_URL / FIDO2_ENABLED)

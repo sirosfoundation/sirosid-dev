@@ -8,6 +8,14 @@
 # Environment:
 #   SOFT_FIDO2_PID - PID file path (default: /tmp/soft-fido2.pid)
 
+if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
+    echo "Usage: $0"
+    echo ""
+    echo "Environment:"
+    echo "  SOFT_FIDO2_PID - PID file path (default: /tmp/soft-fido2.pid)"
+    exit 0
+fi
+
 # Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[0;33m'

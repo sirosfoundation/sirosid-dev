@@ -9,12 +9,18 @@
 # Usage:
 #   ./scripts/usb-android-test.sh              # full cycle: setup → build → deploy → register → launch → logs
 #   ./scripts/usb-android-test.sh setup        # set up adb reverse port forwarding
-#   ./scripts/usb-android-test.sh deploy       # skip build, just deploy + launch
-#   ./scripts/usb-android-test.sh logs         # just watch logs
-#   ./scripts/usb-android-test.sh register     # just re-register issuer with backend
+#   ./scripts/usb-android-test.sh teardown     # remove adb reverse port forwarding
+#   ./scripts/usb-android-test.sh status       # show device info, port forwarding, app status
 #   ./scripts/usb-android-test.sh build        # just build APK
+#   ./scripts/usb-android-test.sh rebuild      # force no-cache rebuild of the APK
+#   ./scripts/usb-android-test.sh deploy       # skip build, just deploy + launch
+#   ./scripts/usb-android-test.sh launch       # just launch the already-installed app (alias: run)
+#   ./scripts/usb-android-test.sh register     # just re-register issuer with backend
 #   ./scripts/usb-android-test.sh restart      # restart backend + re-register issuer + relaunch app
+#   ./scripts/usb-android-test.sh logs         # just watch logs
+#   ./scripts/usb-android-test.sh snapshot     # take a one-shot log snapshot instead of following
 #   ./scripts/usb-android-test.sh config       # generate USB-specific vc-config only
+#   ./scripts/usb-android-test.sh test-wsca    # run WSCA lifecycle conformance tests
 
 set -euo pipefail
 
@@ -366,6 +372,10 @@ case "$CMD" in
         do_launch
         sleep 3
         do_logs_snapshot
+        ;;
+    -h|--help)
+        echo "Usage: $0 {full|setup|teardown|status|config|build|rebuild|deploy|launch|register|restart|logs|snapshot|test-wsca}"
+        exit 0
         ;;
     *)
         echo "Usage: $0 {full|setup|teardown|status|config|build|rebuild|deploy|launch|register|restart|logs|snapshot|test-wsca}"

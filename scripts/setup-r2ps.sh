@@ -7,7 +7,7 @@
 #
 # Prerequisites:
 #   - R2PS server running (docker-compose.r2ps.yml overlay)
-#   - ADMIN_TOKEN set (defaults to e2e test token)
+#   - R2PS_ADMIN_DEV_TOKEN set (defaults to e2e test token)
 #
 # Usage:
 #   ./scripts/setup-r2ps.sh [--r2ps-url URL] [--r2ps-admin-url URL]
@@ -31,10 +31,10 @@ YELLOW='\033[0;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-info()  { echo -e "${GREEN}[r2ps]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[r2ps]${NC} $*"; }
+info()  { echo -e "${GREEN}[r2ps]${NC} $*" >&2; }
+warn()  { echo -e "${YELLOW}[r2ps]${NC} $*" >&2; }
 error() { echo -e "${RED}[r2ps]${NC} $*" >&2; }
-ok()    { echo -e "${GREEN}[r2ps] ✓${NC} $*"; }
+ok()    { echo -e "${GREEN}[r2ps] ✓${NC} $*" >&2; }
 
 # ---------------------------------------------------------------------------
 # Argument parsing
@@ -43,6 +43,11 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --r2ps-url)       R2PS_URL="$2";       shift 2 ;;
         --r2ps-admin-url) R2PS_ADMIN_URL="$2"; shift 2 ;;
+        -h|--help)
+            echo "Usage: $0 [--r2ps-url URL] [--r2ps-admin-url URL]"
+            echo "Env: R2PS_URL, R2PS_ADMIN_URL, R2PS_ADMIN_DEV_TOKEN"
+            exit 0
+            ;;
         *) error "Unknown argument: $1"; exit 1 ;;
     esac
 done
