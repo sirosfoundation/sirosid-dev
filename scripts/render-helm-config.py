@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render wallet-backend and go-trust (PDP) config from helm-charts/siros-id-stack.
+"""Render wallet-backend and go-trust (PDP) config from the siros-id-stack chart.
 
 sirosid-dev historically hand-maintained a parallel set of flat env vars
 (docker-compose.test.yml's `wallet-backend` service, `--registry`/`--whitelist`
@@ -10,7 +10,7 @@ load one config struct via a YAML file (`--config`); Helm just renders that
 YAML into a ConfigMap instead of a hand-written file.
 
 This script renders the real chart with `helm template` (no cluster contact -
-this only needs the chart on disk, see HELM_CHARTS_PATH) and extracts the
+this only needs the chart on disk, see SIROS_ID_STACK_PATH) and extracts the
 ConfigMap `data` blocks for wallet-backend and pdp verbatim, so any change to
 the chart's templates/values flows into sirosid-dev automatically. The only
 hand-written logic here is the small set of rewrites that are genuinely
@@ -47,7 +47,7 @@ patch_wallet_backend() per --target.
     point values-dev.yaml uses for compose.
 
 Output goes to fixtures/rendered/ (gitignored - regenerate with
-`make render-helm-config` whenever helm-charts or values-dev.yaml change, or
+`make render-helm-config` whenever siros-id-stack or values-dev.yaml change, or
 via fly-up.py for a named environment). Secrets are generated once into
 fixtures/rendered-secrets/ and reused on subsequent runs (idempotent, like
 the chart's own `lookup`-based generator) - only used for --target compose;
@@ -66,7 +66,7 @@ from helm_render_lib import extract_configmap_data, helm_template, load_manifest
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 
 # wallet-backend secret file names -> length. Mirrors
-# helm-charts/siros-id-stack/config/secret_generator_template.yaml's use of
+# siros-id-stack/config/secret_generator_template.yaml's use of
 # `randAlphaNum 32` for these same keys.
 WALLET_BACKEND_SECRETS = ["jwtSecret", "adminToken"]
 
@@ -88,7 +88,7 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
     # Same reasoning as patch_wallet_backend_fly: debug builds / Play Store
     # signing keys (scripts/android_apps.py's .android-apps / --android-app)
     # are added on top of, not instead of, the production fingerprints
-    # helm-charts' extraRpOrigins already carries.
+    # siros-id-stack's extraRpOrigins already carries.
     for apk_key_hash in extra_android_apk_key_hashes or []:
         origin = f"android:apk-key-hash:{apk_key_hash}"
         if origin not in android_origins:
@@ -106,15 +106,29 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
     # for a real Kubernetes deployment; docker-compose.helm-config.yml instead
     # bind-mounts the same fixtures/vc-pki files docker-compose.test.yml's
     # plain-env-var wallet-backend service uses, at these paths.
-    config["wallet_provider"]["private_key_path"] = "/app/fixtures/wallet_provider_ec_private.pem"
-    config["wallet_provider"]["certificate_path"] = "/app/fixtures/wallet_provider_ec.crt"
-    config["wallet_provider"]["ca_cert_path"] = "/app/fixtures/rootCA.crt"
+    # siros-id-stack's wallet-backend template doesn't render a
+    # `wallet_provider` block at all today (see CLAUDE.md's wallet_provider.wia
+    # gotcha) - setdefault() so this still patches cleanly once it does,
+    # without requiring a chart change first.
+    wallet_provider = config.setdefault("wallet_provider", {})
+    wallet_provider["private_key_path"] = "/app/fixtures/wallet_provider_ec_private.pem"
+    wallet_provider["certificate_path"] = "/app/fixtures/wallet_provider_ec.crt"
+    wallet_provider["ca_cert_path"] = "/app/fixtures/rootCA.crt"
+    # go-wallet-backend's own defaultConfig() (pkg/config/config.go) - not the
+    # chart, not this script - defaults wia.enabled to true and wia.mode to
+    # "etsi" with no wallet_version default, so an absent/empty `wia` block
+    # still fails Validate()'s "wallet_version is required" check at startup.
+    # docker-compose.test.yml's hand-maintained wallet-backend service already
+    # disables WIA the same way (WALLET_WALLET_PROVIDER_WIA_ENABLED=false) -
+    # Key Attestation doesn't require it (wallet_instance_id is optional) -
+    # mirrored here for the helm-rendered config path.
+    wia = wallet_provider.setdefault("wia", {})
+    wia["enabled"] = False
     # WIA-PoP aud claim validation (go-wallet-backend#221): must match
     # whatever URL the wallet SDK treats as "the backend", i.e. server.base_url
-    # above - go-wallet-backend's config validation fails startup otherwise
-    # once wia.enabled is true (hardcoded in the chart) with signing keys
-    # configured (pkg/config/config.go).
-    config["wallet_provider"]["wia"]["wallet_provider_uri"] = config["server"]["base_url"]
+    # above - only matters if wia.enabled is ever flipped back to true, kept
+    # here so this stays correct if that changes.
+    wia["wallet_provider_uri"] = config["server"]["base_url"]
     return config
 
 
@@ -138,7 +152,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # Debug builds / Play Store signing keys the operator wants THIS
     # environment to also authenticate (fly-up.py's --android-app / auto-read
     # .env.android) - these are on top of, not instead of, the production
-    # fingerprints helm-charts' extraRpOrigins already carries. Registering
+    # fingerprints siros-id-stack's extraRpOrigins already carries. Registering
     # only in assetlinks.json without also adding the origin here would pass
     # Android's OS-level Digital Asset Links check but still fail the actual
     # WebAuthn ceremony (wallet-backend never accepts the origin).
@@ -188,16 +202,31 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # instead lands the private key as a Fly secret and the public cert/CA as
     # --file-local files at these paths (see the `name == "wallet-backend"`
     # branch in deploy_component()).
-    config["wallet_provider"]["private_key_path"] = "/main-secrets/walletProviderKey"
-    config["wallet_provider"]["certificate_path"] = "/main-config/walletProviderCert.pem"
-    config["wallet_provider"]["ca_cert_path"] = "/main-config/walletProviderCA.pem"
+    # siros-id-stack's wallet-backend template doesn't render a
+    # `wallet_provider` block at all today (see CLAUDE.md's wallet_provider.wia
+    # gotcha) - setdefault() so this still patches cleanly once it does,
+    # without requiring a chart change first.
+    wallet_provider = config.setdefault("wallet_provider", {})
+    wallet_provider["private_key_path"] = "/main-secrets/walletProviderKey"
+    wallet_provider["certificate_path"] = "/main-config/walletProviderCert.pem"
+    wallet_provider["ca_cert_path"] = "/main-config/walletProviderCA.pem"
+    # go-wallet-backend's own defaultConfig() (pkg/config/config.go) - not the
+    # chart, not this script - defaults wia.enabled to true and wia.mode to
+    # "etsi" with no wallet_version default, so an absent/empty `wia` block
+    # still fails Validate()'s "wallet_version is required" check at startup
+    # unless wallet_attestation flips mode to "ietf" below (which has no
+    # wallet_version requirement) - explicit either way, matching
+    # docker-compose.test.yml's WALLET_WALLET_PROVIDER_WIA_ENABLED precedent
+    # rather than relying on the Go default.
+    wia = wallet_provider.setdefault("wia", {})
+    wia["enabled"] = wallet_attestation
     # WIA-PoP aud claim validation (go-wallet-backend#221): must match
     # whatever URL the wallet SDK treats as "the backend" - on Fly that's
     # proxy_url (server.base_url above), not wallet-backend's own
     # .internal-only hostname. Startup fails hard without this once
-    # wia.enabled is true (hardcoded in the chart) with signing keys
-    # configured (pkg/config/config.go's validation).
-    config["wallet_provider"]["wia"]["wallet_provider_uri"] = config["server"]["base_url"]
+    # wia.enabled is true with signing keys configured (pkg/config/config.go's
+    # validation).
+    wia["wallet_provider_uri"] = config["server"]["base_url"]
     # Opt-in: authenticate to issuers via OAuth-Client-Attestation (the WIA
     # itself) instead of a pre-registered client_id - see
     # build_fly_values_overlay()'s wallet-providers whitelist entry, which
@@ -232,7 +261,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # maximum" the moment SPOCP/topology fixes let it get this far.
     config["as"]["default_max_tac"] = "rwlidk"
     if wallet_attestation:
-        config["wallet_provider"]["wia"]["issuer"] = config["server"]["base_url"]
+        wia["issuer"] = config["server"]["base_url"]
         # go-wallet-backend v0.10.0 replaced the old "always include x5c,
         # optionally also include iss" dual-flag design (the field this
         # replaced, `omit_x5c`, isn't even referenced anywhere in current
@@ -249,7 +278,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
         # issued (see project_geneva2026_issuer_bugs memory finding #4) -
         # this environment's WIA no longer matched the iss+kid identity
         # shape it worked correctly with before this go-wallet-backend bump.
-        config["wallet_provider"]["wia"]["mode"] = "ietf"
+        wia["mode"] = "ietf"
     return config
 
 
@@ -363,7 +392,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                 "whitelist": {
                     "enabled": True,
                     "name": f"sirosid-{env} Fly whitelist",
-                    "description": "Fly-hosted vc-services URLs (rendered from helm-charts schema)",
+                    "description": "Fly-hosted vc-services URLs (rendered from siros-id-stack schema)",
                     "lists": lists,
                     "actions": actions,
                 },
@@ -380,7 +409,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                 "mdociaca": {
                     "enabled": True,
                     "name": f"sirosid-{env} mDOC IACA registry",
-                    "description": "IACA cert validation for mso_mdoc issuers (rendered from helm-charts schema)",
+                    "description": "IACA cert validation for mso_mdoc issuers (rendered from siros-id-stack schema)",
                     "issuer_allowlist": pid_issuers,
                 },
             },
@@ -467,13 +496,13 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "helm-charts" / "siros-id-stack"),
-                         help="Path to the siros-id-stack chart (default: ../helm-charts/siros-id-stack)")
+    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"),
+                         help="Path to the siros-id-stack chart (default: ../siros-id-stack)")
     parser.add_argument("--target", choices=["compose", "fly"], default="compose")
     parser.add_argument("--env", help="Environment name, required for --target fly (e.g. test1)")
     parser.add_argument("--android-apk-key-hash", action="append", default=[],
                          help="base64url apk-key-hash (no padding) to add to wallet-backend's "
-                              "rp_origins, on top of the production ones helm-charts already "
+                              "rp_origins, on top of the production ones siros-id-stack already "
                               "carries - repeatable, applies to both --target compose and "
                               "--target fly. See scripts/android_apps.py (.android-apps / "
                               "--android-app) for the developer-facing (colon-hex) form of this "
@@ -503,8 +532,8 @@ def main():
     if not chart_dir.is_dir():
         raise SystemExit(
             f"Chart not found at {chart_dir} - clone sibling repo "
-            f"'helm-charts' next to sirosid-dev, or pass --chart-dir "
-            f"(see HELM_CHARTS_PATH in the Makefile)"
+            f"'siros-id-stack' next to sirosid-dev, or pass --chart-dir "
+            f"(see SIROS_ID_STACK_PATH in the Makefile)"
         )
 
     render(args.target, chart_dir, env=args.env, android_apk_key_hashes=args.android_apk_key_hash,

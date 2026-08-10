@@ -1,5 +1,5 @@
 # Docker Compose overlay: run wallet-backend and PDP off config rendered
-# straight from helm-charts/siros-id-stack instead of hand-maintained env vars
+# straight from the siros-id-stack chart instead of hand-maintained env vars
 # / CLI flags (docker-compose.test.yml's wallet-backend, docker-compose.go-trust*.yml).
 #
 # This is the transitional/opt-in step towards removing that hand-maintained,
@@ -11,7 +11,7 @@
 #   docker compose -f docker-compose.test.yml -f docker-compose.go-trust.yml \
 #     -f docker-compose.helm-config.yml up -d
 #
-# Requires a sibling `../helm-charts` checkout (HELM_CHARTS_PATH) and `../go-trust`
+# Requires a sibling `../siros-id-stack` checkout (SIROS_ID_STACK_PATH) and `../go-trust`
 # with https://github.com/sirosfoundation/go-trust/pull/112 (merged to main
 # 2026-07-25) - the config-file-driven whitelist registry has no way to allow
 # HTTP JWKS fetch without it, so go-trust-config would otherwise register 0

@@ -2,7 +2,7 @@
 
 See scripts/render-helm-config.py's module docstring for the overall Fly
 design (one Fly app per component, `sirosid-<env>-<component>` naming,
-images pulled straight from helm-charts/siros-id-stack/values.yaml, no local
+images pulled straight from the siros-id-stack chart's values.yaml, no local
 build). wallet-backend has no public Fly service - `wallet-proxy` (a small
 nginx app mirroring fixtures/wallet-proxy.conf) is its public identity,
 serving /.well-known/assetlinks.json for Android passkey verification and
@@ -50,7 +50,7 @@ COMPONENTS = [
         "internal_check": {"type": "tcp", "port": 27017},
     },
     {
-        # Not part of helm-charts (sirosid-dev/testing-only, see
+        # Not part of siros-id-stack (sirosid-dev/testing-only, see
         # docker-compose.vc-services.yml) - a minimal OIDC Provider standing
         # in for a real government/eIDAS IdP behind vc-apigw's OIDC auth
         # provider (pid/pid_1_5/pid_1_8/ehic issuance). Must be public - the
@@ -138,7 +138,7 @@ CONFORMANCE_COMPONENTS = [
         "name": "conformance-mongodb",
         # Pinned to the same fixed tag docker-compose.conformance.yml uses -
         # a requirement of this specific (older) conformance suite version,
-        # not templated from helm-charts' mongoCommunityVersion like the
+        # not templated from siros-id-stack's mongoCommunityVersion like the
         # main mongodb component.
         "image": "mongo:6",
         "ports": [{"internal": 27017, "public": False}],
@@ -1650,7 +1650,7 @@ setInterval(checkAll, 10000);
 
 
 def merge_android_identities(wellknown_android: str, extra_identities: list | None = None) -> dict[str, list[str]]:
-    """package -> [fingerprint_hex, ...], merging helm-charts' production
+    """package -> [fingerprint_hex, ...], merging siros-id-stack's production
     `package::fingerprint,...` string with extra_identities (package,
     fingerprint) pairs (e.g. .android-apps) - shared by assetlinks_json()
     and the dashboard's Native App Setup card, so both show the exact same
@@ -1676,7 +1676,7 @@ def merge_android_identities(wellknown_android: str, extra_identities: list | No
 
 def assetlinks_json(wellknown_android: str, extra_identities: list | None = None) -> str:
     """Build a Digital Asset Links JSON array from the same
-    `package::fingerprint,...` string helm-charts' walletFrontend.
+    `package::fingerprint,...` string siros-id-stack's walletFrontend.
     wellknownAndroidPackageNamesAndFingerprints already carries (see
     scripts/fly-up.py - pulled straight from the rendered wallet-frontend-main
     ConfigMap), so already-published Play Store apps (wwwwallet, org.siros.id,

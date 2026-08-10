@@ -52,7 +52,7 @@ make help          # Full option reference
   ├── go-trust/             # trust PDP
   ├── wallet-common/        # shared TypeScript types
   ├── vc/                   # VC services (optional, for VC=yes)
-  ├── helm-charts/          # production Helm chart (optional, for PDP=helm)
+  ├── siros-id-stack/          # public production Helm chart (optional, for PDP=helm)
   └── facetec-api/          # FaceTec SDK bridge (optional, for FACETEC=yes)
   ```
 
@@ -244,7 +244,7 @@ adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.siros.sdk.sample
 | `PDP=whitelist` | go-trust whitelist — only entities in `fixtures/vc-go-trust-whitelist.yaml` are trusted |
 | `PDP=deny` | go-trust deny-all — rejects everything (negative testing) |
 | `PDP=mock` | Legacy mock-trust-pdp (no go-trust) |
-| `PDP=helm` | go-trust whitelist + wallet-backend, both configured from config files rendered off `helm-charts/siros-id-stack` (see `scripts/render-helm-config.py`) instead of hand-maintained env vars/flags. Requires a sibling `../helm-charts` checkout. This is the transitional step towards aligning sirosid-dev's config with the production Helm chart — over time the other PDP modes' hand-maintained env vars are meant to be replaced by this path, not kept alongside it indefinitely. |
+| `PDP=helm` | go-trust whitelist + wallet-backend, both configured from config files rendered off the [siros-id-stack](https://github.com/sirosfoundation/siros-id-stack) chart (see `scripts/render-helm-config.py`) instead of hand-maintained env vars/flags. Requires a sibling `../siros-id-stack` checkout. This is the transitional step towards aligning sirosid-dev's config with the production Helm chart — over time the other PDP modes' hand-maintained env vars are meant to be replaced by this path, not kept alongside it indefinitely. |
 
 ## VC Services
 
@@ -325,7 +325,7 @@ environment variables or on the command line:
 | `VC_PATH` | `../vc` | VC services source |
 | `GO_TRUST_PATH` | `../go-trust` | go-trust source |
 | `FACETEC_PATH` | `../facetec-api` | facetec-api source (`FACETEC=yes` only) |
-| `HELM_CHARTS_PATH` | `../helm-charts` | helm-charts source (`PDP=helm` / `make fly-up` only) |
+| `SIROS_ID_STACK_PATH` | `../siros-id-stack` | siros-id-stack source (`PDP=helm` / `make fly-up` only) |
 | `WALLET_NAME` | `SIROS ID (dev)` | Wallet display name |
 
 ```bash
@@ -412,7 +412,7 @@ Spin up a full, independently addressable wallet stack (frontend, wallet-proxy,
 backend, PDP, issuer, verifier, apigw, registry, mongo, mini-oidc) on Fly.io
 under the shared `sirosfoundation` org - each named environment gets its own set of
 `sirosid-<env>-*` apps and `*.fly.dev` URLs, fully isolated from every other
-environment. Config is rendered from `helm-charts/siros-id-stack` (same
+environment. Config is rendered from the `siros-id-stack` chart (same
 mechanism as `PDP=helm`, see below) and images are pulled straight from that
 chart's `values.yaml` - no local Docker build.
 
@@ -422,7 +422,7 @@ make fly-status ENV=alice          # check all 10 apps
 make fly-down ENV=alice            # tear it down
 ```
 
-Requires `flyctl` installed and authenticated, and a sibling `../helm-charts`
+Requires `flyctl` installed and authenticated, and a sibling `../siros-id-stack`
 checkout (`make setup` clones it).
 
 ### Multiple developers, multiple environments
@@ -468,7 +468,7 @@ they're not redundant, each solves a problem the other can't:
 
 - **`values-fly.yaml`'s `images:` block (shared default, checked in)** -
   pins several components (currently `images.pdp`, `images.walletBackend`,
-  and the four `vc.*` image keys) ahead of `helm-charts`' own, slower-moving
+  and the four `vc.*` image keys) ahead of `siros-id-stack`'s own, slower-moving
   pins, each because this repo needs a fix or feature the chart hasn't
   caught up to yet - e.g. the `images.pdp` override exists because the
   chart's own pin predates a fix
@@ -482,7 +482,7 @@ they're not redundant, each solves a problem the other can't:
 
   Every entry in that file's `images:` block carries its own comment naming
   the exact upstream condition under which it should be deleted (e.g. "once
-  helm-charts bumps images.pdp past vX.Y.Z") - read `values-fly.yaml`
+  siros-id-stack bumps images.pdp past vX.Y.Z") - read `values-fly.yaml`
   directly for the current pinned versions and per-override rationale
   rather than trusting a version number here; this prose already drifted
   out of sync with the file once and will again.
@@ -587,3 +587,4 @@ cd sirosid-tests && make test-conformance
 - [wallet-frontend](https://github.com/wwWallet/wallet-frontend) — Web wallet UI
 - [go-trust](https://github.com/sirosfoundation/go-trust) — Trust PDP
 - [SUNET/vc](https://github.com/SUNET/vc) — VC services (issuer, verifier, registry)
+- [siros-id-stack](https://github.com/sirosfoundation/siros-id-stack) — Production Helm chart (`PDP=helm` / `make fly-up`)

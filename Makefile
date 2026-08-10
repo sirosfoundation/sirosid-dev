@@ -37,7 +37,7 @@ FRONTEND_PATH ?= ../wallet-frontend
 BACKEND_PATH ?= ../go-wallet-backend
 FACETEC_PATH ?= ../facetec-api
 GO_TRUST_PATH ?= ../go-trust
-HELM_CHARTS_PATH ?= ../helm-charts
+SIROS_ID_STACK_PATH ?= ../siros-id-stack
 
 # Docker compose files
 PRIMARY_COMPOSE := docker-compose.test.yml
@@ -134,7 +134,7 @@ else ifeq ($(PDP),deny)
 else ifeq ($(PDP),mock)
   _PDP_LABEL := mock-trust-pdp
 else ifeq ($(PDP),helm)
-  # wallet-backend + PDP config rendered from helm-charts/siros-id-stack
+  # wallet-backend + PDP config rendered from the siros-id-stack chart
   # (see scripts/render-helm-config.py) instead of hand-maintained env vars /
   # CLI flags. Transitional/opt-in step towards removing the latter entirely.
   COMPOSE_FILES += -f $(HELM_CONFIG_COMPOSE)
@@ -319,9 +319,9 @@ help: ## Show this help
 	@echo "  $(YELLOW)PDP=$(NC)<allow|whitelist|deny|mock|helm>"
 	@echo "                     Select trust policy provider"
 	@echo "                     default: $(GREEN)allow$(NC)"
-	@echo "                     helm: wallet-backend + PDP config rendered from"
-	@echo "                     helm-charts/siros-id-stack instead of hand-maintained"
-	@echo "                     env vars/flags - requires HELM_CHARTS_PATH (../helm-charts)"
+	@echo "                     helm: wallet-backend + PDP config rendered from the"
+	@echo "                     siros-id-stack chart instead of hand-maintained"
+	@echo "                     env vars/flags - requires SIROS_ID_STACK_PATH (../siros-id-stack)"
 	@echo ""
 	@echo "  $(YELLOW)VC=$(NC)<yes|no>"
 	@echo "                     Enable production-like VC services"
@@ -419,7 +419,7 @@ help: ## Show this help
 	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
 	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
 	@echo "  $(YELLOW)FACETEC_PATH=$(NC)     facetec-api source     (default: $(GREEN)../facetec-api$(NC))"
-	@echo "  $(YELLOW)HELM_CHARTS_PATH=$(NC) helm-charts source      (default: $(GREEN)../helm-charts$(NC)) - PDP=helm only"
+	@echo "  $(YELLOW)SIROS_ID_STACK_PATH=$(NC) siros-id-stack chart source (default: $(GREEN)../siros-id-stack$(NC)) - PDP=helm only"
 	@echo ""
 	@echo "$(GREEN)Other Variables:$(NC)"
 	@echo ""
@@ -549,11 +549,11 @@ ifneq ($(call _truthy,$(VC)),)
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
 endif
 ifeq ($(PDP),helm)
-	@# Pre-flight: $(HELM_CHARTS_PATH)/siros-id-stack must exist to render config from
-	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
-		echo "$(RED)Error: PDP=helm requires the 'helm-charts' repo at $(HELM_CHARTS_PATH)$(NC)"; \
+	@# Pre-flight: $(SIROS_ID_STACK_PATH) must exist to render config from
+	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
+		echo "$(RED)Error: PDP=helm requires the 'siros-id-stack' repo at $(SIROS_ID_STACK_PATH)$(NC)"; \
 		echo "  Run: make setup   (clones all required sibling repos)"; \
-		echo "  Or:  git clone $(GITHUB_ORG)/helm-charts.git $(HELM_CHARTS_PATH)"; \
+		echo "  Or:  git clone $(GITHUB_ORG)/siros-id-stack.git $(SIROS_ID_STACK_PATH)"; \
 		exit 1; \
 	fi
 	@$(MAKE) --no-print-directory render-helm-config
@@ -883,16 +883,16 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
 # =============================================================================
 
-render-helm-config: ## Render wallet-backend/PDP config from helm-charts/siros-id-stack (use ANDROID_APPS=pkg=fingerprint,... to add debug/Play Store keys)
-	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
-		echo "$(RED)Error: helm-charts repo not found at $(HELM_CHARTS_PATH)$(NC)"; \
+render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack chart (use ANDROID_APPS=pkg=fingerprint,... to add debug/Play Store keys)
+	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
+		echo "$(RED)Error: siros-id-stack repo not found at $(SIROS_ID_STACK_PATH)$(NC)"; \
 		echo "  Run: make setup   (clones all required sibling repos)"; \
 		exit 1; \
 	fi
 	@_HASHES=$$(python3 scripts/android_apps.py --apk-key-hashes $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
 	_FLAGS=""; \
 	for h in $$_HASHES; do _FLAGS="$$_FLAGS --android-apk-key-hash $$h"; done; \
-	python3 scripts/render-helm-config.py --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack" $$_FLAGS
+	python3 scripts/render-helm-config.py --chart-dir "$(SIROS_ID_STACK_PATH)" $$_FLAGS
 
 # =============================================================================
 # Fly.io — named ephemeral environments (see scripts/fly-up.py, fly-down.py)
@@ -905,13 +905,13 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	@if [ ! -d "$(HELM_CHARTS_PATH)/siros-id-stack" ]; then \
-		echo "$(RED)Error: helm-charts repo not found at $(HELM_CHARTS_PATH)$(NC)"; \
+	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
+		echo "$(RED)Error: siros-id-stack repo not found at $(SIROS_ID_STACK_PATH)$(NC)"; \
 		echo "  Run: make setup   (clones all required sibling repos)"; \
 		exit 1; \
 	fi
 	@command -v flyctl >/dev/null 2>&1 || { echo "$(RED)Error: flyctl not found - https://fly.io/docs/flyctl/install/$(NC)"; exit 1; }
-	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(HELM_CHARTS_PATH)/siros-id-stack" --images "$(IMAGES)" \
+	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(SIROS_ID_STACK_PATH)" --images "$(IMAGES)" \
 		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") \
 		$(if $(call _truthy,$(CONFORMANCE)),--conformance) \
 		$(if $(TRUSTED_ISSUERS),--trusted-issuer "$(TRUSTED_ISSUERS)") \
@@ -939,7 +939,7 @@ fly-status: ## Show Fly app status for a named environment (make fly-status ENV=
 # =============================================================================
 
 # repo:branch pairs — override GITHUB_ORG to use a different remote
-# helm-charts is NOT in this list - it's consumed read-only as a config-
+# siros-id-stack is NOT in this list - it's consumed read-only as a config-
 # rendering source (PDP=helm), not branched for local feature work like the
 # repos below, so it gets its own clone-or-update step in `setup` instead of
 # the generic "exists -> leave alone" handling.
@@ -949,8 +949,7 @@ SETUP_REPOS := \
 	go-wallet-backend:main \
 	go-trust:main \
 	vc:main \
-	facetec-api:main \
-        helm-charts:main
+	facetec-api:main
 
 setup: ## Clone sibling repos needed for local development
 	@echo "$(GREEN)Setting up sibling repositories...$(NC)"
@@ -967,27 +966,27 @@ setup: ## Clone sibling repos needed for local development
 				printf "  %-24s $(RED)failed$(NC)\n" "$$repo"; \
 		fi; \
 	done
-	@# helm-charts: clone if missing; if present and on main, fast-forward it -
+	@# siros-id-stack: clone if missing; if present and on main, fast-forward it -
 	@# a stale chart would silently render outdated/wrong config for PDP=helm.
 	@# Left alone (with a note) if checked out to something other than main,
 	@# e.g. a PR branch someone's deliberately testing against.
-	@if [ -d "$(HELM_CHARTS_PATH)" ]; then \
-		branch="$$(git -C $(HELM_CHARTS_PATH) branch --show-current 2>/dev/null)"; \
+	@if [ -d "$(SIROS_ID_STACK_PATH)" ]; then \
+		branch="$$(git -C $(SIROS_ID_STACK_PATH) branch --show-current 2>/dev/null)"; \
 		if [ "$$branch" = "main" ]; then \
-			if git -C $(HELM_CHARTS_PATH) fetch origin --quiet && \
-				git -C $(HELM_CHARTS_PATH) pull --ff-only --quiet; then \
-				printf "  %-24s $(GREEN)updated$(NC) (main)\n" "helm-charts"; \
+			if git -C $(SIROS_ID_STACK_PATH) fetch origin --quiet && \
+				git -C $(SIROS_ID_STACK_PATH) pull --ff-only --quiet; then \
+				printf "  %-24s $(GREEN)updated$(NC) (main)\n" "siros-id-stack"; \
 			else \
-				printf "  %-24s $(RED)update failed$(NC) (main - check for local changes)\n" "helm-charts"; \
+				printf "  %-24s $(RED)update failed$(NC) (main - check for local changes)\n" "siros-id-stack"; \
 			fi; \
 		else \
-			printf "  %-24s $(YELLOW)exists$(NC) (on '%s', not main — skipping auto-update)\n" "helm-charts" "$$branch"; \
+			printf "  %-24s $(YELLOW)exists$(NC) (on '%s', not main — skipping auto-update)\n" "siros-id-stack" "$$branch"; \
 		fi; \
 	else \
-		echo "  Cloning helm-charts (branch main)..."; \
-		git clone -b main "$(GITHUB_ORG)/helm-charts.git" "$(HELM_CHARTS_PATH)" && \
-			printf "  %-24s $(GREEN)cloned$(NC) (main)\n" "helm-charts" || \
-			printf "  %-24s $(RED)failed$(NC)\n" "helm-charts"; \
+		echo "  Cloning siros-id-stack (branch main)..."; \
+		git clone -b main "$(GITHUB_ORG)/siros-id-stack.git" "$(SIROS_ID_STACK_PATH)" && \
+			printf "  %-24s $(GREEN)cloned$(NC) (main)\n" "siros-id-stack" || \
+			printf "  %-24s $(RED)failed$(NC)\n" "siros-id-stack"; \
 	fi
 	@echo ""
 	@echo "$(GREEN)Done.$(NC) Run 'make install' to install dependencies, then 'make up' to start the stack."

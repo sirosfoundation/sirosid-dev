@@ -20,7 +20,7 @@
 services:
   # MongoDB - persistent storage for VC services
   mongodb:
-    # Pinned to match helm-charts/siros-id-stack values.yaml's
+    # Pinned to match the siros-id-stack chart's values.yaml's
     # images.mongoCommunityVersion, so local testing uses the same Mongo
     # version production runs (via the MongoDB Community Operator).
     image: mongo:7.0.24

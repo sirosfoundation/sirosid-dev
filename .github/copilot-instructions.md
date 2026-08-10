@@ -77,7 +77,7 @@ PDP=allow     → + docker-compose.go-trust.yml + docker-compose.go-trust-allow.
 PDP=whitelist → + go-trust.yml + go-trust-whitelist.yml
 PDP=deny      → + go-trust.yml + go-trust-deny.yml
 PDP=mock      → nothing extra (mock-trust-pdp is in test.yml)
-PDP=helm      → + docker-compose.helm-config.yml (requires ../helm-charts)
+PDP=helm      → + docker-compose.helm-config.yml (requires ../siros-id-stack)
 VC=yes        → + docker-compose.vc-services.yml
 FACETEC=yes   → + vc-services (implied) + docker-compose.facetec.yml
 CONFORMANCE   → + vc-services + vc-go-trust + conformance (no HTTP transport - it's deprecated)

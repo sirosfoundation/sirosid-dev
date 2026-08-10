@@ -3,7 +3,7 @@
 #
 # This is never applied to a real cluster. It exists so sirosid-dev can feed
 # wallet-backend and go-trust (PDP) the exact same config schema Helm renders
-# in production (helm-charts/siros-id-stack), instead of a hand-maintained,
+# in production (the siros-id-stack chart), instead of a hand-maintained,
 # independently-drifting set of env vars.
 #
 # Fields the renderer post-processes after `helm template` (see
@@ -23,6 +23,15 @@ tenant:
 domain:
   root: localhost
 
+# The chart's own default is "" (no longer a non-empty placeholder as of the
+# siros-id-stack chart) - required (siros-id-stack's own README: "the chart
+# defaults alone are not deployable") for 04-wallet-backend.yaml/
+# 04-wallet-frontend.yaml's HTTPRoute parentRefs to render at all; this is
+# never applied to a real cluster, so any placeholder value works here.
+gateway:
+  name: gateway
+  namespace: siros-shared
+
 features:
   generateSecrets: false
   credentialTypes: {}
@@ -40,7 +49,7 @@ pdp:
     whitelist:
       enabled: true
       name: "sirosid-dev local whitelist"
-      description: "docker-compose vc-services URLs (rendered from helm-charts schema)"
+      description: "docker-compose vc-services URLs (rendered from siros-id-stack schema)"
       # Local vc-services are plain http, but the whitelist registry's JWKS
       # auto-discovery refuses http by default (pkg/registry/static/whitelist.go:123,
       # "testing only" per its own comment) - without this, every whitelisted

@@ -39,12 +39,12 @@ clone_or_update() {
   fi
 }
 
-# helm-charts: config-rendering source for PDP=helm / make fly-up. Not
+# siros-id-stack: config-rendering source for PDP=helm / make fly-up. Not
 # branched for feature work, so it gets gentler handling than the repos
 # above: clone if missing, fast-forward if already on main, otherwise leave
 # it alone (it may be deliberately checked out to a PR branch under test).
 setup_helm_charts() {
-  local dir="helm-charts"
+  local dir="siros-id-stack"
   if [ -d "$dir/.git" ]; then
     local branch
     branch=$(git -C "$dir" branch --show-current)

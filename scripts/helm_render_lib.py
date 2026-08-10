@@ -1,4 +1,4 @@
-"""Shared helpers for rendering config off helm-charts/siros-id-stack.
+"""Shared helpers for rendering config off the siros-id-stack chart.
 
 Used by render-helm-config.py (docker-compose / Fly wallet-backend + pdp
 config) and fly-up.py (image refs + mongo version for the Fly deployment) -

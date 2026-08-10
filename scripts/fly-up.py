@@ -5,7 +5,7 @@ Deploys 10 Fly apps under sirosfoundation, prefixed `sirosid-<env>-`: mongodb,
 mini-oidc, vc-registry, vc-issuer, vc-verifier, vc-apigw, pdp, wallet-backend,
 wallet-proxy, wallet-frontend - see scripts/fly_common.py's COMPONENTS table
 and scripts/render-helm-config.py's module docstring for the overall design
-(images pulled straight from helm-charts/siros-id-stack/values.yaml, config
+(images pulled straight from the siros-id-stack chart's values.yaml, config
 rendered from the same chart, no local Docker build).
 
 Supports both web (wallet-frontend) and native app clients:
@@ -14,7 +14,7 @@ Supports both web (wallet-frontend) and native app clients:
   (shared with local docker-compose testing - see its module docstring for
   the full precedence: --android-app flags / ANDROID_APPS, then
   .android-apps, then .env.android), plus the production fingerprints
-  helm-charts' wellknownAndroidPackageNamesAndFingerprints already carries.
+  siros-id-stack's wellknownAndroidPackageNamesAndFingerprints already carries.
   Every identity is wired into BOTH wallet-proxy's
   /.well-known/assetlinks.json (Android's OS-level Digital Asset Links
   check) AND wallet-backend's rp_origins (the server-side WebAuthn
@@ -36,7 +36,7 @@ are prefixed per-env, so nothing collides. `--images` (or `make fly-up
 ENV=alice IMAGES=...`) lets one environment pin different image tags per
 component than another - e.g. testing your own branch build of
 wallet-backend - without touching values-fly.yaml (which would affect every
-environment) or the shared helm-charts pin.
+environment) or the shared siros-id-stack pin.
 
 No `depends_on` equivalent on Fly - components are deployed strictly in
 COMPONENTS order and each `fly deploy` blocks on its own health checks
@@ -648,12 +648,12 @@ def register_vc_services(env: str, admin_token: str):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", required=True)
-    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "helm-charts" / "siros-id-stack"))
+    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"))
     parser.add_argument("--android-app", action="append",
                          help="package=fingerprint (SHA-256, colon-separated hex, as printed by "
                               "`keytool -list -v`) for a debug build or Play Store signing key to "
                               "authenticate against this environment, in addition to the production "
-                              "fingerprints helm-charts already carries. Repeatable, and each value "
+                              "fingerprints siros-id-stack already carries. Repeatable, and each value "
                               "may be a comma-separated list. The same package can appear more than "
                               "once (e.g. a debug key and a Play Store upload key). Combined with - "
                               "not instead of - .android-apps and .env.android if present; see "

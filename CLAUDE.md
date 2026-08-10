@@ -1,7 +1,7 @@
 # sirosid-dev — instructions for Claude Code
 
 This repo is a **harness, not a service**: it orchestrates sibling repos
-(go-wallet-backend, go-trust, vc, wallet-frontend, wallet-common, helm-charts)
+(go-wallet-backend, go-trust, vc, wallet-frontend, wallet-common, siros-id-stack)
 via a large self-documenting `Makefile`, docker-compose files, and Python
 scripts under `scripts/`. It has no application code of its own. Run
 `make help` for the authoritative, current list of targets/flags — this file
@@ -9,7 +9,7 @@ only covers what `make help` and `README.md` don't: the non-obvious traps.
 
 ## Sibling repo layout
 
-`make setup` clones (or, for `helm-charts`, fast-forwards) these into `../`:
+`make setup` clones (or, for `siros-id-stack`, fast-forwards) these into `../`:
 
 | repo | branch | notes |
 |---|---|---|
@@ -19,9 +19,9 @@ only covers what `make help` and `README.md` don't: the non-obvious traps.
 | `go-trust` | `main` | trust PDP |
 | `vc` | `main` | SUNET/vc issuer/verifier/apigw/registry — only needed for `VC=yes` |
 | `facetec-api` | `main` | only needed for `FACETEC=yes` |
-| `helm-charts` | `main` | **read-only config-rendering source**, not branched for feature work. `make setup` auto-`git pull --ff-only`s it if it's on `main`; if checked out to something else (e.g. a PR branch someone's deliberately testing), it's left alone with a warning. |
+| `siros-id-stack` | `main` | **read-only, public config-rendering source** — the public [SIROS ID Stack Helm chart](https://github.com/sirosfoundation/siros-id-stack), not branched for feature work. `make setup` auto-`git pull --ff-only`s it if it's on `main`; if checked out to something else (e.g. a PR branch someone's deliberately testing), it's left alone with a warning. |
 
-`make update` force-hard-resets every repo above (except helm-charts) to its
+`make update` force-hard-resets every repo above (except siros-id-stack) to its
 default branch — destructive, only run it when you actually want to discard
 local changes in the sibling checkouts.
 
@@ -34,7 +34,7 @@ local changes in the sibling checkouts.
 - **Named Fly.io environments (`make fly-up ENV=<name>` / `fly-down` /
   `fly-status`)** — a full, independently-addressable, shareable stack at
   `sirosid-<env>-*.fly.dev` URLs under the `sirosfoundation` Fly org, region
-  `arn`. Images are pulled straight from `helm-charts/siros-id-stack`'s
+  `arn`. Images are pulled straight from `siros-id-stack`'s
   `values.yaml` (layered with `values-fly.yaml`) — **no local Docker build** by
   default. Use this for: handing a URL to someone else, native
   Android/iOS app testing (real assetlinks/AASA over real TLS), OIDC-backed
@@ -45,13 +45,13 @@ local changes in the sibling checkouts.
   environment can't resolve another's `.internal` addresses).
 
 Both paths share one underlying mechanism: `scripts/render-helm-config.py`
-renders wallet-backend/PDP config from the same `helm-charts/siros-id-stack`
-chart, just with different hostname targets (`--target fly` uses
-`.internal`/`.fly.dev`, the local `PDP=helm` path uses compose service names).
-This is why `PDP=helm` locally and any `fly-up` deploy are the two contexts
-where a stale/wrong `../helm-charts` checkout will silently produce wrong
-config — always check `git -C ../helm-charts branch --show-current` if PDP
-behavior looks off in either mode.
+renders wallet-backend/PDP config from the same `siros-id-stack` chart, just
+with different hostname targets (`--target fly` uses `.internal`/`.fly.dev`,
+the local `PDP=helm` path uses compose service names). This is why `PDP=helm`
+locally and any `fly-up` deploy are the two contexts where a stale/wrong
+`../siros-id-stack` checkout will silently produce wrong config — always
+check `git -C ../siros-id-stack branch --show-current` if PDP behavior looks
+off in either mode.
 
 ### `make up` — key flags (see `make help` for the full, current list)
 
@@ -104,7 +104,7 @@ behavior looks off in either mode.
 
 ## Why `values-fly.yaml` overrides exist (don't remove without checking)
 
-`helm-charts/siros-id-stack/values.yaml`'s own image pins lag behind what this
+`siros-id-stack/values.yaml`'s own image pins lag behind what this
 repo needs; `values-fly.yaml`'s `images:` block patches specific components:
 
 - **`images.pdp`** — pinned to a specific `go-trust` tag ahead of the chart's
@@ -184,25 +184,19 @@ have.
 
 **wallet-backend crash-loops with `Failed to load backend configuration`
 after bumping `images.walletBackend` past go-wallet-backend v0.10.0, if
-`helm-charts`' wallet-backend template sets `wallet_provider.wia.enabled:
+the chart's wallet-backend template sets `wallet_provider.wia.enabled:
 true`:** v0.10.0 added a hard startup-time validation
 (`pkg/config/config.go`'s `WIAConfig.WalletVersion` check) requiring
 `wallet_provider.wia.wallet_version` whenever `wallet_provider.wia.mode`
 defaults to `"etsi"` (EC TS03 v1.5.2 §2.3.1 made it a mandatory WIA claim,
 with no sensible built-in default per that field's own comment) — `wia.
 enabled: true` with no `wallet_version` alongside it fails config validation
-and the backend never comes up. As things stand, `helm-charts`' `main` branch
-doesn't render a `wallet_provider.wia` block in
-`siros-id-stack/templates/04-wallet-backend.yaml` at all yet — the Key
-Attestation work that adds one lives on the (unmerged)
-`feat/wallet-provider-key-attestation-config` branch, where the
-`wallet_version` fix currently exists only as an **uncommitted** local edit
-in whatever checkout added it. So this isn't a live bug on `main` today, but
-it will be the moment that branch's `wallet_provider.wia` block lands
-anywhere upstream — if you're touching that template, always pair
-`wia.enabled: true` with a `wallet_version` (this repo uses go-wallet-
-backend's own version as the value) in the same change, and don't assume an
-uncommitted fix in a sibling `helm-charts` checkout survives a stash/reset.
+and the backend never comes up. As things stand, `siros-id-stack`'s `main`
+branch doesn't render a `wallet_provider.wia` block in
+`templates/04-wallet-backend.yaml` at all, so this isn't a live bug today —
+but if a future chart update adds one, always pair `wia.enabled: true` with a
+`wallet_version` (this repo uses go-wallet-backend's own version as the
+value) in the same change.
 
 **`scripts/render-helm-config.py --target fly --env <name> ...` run by
 itself (not via `make fly-up`) without `--mongo-password <value>` silently
