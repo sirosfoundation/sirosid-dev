@@ -949,7 +949,8 @@ SETUP_REPOS := \
 	go-wallet-backend:main \
 	go-trust:main \
 	vc:main \
-	facetec-api:main
+	facetec-api:main \
+        helm-charts:main
 
 setup: ## Clone sibling repos needed for local development
 	@echo "$(GREEN)Setting up sibling repositories...$(NC)"
