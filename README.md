@@ -42,6 +42,7 @@ make help          # Full option reference
 ## Prerequisites
 
 - Docker and Docker Compose
+- [`helm`](https://helm.sh/docs/intro/install/) (CLI only, no cluster needed) — required for `PDP=helm` and `make fly-up`; both render config via `helm template` against the `siros-id-stack` chart
 - The following sibling repositories cloned alongside `sirosid-dev`
   (not needed when using `GOLDEN=yes` with pre-built images):
   ```

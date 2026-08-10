@@ -556,6 +556,7 @@ ifeq ($(PDP),helm)
 		echo "  Or:  git clone $(GITHUB_ORG)/siros-id-stack.git $(SIROS_ID_STACK_PATH)"; \
 		exit 1; \
 	fi
+	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - PDP=helm renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
 	@$(MAKE) --no-print-directory render-helm-config
 endif
 ifneq ($(call _truthy,$(FACETEC)),)
@@ -889,6 +890,7 @@ render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack 
 		echo "  Run: make setup   (clones all required sibling repos)"; \
 		exit 1; \
 	fi
+	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - this renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
 	@_HASHES=$$(python3 scripts/android_apps.py --apk-key-hashes $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
 	_FLAGS=""; \
 	for h in $$_HASHES; do _FLAGS="$$_FLAGS --android-apk-key-hash $$h"; done; \
@@ -911,6 +913,7 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		exit 1; \
 	fi
 	@command -v flyctl >/dev/null 2>&1 || { echo "$(RED)Error: flyctl not found - https://fly.io/docs/flyctl/install/$(NC)"; exit 1; }
+	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - fly-up renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
 	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(SIROS_ID_STACK_PATH)" --images "$(IMAGES)" \
 		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") \
 		$(if $(call _truthy,$(CONFORMANCE)),--conformance) \
