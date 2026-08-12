@@ -284,7 +284,8 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
 
 def build_fly_values_overlay(env: str, conformance: bool = False,
                               extra_trusted_issuers: list = None,
-                              wallet_attestation: bool = False) -> dict:
+                              wallet_attestation: bool = False,
+                              extra_trusted_verifiers: list = None) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
@@ -358,6 +359,24 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     if extra_trusted_issuers:
         pid_issuers.extend(extra_trusted_issuers)
 
+    # Ad-hoc external verifiers for interop testing (e.g. a third-party DC
+    # API/mdoc conformance site) - trusted as verifiers only, mirroring
+    # extra_trusted_issuers above. Unlike issuers, there's no
+    # resolution-only path here: DC API/OpenID4VP trust evaluation for a
+    # verifier is a key-bearing check (the presented client_id is
+    # cryptographically bound, e.g. x509_hash:<sha256-of-cert>), so an entry
+    # here must be whatever literal string go-trust's WhitelistRegistry
+    # actually compares against *after* its own Subject.ID normalization -
+    # confirmed via a live PDP rejection log that x509_hash:... values are
+    # used un-normalized (safe to paste verbatim from the wallet's own error
+    # message), while x509_san_dns:<host>/x509_san_uri:<uri> values get
+    # normalized to https://<host>/<uri> before any whitelist match runs -
+    # an entry written in the original x509_san_dns:/x509_san_uri: form will
+    # never match and silently behaves as "not trusted" with no error
+    # indicating why.
+    if extra_trusted_verifiers:
+        verifiers.extend(extra_trusted_verifiers)
+
     # This environment's own wallet-backend, trusted as a wallet_provider
     # (go-trust's RoleWalletProvider) so SUNET/vc's WalletAttestationEvaluator
     # can authenticate wallets via their WIA alone - no pre-registered
@@ -395,6 +414,20 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                     "description": "Fly-hosted vc-services URLs (rendered from siros-id-stack schema)",
                     "lists": lists,
                     "actions": actions,
+                    # Required for extra_trusted_verifiers entries identified by a
+                    # non-fetchable client_id scheme (x509_hash:.../x509_san_dns:...)
+                    # rather than a JWKS URL - go-trust's WhitelistRegistry denies
+                    # with "no keys cached for entity" for such an entity unless
+                    # this is set, even when whitelist membership matches (see
+                    # pkg/registry/static/whitelist.go's TrustX509ViaSystemCA doc
+                    # comment). Still gated by the whitelist-membership check
+                    # itself, so this is safe to enable unconditionally rather
+                    # than only when extra_trusted_verifiers is non-empty -
+                    # confirmed live: silently omitting this field (as this
+                    # function did before) is indistinguishable from a whitelist
+                    # rejection in the wallet's own error message, and cost real
+                    # debugging time tracing through go-trust's source to find.
+                    "trust_x509_via_system_ca": True,
                 },
                 # The whitelist registry above only ever caches JWT-signing
                 # keys (via jwt-vc-issuer/jwks_uri discovery) - it has no
@@ -420,7 +453,8 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
-           extra_trusted_issuers: list = None, wallet_attestation: bool = False) -> list:
+           extra_trusted_issuers: list = None, wallet_attestation: bool = False,
+           extra_trusted_verifiers: list = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -442,7 +476,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         out_dir.mkdir(parents=True, exist_ok=True)
         overlay_path = out_dir / "values.generated.yaml"
         overlay_path.write_text(yaml.dump(
-            build_fly_values_overlay(env, conformance, extra_trusted_issuers, wallet_attestation), sort_keys=False))
+            build_fly_values_overlay(env, conformance, extra_trusted_issuers, wallet_attestation,
+                                      extra_trusted_verifiers), sort_keys=False))
         values_files.append(overlay_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")

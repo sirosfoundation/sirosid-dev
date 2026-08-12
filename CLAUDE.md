@@ -230,12 +230,19 @@ is deliberately still added to `pid_issuers` despite the slow-boot cost,
 because a resolution-only trust check doesn't need the JWKS to have actually
 resolved). Separately: if testing wallet-initiated *presentation* against an
 external verifier, `TRUSTED_ISSUERS`/`extra_trusted_issuers` is **only** added
-to `pid_issuers`, never `verifiers` — check
+to `pid_issuers`, never `verifiers` — use `TRUSTED_VERIFIERS=` for that
+instead (`make fly-up ENV=<name> TRUSTED_VERIFIERS=identity,...`); check
 `fixtures/rendered/fly-<env>/pdp.yaml`'s `whitelist.lists.verifiers` if a
-presentation-trust failure looks like it should've been covered by an issuer
-whitelist entry. There's no flag to add one today; it'd need a new
-`render-helm-config.py` parameter (see `scripts/render-helm-config.py`'s
-`build_fly_values_overlay()`).
+presentation-trust failure looks like it should've been covered but wasn't.
+`TRUSTED_VERIFIERS` entries must be the exact string go-trust's
+`WhitelistRegistry` compares against *after* its own `Subject.ID`
+normalization, confirmed via a live PDP rejection: an `x509_hash:...`
+`client_id` is left un-normalized (safe to paste verbatim from the wallet's
+"not trusted" error log), but `x509_san_dns:<host>`/`x509_san_uri:<uri>`
+values get normalized to `https://<host>`/`<uri>` before any whitelist match
+runs — an entry written in the original `x509_san_dns:`/`x509_san_uri:` form
+(the shape go-trust's own docs example at `docs/docs/sirosid/trust/go-trust.md`
+uses) silently never matches.
 
 **vc-apigw/vc-issuer crash-looping on Fly with an `mdl`/mdoc-schema config
 error (`unexpected end of JSON input` / `vctm_file_path ... required_without`):**

@@ -92,7 +92,7 @@ def run(cmd, **kwargs):
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
                     conformance: bool = False, extra_trusted_issuers: list = None,
-                    wallet_attestation: bool = False) -> list:
+                    wallet_attestation: bool = False, extra_trusted_verifiers: list = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -107,7 +107,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
                    out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
                    conformance=conformance, extra_trusted_issuers=extra_trusted_issuers,
-                   wallet_attestation=wallet_attestation)
+                   wallet_attestation=wallet_attestation, extra_trusted_verifiers=extra_trusted_verifiers)
     patch_cmd = [sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password]
     if wallet_attestation:
         patch_cmd.append("--wallet-attestation")
@@ -686,11 +686,28 @@ def main():
                               "this environment's own vc-apigw - for interop testing against a "
                               "third-party issuer (e.g. a conference/plugfest mdoc issuer). Repeatable, "
                               "and each value may be a comma-separated list.")
+    parser.add_argument("--trusted-verifier", action="append",
+                         help="Extra credential verifier identity to trust via PDP's whitelist, in "
+                              "addition to this environment's own vc-verifier - for interop testing "
+                              "against a third-party DC API/OpenID4VP verifier (e.g. "
+                              "digital-credentials.dev, verifier.multipaz.org). Must be the exact "
+                              "post-normalization Subject.ID string go-trust's whitelist compares "
+                              "against - for an x509_hash:... client_id (the common case for DC API "
+                              "test sites) paste it verbatim from the wallet's own 'not trusted' error "
+                              "log, since that scheme is left un-normalized; for x509_san_dns:<host>/"
+                              "x509_san_uri:<uri> schemes, go-trust normalizes to https://<host>/<uri> "
+                              "before matching, so the entry must be written in that normalized form, "
+                              "not the original x509_san_dns:/x509_san_uri: form. Repeatable, and each "
+                              "value may be a comma-separated list.")
     args = parser.parse_args()
 
     extra_trusted_issuers = []
     for pair in (args.trusted_issuer or []):
         extra_trusted_issuers.extend(v.strip() for v in pair.split(",") if v.strip())
+
+    extra_trusted_verifiers = []
+    for pair in (args.trusted_verifier or []):
+        extra_trusted_verifiers.extend(v.strip() for v in pair.split(",") if v.strip())
 
     image_overrides = {}
     for pair in args.images.split(","):
@@ -723,7 +740,8 @@ def main():
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
-                           args.conformance, extra_trusted_issuers, args.wallet_attestation)
+                           args.conformance, extra_trusted_issuers, args.wallet_attestation,
+                           extra_trusted_verifiers)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

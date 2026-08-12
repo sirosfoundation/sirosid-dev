@@ -375,7 +375,14 @@ help: ## Show this help
 	@echo ""
 	@echo "  $(YELLOW)TRUSTED_ISSUERS=$(NC)<url,...>"
 	@echo "                     Ad-hoc external issuers for interop testing - added to"
-	@echo "                     pid_issuers only, there is no TRUSTED_VERIFIERS equivalent"
+	@echo "                     pid_issuers only"
+	@echo ""
+	@echo "  $(YELLOW)TRUSTED_VERIFIERS=$(NC)<identity,...>"
+	@echo "                     Ad-hoc external verifiers for interop testing (e.g. a"
+	@echo "                     DC API conformance site) - added to verifiers only. Must"
+	@echo "                     be the exact post-normalization Subject.ID string (see"
+	@echo "                     scripts/fly-up.py --help for the x509_hash/x509_san_dns"
+	@echo "                     normalization gotcha)"
 	@echo ""
 	@echo "  $(YELLOW)WALLET_ATTESTATION=$(NC)<yes|no>"
 	@echo "                     Enable wallet-provider Key Attestation"
@@ -902,7 +909,7 @@ render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack 
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [WALLET_ATTESTATION=no, default: yes])
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [WALLET_ATTESTATION=no, default: yes])
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -918,6 +925,7 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") \
 		$(if $(call _truthy,$(CONFORMANCE)),--conformance) \
 		$(if $(TRUSTED_ISSUERS),--trusted-issuer "$(TRUSTED_ISSUERS)") \
+		$(if $(TRUSTED_VERIFIERS),--trusted-verifier "$(TRUSTED_VERIFIERS)") \
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation)
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
