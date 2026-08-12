@@ -59,10 +59,18 @@ images:
   # whitelist membership - confirmed live against digital-credentials.dev and
   # verifier.multipaz.org.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.12.1 -
+  # Bumped from 0.12.1 to 0.13.0: 0.12.1 still requires full system-CA chain
+  # validation even for x509_hash-pinned entities (go-trust#122) - digital-
+  # credentials.dev and verifier.multipaz.org are both self-signed/non-CA-
+  # chained, so they were whitelisted via x509_hash but still denied at the
+  # chain-validation step. 0.13.0 skips chain validation unconditionally for
+  # the x509_hash scheme (hash-pinning already IS the trust decision), while
+  # x509_san_dns/x509_san_uri still require full chain validation as before.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.13.0 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here.
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.12.1"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.13.0"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
