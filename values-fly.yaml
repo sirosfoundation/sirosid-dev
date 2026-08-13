@@ -67,10 +67,23 @@ images:
   # the x509_hash scheme (hash-pinning already IS the trust decision), while
   # x509_san_dns/x509_san_uri still require full chain validation as before.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.13.0 -
+  # Bumped from 0.13.0 to 0.14.0: 0.13.0 skips chain validation for
+  # x509_hash-pinned entities but still requires full system-CA chain
+  # validation for x509_san_dns/x509_san_uri entities. verifier.multipaz.org's
+  # OpenID4VP request-signing certificate (x509_san_dns scheme) is issued by a
+  # self-signed "verifier.multipaz.org Reader CA" root - deliberate, per the
+  # ISO 18013-5 reader-root convention (confirmed via multipaz's own source:
+  # a locally-generated, cached root, not a misconfiguration) - so it fails
+  # chain validation even though it's whitelisted. go-trust#123 adds
+  # AdditionalTrustedRoots: extra PEM roots merged into the system CA pool
+  # specifically for this chain-validation step, without pinning a leaf cert
+  # that would break on the verifier's next signing-key rotation. Wired here
+  # via TRUSTED_VERIFIER_ROOTS= (see fixtures/trusted-roots/).
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.14.0 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here.
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.13.0"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.14.0"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
