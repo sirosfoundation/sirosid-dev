@@ -99,8 +99,12 @@ off in either mode.
   `conformance-server`, `conformance` nginx front) after the core 10.
 - `TRUSTED_ISSUERS=url,...` — ad-hoc external issuers for interop testing
   (e.g. a third-party mdoc issuer). **Only ever added to `pid_issuers`, never
-  to `verifiers`** — there is no `TRUSTED_VERIFIERS` equivalent today. See the
-  PDP gotcha below before assuming this covers "trust as a verifier" too.
+  to `verifiers`** — use `TRUSTED_VERIFIERS=identity,...` for that instead.
+  See the PDP gotcha below before assuming either covers the other.
+- `TRUSTED_VERIFIER_ROOTS=path,...` — PEM CA cert file path(s) to merge into
+  PDP's system CA pool (go-trust#123+), for a verifier whose request-signing
+  cert is issued by a self-signed "reader CA" root meant to be trusted
+  out-of-band rather than a public CA. See the PDP gotcha below.
 
 ## Why `values-fly.yaml` overrides exist (don't remove without checking)
 
@@ -242,7 +246,17 @@ normalization, confirmed via a live PDP rejection: an `x509_hash:...`
 values get normalized to `https://<host>`/`<uri>` before any whitelist match
 runs — an entry written in the original `x509_san_dns:`/`x509_san_uri:` form
 (the shape go-trust's own docs example at `docs/docs/sirosid/trust/go-trust.md`
-uses) silently never matches.
+uses) silently never matches. Separately, if a whitelisted `x509_san_dns:`/
+`x509_san_uri:` verifier's request-signing certificate is issued by a
+long-lived, self-signed "reader CA" root rather than a public CA (a real
+ISO 18013-5 convention, not a misconfiguration — confirmed live for
+`verifier.multipaz.org`, whose signing cert is distinct from its ordinary
+publicly-CA-issued HTTPS cert), whitelist membership alone won't help:
+`TrustX509ViaSystemCA`'s chain-validation step still runs for these two
+schemes and can never succeed against a self-signed root. Use
+`TRUSTED_VERIFIER_ROOTS=<path,...>` (go-trust#123+, PEM cert file paths,
+repeatable/comma-separated) to merge that root into PDP's system CA pool
+instead — see `fixtures/trusted-roots/README.md` for a worked example.
 
 **vc-apigw/vc-issuer crash-looping on Fly with an `mdl`/mdoc-schema config
 error (`unexpected end of JSON input` / `vctm_file_path ... required_without`):**

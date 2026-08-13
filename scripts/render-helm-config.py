@@ -285,7 +285,8 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
 def build_fly_values_overlay(env: str, conformance: bool = False,
                               extra_trusted_issuers: list = None,
                               wallet_attestation: bool = False,
-                              extra_trusted_verifiers: list = None) -> dict:
+                              extra_trusted_verifiers: list = None,
+                              extra_trusted_verifier_roots: list = None) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
@@ -377,6 +378,18 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     if extra_trusted_verifiers:
         verifiers.extend(extra_trusted_verifiers)
 
+    # PEM-encoded CA certs to merge into go-trust's system CA pool
+    # (go-trust#123, additional_trusted_roots) for verifiers whose
+    # request-signing certificate is issued by a long-lived, self-signed
+    # "reader CA" root meant to be trusted out-of-band per ISO 18013-5
+    # convention, rather than a public CA - confirmed live for
+    # verifier.multipaz.org, whose signing cert (distinct from its ordinary
+    # publicly-CA-issued HTTPS cert) is issued by exactly such a root
+    # (published at https://verifier.multipaz.org/verifier/readerRootCert).
+    # Preferred over x509_hash-pinning the leaf since the root outlives leaf
+    # rotations - see go-trust's AdditionalTrustedRoots doc comment.
+    extra_trusted_verifier_roots = extra_trusted_verifier_roots or []
+
     # This environment's own wallet-backend, trusted as a wallet_provider
     # (go-trust's RoleWalletProvider) so SUNET/vc's WalletAttestationEvaluator
     # can authenticate wallets via their WIA alone - no pre-registered
@@ -402,33 +415,37 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
         lists["wallet-providers"] = wallet_providers
         actions["wallet_provider"] = "wallet-providers"
 
+    whitelist_config = {
+        "enabled": True,
+        "name": f"sirosid-{env} Fly whitelist",
+        "description": "Fly-hosted vc-services URLs (rendered from siros-id-stack schema)",
+        "lists": lists,
+        "actions": actions,
+        # Required for extra_trusted_verifiers entries identified by a
+        # non-fetchable client_id scheme (x509_hash:.../x509_san_dns:...)
+        # rather than a JWKS URL - go-trust's WhitelistRegistry denies
+        # with "no keys cached for entity" for such an entity unless
+        # this is set, even when whitelist membership matches (see
+        # pkg/registry/static/whitelist.go's TrustX509ViaSystemCA doc
+        # comment). Still gated by the whitelist-membership check
+        # itself, so this is safe to enable unconditionally rather
+        # than only when extra_trusted_verifiers is non-empty -
+        # confirmed live: silently omitting this field (as this
+        # function did before) is indistinguishable from a whitelist
+        # rejection in the wallet's own error message, and cost real
+        # debugging time tracing through go-trust's source to find.
+        "trust_x509_via_system_ca": True,
+    }
+    if extra_trusted_verifier_roots:
+        whitelist_config["additional_trusted_roots"] = extra_trusted_verifier_roots
+
     return {
         "tenant": {"id": env},
         "pdp": {
             "default_whitelist": False,
             "externalUrl": f"http://sirosid-{env}-pdp.internal:8080",
             "extraRegistries": {
-                "whitelist": {
-                    "enabled": True,
-                    "name": f"sirosid-{env} Fly whitelist",
-                    "description": "Fly-hosted vc-services URLs (rendered from siros-id-stack schema)",
-                    "lists": lists,
-                    "actions": actions,
-                    # Required for extra_trusted_verifiers entries identified by a
-                    # non-fetchable client_id scheme (x509_hash:.../x509_san_dns:...)
-                    # rather than a JWKS URL - go-trust's WhitelistRegistry denies
-                    # with "no keys cached for entity" for such an entity unless
-                    # this is set, even when whitelist membership matches (see
-                    # pkg/registry/static/whitelist.go's TrustX509ViaSystemCA doc
-                    # comment). Still gated by the whitelist-membership check
-                    # itself, so this is safe to enable unconditionally rather
-                    # than only when extra_trusted_verifiers is non-empty -
-                    # confirmed live: silently omitting this field (as this
-                    # function did before) is indistinguishable from a whitelist
-                    # rejection in the wallet's own error message, and cost real
-                    # debugging time tracing through go-trust's source to find.
-                    "trust_x509_via_system_ca": True,
-                },
+                "whitelist": whitelist_config,
                 # The whitelist registry above only ever caches JWT-signing
                 # keys (via jwt-vc-issuer/jwks_uri discovery) - it has no
                 # notion of an issuer's mdoc_iacas_uri. An mdoc issuer's
@@ -454,7 +471,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
            extra_trusted_issuers: list = None, wallet_attestation: bool = False,
-           extra_trusted_verifiers: list = None) -> list:
+           extra_trusted_verifiers: list = None, extra_trusted_verifier_roots: list = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -477,7 +494,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         overlay_path = out_dir / "values.generated.yaml"
         overlay_path.write_text(yaml.dump(
             build_fly_values_overlay(env, conformance, extra_trusted_issuers, wallet_attestation,
-                                      extra_trusted_verifiers), sort_keys=False))
+                                      extra_trusted_verifiers, extra_trusted_verifier_roots), sort_keys=False))
         values_files.append(overlay_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")

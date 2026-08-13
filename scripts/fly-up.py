@@ -92,7 +92,8 @@ def run(cmd, **kwargs):
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
                     conformance: bool = False, extra_trusted_issuers: list = None,
-                    wallet_attestation: bool = False, extra_trusted_verifiers: list = None) -> list:
+                    wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
+                    extra_trusted_verifier_roots: list = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -107,7 +108,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
                    out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
                    conformance=conformance, extra_trusted_issuers=extra_trusted_issuers,
-                   wallet_attestation=wallet_attestation, extra_trusted_verifiers=extra_trusted_verifiers)
+                   wallet_attestation=wallet_attestation, extra_trusted_verifiers=extra_trusted_verifiers,
+                   extra_trusted_verifier_roots=extra_trusted_verifier_roots)
     patch_cmd = [sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password]
     if wallet_attestation:
         patch_cmd.append("--wallet-attestation")
@@ -699,6 +701,16 @@ def main():
                               "before matching, so the entry must be written in that normalized form, "
                               "not the original x509_san_dns:/x509_san_uri: form. Repeatable, and each "
                               "value may be a comma-separated list.")
+    parser.add_argument("--trusted-verifier-root", action="append",
+                         help="Path to a PEM-encoded CA certificate to merge into PDP's system CA pool "
+                              "(go-trust's additional_trusted_roots, go-trust#123+), for a verifier whose "
+                              "request-signing certificate is issued by a long-lived, self-signed 'reader "
+                              "CA' root meant to be trusted out-of-band per ISO 18013-5 convention, rather "
+                              "than a public CA - e.g. verifier.multipaz.org's signing cert (distinct from "
+                              "its ordinary publicly-CA-issued HTTPS cert), whose root is published at "
+                              "https://verifier.multipaz.org/verifier/readerRootCert. Preferred over "
+                              "--trusted-verifier's x509_hash leaf-pinning for this case, since the root "
+                              "survives future leaf-certificate rotations. Repeatable.")
     args = parser.parse_args()
 
     extra_trusted_issuers = []
@@ -708,6 +720,11 @@ def main():
     extra_trusted_verifiers = []
     for pair in (args.trusted_verifier or []):
         extra_trusted_verifiers.extend(v.strip() for v in pair.split(",") if v.strip())
+
+    extra_trusted_verifier_roots = []
+    for pair in (args.trusted_verifier_root or []):
+        for path in (p.strip() for p in pair.split(",") if p.strip()):
+            extra_trusted_verifier_roots.append(Path(path).read_text())
 
     image_overrides = {}
     for pair in args.images.split(","):
@@ -741,7 +758,7 @@ def main():
     # Android/iOS wellknown values, instead of a second `helm template` call.
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
                            args.conformance, extra_trusted_issuers, args.wallet_attestation,
-                           extra_trusted_verifiers)
+                           extra_trusted_verifiers, extra_trusted_verifier_roots)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")
