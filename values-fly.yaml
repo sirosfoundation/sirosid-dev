@@ -102,10 +102,21 @@ images:
   # was built to support. 0.15.0 sets GODEBUG=x509negativeserial=1 in the
   # image, fixing this without weakening any other trust check.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.15.0 -
+  # Bumped from 0.15.0 to 0.15.1: real behavior fix (go-trust#127). The
+  # AdditionalTrustedRoots field itself (go-trust#123) was never mirrored
+  # onto go-trust's own YAML-config-loading struct, so it was silently
+  # dropped for every Fly deployment - TRUSTED_VERIFIER_ROOTS= has been a
+  # no-op the whole time, independent of the negative-serial fix above.
+  # Confirmed via a temporary debug print in a locally-built binary that
+  # AdditionalTrustedRoots was empty at runtime despite correct config;
+  # verified end-to-end afterward against the real captured
+  # verifier.multipaz.org leaf cert: denied before this fix,
+  # decision=true/trust_path=system_ca after.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.15.1 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here.
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.15.0"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.15.1"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
