@@ -89,10 +89,23 @@ images:
   # trusted") impossible to root-cause from PDP/wallet-backend logs alone.
   # No behavior change.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.14.1 -
+  # Bumped from 0.14.1 to 0.15.0: real behavior fix (go-trust#126). Go's x509
+  # parser rejects certificates with a negative serial number by default
+  # since Go 1.23 (RFC 5280 recommends non-negative but doesn't forbid it -
+  # openssl and every other major TLS stack accept them fine). This is
+  # exactly what verifier.multipaz.org's actual reader-CA root has -
+  # confirmed live by capturing its real signed request directly from its
+  # dcBegin endpoint and decoding the x5c chain: openssl verify succeeds,
+  # but AppendCertsFromPEM silently failed to add the root to the pool,
+  # making the whole AdditionalTrustedRoots mechanism (go-trust#123, wired
+  # here via TRUSTED_VERIFIER_ROOTS=) a no-op for exactly the verifier it
+  # was built to support. 0.15.0 sets GODEBUG=x509negativeserial=1 in the
+  # image, fixing this without weakening any other trust check.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.15.0 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here.
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.14.1"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.15.0"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
