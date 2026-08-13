@@ -80,10 +80,19 @@ images:
   # that would break on the verifier's next signing-key rotation. Wired here
   # via TRUSTED_VERIFIER_ROOTS= (see fixtures/trusted-roots/).
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.14.0 -
+  # Bumped from 0.14.0 to 0.14.1: purely a diagnostic-observability fix
+  # (go-trust#124) - WhitelistRegistry.deny() now logs its specific reason
+  # (not-in-list vs. certificate-binding-check failure vs. chain-validation
+  # failure) at INFO level. Previously that reason was computed and returned
+  # in the AuthZEN response body but never logged anywhere server-side,
+  # making a live denial (e.g. verifier.multipaz.org's "verifier not
+  # trusted") impossible to root-cause from PDP/wallet-backend logs alone.
+  # No behavior change.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.14.1 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here.
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.14.0"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.14.1"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
