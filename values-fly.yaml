@@ -129,7 +129,14 @@ images:
   # doesn't match what a spec-conformant issuer expects, and Geneva 2026's
   # issuer (geneva2026.mdoc.online) rejects every credential request with
   # invalid_nonce - confirmed live via its own conformance report.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.11.0"
+  #
+  # Bumped from 0.11.0 to 0.11.1 (#272): defaults JARM (direct_post.jwt)
+  # content encryption to A128GCM instead of A128CBC-HS256 when a verifier's
+  # client_metadata doesn't declare a preference, and actually calls
+  # submitErrorResponse (with its redirect_uri threaded through) when the
+  # user declines a presentation - both confirmed live against
+  # verifier.multipaz.org.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.11.1"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
