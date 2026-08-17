@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Create PKI certificates and keys for E2E testing with VC services.
 #
