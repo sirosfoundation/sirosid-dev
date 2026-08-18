@@ -59,6 +59,11 @@ else
     openssl ecparam -name prime256v1 -genkey -noout -out /tmp/signing_ec_raw.pem
     openssl pkcs8 -topk8 -nocrypt -in /tmp/signing_ec_raw.pem -out "${PKI_DIR}/signing_ec_private.pem"
     openssl ec -in "${PKI_DIR}/signing_ec_private.pem" -pubout -out "${PKI_DIR}/signing_ec_public.pem"
+    # openssl defaults to 0600; make this world-readable so containers running
+    # as a different uid (e.g. the E2E image's non-root user) can actually read
+    # the bind-mounted file - test-only key material, no confidentiality need
+    # within the local fixtures dir.
+    chmod a+r "${PKI_DIR}/signing_ec_private.pem"
     rm -f /tmp/signing_ec_raw.pem
 
     # Create CSR config for signing certificate
