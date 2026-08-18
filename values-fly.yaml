@@ -136,7 +136,7 @@ images:
   # submitErrorResponse (with its redirect_uri threaded through) when the
   # user declines a presentation - both confirmed live against
   # verifier.multipaz.org.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.11.1"
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.13.0"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
