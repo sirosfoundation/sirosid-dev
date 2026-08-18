@@ -58,7 +58,15 @@ COMPONENTS = [
         # role is deployed; `mini-oidc-rp` is a separate test-harness client
         # for exercising the OP standalone, not part of the real apigw flow.
         "name": "mini-oidc",
-        "image": "ghcr.io/sirosfoundation/mini-oidc:main",
+        # Pinned to a real release tag instead of the floating `:main` this
+        # used to track - mini-oidc isn't part of the siros-id-stack chart
+        # (sirosid-dev/testing-only, see the comment above), so unlike the
+        # image_from_helm_deployment components above/below it, its pin
+        # can't live in values-fly.yaml's images: block (that file only
+        # overlays chart-sourced images) - it has to live here instead.
+        # Bump this whenever ghcr.io/sirosfoundation/mini-oidc cuts a newer
+        # tag; `:main` should never come back.
+        "image": "ghcr.io/sirosfoundation/mini-oidc:0.0.2",
         "ports": [{"internal": 9005, "public": True}],
         "checks": "/health",
     },
