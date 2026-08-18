@@ -49,6 +49,9 @@ common:
     mdl:
       mddl_file_path: "/metadata/mdl.mdoc.json"
       format: "mso_mdoc"
+    pid_mdoc:
+      mddl_file_path: "/metadata/pid_mdoc.mdoc.json"
+      format: "mso_mdoc"
 
 kafka:
   enabled: false
@@ -132,14 +135,26 @@ apigw:
         mdl:
           auth_provider: oidc
           auth_claims: ["given_name", "family_name"]
+        pid_mdoc:
+          auth_provider: oidc
+          auth_claims: ["given_name", "family_name"]
       import:
         file_paths:
           - "/bootstrapping/diploma.json"
           - "/bootstrapping/pid_1_8.json"
           - "/bootstrapping/mdl.json"
+          - "/bootstrapping/pid_mdoc.json"
   delivery:
     openid4vci:
       token_endpoint: "https://vc-proxy:8443/token"
+      # refresh_token added for testing the credential re-issuance/renewal
+      # engine action (go-wallet-backend feat/oid4vci-renewal-action) -
+      # without it the apigw token endpoint rejects grant_type=refresh_token
+      # with unsupported_grant_type regardless of the wallet-backend fix.
+      grant_types:
+        - "authorization_code"
+        - "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+        - "refresh_token"
       clients:
         "e2e-test-client":
           type: "public"
@@ -151,6 +166,7 @@ apigw:
             - "diploma"
             - "ehic"
             - "mdl"
+            - "pid_mdoc"
         "e2e-test-client-2":
           type: "public"
           redirect_uri: "http://localhost:3000/cb"
@@ -161,6 +177,7 @@ apigw:
             - "diploma"
             - "ehic"
             - "mdl"
+            - "pid_mdoc"
     credential_offers:
       issuer_url: "https://vc-proxy:8443"
       wallets:
@@ -204,6 +221,12 @@ issuer:
   # real IACA-rooted trust anchor.
   mdoc:
     certificate_chain_path: "/pki/signing_ec_chain.pem"
+  # Attach a random pseudonym_seed to every issued mdl/pid_mdoc-scope
+  # credential - the wallet derives the session-specific pairwise_pseudonym
+  # from this at ZK presentation time, it's never itself disclosed. For
+  # testing Longfellow ZK pseudonym derivation (see sirosfoundation/vc#24,
+  # feature/longfellow-zk/verification).
+  pseudonym_seed: true
 
 # =============================================================================
 # Verifier Service - OpenID4VP Verifier + OIDC Provider

@@ -1,0 +1,21 @@
+{
+  "format": "mso_mdoc",
+  "doctype": "eu.europa.ec.eudi.pid.1",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "PID",
+      "description": "Person Identification Data (mdoc)",
+      "background_color": "#003399",
+      "text_color": "#ffffff"
+    }
+  ],
+  "claims": {
+    "eu.europa.ec.eudi.pid.1": {
+      "family_name": { "mandatory": true, "value_type": "tstr" },
+      "given_name": { "mandatory": true, "value_type": "tstr" },
+      "age_over_18": { "value_type": "bool" },
+      "pseudonym_seed": { "value_type": "bstr" }
+    }
+  }
+}

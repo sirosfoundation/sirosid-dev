@@ -19,4 +19,19 @@ appears in any OS system CA pool, and so needs to be trusted explicitly
 here rather than relying on `x509_hash`-pinning a leaf that would break on
 the verifier's next signing-key rotation.
 
-Usage: `make fly-up ENV=<name> TRUSTED_VERIFIER_ROOTS=fixtures/trusted-roots/multipaz-reader-ca.pem ...`
+Usage: `make fly-up ENV=<name> TRUSTED_VERIFIER_ROOTS=fixtures/trusted-roots/multipaz-reader-ca.pem TRUSTED_VERIFIERS=https://verifier.multipaz.org ...`
+
+## siros-multipaz-verifier-reader-ca.pem
+
+Reader-CA root for **our own** deployed multipaz-ppid verifier fork
+(`https://siros-multipaz-verifier.fly.dev`, task #280) - distinct from
+`multipaz-reader-ca.pem` above, which is the third-party
+`verifier.multipaz.org`'s root. Captured 2026-08-16 at deploy time. Subject/
+issuer: `Verifier Root at https://siros-multipaz-verifier.fly.dev/records`,
+self-signed, valid 2026-08-16 to 2041-08-12. Notably has a **negative serial
+number** (`openssl x509 -noout -serial` prints `(Negative)36:f4:...`) - this
+is exactly the case go-trust 0.15.0's negative-serial CA cert support was
+added for; a PDP pinned below that version will reject this root outright
+regardless of `AdditionalTrustedRoots` wiring.
+
+Usage: `make fly-up ENV=<name> TRUSTED_VERIFIER_ROOTS=fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem TRUSTED_VERIFIERS=https://siros-multipaz-verifier.fly.dev ...`

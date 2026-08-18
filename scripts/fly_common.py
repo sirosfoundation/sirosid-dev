@@ -840,12 +840,17 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     # Proxies to wallet-proxy's own internal address (not wallet-backend's
     # directly) to reuse its existing admin-subtree/websocket-upgrade
     # routing (fly_common.wallet_proxy_conf) rather than duplicating it here.
-    location ~ ^/(auth|v1|user|helper|issuer|oidc|presentation|storage|verifier|wallet-provider)/ {{
+    location ~ ^/(api|auth|v1|user|helper|issuer|oidc|presentation|storage|verifier|wallet-provider)/ {{
         proxy_pass http://{wallet_proxy}:8090;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
     }}
 
     # Serve assets and static files from any /id/<tenant>/ prefix by
