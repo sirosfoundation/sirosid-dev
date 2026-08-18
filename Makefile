@@ -29,8 +29,10 @@ WALLET_NAME ?= SIROS ID (dev)
 # Configuration
 # =============================================================================
 
-# GitHub org
-GITHUB_ORG ?= git@github.com:sirosfoundation
+# GitHub org - https, not ssh: works in CI (no ssh creds/agent there) as well
+# as local dev, for cloning these public sibling repos with zero auth.
+# Override to an ssh remote if you need push access to a sibling clone.
+GITHUB_ORG ?= https://github.com/sirosfoundation
 
 # Workspace paths - defaults assume sibling directories
 FRONTEND_PATH ?= ../wallet-frontend
