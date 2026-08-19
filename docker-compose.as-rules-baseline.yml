@@ -1,0 +1,25 @@
+# Docker Compose overlay: point wallet-backend's built-in Authorization
+# Server at go-wallet-backend's own real baseline SPOCP policy
+# (rules/default.rules + rules/delegation.rules, the same rules/ directory
+# the Dockerfile bakes into every image at /app/rules and go-wallet-backend's
+# EnableForRole() falls back to on Fly, where WALLET_AS_RULES_DIR is left
+# unset - see scripts/render-helm-config.py) instead of the default
+# fixtures/as-rules/allow-all.rules fixture.
+#
+# The default (fixtures/as-rules/allow-all.rules, an unconditional allow) is
+# deliberately permissive: `make up`'s job is to give every other feature a
+# working AS out of the box, not to exercise the AS ruleset itself. Use this
+# overlay only when you're directly testing AS rule behavior (e.g.
+# reproducing a Fly-only 403, or checking a new client request shape against
+# the real policy) - it is not meant to become the default.
+#
+# Usage:
+#   make up AS_RULES=baseline
+#   make up AS_RULES=baseline PDP=helm
+
+services:
+  wallet-backend:
+    environment:
+      - WALLET_AS_RULES_DIR=/app/rules-baseline
+    volumes:
+      - ${BACKEND_PATH:-../go-wallet-backend}/rules:/app/rules-baseline:ro

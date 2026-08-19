@@ -6,6 +6,7 @@
 #   make up               # Start default stack (go-trust allow-all PDP)
 #   make up VC=1           # Add production-like VC services
 #   make up PDP=deny       # Use deny-all PDP for negative testing
+#   make up AS_RULES=baseline  # Test against the real AS SPOCP policy
 #   make status            # Check service health
 #   make down              # Stop all services
 
@@ -48,6 +49,7 @@ GO_TRUST_ALLOW_COMPOSE := docker-compose.go-trust-allow.yml
 GO_TRUST_WHITELIST_COMPOSE := docker-compose.go-trust-whitelist.yml
 GO_TRUST_DENY_COMPOSE := docker-compose.go-trust-deny.yml
 HELM_CONFIG_COMPOSE := docker-compose.helm-config.yml
+AS_RULES_BASELINE_COMPOSE := docker-compose.as-rules-baseline.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
@@ -64,6 +66,7 @@ GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
 
 # Stack options (override on command line)
 PDP ?= allow
+AS_RULES ?= allow-all
 VC ?=
 TRANSPORT ?=
 CONFORMANCE ?=
@@ -143,6 +146,23 @@ else ifeq ($(PDP),helm)
   _PDP_LABEL := go-trust (helm-rendered config)
 else
   $(error Unknown PDP mode '$(PDP)'. Use: allow, whitelist, deny, mock, helm)
+endif
+
+# AS (Authorization Server) SPOCP rules. Default is allow-all
+# (fixtures/as-rules/allow-all.rules) - `make up`'s job is to give every
+# other feature a working AS out of the box, not to exercise the AS
+# ruleset. AS_RULES=baseline swaps in go-wallet-backend's own real baseline
+# policy (rules/default.rules) instead, for directly testing AS rule
+# behavior - see docker-compose.as-rules-baseline.yml. Appended after the
+# PDP block above so it always applies last, regardless of PDP mode
+# (including PDP=helm's `environment: !override`).
+ifeq ($(AS_RULES),allow-all)
+  _AS_RULES_LABEL := allow-all (fixtures/as-rules) - default
+else ifeq ($(AS_RULES),baseline)
+  COMPOSE_FILES += -f $(AS_RULES_BASELINE_COMPOSE)
+  _AS_RULES_LABEL := go-wallet-backend baseline (rules/default.rules) - AS ruleset testing
+else
+  $(error Unknown AS_RULES mode '$(AS_RULES)'. Use: allow-all, baseline)
 endif
 
 # VC services
@@ -324,6 +344,13 @@ help: ## Show this help
 	@echo "                     helm: wallet-backend + PDP config rendered from the"
 	@echo "                     siros-id-stack chart instead of hand-maintained"
 	@echo "                     env vars/flags - requires SIROS_ID_STACK_PATH (../siros-id-stack)"
+	@echo ""
+	@echo "  $(YELLOW)AS_RULES=$(NC)<allow-all|baseline>"
+	@echo "                     Select the built-in Authorization Server's SPOCP ruleset"
+	@echo "                     default: $(GREEN)allow-all$(NC) (fixtures/as-rules) - unconditionally"
+	@echo "                     permissive, so every other feature gets a working AS for free"
+	@echo "                     baseline: go-wallet-backend's own real policy (rules/default.rules) -"
+	@echo "                     use only when directly testing AS rule behavior"
 	@echo ""
 	@echo "  $(YELLOW)VC=$(NC)<yes|no>"
 	@echo "                     Enable production-like VC services"
@@ -519,7 +546,7 @@ build-info:
 
 CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
 
-up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN= to configure)
+up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN=, AS_RULES= to configure)
 	@# Ensure .well-known/assetlinks.json exists (Docker bind mount requires it)
 	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
 	@# Ensure the shared e2e-test-network exists
@@ -599,6 +626,7 @@ ifneq ($(GOLDEN),)
 endif
 	@echo "$(GREEN)Starting sirosid-dev...$(NC)"
 	@echo "  PDP:         $(_PDP_LABEL)"
+	@echo "  AS rules:    $(_AS_RULES_LABEL)"
 	@echo "  VC services: $(_VC_LABEL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
