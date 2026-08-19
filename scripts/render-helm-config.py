@@ -260,6 +260,21 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # token request 403ed with "requested permissions exceed session
     # maximum" the moment SPOCP/topology fixes let it get this far.
     config["as"]["default_max_tac"] = "rwlidk"
+    # rules_dir is deliberately left unset here, unlike external_url/
+    # default_max_tac above: go-wallet-backend's EnableForRole()
+    # (pkg/config/config.go) treats an unconfigured RulesDir as "use the
+    # baseline policy baked into the image" (rules/default.rules +
+    # rules/delegation.rules, COPY'd to /app/rules by the Dockerfile) rather
+    # than requiring every deployment to carry its own copy. That baseline
+    # already covers this environment's real clients: it wildcards acr (so
+    # passkey- and OIDC-authenticated sessions are treated the same) and its
+    # one enumerated constraint - anonymous/identity-free tokens capped to
+    # aud in {wallet-backend, wallet-registry} - matches exactly the two
+    # audiences wallet-frontend's and both native SDKs' AuthTokens clients
+    # request. docker-compose.test.yml/docker-compose.helm-config.yml
+    # instead point WALLET_AS_RULES_DIR at fixtures/as-rules/allow-all.rules
+    # (an unconditional allow, for local/e2e convenience) - Fly relies on
+    # the built-in default instead, not an oversight.
     if wallet_attestation:
         wia["issuer"] = config["server"]["base_url"]
         # go-wallet-backend v0.10.0 replaced the old "always include x5c,
