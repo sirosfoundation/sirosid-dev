@@ -113,10 +113,18 @@ images:
   # verifier.multipaz.org leaf cert: denied before this fix,
   # decision=true/trust_path=system_ca after.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.15.1 -
+  # Bumped from 0.15.1 to 0.18.0 (#132): cmd/gt/main.go never wired brainpool
+  # curve support into any of the six registries that accept a CryptoExt
+  # extension point, so any brainpool-curve root cert (e.g. the real Geneva
+  # 2026 RICAL/VICAL root, brainpoolP256r1) crashed the PDP process outright
+  # on every boot with "x509: unsupported elliptic curve" - exhausting Fly's
+  # restart budget. Also picks up the mdocrical/vical registries themselves
+  # (#123, #131) needed to evaluate RICAL/VICAL trust lists at all.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.18.0 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here.
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.15.1"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.18.0"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
@@ -136,7 +144,12 @@ images:
   # submitErrorResponse (with its redirect_uri threaded through) when the
   # user declines a presentation - both confirmed live against
   # verifier.multipaz.org.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.13.0"
+  #
+  # Bumped from 0.11.1 to 0.14.0 (#279): allowlists the "mdoc-reader-auth"
+  # SPOCP action so the wallet's RICAL reader-trust AuthZEN calls
+  # (siros-sdk-kotlin#113/siros-sdk-swift#110) actually pass through the
+  # authzen_proxy instead of being denied as an unrecognized action.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.14.0"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
@@ -147,3 +160,20 @@ images:
   issuerApigw: "ghcr.io/sirosfoundation/vc/apigw:0.7.0-sirosid.1"
   issuerCore: "ghcr.io/sirosfoundation/vc/issuer:0.7.0-sirosid.1"
   verifier: "ghcr.io/sirosfoundation/vc/verifier:0.7.0-sirosid.1"
+
+  # siros-id-stack's own images.walletFrontendConfig pin is 110 commits behind
+  # release/sirosid HEAD - confirmed live against gdc: that old build predates
+  # src/lib/auth/tokens/AuthTokens.ts entirely (the backend/anonymous
+  # token-kind split), so it can't speak the audience/TAC claims
+  # go-wallet-backend's go-tokenauth enforcement (PR #264-era, see
+  # walletBackend above) now requires - every authenticated call
+  # (/issuer/all, /user/session/private-data, /user/session/account-info)
+  # 403ed with "Token audience not permitted for this endpoint", confirmed via
+  # wallet-proxy's access log response size. Pinned to an immutable
+  # unstable-<sha> tag (release/sirosid's CI publishes one per push) rather
+  # than the floating "unstable" tag, matching how the other pins here are
+  # fixed, reproducible references.
+  #
+  # DELETE this override once siros-id-stack bumps images.walletFrontendConfig
+  # past this commit.
+  walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:unstable-455c2ca"
