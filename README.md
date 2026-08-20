@@ -69,7 +69,7 @@ For the full list of options, targets, and usage patterns, run:
 make help
 ```
 
-This shows all available parameters (PDP, VC, TRANSPORT, CONFORMANCE, R2PS, DOMAIN, GOLDEN, TUNNELS, FACETEC, ANDROID_APPS, WALLET_NAME, APP_PACKAGE),
+This shows all available parameters (PDP, AS_RULES, VC, TRANSPORT, CONFORMANCE, R2PS, DOMAIN, GOLDEN, TUNNELS, FACETEC, ANDROID_APPS, WALLET_NAME, APP_PACKAGE),
 interaction rules, and complete examples.
 
 ## Quickstart Examples
@@ -246,6 +246,18 @@ adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.siros.sdk.sample
 | `PDP=deny` | go-trust deny-all — rejects everything (negative testing) |
 | `PDP=mock` | Legacy mock-trust-pdp (no go-trust) |
 | `PDP=helm` | go-trust whitelist + wallet-backend, both configured from config files rendered off the [siros-id-stack](https://github.com/sirosfoundation/siros-id-stack) chart (see `scripts/render-helm-config.py`) instead of hand-maintained env vars/flags. Requires a sibling `../siros-id-stack` checkout. This is the transitional step towards aligning sirosid-dev's config with the production Helm chart — over time the other PDP modes' hand-maintained env vars are meant to be replaced by this path, not kept alongside it indefinitely. |
+
+### AS (Authorization Server) Rules
+
+`AS_RULES=` selects the SPOCP policy wallet-backend's built-in Authorization
+Server (passkey login + token endpoint) evaluates token requests against —
+independent of the `PDP=` trust policy above, which governs issuer/verifier
+trust rather than AS token issuance.
+
+| Mode | Description |
+|------|--------------|
+| `AS_RULES=allow-all` (default) | Unconditional allow (`fixtures/as-rules/allow-all.rules`) — `make up`'s job is to give every other feature a working AS out of the box, not to exercise the AS ruleset itself. |
+| `AS_RULES=baseline` | go-wallet-backend's own real baseline policy (`rules/default.rules` + `rules/delegation.rules`, the same rules baked into every image and used by `make fly-up`, which never overrides `WALLET_AS_RULES_DIR`). Use this only when directly testing AS rule behavior — e.g. reproducing a Fly-only 403 locally, or checking a new client request shape against the real policy — see `docker-compose.as-rules-baseline.yml`. |
 
 ## VC Services
 

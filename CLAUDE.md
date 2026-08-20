@@ -60,6 +60,16 @@ off in either mode.
   hand-maintained env vars/CLI flags, kept independently and known to drift
   from the chart (that's the whole reason `PDP=helm` exists — see
   "Helm alignment" below).
+- `AS_RULES=allow-all|baseline` — SPOCP policy for wallet-backend's built-in
+  Authorization Server (passkey login + token endpoint), separate from the
+  `PDP=` trust policy above. Default `allow-all` (`fixtures/as-rules/`) is an
+  unconditional allow — local dev's job is a working AS for every client
+  (web + native SDK) out of the box, not exercising the AS ruleset itself.
+  `baseline` swaps in go-wallet-backend's own real policy (`rules/` in that
+  repo) — the same one `make fly-up` gets by default, since it never sets
+  `WALLET_AS_RULES_DIR` and go-wallet-backend's `EnableForRole()` falls back
+  to its image-baked rules when unset. Use `baseline` only when directly
+  testing AS rule behavior, e.g. reproducing a Fly-only 403 locally.
 - `VC=yes` — adds production-like issuer/verifier/apigw/registry + mongodb,
   built from `../vc`.
 - `TRANSPORT=websocket|wmp|http` — wallet transport; `http` is deprecated.
