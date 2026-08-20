@@ -95,7 +95,27 @@ def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation
     apigw["issuer_client"]["addr"] = fly_internal(env, "vc-issuer", 8090)
     apigw["registry_client"]["addr"] = fly_internal(env, "vc-registry", 8090)
     apigw["delivery"]["openid4vci"]["token_endpoint"] = f"{apigw_url}/token"
-    apigw["delivery"]["openid4vci"]["clients"]["e2e-test-client-2"]["redirect_uri"] = frontend_cb_url
+    # fly-up.py's register_vc_services() registers "e2e-test-client" (not
+    # "e2e-test-client-2") as THE client_id go-wallet-backend's engine uses
+    # for OID4VCI authorization_code flows against this tenant's issuer -
+    # for every session, web and native alike (see that function's own
+    # comment for why). Its redirect_uri is a base-config scalar
+    # ("siros-sample://callback", the native app's deep link) - patching
+    # e2e-test-client-2 instead (as this used to do) left the client
+    # actually in use never registered with the web frontend's own
+    # callback URL, so apigw's PAR endpoint rejected every web-initiated
+    # authorization_code credential with invalid_client, and
+    # go-wallet-backend's (unsafe, separately tracked) PAR-failure fallback
+    # then produced a request vc-apigw's PAR-only /authorize can't accept
+    # either - confirmed live via a diploma issuance attempt on gdc.
+    # oauth2.RedirectURIs unmarshals either a scalar or a list, so appending
+    # here (rather than overwriting) keeps the native scheme working too.
+    existing_redirect_uris = apigw["delivery"]["openid4vci"]["clients"]["e2e-test-client"]["redirect_uri"]
+    if isinstance(existing_redirect_uris, str):
+        existing_redirect_uris = [existing_redirect_uris]
+    if frontend_cb_url not in existing_redirect_uris:
+        existing_redirect_uris.append(frontend_cb_url)
+    apigw["delivery"]["openid4vci"]["clients"]["e2e-test-client"]["redirect_uri"] = existing_redirect_uris
     apigw["delivery"]["credential_offers"]["issuer_url"] = apigw_url
     apigw["delivery"]["credential_offers"]["wallets"]["local"]["redirect_uri"] = frontend_cb_url
     # Standard OpenID4VCI same-device scheme (registered by both native

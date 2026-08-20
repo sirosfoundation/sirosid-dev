@@ -527,7 +527,15 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
         # set it before now.
         "WELLKNOWN_APPLE_APPIDS": fe_data.get("wellknownAppleAppIds", ""),
         "STATIC_NAME": f"SIROS ID (fly-{env})",
-        "OPENID4VCI_REDIRECT_URI": f"{frontend}/",
+        # Must be wallet-frontend's own callback route, not its bare origin -
+        # App.tsx registers the OID4VCI callback at "cb/*" (relative to the
+        # SPA's BASE_PATH router), so a bare "/" redirect lands on the
+        # dashboard instead of OpenIDFlowCallback, and (separately) doesn't
+        # match what patch-vc-config-fly.py registers as this environment's
+        # e2e-test-client redirect_uri - confirmed live as the cause of every
+        # web-initiated authorization_code credential issuance failing with
+        # vc-apigw's "invalid_client".
+        "OPENID4VCI_REDIRECT_URI": f"{frontend}/id/default/cb",
         "VCT_REGISTRY_URL": f"{proxy}/registry/type-metadata",
         "TRANSPORT_PREFERENCE": "websocket",
         # Must be wallet-frontend's own recognized tokens (src/config.ts:
