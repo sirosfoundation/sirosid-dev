@@ -28,6 +28,18 @@ Patches:
     client entry, vc-apigw's /token endpoint rejects the exchange with
     "invalid_client: Client authentication failed" — the offer looks fine and
     OpenIDFlowCallback even gets as far as trust evaluation before failing.
+  - Appends "{frontend_url}/id/default/cb" to e2e-test-client's existing
+    redirect_uri list — this is the DIFFERENT client the VC=yes apigw issuer
+    (registered via `make register-vc-services`, always with client_id
+    "e2e-test-client") actually uses for every authorization_code-flow scope
+    (any auth_provider: oidc scope - pid/pid_1_5/pid_1_8/ehic/diploma), as
+    opposed to the pre-authorized-code-only, dynamically-tunneled facetec
+    siros_id issuer above. Both this fix and the client above are needed;
+    they cover two different issuers with two different grant types. This
+    URL is dynamic per tunnel session (a fresh *.trycloudflare.com host each
+    time), so it can't be a static entry in the base vc-config.yaml the way
+    the Fly equivalent (patch-vc-config-fly.py) can - it must be patched in
+    here, freshly, every time a tunnel session starts.
 
 vc-proxy:8445 (vc-registry) is intentionally left untouched — registry isn't
 tunneled or reached directly by the FaceTec/siros_id flow this script exists
@@ -57,7 +69,25 @@ def patch_config(base: str, apigw_url: str, frontend_url: str) -> str:
             count=1,
         )
 
-    # 3. Register an OAuth client for go-wallet-backend's default (unregistered-issuer)
+    # 3. Append this tunnel session's frontend callback URL to e2e-test-client's
+    #    redirect_uri list (see module docstring point 4) - same insertion
+    #    pattern as scripts/generate-android-config.py, which requires this
+    #    exact "e2e-test-client":\n  type: ...\n  redirect_uri:\n  - ...
+    #    structure (no comment lines directly inside the block). Deliberately
+    #    done BEFORE step 4 below: that step's own redirect_uri literally
+    #    equals this one ("{frontend_url}/id/default/cb"), so checking "not
+    #    in out" after step 4 had already inserted it would false-positive
+    #    and skip this append entirely.
+    frontend_cb_url = f"{frontend_url}/id/default/cb"
+    if frontend_url and f'"{frontend_cb_url}"' not in out:
+        out = re.sub(
+            r'("e2e-test-client":\s*\n\s*type:\s*"public"\s*\n\s*redirect_uri:\s*\n(?:\s*-\s*"[^"]*"\s*\n)*)',
+            lambda m: m.group(0).rstrip("\n") + f'\n            - "{frontend_cb_url}"\n',
+            out,
+            count=1,
+        )
+
+    # 4. Register an OAuth client for go-wallet-backend's default (unregistered-issuer)
     #    client_id, so the pre-authorized-code token exchange isn't rejected with
     #    "invalid_client". Inserted right before credential_offers (a sibling of
     #    clients under delivery.openid4vci), matching the existing entries' indentation.
@@ -66,7 +96,7 @@ def patch_config(base: str, apigw_url: str, frontend_url: str) -> str:
         new_client_block = (
             f'        "{client_id}":\n'
             f'          type: "public"\n'
-            f'          redirect_uri: "{frontend_url}/cb"\n'
+            f'          redirect_uri: "{frontend_cb_url}"\n'
             f'          scopes:\n'
             f'            - "siros_id"\n'
         )

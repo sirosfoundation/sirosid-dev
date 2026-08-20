@@ -156,9 +156,23 @@ apigw:
         - "urn:ietf:params:oauth:grant-type:pre-authorized_code"
         - "refresh_token"
       clients:
+        # register-vc-services (Makefile) registers this exact client_id with
+        # wallet-backend for every local `make up` environment's issuer -
+        # both redirect_uris below must stay valid: the native app's deep
+        # link, and the web wallet's actual "cb/*" callback route (App.tsx,
+        # under BASE_PATH=/id/default/ - see docker-compose.test.yml's
+        # OPENID4VCI_REDIRECT_URI). Missing either one 401s that platform's
+        # authorization_code flow with vc-apigw's invalid_client (confirmed
+        # live; same root cause found and fixed for Fly, see
+        # patch-vc-config-fly.py). Also: generate-android-config.py's own
+        # redirect_uri-list regex requires this exact
+        # "e2e-test-client":\n  type: ...\n  redirect_uri:\n    - ...
+        # structure with no comments in between - keep it that way.
         "e2e-test-client":
           type: "public"
-          redirect_uri: "siros-sample://callback"
+          redirect_uri:
+            - "siros-sample://callback"
+            - "http://localhost:3000/id/default/cb"
           scopes:
             - "pid"
             - "pid_1_5"
@@ -169,7 +183,7 @@ apigw:
             - "pid_mdoc"
         "e2e-test-client-2":
           type: "public"
-          redirect_uri: "http://localhost:3000/cb"
+          redirect_uri: "http://localhost:3000/id/default/cb"
           scopes:
             - "pid"
             - "pid_1_5"

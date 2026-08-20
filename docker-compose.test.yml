@@ -41,7 +41,16 @@ services:
       - WALLET_BACKEND_URL=http://localhost:8080
       - WALLET_ENGINE_URL=http://localhost:8082
       - WEBAUTHN_RPID=localhost
-      - OPENID4VCI_REDIRECT_URI=http://localhost:3000/
+      # Must be the SPA's actual "cb/*" callback route under BASE_PATH below
+      # (App.tsx registers it relative to the router's basename), not the
+      # bare origin - a bare "/" redirect lands on the dashboard instead of
+      # OpenIDFlowCallback, and doesn't match what register-vc-services
+      # registers as e2e-test-client's redirect_uri - confirmed live as the
+      # cause of every web-initiated authorization_code credential issuance
+      # (any auth_provider: oidc scope, e.g. pid/pid_1_5/pid_1_8/ehic/diploma)
+      # failing with vc-apigw's "invalid_client" (same root cause found and
+      # fixed for Fly environments, see patch-vc-config-fly.py/fly-up.py).
+      - OPENID4VCI_REDIRECT_URI=http://localhost:3000/id/default/cb
       - STATIC_PUBLIC_URL=http://localhost:3000
       - STATIC_NAME=${WALLET_NAME:-SIROS ID (dev)}
       - VCT_REGISTRY_URL=http://localhost:8080/registry/type-metadata

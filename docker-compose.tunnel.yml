@@ -16,7 +16,10 @@ services:
       - WALLET_BACKEND_URL=${TUNNEL_BACKEND_URL}
       - WALLET_ENGINE_URL=${TUNNEL_ENGINE_URL}
       - WEBAUTHN_RPID=${TUNNEL_RPID}
-      - OPENID4VCI_REDIRECT_URI=${TUNNEL_FRONTEND_URL}/
+      # /id/default/cb, not the bare origin - see docker-compose.test.yml's
+      # own OPENID4VCI_REDIRECT_URI comment; generate-tunnel-config.py keeps
+      # e2e-test-client's redirect_uri list in sync with this exact value.
+      - OPENID4VCI_REDIRECT_URI=${TUNNEL_FRONTEND_URL}/id/default/cb
       - STATIC_PUBLIC_URL=${TUNNEL_FRONTEND_URL}
       - VCT_REGISTRY_URL=${TUNNEL_BACKEND_URL}/registry/type-metadata
 

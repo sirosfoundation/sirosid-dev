@@ -824,6 +824,15 @@ register-mocks: ## Register mock verifier with backend
 		echo "  Mock verifier registered" || \
 		echo "  $(YELLOW)Warning: Could not register mock verifier$(NC)"
 
+# client_id is required, not cosmetic: without it, wallet-backend's engine
+# defaults to the OID4VCI §7.1 "unregistered client" convention
+# (client_id = redirect_uri), which vc-apigw's static clients map (keyed by
+# name, e.g. "e2e-test-client") never matches - every web-initiated
+# authorization_code credential (any auth_provider: oidc scope) then fails
+# vc-apigw's PAR endpoint with invalid_client. "e2e-test-client" is the same
+# client fixtures/vc-config.yaml's redirect_uri list is kept in sync with
+# (see its own comment) - matches fly-up.py's register_vc_services() (Fly
+# environments hit and fixed the identical bug independently).
 register-vc-services: ## Register VC issuer and verifier with backend
 	@echo "$(GREEN)Registering VC services with wallet backend...$(NC)"
 	@for i in $$(seq 1 30); do \
@@ -841,7 +850,7 @@ register-vc-services: ## Register VC issuer and verifier with backend
 	curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d "{\"credential_issuer_identifier\":\"$$_VC_APIGW_REG_URL\",\"visible\":true}" && \
+		-d "{\"credential_issuer_identifier\":\"$$_VC_APIGW_REG_URL\",\"visible\":true,\"client_id\":\"e2e-test-client\"}" && \
 		echo "  $(GREEN)✓ VC issuer registered ($$_VC_APIGW_REG_URL)$(NC)" || \
 		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"; \
 	curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
