@@ -666,16 +666,6 @@ ifneq ($(call _truthy,$(VC)),)
 	@# this under TUNNELS=yes/CONFORMANCE=yes: docker-compose.tunnel-vc.yml
 	@# and docker-compose.conformance.yml each mount their own correct config
 	@# over top of this one.
-	@# registry.siros.org doesn't carry urn:eudi:pid:arf-1.8:1, so it's served
-	@# from a local override - but the fixture references its logo/SVG template
-	@# on a host that sends no CORS headers, and the wallet fetch()es those to
-	@# substitute claim values, so they'd render as broken images. Inline them
-	@# as data: URIs, exactly as registry.siros.org does for the types it does
-	@# publish. Non-fatal offline: the reference is just left remote.
-	@mkdir -p fixtures/vc-metadata-inlined
-	@python3 scripts/inline-vctm-images.py \
-		fixtures/vc-metadata/vctm_pid_arf_1_8.json \
-		fixtures/vc-metadata-inlined/vctm_pid_arf_1_8.json || true
 	@python3 scripts/generate-tunnel-config.py \
 		--apigw-url "$(VC_APIGW_PUBLIC_URL)" \
 		--frontend-url "$(FRONTEND_URL)" \
