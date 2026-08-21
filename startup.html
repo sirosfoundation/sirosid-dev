@@ -304,9 +304,11 @@ var SERVICES = [
   { name: "mock-verifier",   check: "/_health/mock-verifier", port: 9011 },
   { name: "vctm-registry",   check: "/_health/registry",      port: 8080 },
   { name: "go-trust",        check: "/_health/go-trust",      port: 9095 },
-  { name: "vc-issuer",       check: "/_health/vc-issuer",     port: 9003 },
+  { name: "vc-issuer",       check: "/_health/vc-issuer",     port: 9000 },
   { name: "vc-verifier",     check: "/_health/vc-verifier",   port: 9001 },
-  { name: "vc-apigw",        check: "/_health/vc-apigw",      port: 9010 }
+  { name: "vc-apigw",        check: "/_health/vc-apigw",      port: 9003 },
+  { name: "vc-registry",     check: "/_health/vc-registry",   port: 9004 },
+  { name: "mini-oidc",       check: "/_health/mini-oidc",     port: 9005 }
 ];
 
 var svcStatus = {};
@@ -368,18 +370,49 @@ function loadBuildInfo() {
     .then(function(r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function(info) {
       var el = document.getElementById("build-info");
-      var html = '<table style="width:100%">';
-      html += '<thead><tr><th>Component</th><th>Branch</th><th>Commit</th><th>Built</th></tr></thead><tbody>';
+
+      // Source repos: what's checked out on disk right now.
+      var html = '<div class="meta" style="margin-bottom:0.35rem">Source repositories &mdash; git state on disk</div>';
+      html += '<table style="width:100%">';
+      html += '<thead><tr><th>Component</th><th>Branch</th><th>Commit</th><th>Last commit</th></tr></thead><tbody>';
       (info.components || []).forEach(function(c) {
+        // A dirty tree means the running image may not match this commit.
+        var dirty = c.dirty
+          ? ' <span title="uncommitted changes - a built image may not match this commit"'
+            + ' style="color:#B45309;font-weight:600">dirty</span>'
+          : '';
         html += '<tr>' +
-          '<td class="svc-name">' + esc(c.name) + '</td>' +
+          '<td class="svc-name">' + esc(c.name) + dirty + '</td>' +
           '<td class="meta"><code>' + esc(c.branch || "?") + '</code></td>' +
           '<td class="meta"><code>' + esc((c.commit || "?").substring(0, 10)) + '</code></td>' +
           '<td class="meta">' + esc(c.built || "?") + '</td></tr>';
       });
       html += '</tbody></table>';
+
+      // Running images: what each container is ACTUALLY running, which the
+      // git table above can't tell you - a local image can lag its repo, and
+      // several components are pulled rather than built at all.
+      var services = info.services || [];
+      if (services.length) {
+        html += '<div class="meta" style="margin:0.9rem 0 0.35rem">Running images &mdash; what each container came from</div>';
+        html += '<table style="width:100%">';
+        html += '<thead><tr><th>Service</th><th>Origin</th><th>Image</th><th>Image ID</th><th>Started</th></tr></thead><tbody>';
+        services.forEach(function(s) {
+          var col = s.origin === "registry" ? "#1C4587"
+                  : s.origin === "local build" ? "#166534" : "#888";
+          html += '<tr>' +
+            '<td class="svc-name">' + esc(s.service) + '</td>' +
+            '<td class="meta" style="color:' + col + ';font-weight:600">' + esc(s.origin || "?") + '</td>' +
+            '<td class="meta"><code>' + esc(s.image || "?") + '</code></td>' +
+            '<td class="meta"><code>' + esc(s.image_id || "?") + '</code></td>' +
+            '<td class="meta">' + esc(s.created || "?") + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+
       if (info.generated) {
-        html += '<div class="meta" style="margin-top:0.5rem">Generated: ' + esc(info.generated) + '</div>';
+        html += '<div class="meta" style="margin-top:0.5rem">Generated: ' + esc(info.generated) +
+                ' &mdash; refresh with <code>make build-info</code></div>';
       }
       el.innerHTML = html;
     })

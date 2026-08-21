@@ -568,30 +568,7 @@ show-images:
 
 # Generate build-info.json with git metadata from each component repo
 build-info:
-	@echo '{ "components": [' > build-info.json
-	@SEP=""; \
-	for repo_info in \
-		"wallet-frontend:$(FRONTEND_PATH)" \
-		"go-wallet-backend:$(BACKEND_PATH)" \
-		"facetec-api:$(FACETEC_PATH)" \
-		"sirosid-dev:."; \
-	do \
-		name=$${repo_info%%:*}; \
-		path=$${repo_info#*:}; \
-		if [ -d "$$path/.git" ]; then \
-			branch=$$(git -C "$$path" branch --show-current 2>/dev/null || echo "unknown"); \
-			commit=$$(git -C "$$path" rev-parse HEAD 2>/dev/null || echo "unknown"); \
-			built=$$(git -C "$$path" log -1 --format='%ci' 2>/dev/null || echo "unknown"); \
-			dirty="false"; \
-			if ! git -C "$$path" diff --quiet HEAD 2>/dev/null; then dirty="true"; fi; \
-			printf '%s\n    { "name": "%s", "branch": "%s", "commit": "%s", "built": "%s", "dirty": %s }' \
-				"$$SEP" "$$name" "$$branch" "$$commit" "$$built" "$$dirty" >> build-info.json; \
-			SEP=","; \
-		fi; \
-	done
-	@echo '' >> build-info.json
-	@echo '  ], "generated": "'$$(date -Iseconds)'" }' >> build-info.json
-	@echo "$(GREEN)Generated build-info.json$(NC)"
+	@python3 scripts/generate-build-info.py
 
 # =============================================================================
 # Up / Down / Status
@@ -813,6 +790,10 @@ ifneq ($(findstring $(GO_TRUST_COMPOSE),$(COMPOSE_FILES)),)
 	fi; \
 	rm -f $$_LOG
 endif
+	@# Regenerate now that containers are up: the earlier `build-info` call
+	@# (before compose) can only fill in the git side - the image provenance
+	@# section reads the RUNNING containers, so it would be empty at that point.
+	@python3 scripts/generate-build-info.py >/dev/null 2>&1 || true
 	@if [ "$(call _truthy,$(TUNNELS))" != "" ] && [ -f .env.tunnel ]; then \
 		. ./.env.tunnel; \
 		echo ""; \
