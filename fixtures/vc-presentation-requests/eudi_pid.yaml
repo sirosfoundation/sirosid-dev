@@ -38,13 +38,11 @@ templates:
             - path: ["given_name"]
             - path: ["family_name"]
             - path: ["birthdate"]
-            - path: ["age_equal_or_over", "18"]
             - path: ["nationalities"]
     claim_mappings:
       given_name: "given_name"
       family_name: "family_name"
       birthdate: "birthdate"
-      age_equal_or_over: "age_equal_or_over"
       nationalities: "nationalities"
     enabled: true
 
@@ -93,11 +91,7 @@ templates:
             - path: ["family_name"]
             - path: ["birthdate"]
             - path: ["place_of_birth"]
-            - path: ["age_equal_or_over", "18"]
-            - path: ["age_equal_or_over", "21"]
             - path: ["nationalities"]
-            # ARF 1.8 names this "sex", not "gender".
-            - path: ["sex"]
             - path: ["address"]
             - path: ["issuing_country"]
             - path: ["issuing_authority"]
@@ -105,6 +99,13 @@ templates:
       "*": "*"  # Map all claims through unchanged
     enabled: true
 
+  # DISABLED: fixtures/vc-bootstrapping/pid_1_8.json carries no
+  # age_equal_or_over data, so an issued PID has no such claim to disclose and
+  # this query can never match. DCQL requires every requested claim to be
+  # present. Re-enable by adding age_equal_or_over to the bootstrap document
+  # AND resetting the vc mongo volume - apigw skips the import when the
+  # datastore already has data ("Datastore already contains data, skipping
+  # import"), so editing the fixture alone changes nothing.
   - id: "eudi_pid_age_verification"
     name: "EUDI PID - Age Verification Only (ARF 1.8)"
     description: "Request only age verification attributes for privacy-preserving use cases"
@@ -124,4 +125,4 @@ templates:
             - path: ["age_equal_or_over", "65"]
     claim_mappings:
       age_equal_or_over: "age_equal_or_over"
-    enabled: true
+    enabled: false
