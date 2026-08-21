@@ -153,6 +153,10 @@ VC_APIGW_PUBLIC_URL ?= http://vc-apigw.localhost:$(VC_APIGW_PORT)
 # these the wrong way round - verifier.public_url is "http://localhost:9001"
 # (browser-only) while register-vc-services registers "http://vc-verifier:8080"
 # (container-only) - so whichever one a given hop used, the other was broken.
+# Must track wallet-frontend's BASE_PATH (docker-compose.test.yml): the wallet's
+# routes, including the cb route the verifier links to, live under it.
+WALLET_BASE_PATH ?= /id/default/
+
 VC_VERIFIER_PORT ?= 9001
 VC_VERIFIER_PUBLIC_URL ?= http://vc-verifier.localhost:$(VC_VERIFIER_PORT)
 
@@ -663,6 +667,9 @@ ifneq ($(call _truthy,$(VC)),)
 		--apigw-listen-port "$(VC_APIGW_PORT)" \
 		--verifier-url "$(VC_VERIFIER_PUBLIC_URL)" \
 		--verifier-listen-port "$(VC_VERIFIER_PORT)" \
+		--wallet-link-url "$(FRONTEND_URL)$(WALLET_BASE_PATH)cb" \
+		--wallet-link-name "$(WALLET_NAME)" \
+		--wallet-oidc-redirect-uri "$(FRONTEND_URL)$(WALLET_BASE_PATH)verification/result" \
 		--output fixtures/vc-config-local.yaml
 endif
 ifeq ($(PDP),helm)

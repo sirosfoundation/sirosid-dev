@@ -62,6 +62,10 @@ def patch_config(
     apigw_listen_port: str = "",
     verifier_url: str = "",
     verifier_listen_port: str = "",
+    wallet_link_url: str = "",
+    wallet_link_name: str = "Web wallet",
+    wallet_oidc_redirect_uri: str = "",
+    wallet_client_id: str = "wallet-web",
 ) -> str:
     out = base
 
@@ -83,6 +87,62 @@ def patch_config(
         )
     if verifier_url:
         out = out.replace("http://localhost:9001", verifier_url)
+
+    # 0b. Register the web wallet under verifier.supported_wallets, so the
+    #     verifier's own presentation page offers a same-device "open in
+    #     wallet" link instead of only a cross-device QR code. The verifier
+    #     appends client_id + request_uri to this base URL, which is exactly
+    #     what wallet-frontend's UriHandlerProvider consumes on the cb route.
+    #
+    #     Injected here rather than added to the base fixture because the base
+    #     is shared: patch-vc-config-fly.py builds Fly's config from it and
+    #     doesn't touch supported_wallets, so a hardcoded localhost:3000 entry
+    #     would show up as a dead link in every Fly environment.
+    if wallet_link_url:
+        anchor = f'\n  public_url: "{verifier_url}"\n'
+        if anchor in out:
+            block = (
+                f'{anchor}  supported_wallets:\n'
+                f'    "{wallet_link_name}": "{wallet_link_url}"\n'
+            )
+            out = out.replace(anchor, block, 1)
+        else:
+            raise ValueError(
+                "could not anchor supported_wallets on the verifier's public_url "
+                "line - the base config's verifier section may have changed"
+            )
+
+    # 0c. Register the wallet as a static OIDC client of the verifier, so a
+    #     presentation can be STARTED at the verifier (/authorize) rather than
+    #     only from the wallet side.
+    #
+    #     Note this is a different map from the base config's
+    #     verifier.inbound.openid4vp.clients, which despite the name is not
+    #     what /authorize consults: getClientByID (vc's
+    #     internal/verifier/apiv1/client.go) checks the datastore and then
+    #     verifier.outbound.oidc_provider.static_clients, so a client listed
+    #     only under inbound.openid4vp.clients is rejected with
+    #     "invalid_client: Client authentication failed" - confirmed live.
+    #
+    #     Public client (token_endpoint_auth_method: none, hence no secret):
+    #     the wallet is a browser app and the redirect target is a static
+    #     confirmation page that doesn't exchange the code.
+    if wallet_oidc_redirect_uri and verifier_url:
+        anchor = f'\n      issuer: "{verifier_url}"\n'
+        if anchor not in out:
+            raise ValueError(
+                "could not anchor static_clients on the verifier's oidc_provider "
+                "issuer line - the base config's verifier section may have changed"
+            )
+        block = (
+            f'{anchor}      static_clients:\n'
+            f'        - client_id: "{wallet_client_id}"\n'
+            f'          token_endpoint_auth_method: "none"\n'
+            f'          redirect_uris:\n'
+            f'            - "{wallet_oidc_redirect_uri}"\n'
+            f'          allowed_scopes: ["openid", "pid", "ehic", "diploma", "mdl"]\n'
+        )
+        out = out.replace(anchor, block, 1)
 
     # 0. Repoint apigw's own listen port when asked. Only meaningful for the
     #    local path, where apigw's published port and its in-container port
@@ -231,6 +291,30 @@ def main():
         help="Repoint verifier.api_server.addr to this port, for the same "
         "published/in-container alignment as --apigw-listen-port.",
     )
+    parser.add_argument(
+        "--wallet-link-url",
+        default="",
+        help="Register this wallet URL under verifier.supported_wallets, giving "
+        "the verifier's presentation page a same-device 'open in wallet' link. "
+        "Requires --verifier-url (used to anchor the insertion).",
+    )
+    parser.add_argument(
+        "--wallet-link-name",
+        default="Web wallet",
+        help="Display name for --wallet-link-url on the verifier's page.",
+    )
+    parser.add_argument(
+        "--wallet-oidc-redirect-uri",
+        default="",
+        help="Register a static OIDC client on the verifier with this redirect "
+        "URI, so a presentation can be started at the verifier's /authorize. "
+        "Requires --verifier-url (used to anchor the insertion).",
+    )
+    parser.add_argument(
+        "--wallet-client-id",
+        default="wallet-web",
+        help="client_id for --wallet-oidc-redirect-uri.",
+    )
     args = parser.parse_args()
 
     base_path = Path(args.base)
@@ -251,6 +335,10 @@ def main():
         args.apigw_listen_port,
         args.verifier_url.rstrip("/"),
         args.verifier_listen_port,
+        args.wallet_link_url.rstrip("/"),
+        args.wallet_link_name,
+        args.wallet_oidc_redirect_uri,
+        args.wallet_client_id,
     )
 
     out_path = Path(args.output)
