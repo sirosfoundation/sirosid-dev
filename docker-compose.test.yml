@@ -128,6 +128,16 @@ services:
       - WALLET_AS_EXTERNAL_URL=http://localhost:8080
       - WALLET_AS_ISSUER=http://localhost:8080
       - WALLET_AS_RULES_DIR=/app/fixtures/as-rules
+      # CORS for the AS: its client sends credentials (cookies), so the origin
+      # must be explicit — browsers reject wildcard '*' on credentialed
+      # requests. X-Token-Mode is required too: the AS itself defines the
+      # header (internal/as/compat.go) and wallet-frontend sends it on every
+      # AuthServerClient call, but configs/config.yaml sets allowed_headers
+      # explicitly and omits it, so config.SetDefaults() (which does list it)
+      # never fires. Without this, every /auth/token call fails CORS preflight.
+      - WALLET_SERVER_CORS_ALLOWED_ORIGINS=${WALLET_CORS_ORIGIN:-http://localhost:3000}
+      - WALLET_SERVER_CORS_ALLOW_CREDENTIALS=true
+      - WALLET_SERVER_CORS_ALLOWED_HEADERS=Authorization,Content-Type,X-Tenant-ID,X-Token-Mode,If-None-Match,X-Private-Data-If-Match,X-Private-Data-If-None-Match,Upgrade,Connection,Sec-WebSocket-Key,Sec-WebSocket-Version,Sec-WebSocket-Protocol
       # Wallet Provider Key Attestation (OID4VCI "attestation" proof type) -
       # real x5c-chained signing key, so the SDK gets a genuine trust anchor
       # instead of the self-signed bare-jwk fallback. WIA is disabled since
