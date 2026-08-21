@@ -1,8 +1,27 @@
 # EUDI PID (Personal Identification Data) Presentation Request
-# Compliant with EU Digital Identity Wallet Architecture Reference Framework
+#
+# These templates produce the DCQL query the verifier sends to the wallet, so
+# every field here has to match what this stack actually ISSUES or the wallet
+# answers "No credentials match DCQL query" for every attempt:
+#
+#   format      "dc+sd-jwt", per common.credential_metadata.pid_1_8.format in
+#               fixtures/vc-config.yaml. (Was "vc+sd-jwt", which matches
+#               nothing this stack issues.)
+#   vct_values  the vct of the VCTM the credential is built from -
+#               BuildCredentialWithSigner derives the credential's vct claim
+#               from the VCTM's own "vct" field (vc's
+#               internal/issuer/apiv1/handlers.go), i.e.
+#               urn:eudi:pid:arf-1.8:1, not the generic urn:eudi:pid:1.
+#   claims      ARF 1.8 paths, from fixtures/vc-metadata/vctm_pid_arf_1_8.json.
+#
+# ARF 1.5 and ARF 1.8 are NOT interchangeable in one entry: 1.5 has
+# ["age_over_18"] and ["nationality"], 1.8 has ["age_equal_or_over","18"] and
+# ["nationalities"]. Listing both vcts against one claim set would request
+# claims that don't exist in whichever credential the wallet holds, so 1.5
+# gets its own template below.
 templates:
   - id: "eudi_pid_basic"
-    name: "EUDI PID - Basic Profile"
+    name: "EUDI PID - Basic Profile (ARF 1.8)"
     description: "Request basic personal identification data from EUDI wallet"
     version: "1.0"
     oidc_scopes:
@@ -11,11 +30,37 @@ templates:
     dcql:
       credentials:
         - id: "eudi_pid"
-          format: "vc+sd-jwt"
+          format: "dc+sd-jwt"
           meta:
             vct_values:
-              - "urn:eudi:pid:1"
-              - "urn:eu.europa.ec.eudi:pid:1"  # Alternative VCT format
+              - "urn:eudi:pid:arf-1.8:1"
+          claims:
+            - path: ["given_name"]
+            - path: ["family_name"]
+            - path: ["birthdate"]
+            - path: ["age_equal_or_over", "18"]
+            - path: ["nationalities"]
+    claim_mappings:
+      given_name: "given_name"
+      family_name: "family_name"
+      birthdate: "birthdate"
+      age_equal_or_over: "age_equal_or_over"
+      nationalities: "nationalities"
+    enabled: true
+
+  - id: "eudi_pid_basic_arf15"
+    name: "EUDI PID - Basic Profile (ARF 1.5)"
+    description: "Same basic profile against an ARF 1.5 PID, which uses the older claim names"
+    version: "1.0"
+    oidc_scopes:
+      - "pid_1_5"
+    dcql:
+      credentials:
+        - id: "eudi_pid"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "urn:eudi:pid:arf-1.5:1"
           claims:
             - path: ["given_name"]
             - path: ["family_name"]
@@ -31,7 +76,7 @@ templates:
     enabled: true
 
   - id: "eudi_pid_full"
-    name: "EUDI PID - Full Profile"
+    name: "EUDI PID - Full Profile (ARF 1.8)"
     description: "Request complete personal identification data"
     version: "1.0"
     oidc_scopes:
@@ -39,20 +84,20 @@ templates:
     dcql:
       credentials:
         - id: "eudi_pid"
-          format: "vc+sd-jwt"
+          format: "dc+sd-jwt"
           meta:
             vct_values:
-              - "urn:eudi:pid:1"
-              - "urn:eu.europa.ec.eudi:pid:1"
+              - "urn:eudi:pid:arf-1.8:1"
           claims:
             - path: ["given_name"]
             - path: ["family_name"]
             - path: ["birthdate"]
             - path: ["place_of_birth"]
-            - path: ["age_over_18"]
-            - path: ["age_over_21"]
-            - path: ["nationality"]
-            - path: ["gender"]
+            - path: ["age_equal_or_over", "18"]
+            - path: ["age_equal_or_over", "21"]
+            - path: ["nationalities"]
+            # ARF 1.8 names this "sex", not "gender".
+            - path: ["sex"]
             - path: ["address"]
             - path: ["issuing_country"]
             - path: ["issuing_authority"]
@@ -61,7 +106,7 @@ templates:
     enabled: true
 
   - id: "eudi_pid_age_verification"
-    name: "EUDI PID - Age Verification Only"
+    name: "EUDI PID - Age Verification Only (ARF 1.8)"
     description: "Request only age verification attributes for privacy-preserving use cases"
     version: "1.0"
     oidc_scopes:
@@ -69,23 +114,14 @@ templates:
     dcql:
       credentials:
         - id: "eudi_pid_age"
-          format: "vc+sd-jwt"
+          format: "dc+sd-jwt"
           meta:
             vct_values:
-              - "urn:eudi:pid:1"
-              - "urn:eu.europa.ec.eudi:pid:1"
+              - "urn:eudi:pid:arf-1.8:1"
           claims:
-            - path: ["age_over_18"]
-            - path: ["age_over_21"]
-            - path: ["age_over_65"]
+            - path: ["age_equal_or_over", "18"]
+            - path: ["age_equal_or_over", "21"]
+            - path: ["age_equal_or_over", "65"]
     claim_mappings:
-      age_over_18: "age_over_18"
-      age_over_21: "age_over_21"
-      age_over_65: "age_over_65"
-    claim_transforms:
-      age_over_18:
-        type: "boolean_string"
-        params:
-          true_value: "yes"
-          false_value: "no"
+      age_equal_or_over: "age_equal_or_over"
     enabled: true

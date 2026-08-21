@@ -1,4 +1,21 @@
 # EUDI EHIC (European Health Insurance Card) Presentation Request
+#
+# As with eudi_pid.yaml, every field here must match what this stack actually
+# issues or the wallet answers "No credentials match DCQL query":
+#
+#   format      "dc+sd-jwt", per common.credential_metadata.ehic.format in
+#               fixtures/vc-config.yaml. (Was "vc+sd-jwt".)
+#   vct_values  urn:eudi:ehic:1 - this one was already correct.
+#   claims      the paths that actually exist in
+#               fixtures/vc-metadata/vctm_ehic.json. The previous list came
+#               from a different EHIC schema entirely (card_number, forename,
+#               date_of_birth, institution_*), none of which appear in the
+#               VCTM this stack issues against.
+#
+# Note the issued EHIC carries no name or date-of-birth claims at all - it
+# identifies the holder by personal_administrative_number - so the old
+# forename/family_name/date_of_birth requests (and the date_of_birth
+# transform that went with them) are dropped rather than remapped.
 templates:
   - id: "eudi_ehic_standard"
     name: "EUDI EHIC - Standard Request"
@@ -9,35 +26,26 @@ templates:
     dcql:
       credentials:
         - id: "eudi_ehic"
-          format: "vc+sd-jwt"
+          format: "dc+sd-jwt"
           meta:
             vct_values:
               - "urn:eudi:ehic:1"
-              - "urn:eu.europa.ec.eudi:ehic:1"
           claims:
-            - path: ["card_number"]
-            - path: ["personal_identification_number"]
-            - path: ["forename"]
-            - path: ["family_name"]
-            - path: ["date_of_birth"]
-            - path: ["institution_id"]
-            - path: ["institution_name"]
-            - path: ["institution_country"]
-            - path: ["expiry_date"]
+            - path: ["document_number"]
+            - path: ["personal_administrative_number"]
+            - path: ["issuing_authority", "name"]
+            - path: ["issuing_country"]
+            - path: ["date_of_expiry"]
+            - path: ["starting_date"]
+            - path: ["ending_date"]
+            - path: ["authentic_source", "name"]
     claim_mappings:
-      card_number: "ehic_card_number"
-      personal_identification_number: "pin"
-      forename: "given_name"
-      family_name: "family_name"
-      date_of_birth: "birthdate"
-      institution_id: "competent_institution_id"
-      institution_name: "competent_institution"
-      institution_country: "issuing_country"
-      expiry_date: "card_expiry"
-    claim_transforms:
-      date_of_birth:
-        type: "date_format"
-        params:
-          from: "YYYY-MM-DD"
-          to: "DD/MM/YYYY"
+      document_number: "ehic_card_number"
+      personal_administrative_number: "pin"
+      issuing_authority: "competent_institution"
+      issuing_country: "issuing_country"
+      date_of_expiry: "card_expiry"
+      starting_date: "coverage_start"
+      ending_date: "coverage_end"
+      authentic_source: "authentic_source"
     enabled: true
