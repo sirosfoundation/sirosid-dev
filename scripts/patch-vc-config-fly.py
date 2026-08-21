@@ -168,6 +168,39 @@ def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation
     verifier["outbound"]["oidc_provider"]["issuer"] = verifier_url
     verifier["inbound"]["openid4vp"]["token_endpoint"] = f"{verifier_url}/token"
     verifier["inbound"]["openid4vp"]["clients"]["e2e-test-client"]["redirect_uri"] = frontend_cb_url
+    # Let a presentation be STARTED at the verifier and handed to the web
+    # wallet by direct link, instead of only cross-device via QR. Two separate
+    # registrations, because they cover different halves:
+    #
+    #   supported_wallets      puts an "open in <wallet>" link on the
+    #                          verifier's presentation page. The verifier
+    #                          appends client_id + request_uri to this base
+    #                          URL, which is what wallet-frontend's
+    #                          UriHandlerProvider consumes on its cb route.
+    #
+    #   oidc_provider.
+    #     static_clients       is what /authorize actually validates against.
+    #                          NOT inbound.openid4vp.clients above, despite
+    #                          the name: getClientByID (vc's
+    #                          internal/verifier/apiv1/client.go) checks the
+    #                          datastore and then static_clients only, so a
+    #                          client listed solely under
+    #                          inbound.openid4vp.clients is rejected with
+    #                          "invalid_client" - confirmed live locally.
+    #
+    # Public client (no secret): the wallet is a browser app and the redirect
+    # target is its own static verification/result page, which never exchanges
+    # the code. Mirrors the local path's equivalent in
+    # scripts/generate-tunnel-config.py.
+    verifier["supported_wallets"] = {"SIROS ID": frontend_cb_url}
+    verifier["outbound"]["oidc_provider"]["static_clients"] = [
+        {
+            "client_id": "wallet-web",
+            "token_endpoint_auth_method": "none",
+            "redirect_uris": [f"{frontend_url}/id/default/verification/result"],
+            "allowed_scopes": ["openid", "pid", "ehic", "diploma", "mdl"],
+        }
+    ]
 
     config["registry"]["public_url"] = registry_url
     # Default section_size (1M decoys, built as one in-memory slice before a
