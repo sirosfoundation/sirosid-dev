@@ -66,6 +66,7 @@ def patch_config(
     wallet_link_name: str = "Web wallet",
     wallet_oidc_redirect_uri: str = "",
     wallet_client_id: str = "wallet-web",
+    dc_api_enable: str = "",
 ) -> str:
     out = base
 
@@ -143,6 +144,21 @@ def patch_config(
             f'          allowed_scopes: ["openid", "pid", "ehic", "diploma", "mdl"]\n'
         )
         out = out.replace(anchor, block, 1)
+
+    # 0d. Toggle the verifier's W3C Digital Credentials API support. The
+    #     verifier's UI only attempts navigator.credentials.get() when this is
+    #     on (it surfaces as UIMetadataReply.DCAPIEnabled), and the browser can
+    #     only satisfy that call if something has registered as a credential
+    #     provider - i.e. wallet-companion is installed. With no provider the
+    #     DC API attempt is a dead end before the QR/redirect path is even
+    #     offered, so defaulting it on is wrong for a plain browser setup.
+    if dc_api_enable:
+        out = re.sub(
+            r'(\n\s*digital_credentials:\n\s*enable:\s*)(?:true|false)',
+            rf'\g<1>{dc_api_enable}',
+            out,
+            count=1,
+        )
 
     # 0. Repoint apigw's own listen port when asked. Only meaningful for the
     #    local path, where apigw's published port and its in-container port
@@ -315,6 +331,13 @@ def main():
         default="wallet-web",
         help="client_id for --wallet-oidc-redirect-uri.",
     )
+    parser.add_argument(
+        "--dc-api-enable",
+        default="",
+        choices=["", "true", "false"],
+        help="Set verifier.digital_credentials.enable. Omit to leave the base "
+        "config's value untouched.",
+    )
     args = parser.parse_args()
 
     base_path = Path(args.base)
@@ -339,6 +362,7 @@ def main():
         args.wallet_link_name,
         args.wallet_oidc_redirect_uri,
         args.wallet_client_id,
+        args.dc_api_enable,
     )
 
     out_path = Path(args.output)

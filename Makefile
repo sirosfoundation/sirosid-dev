@@ -76,6 +76,13 @@ TUNNELS ?=
 GOLDEN ?=
 REBUILD ?=
 FACETEC ?=
+# W3C Digital Credentials API on the verifier. Off by default: the verifier's
+# UI only attempts navigator.credentials.get() when this is on, and the
+# browser can only answer that if something is registered as a credential
+# provider - i.e. wallet-companion is installed. On a plain browser setup
+# that's a dead end reached before the QR/redirect path is offered, so it
+# only makes sense to opt in.
+DC_API ?= no
 
 # Golden release configuration
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
@@ -680,6 +687,7 @@ ifneq ($(call _truthy,$(VC)),)
 		--wallet-link-url "$(FRONTEND_URL)$(WALLET_BASE_PATH)cb" \
 		--wallet-link-name "$(WALLET_NAME)" \
 		--wallet-oidc-redirect-uri "$(FRONTEND_URL)$(WALLET_BASE_PATH)verification/result" \
+		--dc-api-enable "$(if $(call _truthy,$(DC_API)),true,false)" \
 		--output fixtures/vc-config-local.yaml
 endif
 ifeq ($(PDP),helm)
@@ -725,6 +733,7 @@ endif
 	@echo "  Domain:      $(_DOMAIN_LABEL)"
 	@echo "  Tunnels:     $(_TUNNELS_LABEL)"
 	@echo "  facetec-api: $(_FACETEC_LABEL)"
+	@echo "  DC API:      $(if $(call _truthy,$(DC_API)),enabled,disabled (DC_API=yes to enable; needs wallet-companion))"
 ifneq ($(call _truthy,$(TUNNELS)),)
 	@echo "  vc-config:   $(_TUNNEL_VC_LABEL) (tunnel-patched credential_issuer/token_endpoint/CORS)"
 endif
