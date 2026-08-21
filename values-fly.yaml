@@ -149,7 +149,15 @@ images:
   # SPOCP action so the wallet's RICAL reader-trust AuthZEN calls
   # (siros-sdk-kotlin#113/siros-sdk-swift#110) actually pass through the
   # authzen_proxy instead of being denied as an unrecognized action.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.14.0"
+  #
+  # 0.14.0 -> 0.14.1: three fixes, of which one matters here. #280 stops the
+  # wallet silently falling back to a non-PAR authorization when the AS
+  # requires PAR - a behaviour change, so a client relying on that fallback
+  # now surfaces an error instead of proceeding. #281 moves the registry's
+  # TS11 schemas.json fetch to go-ts11client. #282 (allow_http for
+  # URL-subject issuer resolution) is a no-op for Fly, which is HTTPS
+  # throughout - it was needed for local http:// stacks.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.14.1"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
