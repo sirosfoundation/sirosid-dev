@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # install.sh — Bootstrap SIROS ID dev environment
 # Usage: curl -fsSL <URL>/install.sh | bash
 set -euo pipefail

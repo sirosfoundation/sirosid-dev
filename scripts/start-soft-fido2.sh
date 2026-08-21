@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 #
 # Start soft-fido2 virtual authenticator for E2E testing
 #
