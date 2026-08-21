@@ -147,6 +147,15 @@ VC_VERIFIER_INTERNAL_URL ?= http://vc-verifier:8080
 VC_APIGW_PORT ?= 9003
 VC_APIGW_PUBLIC_URL ?= http://vc-apigw.localhost:$(VC_APIGW_PORT)
 
+# vc-verifier needs the identical treatment, for the identical reason: an
+# OpenID4VP presentation redirect sends the BROWSER to the verifier, while
+# wallet-backend reaches it over the compose network. The base config splits
+# these the wrong way round - verifier.public_url is "http://localhost:9001"
+# (browser-only) while register-vc-services registers "http://vc-verifier:8080"
+# (container-only) - so whichever one a given hop used, the other was broken.
+VC_VERIFIER_PORT ?= 9001
+VC_VERIFIER_PUBLIC_URL ?= http://vc-verifier.localhost:$(VC_VERIFIER_PORT)
+
 # mini-oidc (the IdP behind apigw's auth_providers.oidc, i.e. every
 # authorization_code scope: pid/pid_1_5/pid_1_8/ehic/diploma) needs the same
 # dual-reachable treatment for the same reason: the browser is redirected to
@@ -592,6 +601,8 @@ up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN=, AS_RUL
 p='fixtures/go-trust-whitelist.txt'; w=json.load(open(p)); \
 u='$(VC_APIGW_PUBLIC_URL)'; \
 w['issuers']=w['issuers']+[u] if u and u not in w['issuers'] else w['issuers']; \
+v='$(VC_VERIFIER_PUBLIC_URL)'; \
+w['verifiers']=w['verifiers']+[v] if v and v not in w['verifiers'] else w['verifiers']; \
 json.dump(w, open('fixtures/go-trust-whitelist-local.json','w'), indent=2)"
 ifneq ($(call _truthy,$(TUNNELS)),)
 	@if [ -n "$(DOMAIN)" ]; then \
@@ -650,6 +661,8 @@ ifneq ($(call _truthy,$(VC)),)
 		--oidc-issuer-url "$(MINI_OIDC_ISSUER)" \
 		--oidc-redirect-uri "$(VC_APIGW_PUBLIC_URL)/oidcrp/callback" \
 		--apigw-listen-port "$(VC_APIGW_PORT)" \
+		--verifier-url "$(VC_VERIFIER_PUBLIC_URL)" \
+		--verifier-listen-port "$(VC_VERIFIER_PORT)" \
 		--output fixtures/vc-config-local.yaml
 endif
 ifeq ($(PDP),helm)
@@ -764,7 +777,7 @@ ifneq ($(call _truthy,$(VC)),)
 	@# vc-issuer healthy, then vc-apigw) that compose should still honor.
 	@echo "$(YELLOW)Applying regenerated vc-config (recreating vc-issuer/vc-apigw)...$(NC)"
 	@_LOG=$$(mktemp /tmp/compose-vc.XXXXXX); \
-	if ! docker compose $(COMPOSE_FILES) up -d --force-recreate vc-issuer vc-apigw >$$_LOG 2>&1; then \
+	if ! docker compose $(COMPOSE_FILES) up -d --force-recreate vc-issuer vc-apigw vc-verifier >$$_LOG 2>&1; then \
 		echo "$(RED)Failed to recreate vc-issuer/vc-apigw:$(NC)"; \
 		cat $$_LOG; \
 		rm -f $$_LOG; \
@@ -920,7 +933,7 @@ ensure-conformance-hosts: ## Ensure /etc/hosts has the conformance suite entry
 # doesn't already handle *.localhost per RFC 6761 - Chrome, Firefox and
 # systemd-resolved do, plain glibc getaddrinfo does not - so on most Linux
 # desktops this is a no-op that never asks for sudo.
-LOCAL_HOSTNAMES := vc-apigw.localhost mini-oidc.localhost mini-oidc-rp.localhost
+LOCAL_HOSTNAMES := vc-apigw.localhost vc-verifier.localhost mini-oidc.localhost mini-oidc-rp.localhost
 
 ensure-local-hosts: ## Ensure *.localhost names used by VC=yes resolve to 127.0.0.1
 	@for h in $(LOCAL_HOSTNAMES); do \
@@ -981,7 +994,7 @@ register-vc-services: ## Register VC issuer and verifier with backend
 	@# vc-apigw:8080. The .env.tunnel branch below still wins under TUNNELS=yes,
 	@# where generate-tunnel-config.py has set the tunnel URL as PublicURL.
 	@_VC_APIGW_REG_URL="$(VC_APIGW_PUBLIC_URL)"; \
-	_VC_VERIFIER_REG_URL="$(VC_VERIFIER_INTERNAL_URL)"; \
+	_VC_VERIFIER_REG_URL="$(VC_VERIFIER_PUBLIC_URL)"; \
 	if [ -f .env.tunnel ]; then \
 		. ./.env.tunnel; \
 		if [ -n "$${TUNNEL_VC_APIGW_URL:-}" ]; then _VC_APIGW_REG_URL="$$TUNNEL_VC_APIGW_URL"; fi; \

@@ -60,8 +60,29 @@ def patch_config(
     oidc_issuer_url: str = "",
     oidc_redirect_uri: str = "",
     apigw_listen_port: str = "",
+    verifier_url: str = "",
+    verifier_listen_port: str = "",
 ) -> str:
     out = base
+
+    # 0a. The verifier has the same two-audiences problem as apigw, and the
+    #     base config splits it the wrong way round: verifier.public_url (and
+    #     the OIDC issuer / token_endpoint derived from it) is
+    #     "http://localhost:9001", reachable from the host browser but not
+    #     from inside the compose network, while register-vc-services hands
+    #     wallet-backend "http://vc-verifier:8080", reachable from containers
+    #     but not the browser. A presentation redirect then sends the user to
+    #     a hostname their browser cannot resolve. One alias-backed URL, with
+    #     the listen port aligned to the published one, satisfies both.
+    if verifier_listen_port:
+        out = re.sub(
+            r'(\nverifier:\n(?:.*\n)*?\s*api_server:\n\s*addr:\s*)":8080"',
+            rf'\g<1>":{verifier_listen_port}"',
+            out,
+            count=1,
+        )
+    if verifier_url:
+        out = out.replace("http://localhost:9001", verifier_url)
 
     # 0. Repoint apigw's own listen port when asked. Only meaningful for the
     #    local path, where apigw's published port and its in-container port
@@ -198,6 +219,18 @@ def main():
         "published and in-container ports must match (the local path). Omit to "
         "leave the base config's :8080 untouched (tunnels, conformance, Fly).",
     )
+    parser.add_argument(
+        "--verifier-url",
+        default="",
+        help="Replace the verifier's http://localhost:9001 identity (public_url, "
+        "OIDC issuer, token_endpoint). Omit to leave the base config untouched.",
+    )
+    parser.add_argument(
+        "--verifier-listen-port",
+        default="",
+        help="Repoint verifier.api_server.addr to this port, for the same "
+        "published/in-container alignment as --apigw-listen-port.",
+    )
     args = parser.parse_args()
 
     base_path = Path(args.base)
@@ -216,6 +249,8 @@ def main():
         args.oidc_issuer_url.rstrip("/"),
         args.oidc_redirect_uri,
         args.apigw_listen_port,
+        args.verifier_url.rstrip("/"),
+        args.verifier_listen_port,
     )
 
     out_path = Path(args.output)

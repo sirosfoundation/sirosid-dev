@@ -115,10 +115,14 @@ services:
     image: vc-verifier-e2e-test:local
     container_name: vc-verifier-e2e
     ports:
-      - "9001:8080"     # HTTP API (OpenID4VP + OIDC endpoints)
+      # Host and container port MUST match, same as vc-apigw above: an
+      # OpenID4VP presentation redirect sends the browser to the verifier,
+      # while wallet-backend reaches it over the compose network, and the one
+      # URL it advertises has to work for both.
+      - "9001:9001"     # HTTP API (OpenID4VP + OIDC endpoints)
       - "9091:8090"     # gRPC
     volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
+      - ./fixtures/vc-config-local.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/vc-metadata:/metadata:ro
       - ./fixtures/vc-presentation-requests:/presentation_requests:ro
@@ -129,13 +133,16 @@ services:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:9001/health"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 30s
     networks:
-      - e2e-test-network
+      e2e-test-network:
+        # See vc-apigw's alias below - same mechanism, same reason.
+        aliases:
+          - vc-verifier.localhost
 
   # VC API Gateway - OAuth2 Authorization Server for OpenID4VCI
   # Handles user authentication (OIDC/SAML) and credential offer generation

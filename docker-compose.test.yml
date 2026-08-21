@@ -204,7 +204,7 @@ services:
       - PORT=9081
       - PDP_ID=http://localhost:9081
       - TRUSTED_ISSUERS=http://localhost:9003,http://vc-issuer:8080,http://localhost:9000,http://vc-apigw:8080,http://vc-apigw.localhost:9003,https://vc-proxy:8443
-      - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011,http://localhost:9001,http://vc-verifier:8080
+      - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011,http://localhost:9001,http://vc-verifier:8080,http://vc-verifier.localhost:9001
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9081/health"]
       interval: 3s

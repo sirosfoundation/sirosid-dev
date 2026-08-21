@@ -38,6 +38,21 @@ services:
     volumes:
       - ./fixtures/vc-config.yaml:/config.yaml:ro
 
+  # Base config leaves verifier.api_server.addr at :8080 - see vc-apigw below
+  # for why `!override` is required on ports.
+  vc-verifier:
+    volumes:
+      - ./fixtures/vc-config.yaml:/config.yaml:ro
+    ports: !override
+      - "9001:8080"
+      - "9091:8090"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   vc-apigw:
     volumes:
       - ./fixtures/vc-config.yaml:/config.yaml:ro
