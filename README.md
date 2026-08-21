@@ -405,6 +405,31 @@ cd ../sirosid-tests && make test-conformance
 # Conformance UI: https://localhost.emobix.co.uk:8443/
 ```
 
+## DIIP v5 Compliance
+
+The wallet targets the [Decentralized Identity Interop Profile
+v5](https://github.com/FIDEScommunity/DIIP/blob/main/spec/spec.md). See
+[DIIP-V5.md](DIIP-V5.md) for the requirement-by-requirement matrix and how to exercise each
+part locally.
+
+The dev stack runs with `DID_KEY_VERSION=jwk` so holder keys are `did:jwk`, as DIIP v5
+requires. Set it to `jwk_jcs-pub` or `p256-pub` in `docker-compose.test.yml` to exercise the
+legacy `did:key` behaviour.
+
+DIIP mandates the IETF Token Status List for revocation. No dev-stack issuer publishes one, so
+generate a fixture to test against:
+
+```bash
+# Revoke index 3, suspend index 5
+node scripts/make-status-list.mjs \
+  --uri http://localhost:8080/statuslist/1 \
+  --revoke 3 --suspend 5 \
+  --out fixtures/status-list
+```
+
+Serve `fixtures/status-list/statuslist.jwt` as `application/statuslist+jwt` and point a
+credential's `status.status_list.uri` at it.
+
 ## R2PS (Remote PAKE-Protected Signing)
 
 An advanced, currently deprioritized WSCD option: a remote HSM-backed signing
