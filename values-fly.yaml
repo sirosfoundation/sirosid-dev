@@ -183,8 +183,16 @@ images:
   # fixed, reproducible references.
   #
   # DELETE this override once siros-id-stack bumps images.walletFrontendConfig
-  # past this commit.
-  walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:unstable-455c2ca"
+  # past this release.
+  # unstable-455c2ca -> 0.5.0-1-sirosid.10 (26 commits): most relevantly this
+  # carries wallet-frontend#220, which stops a verifier-initiated
+  # presentation crashing with "Cannot read properties of null (reading
+  # 'filter')" - vcEntityList is null until the credential engine's first
+  # load, and a request arriving on the callback route can beat it. Now a
+  # release tag rather than an unstable-<sha> build: same reproducibility,
+  # reviewable release. GHCR drops the git tag's "v" prefix, so
+  # v0.5.0-1-sirosid.10 publishes as 0.5.0-1-sirosid.10.
+  walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.10"
 
   # mini-oidc is NOT part of the siros-id-stack chart (it's a sirosid-dev
   # testing-only component), so unlike every pin above it isn't consumed via
