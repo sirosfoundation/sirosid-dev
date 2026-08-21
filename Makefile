@@ -17,7 +17,7 @@ _truthy = $(filter 1 yes on up,$(1))
 WALLET_NAME ?= SIROS ID (dev)
 
 .PHONY: help setup up down logs status status-vc \
-        ensure-conformance-hosts fetch-golden-env \
+        ensure-conformance-hosts ensure-local-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
         render-helm-config fly-up fly-down fly-status \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
@@ -127,10 +127,25 @@ VC_VERIFIER_INTERNAL_URL ?= http://vc-verifier:8080
 # issuer from a physical Android device. TUNNELS=yes/CONFORMANCE=yes don't use
 # this: each supplies its own genuinely public identity (tunnel URL, vc-proxy).
 #
-# Computed lazily (recursive `=`, not `:=`) - e2e-test-network is created by
-# the `up:` target itself, so it may not exist yet at Makefile parse time.
-_BRIDGE_GW = $(shell docker network inspect e2e-test-network -f '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null)
-VC_APIGW_PUBLIC_URL ?= http://$(_BRIDGE_GW):9003
+# The address is a *.localhost name carried by a docker network alias, NOT the
+# bridge-gateway IP an earlier version of this used. Routing the browser hop
+# through a host-published port made correctness depend on the daemon's default
+# publish address: a host with `"ip": "127.0.0.1"` in daemon.json binds
+# 9003 on loopback only, so a container dialling <gateway>:9003 gets an instant
+# "connection refused" while the host's own curl succeeds - confirmed live on a
+# second dev machine. The alias avoids the host round-trip entirely:
+#   - containers: docker's embedded DNS resolves the alias to apigw's container
+#     IP, so nothing traverses a published port and the daemon's bind address
+#     is irrelevant.
+#   - host browser: *.localhost resolves to 127.0.0.1 (RFC 6761) and hits the
+#     published port. `ensure-local-hosts` below adds an /etc/hosts entry on the
+#     machines whose resolver doesn't do this on its own (glibc getaddrinfo
+#     doesn't; Chrome/Firefox/systemd-resolved do).
+# This is why apigw's published and in-container ports must be the same number
+# (9003:9003, with api_server.addr repointed in the generated config): one URL
+# carries one port, and both sides have to be able to use it.
+VC_APIGW_PORT ?= 9003
+VC_APIGW_PUBLIC_URL ?= http://vc-apigw.localhost:$(VC_APIGW_PORT)
 
 # mini-oidc (the IdP behind apigw's auth_providers.oidc, i.e. every
 # authorization_code scope: pid/pid_1_5/pid_1_8/ehic/diploma) needs the same
@@ -140,9 +155,11 @@ VC_APIGW_PUBLIC_URL ?= http://$(_BRIDGE_GW):9003
 # equal the issuer_url apigw was configured with, or the flow fails issuer
 # validation. Its compose default (http://mini-oidc:9005) is container-only.
 # docker-compose.android*.yml still override ISSUER on the service itself for
-# Waydroid, so those paths are unaffected.
-export MINI_OIDC_ISSUER ?= http://$(_BRIDGE_GW):9005
-export MINI_OIDC_RP_URL ?= http://$(_BRIDGE_GW):9006
+# Waydroid, so those paths are unaffected. Same *.localhost alias mechanism as
+# VC_APIGW_PUBLIC_URL above; mini-oidc already publishes 9005:9005 and 9006:9006,
+# so its ports are aligned as-is and only the alias is needed.
+export MINI_OIDC_ISSUER ?= http://mini-oidc.localhost:9005
+export MINI_OIDC_RP_URL ?= http://mini-oidc-rp.localhost:9006
 export GO_TRUST_ALLOW_URL ?= http://$(_HOST):9095
 export GO_TRUST_WHITELIST_URL ?= http://$(_HOST):9096
 export GO_TRUST_DENY_URL ?= http://$(_HOST):9097
@@ -615,6 +632,7 @@ ifneq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
 endif
 endif
 ifneq ($(call _truthy,$(VC)),)
+	@$(MAKE) --no-print-directory ensure-local-hosts
 	@# Pre-flight: ../vc must exist for VC service builds
 	@if [ ! -d "$(VC_PATH:-../vc)" ] && [ ! -d "../vc" ]; then \
 		echo "$(RED)Error: VC services require the 'vc' repo at ../vc$(NC)"; \
@@ -649,15 +667,12 @@ ifneq ($(call _truthy,$(VC)),)
 	@# this under TUNNELS=yes/CONFORMANCE=yes: docker-compose.tunnel-vc.yml
 	@# and docker-compose.conformance.yml each mount their own correct config
 	@# over top of this one.
-	@if [ -z "$(_BRIDGE_GW)" ]; then \
-		echo "$(RED)Error: could not determine e2e-test-network's bridge gateway$(NC)"; \
-		exit 1; \
-	fi
 	@python3 scripts/generate-tunnel-config.py \
 		--apigw-url "$(VC_APIGW_PUBLIC_URL)" \
 		--frontend-url "$(FRONTEND_URL)" \
 		--oidc-issuer-url "$(MINI_OIDC_ISSUER)" \
 		--oidc-redirect-uri "$(VC_APIGW_PUBLIC_URL)/oidcrp/callback" \
+		--apigw-listen-port "$(VC_APIGW_PORT)" \
 		--output fixtures/vc-config-local.yaml
 endif
 ifeq ($(PDP),helm)
@@ -774,6 +789,24 @@ ifneq ($(call _truthy,$(VC)),)
 	@_LOG=$$(mktemp /tmp/compose-vc.XXXXXX); \
 	if ! docker compose $(COMPOSE_FILES) up -d --force-recreate vc-issuer vc-apigw >$$_LOG 2>&1; then \
 		echo "$(RED)Failed to recreate vc-issuer/vc-apigw:$(NC)"; \
+		cat $$_LOG; \
+		rm -f $$_LOG; \
+		exit 1; \
+	fi; \
+	rm -f $$_LOG
+endif
+ifneq ($(findstring $(GO_TRUST_COMPOSE),$(COMPOSE_FILES)),)
+	@# Same reason as the vc services above, for the same class of bug: the
+	@# whitelist is regenerated on every `up`, but go-trust parses it ONCE at
+	@# startup into an in-memory registry. A bind mount makes the new file
+	@# visible inside the container immediately, which is exactly what makes
+	@# this so easy to miss - `docker exec ... cat /app/whitelist.txt` shows the
+	@# correct, current content while the running process is still evaluating
+	@# against what it read at boot, and the only symptom is an inexplicable
+	@# "not trusted" for an entity plainly listed in the file.
+	@_LOG=$$(mktemp /tmp/compose-pdp.XXXXXX); \
+	if ! docker compose $(COMPOSE_FILES) up -d --force-recreate go-trust-whitelist >$$_LOG 2>&1; then \
+		echo "$(RED)Failed to recreate go-trust-whitelist:$(NC)"; \
 		cat $$_LOG; \
 		rm -f $$_LOG; \
 		exit 1; \
@@ -901,6 +934,27 @@ ensure-conformance-hosts: ## Ensure /etc/hosts has the conformance suite entry
 		echo "$(GREEN)✓ Added $(CONFORMANCE_HOSTNAME) to /etc/hosts$(NC)"; \
 	fi
 
+# Hostnames the browser must resolve to loopback for the VC=yes flow (see
+# VC_APIGW_PUBLIC_URL). Only touches /etc/hosts on machines whose resolver
+# doesn't already handle *.localhost per RFC 6761 - Chrome, Firefox and
+# systemd-resolved do, plain glibc getaddrinfo does not - so on most Linux
+# desktops this is a no-op that never asks for sudo.
+LOCAL_HOSTNAMES := vc-apigw.localhost mini-oidc.localhost mini-oidc-rp.localhost
+
+ensure-local-hosts: ## Ensure *.localhost names used by VC=yes resolve to 127.0.0.1
+	@for h in $(LOCAL_HOSTNAMES); do \
+		if getent hosts "$$h" >/dev/null 2>&1; then \
+			continue; \
+		fi; \
+		if grep -q "[[:space:]]$$h\([[:space:]]\|$$\)" /etc/hosts 2>/dev/null; then \
+			continue; \
+		fi; \
+		echo "$(YELLOW)$$h does not resolve - adding 127.0.0.1 $$h to /etc/hosts (requires sudo)...$(NC)"; \
+		echo "127.0.0.1 $$h" | sudo tee -a /etc/hosts >/dev/null && \
+			echo "  $(GREEN)✓ added $$h$(NC)" || \
+			echo "  $(RED)Could not add $$h - the browser may fail to reach the issuer$(NC)"; \
+	done
+
 # =============================================================================
 # Mock Registration
 # =============================================================================
@@ -932,6 +986,13 @@ register-vc-services: ## Register VC issuer and verifier with backend
 			-H "Authorization: Bearer $(ADMIN_TOKEN)" >/dev/null 2>&1 && break; \
 		sleep 2; \
 	done
+	@# Drops any previously-registered issuer whose identifier is no longer the
+	@# one apigw advertises, before registering the current one. The identifier
+	@# changes whenever the addressing scheme does (local <-> TUNNELS, or a
+	@# scheme change like the move off the bridge-gateway URL), and
+	@# wallet-backend keys issuers by identifier - so without the cleanup the
+	@# stale entry just accumulates next to the new one and the wallet's Add
+	@# Credentials page iterates BOTH, 502-ing on the dead URL every page load.
 	@# The issuer must be registered under the SAME identity vc-apigw puts in
 	@# its own metadata's "credential_issuer" (OpenID4VCI requires the two to
 	@# match), which for the plain VC=yes path is VC_APIGW_PUBLIC_URL - see its
@@ -944,6 +1005,20 @@ register-vc-services: ## Register VC issuer and verifier with backend
 		. ./.env.tunnel; \
 		if [ -n "$${TUNNEL_VC_APIGW_URL:-}" ]; then _VC_APIGW_REG_URL="$$TUNNEL_VC_APIGW_URL"; fi; \
 		if [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ]; then _VC_VERIFIER_REG_URL="$$TUNNEL_VC_VERIFIER_URL"; fi; \
+	fi; \
+	_EXISTING=$$(curl -sf $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
+		-H "Authorization: Bearer $(ADMIN_TOKEN)" 2>/dev/null); \
+	if [ -n "$$_EXISTING" ]; then \
+		echo "$$_EXISTING" | python3 -c "import json,sys; \
+[print(i['id']) for i in json.load(sys.stdin).get('issuers',[]) \
+ if i.get('credential_issuer_identifier') != '$$_VC_APIGW_REG_URL']" 2>/dev/null | \
+		while read -r _ID; do \
+			[ -z "$$_ID" ] && continue; \
+			curl -sf -o /dev/null -X DELETE \
+				$(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers/$$_ID \
+				-H "Authorization: Bearer $(ADMIN_TOKEN)" && \
+				echo "  $(YELLOW)removed stale issuer registration (id $$_ID)$(NC)"; \
+		done; \
 	fi; \
 	_STATUS=$$(curl -s -o /dev/null -w '%{http_code}' -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \

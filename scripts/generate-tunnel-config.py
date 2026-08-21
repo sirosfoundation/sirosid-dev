@@ -59,8 +59,24 @@ def patch_config(
     frontend_url: str,
     oidc_issuer_url: str = "",
     oidc_redirect_uri: str = "",
+    apigw_listen_port: str = "",
 ) -> str:
     out = base
+
+    # 0. Repoint apigw's own listen port when asked. Only meaningful for the
+    #    local path, where apigw's published port and its in-container port
+    #    have to be the SAME number: the one URL it advertises must resolve to
+    #    the container from inside the compose network (docker DNS -> container
+    #    IP) and to loopback from the host browser (published port), and a URL
+    #    carries exactly one port. apigw's is the first api_server block in the
+    #    file (issuer/verifier/registry follow), hence count=1.
+    if apigw_listen_port:
+        out = re.sub(
+            r'(\n\s*api_server:\n\s*addr:\s*)":8080"',
+            rf'\g<1>":{apigw_listen_port}"',
+            out,
+            count=1,
+        )
 
     # 1. Replace every occurrence of the unreachable vc-proxy:8443 URL.
     out = out.replace("https://vc-proxy:8443", apigw_url)
@@ -175,6 +191,13 @@ def main():
         help="Repoint apigw.auth_providers.oidc.redirect_uri, normally "
         "<apigw-url>/oidcrp/callback. Omit to leave the base config's value untouched.",
     )
+    parser.add_argument(
+        "--apigw-listen-port",
+        default="",
+        help="Repoint apigw.api_server.addr to this port. Needed when apigw's "
+        "published and in-container ports must match (the local path). Omit to "
+        "leave the base config's :8080 untouched (tunnels, conformance, Fly).",
+    )
     args = parser.parse_args()
 
     base_path = Path(args.base)
@@ -192,6 +215,7 @@ def main():
         frontend_url,
         args.oidc_issuer_url.rstrip("/"),
         args.oidc_redirect_uri,
+        args.apigw_listen_port,
     )
 
     out_path = Path(args.output)

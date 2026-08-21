@@ -45,7 +45,7 @@ services:
       - FACETEC_SERVER_URL=${FACETEC_SERVER_URL:?FACETEC_SERVER_URL must be set — see docker-compose.facetec.yml}
       - LOG_LEVEL=${FACETEC_LOG_LEVEL:-debug}
       # vc-apigw, reached over the internal Docker network (no TLS needed).
-      - ISSUER_ADDR=http://vc-apigw:8080
+      - ISSUER_ADDR=http://vc-apigw:9003
       - ISSUER_TLS=false
       - ISSUER_SCOPE=siros_id
       - ISSUER_FORMAT=sdjwt

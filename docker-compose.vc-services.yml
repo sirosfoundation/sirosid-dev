@@ -148,7 +148,13 @@ services:
     image: vc-apigw-e2e-test:local
     container_name: vc-apigw-e2e
     ports:
-      - "9003:8080"     # HTTP API (OAuth2/OpenID4VCI endpoints)
+      # Host and container port MUST match: apigw advertises ONE public URL
+      # (see the Makefile's VC_APIGW_PUBLIC_URL) that both the compose network
+      # and the host browser have to be able to use, and a URL carries one
+      # port. The generated vc-config-local.yaml repoints api_server.addr to
+      # 9003 to suit. CONFORMANCE=yes overrides this back to 9003:8080, since
+      # it mounts the base config (addr :8080) and fronts apigw with vc-proxy.
+      - "9003:9003"     # HTTP API (OAuth2/OpenID4VCI endpoints)
     volumes:
       # Local-patched - see the matching comment on vc-issuer's mount above.
       - ./fixtures/vc-config-local.yaml:/config.yaml:ro
@@ -166,13 +172,19 @@ services:
       vc-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:9003/health"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 30s
     networks:
-      - e2e-test-network
+      e2e-test-network:
+        # Lets containers reach apigw at the SAME hostname the browser uses,
+        # resolved by docker's embedded DNS straight to this container - so the
+        # in-network hop never touches a published port. See the Makefile's
+        # VC_APIGW_PUBLIC_URL for why that matters.
+        aliases:
+          - vc-apigw.localhost
 
   mini-oidc:
     image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:-main}
@@ -193,7 +205,13 @@ services:
       retries: 10
       start_period: 2s
     networks:
-      - e2e-test-network
+      e2e-test-network:
+        # Same alias mechanism as vc-apigw - the browser is redirected to
+        # mini-oidc's /authorize page while apigw does discovery against it
+        # server-side, so both sides need one working URL. Ports already match
+        # (9005:9005), so only the alias is needed.
+        aliases:
+          - mini-oidc.localhost
 
   mini-oidc-rp:
     image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:-main}
@@ -216,7 +234,9 @@ services:
       retries: 10
       start_period: 2s
     networks:
-      - e2e-test-network
+      e2e-test-network:
+        aliases:
+          - mini-oidc-rp.localhost
 
 networks:
   e2e-test-network:

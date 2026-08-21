@@ -203,7 +203,7 @@ services:
     environment:
       - PORT=9081
       - PDP_ID=http://localhost:9081
-      - TRUSTED_ISSUERS=http://localhost:9003,http://vc-issuer:8080,http://localhost:9000,http://vc-apigw:8080,https://vc-proxy:8443
+      - TRUSTED_ISSUERS=http://localhost:9003,http://vc-issuer:8080,http://localhost:9000,http://vc-apigw:8080,http://vc-apigw.localhost:9003,https://vc-proxy:8443
       - TRUSTED_VERIFIERS=http://localhost:9011,http://mock-verifier:9011,http://localhost:9001,http://vc-verifier:8080
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9081/health"]

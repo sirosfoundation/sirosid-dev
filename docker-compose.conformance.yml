@@ -41,6 +41,21 @@ services:
   vc-apigw:
     volumes:
       - ./fixtures/vc-config.yaml:/config.yaml:ro
+    # The base config leaves api_server.addr at :8080, so undo the local path's
+    # 9003:9003 alignment and its matching healthcheck. Conformance doesn't need
+    # the one-URL-for-both-sides property the local path does - vc-proxy (below)
+    # is the browser-facing front here.
+    # `!override` because compose MERGES (appends to) ports lists across -f
+    # files rather than replacing them - without it this ends up publishing
+    # both 9003:9003 and 9003:8080 and the host port collides.
+    ports: !override
+      - "9003:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   conformance-suite-server:
     image: registry.gitlab.com/openid/conformance-suite:latest
