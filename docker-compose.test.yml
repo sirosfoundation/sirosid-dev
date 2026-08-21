@@ -147,6 +147,15 @@ services:
       - WALLET_WALLET_PROVIDER_CA_CERT_PATH=/app/fixtures/rootCA.crt
       - WALLET_WALLET_PROVIDER_WIA_ENABLED=false
       # Registry configuration (served via --mode=all on the same port)
+      # Serve the SAME credential type metadata the local vc-issuer issues
+      # against, instead of depending on the public registry to carry it.
+      # registry.siros.org has urn:eudi:pid:arf-1.5:1 but NOT arf-1.8, so the
+      # wallet 404ed resolving type metadata for a credential this stack
+      # issues by default. Local overrides take priority over the remote
+      # index and are keyed by each file's own "vct"/"doctype", so this stays
+      # correct as fixtures/vc-metadata gains types. Files without either key
+      # (vctm_eduid.json) are skipped with a warning, not fatal.
+      - REGISTRY_SOURCE_LOCAL_OVERRIDES=/app/vc-metadata
       - REGISTRY_SOURCE_URL=https://registry.siros.org/.well-known/vctm-registry.json
       - REGISTRY_SOURCE_POLL_INTERVAL=5m
       - REGISTRY_CACHE_PATH=/tmp/vctm-cache.json
@@ -170,6 +179,10 @@ services:
       - ./fixtures/vc-pki/wallet_provider_ec_private.pem:/app/fixtures/wallet_provider_ec_private.pem:ro
       - ./fixtures/vc-pki/wallet_provider_ec.crt:/app/fixtures/wallet_provider_ec.crt:ro
       - ./fixtures/vc-pki/rootCA.crt:/app/fixtures/rootCA.crt:ro
+      # Local VCTM overrides for the built-in registry (see
+      # REGISTRY_SOURCE_LOCAL_OVERRIDES above) - the same metadata mounted
+      # into vc-issuer/vc-apigw, so issuer and registry cannot disagree.
+      - ./fixtures/vc-metadata:/app/vc-metadata:ro
     # Note: distroless image has no shell/wget, healthcheck done by make up
     # For credential issuance tests, start VC services overlay:
     #   docker compose -f docker-compose.test.yml -f docker-compose.vc-services.yml up -d
