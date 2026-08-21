@@ -19,6 +19,33 @@ from pathlib import Path
 from android_apps import hex_to_apk_key_hash
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _values_fly_image(key: str, default: str) -> str:
+    """Read one pin from values-fly.yaml's images: block.
+
+    Most components get their image through `helm template` with
+    values-fly.yaml layered on top, so their pins live in that file. A few
+    (mini-oidc, mongodb) aren't in the siros-id-stack chart at all and so
+    can't ride that path - but their pins belong in the same file regardless,
+    or they end up buried in a Python literal that nobody remembers to bump.
+    Hence reading the key directly here rather than via helm.
+
+    Falls back to `default` if the file or key is missing, so a checkout with
+    a trimmed values-fly.yaml still deploys.
+    """
+    try:
+        import yaml  # imported lazily: only fly-up needs it, not fly-down
+        with open(SIROSID_DEV_ROOT / "values-fly.yaml") as fh:
+            data = yaml.safe_load(fh) or {}
+        return (data.get("images") or {}).get(key) or default
+    except (OSError, ImportError, AttributeError):
+        return default
+
+
+MINI_OIDC_IMAGE = _values_fly_image(
+    "miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.3"
+)
 FLY_ORG = "sirosfoundation"
 FLY_REGION = "arn"
 
@@ -58,15 +85,13 @@ COMPONENTS = [
         # role is deployed; `mini-oidc-rp` is a separate test-harness client
         # for exercising the OP standalone, not part of the real apigw flow.
         "name": "mini-oidc",
-        # Pinned to a real release tag instead of the floating `:main` this
-        # used to track - mini-oidc isn't part of the siros-id-stack chart
-        # (sirosid-dev/testing-only, see the comment above), so unlike the
-        # image_from_helm_deployment components above/below it, its pin
-        # can't live in values-fly.yaml's images: block (that file only
-        # overlays chart-sourced images) - it has to live here instead.
-        # Bump this whenever ghcr.io/sirosfoundation/mini-oidc cuts a newer
-        # tag; `:main` should never come back.
-        "image": "ghcr.io/sirosfoundation/mini-oidc:0.0.2",
+        # Pinned to a real release tag, never the floating `:main`. The pin
+        # itself lives in values-fly.yaml's images: block alongside every
+        # other component's - mini-oidc isn't in the siros-id-stack chart, so
+        # it can't be overlaid via `helm template` like the
+        # image_from_helm_deployment components around it, and is read from
+        # that file directly instead (see MINI_OIDC_IMAGE above).
+        "image": MINI_OIDC_IMAGE,
         "ports": [{"internal": 9005, "public": True}],
         "checks": "/health",
     },

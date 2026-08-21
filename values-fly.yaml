@@ -185,3 +185,15 @@ images:
   # DELETE this override once siros-id-stack bumps images.walletFrontendConfig
   # past this commit.
   walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:unstable-455c2ca"
+
+  # mini-oidc is NOT part of the siros-id-stack chart (it's a sirosid-dev
+  # testing-only component), so unlike every pin above it isn't consumed via
+  # `helm template` - scripts/fly_common.py reads this key directly. It lives
+  # here anyway so that all Fly image pins have exactly one home; a pin buried
+  # in a Python literal is the one nobody remembers to bump.
+  #
+  # 0.0.2 -> 0.0.3: adds the "ehic" scope. vc's apigw maps ehic to its
+  # assertion (OIDC-backed) data source and requests the credential type as
+  # the OIDC scope, so without this mini-oidc rejects the request and EHIC
+  # cannot be issued at all.
+  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.3"
