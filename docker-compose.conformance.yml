@@ -28,6 +28,20 @@ services:
     environment:
       - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
 
+  # Override docker-compose.vc-services.yml's default local-patched mount
+  # (compose merges `volumes:` by target path across -f files, same as
+  # docker-compose.tunnel-vc.yml's override below): this overlay runs a real
+  # vc-proxy container (below), so the base fixtures/vc-config.yaml's
+  # "https://vc-proxy:8443" identity is actually reachable here, unlike the
+  # plain VC=yes case.
+  vc-issuer:
+    volumes:
+      - ./fixtures/vc-config.yaml:/config.yaml:ro
+
+  vc-apigw:
+    volumes:
+      - ./fixtures/vc-config.yaml:/config.yaml:ro
+
   conformance-suite-server:
     image: registry.gitlab.com/openid/conformance-suite:latest
     container_name: conformance-suite-server

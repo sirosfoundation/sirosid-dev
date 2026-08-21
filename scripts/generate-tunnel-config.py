@@ -53,11 +53,41 @@ import sys
 from pathlib import Path
 
 
-def patch_config(base: str, apigw_url: str, frontend_url: str) -> str:
+def patch_config(
+    base: str,
+    apigw_url: str,
+    frontend_url: str,
+    oidc_issuer_url: str = "",
+    oidc_redirect_uri: str = "",
+) -> str:
     out = base
 
     # 1. Replace every occurrence of the unreachable vc-proxy:8443 URL.
     out = out.replace("https://vc-proxy:8443", apigw_url)
+
+    # 1b. Repoint apigw.auth_providers.oidc (the PID/EHIC/diploma
+    #     authorization_code flow) when asked. The base config hardcodes
+    #     192.168.240.1 - the *Waydroid* gateway (docker-compose.android.yml's
+    #     WAYDROID_GATEWAY default), not an address that exists on an ordinary
+    #     dev machine - so apigw fails discovery against it and every
+    #     oidc-backed scope dies with "OIDC RP not ready: OIDC RP not
+    #     available". Mirrors scripts/patch-vc-config-fly.py's equivalent
+    #     (oidc.issuer_url = mini-oidc's public URL, oidc.redirect_uri =
+    #     apigw's own public URL + /oidcrp/callback).
+    if oidc_issuer_url:
+        out = re.sub(
+            r'(\n\s*issuer_url:\s*)"http://192\.168\.240\.1:9005"',
+            rf'\g<1>"{oidc_issuer_url}"',
+            out,
+            count=1,
+        )
+    if oidc_redirect_uri:
+        out = re.sub(
+            r'(\n\s*redirect_uri:\s*)"http://192\.168\.240\.1:8091/oidcrp/callback"',
+            rf'\g<1>"{oidc_redirect_uri}"',
+            out,
+            count=1,
+        )
 
     # 2. Add the frontend tunnel URL to apigw.api_server.cors.allowed_origins,
     #    right after the existing "http://localhost:3000" entry, if not already present.
@@ -133,6 +163,18 @@ def main():
         required=True,
         help="Public tunnel URL for wallet-frontend, e.g. https://abc.trycloudflare.com",
     )
+    parser.add_argument(
+        "--oidc-issuer-url",
+        default="",
+        help="Repoint apigw.auth_providers.oidc.issuer_url (mini-oidc's reachable URL). "
+        "Omit to leave the base config's value untouched.",
+    )
+    parser.add_argument(
+        "--oidc-redirect-uri",
+        default="",
+        help="Repoint apigw.auth_providers.oidc.redirect_uri, normally "
+        "<apigw-url>/oidcrp/callback. Omit to leave the base config's value untouched.",
+    )
     args = parser.parse_args()
 
     base_path = Path(args.base)
@@ -144,7 +186,13 @@ def main():
     frontend_url = args.frontend_url.rstrip("/")
 
     base = base_path.read_text()
-    patched = patch_config(base, apigw_url, frontend_url)
+    patched = patch_config(
+        base,
+        apigw_url,
+        frontend_url,
+        args.oidc_issuer_url.rstrip("/"),
+        args.oidc_redirect_uri,
+    )
 
     out_path = Path(args.output)
     out_path.write_text(patched)

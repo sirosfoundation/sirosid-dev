@@ -107,6 +107,42 @@ export VC_REGISTRY_URL ?= http://$(_HOST):9004
 # VC Services URLs (internal, for container-to-container registration)
 VC_APIGW_INTERNAL_URL ?= http://vc-apigw:8080
 VC_VERIFIER_INTERNAL_URL ?= http://vc-verifier:8080
+
+# vc-apigw's public identity for plain `make up VC=yes` (no TUNNELS/CONFORMANCE).
+#
+# vc's apigw derives EVERY endpoint it advertises - credential_issuer,
+# authorization_endpoint, token_endpoint, credential_endpoint, jwks_uri, PAR -
+# from one config value (APIGW.PublicURL; see vc/internal/apigw/apiv1/client.go
+# and vc/pkg/oauth2/metadata_generator.go). There's no separate knob for the
+# browser-facing authorization_endpoint, so that single value has to be
+# reachable BOTH from inside the compose network (wallet-backend resolving
+# issuer metadata, exchanging the token, fetching the credential) AND from the
+# host browser (the OAuth /authorize redirect is a real browser navigation).
+#
+# "vc-apigw:8080" only satisfies the first (browser: DNS failure) and
+# "localhost:9003" only the second (containers: localhost is the container
+# itself). The Docker bridge gateway + vc-apigw's published port satisfies
+# both, since the gateway address is the host and 9003 is bound on 0.0.0.0 -
+# the same trick fixtures/wallet-proxy.conf already documents for reaching the
+# issuer from a physical Android device. TUNNELS=yes/CONFORMANCE=yes don't use
+# this: each supplies its own genuinely public identity (tunnel URL, vc-proxy).
+#
+# Computed lazily (recursive `=`, not `:=`) - e2e-test-network is created by
+# the `up:` target itself, so it may not exist yet at Makefile parse time.
+_BRIDGE_GW = $(shell docker network inspect e2e-test-network -f '{{(index .IPAM.Config 0).Gateway}}' 2>/dev/null)
+VC_APIGW_PUBLIC_URL ?= http://$(_BRIDGE_GW):9003
+
+# mini-oidc (the IdP behind apigw's auth_providers.oidc, i.e. every
+# authorization_code scope: pid/pid_1_5/pid_1_8/ehic/diploma) needs the same
+# dual-reachable treatment for the same reason: the browser is redirected to
+# its /authorize page, while vc-apigw does OIDC discovery against it
+# server-side - and the issuer it advertises in its discovery document must
+# equal the issuer_url apigw was configured with, or the flow fails issuer
+# validation. Its compose default (http://mini-oidc:9005) is container-only.
+# docker-compose.android*.yml still override ISSUER on the service itself for
+# Waydroid, so those paths are unaffected.
+export MINI_OIDC_ISSUER ?= http://$(_BRIDGE_GW):9005
+export MINI_OIDC_RP_URL ?= http://$(_BRIDGE_GW):9006
 export GO_TRUST_ALLOW_URL ?= http://$(_HOST):9095
 export GO_TRUST_WHITELIST_URL ?= http://$(_HOST):9096
 export GO_TRUST_DENY_URL ?= http://$(_HOST):9097
@@ -551,6 +587,18 @@ up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN=, AS_RUL
 	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
 	@# Ensure the shared e2e-test-network exists
 	@docker network inspect e2e-test-network >/dev/null 2>&1 || docker network create e2e-test-network
+	@# Render the go-trust whitelist. Generated (not mounted straight from the
+	@# checked-in fixture) purely because PDP=whitelist has to trust vc-apigw
+	@# under the same bridge-gateway identity it advertises as its
+	@# credential_issuer - see VC_APIGW_PUBLIC_URL above. Everything else comes
+	@# verbatim from fixtures/go-trust-whitelist.txt, which stays the source of
+	@# truth. Unconditional: docker-compose.go-trust.yml mounts this file in
+	@# every PDP mode, not just PDP=whitelist.
+	@python3 -c "import json,sys; \
+p='fixtures/go-trust-whitelist.txt'; w=json.load(open(p)); \
+u='$(VC_APIGW_PUBLIC_URL)'; \
+w['issuers']=w['issuers']+[u] if u and u not in w['issuers'] else w['issuers']; \
+json.dump(w, open('fixtures/go-trust-whitelist-local.json','w'), indent=2)"
 ifneq ($(call _truthy,$(TUNNELS)),)
 	@if [ -n "$(DOMAIN)" ]; then \
 		echo "$(RED)Error: TUNNELS=yes cannot be combined with DOMAIN=$(DOMAIN).$(NC)"; \
@@ -590,6 +638,27 @@ ifneq ($(call _truthy,$(VC)),)
 		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
 		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
+	@# Regenerate the local-patched vc-config: the base fixtures/vc-config.yaml
+	@# hardcodes "https://vc-proxy:8443" as apigw/issuer's public identity,
+	@# which only resolves under CONFORMANCE=yes (a real vc-proxy container)
+	@# or TUNNELS=yes (its own tunnel-patched config, generated above). Plain
+	@# `make up VC=yes` has neither, so vc-apigw would otherwise advertise an
+	@# unreachable credential_issuer/token_endpoint/credential_endpoint to
+	@# the browser - reuses the exact same generator, just pointed at the
+	@# in-network vc-apigw URL instead of a tunnel URL. Harmless to also run
+	@# this under TUNNELS=yes/CONFORMANCE=yes: docker-compose.tunnel-vc.yml
+	@# and docker-compose.conformance.yml each mount their own correct config
+	@# over top of this one.
+	@if [ -z "$(_BRIDGE_GW)" ]; then \
+		echo "$(RED)Error: could not determine e2e-test-network's bridge gateway$(NC)"; \
+		exit 1; \
+	fi
+	@python3 scripts/generate-tunnel-config.py \
+		--apigw-url "$(VC_APIGW_PUBLIC_URL)" \
+		--frontend-url "$(FRONTEND_URL)" \
+		--oidc-issuer-url "$(MINI_OIDC_ISSUER)" \
+		--oidc-redirect-uri "$(VC_APIGW_PUBLIC_URL)/oidcrp/callback" \
+		--output fixtures/vc-config-local.yaml
 endif
 ifeq ($(PDP),helm)
 	@# Pre-flight: $(SIROS_ID_STACK_PATH) must exist to render config from
@@ -685,6 +754,29 @@ endif
 		cat $$_LOG; \
 		rm -f $$_LOG; \
 		exit $$_EXIT; \
+	fi; \
+	rm -f $$_LOG
+endif
+ifneq ($(call _truthy,$(VC)),)
+	@# vc-apigw/vc-issuer read their whole config from a bind-mounted file that
+	@# this target regenerates on every run (fixtures/vc-config-local.yaml, or
+	@# -tunnel.yaml under TUNNELS=yes). `docker compose up -d` only diffs the
+	@# compose *service definition* - never the CONTENT of a mounted file - so
+	@# an otherwise-unchanged spec leaves the old containers running with the
+	@# previous config, silently. That's not cosmetic: a stale vc-apigw keeps
+	@# advertising the previous credential_issuer and keeps retrying OIDC
+	@# discovery against the previous issuer_url ("OIDC RP not ready"), so the
+	@# regenerated config appears to have had no effect at all. Force-recreate
+	@# them so a config change always takes. Deliberately not --no-deps: these
+	@# two have real depends_on ordering (mongodb/vc-registry healthy, then
+	@# vc-issuer healthy, then vc-apigw) that compose should still honor.
+	@echo "$(YELLOW)Applying regenerated vc-config (recreating vc-issuer/vc-apigw)...$(NC)"
+	@_LOG=$$(mktemp /tmp/compose-vc.XXXXXX); \
+	if ! docker compose $(COMPOSE_FILES) up -d --force-recreate vc-issuer vc-apigw >$$_LOG 2>&1; then \
+		echo "$(RED)Failed to recreate vc-issuer/vc-apigw:$(NC)"; \
+		cat $$_LOG; \
+		rm -f $$_LOG; \
+		exit 1; \
 	fi; \
 	rm -f $$_LOG
 endif
@@ -840,25 +932,37 @@ register-vc-services: ## Register VC issuer and verifier with backend
 			-H "Authorization: Bearer $(ADMIN_TOKEN)" >/dev/null 2>&1 && break; \
 		sleep 2; \
 	done
-	@_VC_APIGW_REG_URL="$(VC_APIGW_INTERNAL_URL)"; \
+	@# The issuer must be registered under the SAME identity vc-apigw puts in
+	@# its own metadata's "credential_issuer" (OpenID4VCI requires the two to
+	@# match), which for the plain VC=yes path is VC_APIGW_PUBLIC_URL - see its
+	@# definition above for why that's the bridge-gateway URL and not
+	@# vc-apigw:8080. The .env.tunnel branch below still wins under TUNNELS=yes,
+	@# where generate-tunnel-config.py has set the tunnel URL as PublicURL.
+	@_VC_APIGW_REG_URL="$(VC_APIGW_PUBLIC_URL)"; \
 	_VC_VERIFIER_REG_URL="$(VC_VERIFIER_INTERNAL_URL)"; \
 	if [ -f .env.tunnel ]; then \
 		. ./.env.tunnel; \
 		if [ -n "$${TUNNEL_VC_APIGW_URL:-}" ]; then _VC_APIGW_REG_URL="$$TUNNEL_VC_APIGW_URL"; fi; \
 		if [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ]; then _VC_VERIFIER_REG_URL="$$TUNNEL_VC_VERIFIER_URL"; fi; \
 	fi; \
-	curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
+	_STATUS=$$(curl -s -o /dev/null -w '%{http_code}' -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d "{\"credential_issuer_identifier\":\"$$_VC_APIGW_REG_URL\",\"visible\":true,\"client_id\":\"e2e-test-client\"}" && \
-		echo "  $(GREEN)✓ VC issuer registered ($$_VC_APIGW_REG_URL)$(NC)" || \
-		echo "  $(YELLOW)Warning: Could not register VC issuer$(NC)"; \
-	curl -sf -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
+		-d "{\"credential_issuer_identifier\":\"$$_VC_APIGW_REG_URL\",\"visible\":true,\"client_id\":\"e2e-test-client\"}"); \
+	case "$$_STATUS" in \
+		2*) echo "  $(GREEN)✓ VC issuer registered ($$_VC_APIGW_REG_URL)$(NC)";; \
+		409) echo "  $(GREEN)✓ VC issuer already registered ($$_VC_APIGW_REG_URL)$(NC)";; \
+		*)  echo "  $(YELLOW)Warning: Could not register VC issuer (HTTP $$_STATUS)$(NC)";; \
+	esac; \
+	_STATUS=$$(curl -s -o /dev/null -w '%{http_code}' -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
 		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
 		-H "Content-Type: application/json" \
-		-d "{\"name\":\"VC Verifier\",\"url\":\"$$_VC_VERIFIER_REG_URL\"}" && \
-		echo "  $(GREEN)✓ VC verifier registered ($$_VC_VERIFIER_REG_URL)$(NC)" || \
-		echo "  $(YELLOW)Warning: Could not register VC verifier$(NC)"
+		-d "{\"name\":\"VC Verifier\",\"url\":\"$$_VC_VERIFIER_REG_URL\"}"); \
+	case "$$_STATUS" in \
+		2*) echo "  $(GREEN)✓ VC verifier registered ($$_VC_VERIFIER_REG_URL)$(NC)";; \
+		409) echo "  $(GREEN)✓ VC verifier already registered ($$_VC_VERIFIER_REG_URL)$(NC)";; \
+		*)  echo "  $(YELLOW)Warning: Could not register VC verifier (HTTP $$_STATUS)$(NC)";; \
+	esac
 
 # =============================================================================
 # Golden Release Resolution

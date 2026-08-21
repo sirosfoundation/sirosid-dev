@@ -81,7 +81,11 @@ services:
       - "9000:8080"     # HTTP API (OpenID4VCI endpoints)
       - "9190:8090"     # gRPC for apigw communication
     volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
+      # Local-patched (fixtures/vc-config.yaml's own "https://vc-proxy:8443"
+      # only resolves under CONFORMANCE=yes/TUNNELS=yes - see the Makefile's
+      # `up:` target and scripts/generate-tunnel-config.py). CONFORMANCE=yes
+      # overrides this back to the raw file (docker-compose.conformance.yml).
+      - ./fixtures/vc-config-local.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/vc-metadata:/metadata:ro
     environment:
@@ -146,7 +150,8 @@ services:
     ports:
       - "9003:8080"     # HTTP API (OAuth2/OpenID4VCI endpoints)
     volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
+      # Local-patched - see the matching comment on vc-issuer's mount above.
+      - ./fixtures/vc-config-local.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/vc-metadata:/metadata:ro
       - ./fixtures/vc-bootstrapping:/bootstrapping:ro

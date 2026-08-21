@@ -63,7 +63,7 @@ services:
     environment:
       - GO_TRUST_EXTERNAL_URL=http://localhost:9096
     volumes:
-      - ./fixtures/go-trust-whitelist.txt:/app/whitelist.txt:ro
+      - ./fixtures/go-trust-whitelist-local.json:/app/whitelist.txt:ro
     depends_on:
       mock-verifier:
         condition: service_healthy

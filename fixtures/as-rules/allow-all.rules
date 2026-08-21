@@ -1,1 +1,11 @@
-(5:token)
+; Unconditional allow for local/e2e AS testing. LoadRulesFromDir
+; (go-wallet-backend internal/as/policy.go) always loads with
+; persist.FormatAdvanced, so rules here must use bare advanced-form tags
+; ("token", not the canonical netstring "5:token" - the latter parses as a
+; literal tag named "5:token", which never matches a real query tagged
+; "token" and silently denies every /auth/token request). A rule with fewer
+; elements than the query matches regardless of the query's trailing
+; fields (see go-spocp's compareLists), so a bare zero-child "(token)" is a
+; true wildcard across every request shape (A/B/C - see go-wallet-backend's
+; rules/default.rules for the shape breakdown).
+(token)

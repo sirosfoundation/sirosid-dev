@@ -8,8 +8,19 @@
 #   make test-credential-go-trust
 #
 # The whitelist at fixtures/go-trust-whitelist.txt includes:
-#   - http://localhost:9000 (mock issuer)
-#   - http://localhost:9001 (mock verifier)
+#   - http://localhost:9000 / http://mock-issuer:9000 (mock issuer)
+#   - http://localhost:9001 / http://mock-verifier:9001 (mock verifier)
+#   - http://vc-issuer:8080, http://vc-apigw:8080 (real VC services, VC=yes)
+#   - http://vc-verifier:8080 (real VC verifier, VC=yes)
+#
+# The vc-* entries matter for `make up PDP=whitelist VC=yes`: without them
+# the PDP denies vc-apigw, so /v1/resolve rejects its (signed) issuer
+# metadata with "issuer metadata is signed but issuer is not trusted" and
+# the wallet shows an empty credential list. They're Docker-internal names
+# because the whitelist registry fetches JWKS from inside its own container.
+# Whitelisted-but-absent entries (PDP=whitelist without VC=yes) just fail
+# their JWKS fetch fast on DNS and are skipped - see the slow-boot gotcha in
+# CLAUDE.md, which applies to reachable-but-JWKS-less hosts, not these.
 
 services:
   # Go Trust PDP - Whitelist registry for credential flow tests
@@ -25,7 +36,7 @@ services:
     environment:
       - GO_TRUST_EXTERNAL_URL=http://localhost:9093
     volumes:
-      - ./fixtures/go-trust-whitelist.txt:/app/whitelist.txt:ro
+      - ./fixtures/go-trust-whitelist-local.json:/app/whitelist.txt:ro
     # The distroless image doesn't have wget/curl, so we skip Docker healthcheck
     # and rely on Makefile polling instead
     networks:
