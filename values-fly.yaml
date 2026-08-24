@@ -157,7 +157,32 @@ images:
   # TS11 schemas.json fetch to go-ts11client. #282 (allow_http for
   # URL-subject issuer resolution) is a no-op for Fly, which is HTTPS
   # throughout - it was needed for local http:// stacks.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.14.1"
+  #
+  # 0.14.1 -> 0.15.0: #289 fixes the Key Attestation JWT's typ header, which
+  # said "keyattestation+jwt" (the pre-1.0 OpenID4VCI draft spelling) where
+  # the registered media type is "application/key-attestation+jwt". Issuers
+  # pin the JOSE short form exactly - vc's apigw validates it with
+  # `eq=key-attestation+jwt` - and reject the whole credential request rather
+  # than falling back to the jwt proof type, so this failed EVERY credential
+  # type at once wherever it fired.
+  #
+  # It has not fired on Fly yet, and that is luck rather than design: the
+  # images.issuer* pins below are 0.7.0-sirosid.1 (2026-08-11), which predates
+  # vc's bd10e120 (2026-08-19) advertising the "attestation" proof type for
+  # every scope. A wallet picks its proof type from what the issuer
+  # advertises, so an issuer offering only "jwt" never exercises the Key
+  # Attestation path. THE FIRST BUMP OF THE issuer*/verifier PINS PAST
+  # 2026-08-19 WOULD HAVE BROKEN ISSUANCE ON EVERY FLY ENVIRONMENT. Bumping
+  # here first removes that ordering trap; do not reintroduce it by pinning
+  # walletBackend back below 0.15.0.
+  #
+  # Also in 0.15.0: #284 makes GET /issuer/:id/metadata embed the issuer's own
+  # logos/SVG templates as data: URIs (they are otherwise fetched
+  # cross-origin by the wallet to substitute claim values, and render broken
+  # when the host sends no Access-Control-Allow-Origin). Asset delivery only -
+  # nothing is substituted from the registry, and an unreachable or oversized
+  # image leaves the issuer's original URL untouched.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.15.0"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
