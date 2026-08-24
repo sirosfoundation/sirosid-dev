@@ -200,8 +200,24 @@ images:
   # here anyway so that all Fly image pins have exactly one home; a pin buried
   # in a Python literal is the one nobody remembers to bump.
   #
+  # Unlike every other pin in this file, this one is NOT Fly-only: the local
+  # docker-compose stack reads it too (the Makefile's MINI_OIDC_VERSION, which
+  # docker-compose.vc-services.yml requires). mini-oidc is the one local-stack
+  # image pulled from a registry rather than built from a sibling checkout, and
+  # it used to float on `:main` locally - so two developers on the same commit
+  # could run months-apart builds with no visible sign of it. Bumping this key
+  # now moves local and Fly together; that is deliberate, not a leak of scope.
+  #
   # 0.0.2 -> 0.0.3: adds the "ehic" scope. vc's apigw maps ehic to its
   # assertion (OIDC-backed) data source and requests the credential type as
   # the OIDC scope, so without this mini-oidc rejects the request and EHIC
   # cannot be issued at all.
-  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.3"
+  #
+  # 0.0.3 -> 0.0.4: adds handlers for the "pid", "pid_1_5" and "pid_1_8"
+  # scopes (mini-oidc#22). All three were advertised in scopes_supported with
+  # nothing behind them, so a request naming one fell through to a
+  # backwards-compat path releasing only given_name/family_name/name/email -
+  # no birthdate, nationality, place of birth or issuing authority, i.e. not
+  # enough to build a PID from. Dormant while apigw asks for "openid profile",
+  # live the moment it asks for the credential type as the scope.
+  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.4"

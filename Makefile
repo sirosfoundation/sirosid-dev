@@ -180,6 +180,22 @@ VC_VERIFIER_PUBLIC_URL ?= http://vc-verifier.localhost:$(VC_VERIFIER_PORT)
 # so its ports are aligned as-is and only the alias is needed.
 export MINI_OIDC_ISSUER ?= http://mini-oidc.localhost:9005
 export MINI_OIDC_RP_URL ?= http://mini-oidc-rp.localhost:9006
+
+# mini-oidc is the ONLY local-stack image pulled from a registry rather than
+# built from a sibling checkout, so it's the only one that can silently differ
+# between two developers sitting on the same sirosid-dev commit: its compose
+# default was an unpinned `:main`, and Docker never re-pulls a floating tag it
+# has already cached. Two machines whose last pull happened months apart then
+# run different binaries with no visible sign of it - which is exactly how a
+# credential type that issues fine on one box fails at /credential on another.
+#
+# The pin is read out of values-fly.yaml rather than duplicated here, so the
+# local stack and every Fly environment always run the identical build. That
+# file already exists to be the single home for image pins (see its
+# images.miniOidc comment); a second copy in this Makefile would just be the
+# next thing to drift.
+_MINI_OIDC_PIN := $(shell sed -n 's/^[[:space:]]*miniOidc:.*:\(.*\)".*/\1/p' values-fly.yaml 2>/dev/null)
+export MINI_OIDC_VERSION ?= $(_MINI_OIDC_PIN)
 export GO_TRUST_ALLOW_URL ?= http://$(_HOST):9095
 export GO_TRUST_WHITELIST_URL ?= http://$(_HOST):9096
 export GO_TRUST_DENY_URL ?= http://$(_HOST):9097
@@ -632,6 +648,16 @@ endif
 endif
 ifneq ($(call _truthy,$(VC)),)
 	@$(MAKE) --no-print-directory ensure-local-hosts
+	@# Pre-flight: an empty pin would resolve to the image ref "mini-oidc:",
+	@# which docker rejects with a confusing parse error rather than pointing
+	@# at values-fly.yaml. Only reachable if that file was edited into a shape
+	@# the extraction in this Makefile no longer matches.
+	@if [ -z "$(MINI_OIDC_VERSION)" ]; then \
+		echo "$(RED)Error: could not read images.miniOidc from values-fly.yaml$(NC)"; \
+		echo "  Expected a line like: miniOidc: \"ghcr.io/sirosfoundation/mini-oidc:0.0.3\""; \
+		echo "  Override for a one-off with: make up VC=yes MINI_OIDC_VERSION=<tag>"; \
+		exit 1; \
+	fi
 	@# Pre-flight: ../vc must exist for VC service builds
 	@if [ ! -d "$(VC_PATH:-../vc)" ] && [ ! -d "../vc" ]; then \
 		echo "$(RED)Error: VC services require the 'vc' repo at ../vc$(NC)"; \

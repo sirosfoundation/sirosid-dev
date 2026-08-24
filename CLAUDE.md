@@ -281,6 +281,50 @@ back to whatever's pinned in `values-fly.yaml` — check
 `flyctl status -a sirosid-<env>-vc-apigw`/`-vc-issuer` after any redeploy of
 an environment you didn't build from scratch yourself.
 
+**Every credential type fails at `POST /credential` while `/token` succeeds,
+locally but NOT on `make fly-up`:** the browser shows only "Credential
+issuance failed" - a sanitized constant from go-wallet-backend's
+`ErrorCode.UserFacingMessage()`, never the reason. Never try to diagnose one
+of these from the console. The reason is in **vc-apigw's** log, and (with the
+issuer's raw response body) in wallet-backend's *debug* log, which
+`docker-compose.test.yml` already enables via `WALLET_LOG_LEVEL=debug`:
+
+```bash
+docker logs vc-apigw-e2e 2>&1 | grep -iE "VCICredential|proofs verification|/credential"
+docker logs wallet-backend-e2e-test 2>&1 | grep -i "credential endpoint error"
+```
+
+The local-only part is the real clue, and it generalizes well beyond this one
+bug: **`make up` builds vc, go-wallet-backend and wallet-frontend from your
+sibling checkouts, while `make fly-up` deploys the pinned images in
+`values-fly.yaml`.** Local therefore runs *current source on both sides of
+every protocol boundary*, and Fly runs a matched, older, known-good set. Any
+spec-conformance tightening that landed in one repo but not the other shows
+up locally and nowhere else - and reads as "Emil's machine is broken" rather
+than as a real interop bug. When a failure is local-only, diff the two sides,
+don't hunt for environment state.
+
+Worked example (fixed 2026-08-24, go-wallet-backend
+`fix/key-attestation-typ-spelling`): vc's apigw validates the Key Attestation
+JWT header with `eq=key-attestation+jwt`
+(`pkg/openid4vci/proof_attestation.go`) - the hyphenated media type
+OpenID4VCI 1.0 registers in Appendix G.6.2 - while go-wallet-backend emitted
+the pre-1.0 draft spelling `keyattestation+jwt`. Every credential type using
+the `attestation` proof type failed at once, because the proof type is chosen
+per issuer, not per credential. `siros-sdk-kotlin` and multipaz already used
+the hyphenated form; go-wallet-backend was the outlier. Two other repos still
+carry the old spelling (`go-r2ps-service`, `wallet-backend-server`) - check
+them before assuming a KA interop failure is new.
+
+A *different* local-only divergence with the same shape: mini-oidc is the one
+local-stack service pulled from a registry rather than built from a sibling
+checkout, so it's the only one that can differ between two machines that both
+changed nothing. It used to default to an unpinned `:main`, which docker never
+re-pulls once cached; it's now pinned from `values-fly.yaml`'s
+`images.miniOidc` via the Makefile's `MINI_OIDC_VERSION`, so local and Fly
+move together. Check with `docker image inspect
+ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
+
 **Fly networking, in general:**
 - 6PN (Fly's internal network) is **IPv6-only** — a component binding only
   IPv4 (`mongod`'s default) is unreachable from sibling apps over

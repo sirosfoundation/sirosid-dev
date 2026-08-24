@@ -193,8 +193,16 @@ services:
         aliases:
           - vc-apigw.localhost
 
+  # The only service here pulled from a registry instead of built from a
+  # sibling checkout, and therefore the only one that can silently differ
+  # between two machines on the same commit - docker never re-pulls a floating
+  # tag it has already cached. The pin lives in values-fly.yaml (images.
+  # miniOidc) and the Makefile exports it, so the local stack and every Fly
+  # environment run the identical build. `:?` rather than a `:-main` default
+  # on purpose: a direct `docker compose` invocation that bypasses the
+  # Makefile should say so, not quietly resurrect the floating tag.
   mini-oidc:
-    image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:-main}
+    image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:?set by the Makefile from values-fly.yaml images.miniOidc - use `make up VC=yes`, or export MINI_OIDC_VERSION=<tag> for a direct docker compose run}
     container_name: mini-oidc-e2e
     command: ["/usr/local/bin/op"]
     ports:
@@ -221,7 +229,8 @@ services:
           - mini-oidc.localhost
 
   mini-oidc-rp:
-    image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:-main}
+    # Same image, same pin - see mini-oidc above.
+    image: ghcr.io/sirosfoundation/mini-oidc:${MINI_OIDC_VERSION:?set by the Makefile from values-fly.yaml images.miniOidc - use `make up VC=yes`, or export MINI_OIDC_VERSION=<tag> for a direct docker compose run}
     container_name: mini-oidc-rp-e2e
     command: ["/usr/local/bin/rp"]
     ports:
