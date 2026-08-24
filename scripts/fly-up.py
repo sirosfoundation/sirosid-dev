@@ -318,20 +318,15 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--file-local", f"/app/registry.yaml={out_dir / 'wallet-backend-registry.yaml'}",
             "--file-literal", "/vctms/.keep=ok",
         ]
-        # registry.yaml already points local_overrides at /vctms; fill it with
-        # the one credential type the public registry doesn't carry. Without
-        # this the wallet 404s resolving type metadata for a PID this stack
-        # issues by default (registry.siros.org has urn:eudi:pid:arf-1.5:1 but
-        # not arf-1.8). Images are inlined as data: URIs first, matching what
-        # registry.siros.org does for the types it does publish - the fixture
-        # references them on a host that sends no Access-Control-Allow-Origin,
-        # and the wallet fetch()es the SVG to substitute claim values, so a
-        # remote reference renders as a broken image. Only what's genuinely
-        # missing upstream is overridden: local_overrides take PRIORITY, so
-        # uploading the whole fixture dir would replace the published metadata
-        # for every type with lower-fidelity copies.
-        for vctm in _inlined_vctms(out_dir):
-            deploy_args += ["--file-local", f"/vctms/{vctm.name}={vctm}"]
+        # /vctms is created but left empty. The chart's registry.yaml points
+        # local_overrides at it and the registry provider refuses to start if
+        # it's missing ("stat /vctms: no such file or directory"), so the
+        # .keep above is load-bearing even though nothing else goes in: every
+        # credential type this stack issues is now published by
+        # registry.siros.org (demo-credentials#18 added the last holdout,
+        # urn:eudi:pid:arf-1.8:1), and a local override would only shadow the
+        # published copy with a stale one. --credential-registries drops
+        # local_overrides entirely; the empty dir is harmless there.
         ensure_secret(app, "jwtSecret", _persistent_secret(out_dir, "jwtSecret"))
         ensure_secret(app, "adminToken", _persistent_secret(out_dir, "adminToken"))
         deploy_args += [
@@ -456,30 +451,6 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
 
     if primary_public_port is not None or tcp_passthrough_port is not None:
         print(f"{name}: {app_url(env, name)}")
-
-
-def _inlined_vctms(out_dir: Path) -> list:
-    """Render the VCTM overrides uploaded to wallet-backend's /vctms.
-
-    Returns an empty list on failure rather than raising: a deploy that can't
-    reach the image host should still succeed, leaving the credential to
-    render exactly as it would have without the override - no worse.
-    """
-    sources = [SIROSID_DEV_ROOT / "fixtures" / "vc-metadata" / "vctm_pid_arf_1_8.json"]
-    dest_dir = out_dir / "vctms"
-    dest_dir.mkdir(parents=True, exist_ok=True)
-    script = SIROSID_DEV_ROOT / "scripts" / "inline-vctm-images.py"
-    rendered = []
-    for src in sources:
-        if not src.exists():
-            continue
-        dst = dest_dir / src.name
-        try:
-            subprocess.run([sys.executable, str(script), str(src), str(dst)], check=True)
-            rendered.append(dst)
-        except (OSError, subprocess.SubprocessError) as err:
-            print(f"warning: could not render VCTM override {src.name}: {err}", file=sys.stderr)
-    return rendered
 
 
 def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
