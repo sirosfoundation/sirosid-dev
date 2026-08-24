@@ -123,7 +123,11 @@ Then:
    with the `credential_configuration_id`.
 3. Present to a verifier using a `decentralized_identifier:did:web:…` client_id and
    `request_uri_method=get`.
-4. Flip an entry in the issuer's status list and confirm the credential shows as revoked after
-   re-verification.
+4. Flip an entry in `vc-registry`'s status list — admin GUI at
+   <http://localhost:9004/admin/login> (`admin` / `e2e-admin-password`), or `GET
+   http://localhost:9004/statuslists/0` to read the Status List Token itself — and confirm the
+   credential shows as revoked after re-verification. Note that credentials carry
+   `registry.public_url` (`https://vc-proxy:8445`) as their `status_list.uri`, which is only
+   reachable under `CONFORMANCE=yes`; see the README for details.
 
 Unit coverage lives beside the implementation in both repos (`yarn test`).
