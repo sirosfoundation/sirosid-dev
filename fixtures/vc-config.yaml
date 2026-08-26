@@ -308,6 +308,22 @@ verifier:
         "dc+sd-jwt":
           sd-jwt_alg_values: ["ES256"]
           kb-jwt_alg_values: ["ES256"]
+  # Shown as selectable options in the verifier's own presentation-definition
+  # UI (GET /, presentation-definition.js's predefinedPresentationDefinitions -
+  # NOT the same thing as inbound.openid4vp.presentation_requests_dir's
+  # PresentationRequestTemplates, which are only reachable via a real OIDC
+  # /authorize?scope=... request, never this UI - see UIMetadata's own preset
+  # conversion for why the two are separate).
+  presets:
+    "PID (mdoc) - ZK Proof (Vega)":
+      pid_mdoc:
+        format: "mso_mdoc_zk"
+        zk_system_type:
+          - id: "vega-mc-p256-v1-prover-key-r7"
+            system: "vega-mc-p256-v1"
+        claims:
+          - path: ["eu.europa.ec.eudi.pid.1", "family_name"]
+          - path: ["eu.europa.ec.eudi.pid.1", "given_name"]
 
 # =============================================================================
 # Registry Service - Token Status Lists and Revocation
