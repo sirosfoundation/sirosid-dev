@@ -44,7 +44,7 @@ def _values_fly_image(key: str, default: str) -> str:
 
 
 MINI_OIDC_IMAGE = _values_fly_image(
-    "miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.3"
+    "miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.4"
 )
 FLY_ORG = "sirosfoundation"
 FLY_REGION = "arn"
