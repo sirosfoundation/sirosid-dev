@@ -1,0 +1,48 @@
+# pid_mdoc ZK (Vega) Presentation Request
+#
+# Requests the pid_mdoc scope's mdoc (fixtures/vc-config.yaml, doctype
+# eu.europa.ec.eudi.pid.1) via a ZK proof rather than a plain mdoc
+# disclosure - format "mso_mdoc_zk" (pkg/openid4vp/dcql_zk.go), which
+# triggers the wallet's ZkProofSystemRegistry instead of an ordinary mdoc
+# presentation.
+#
+# Exists specifically to test the Vega proof system end-to-end: Vega's r7
+# circuit (go-zk-circuits' vega-mc-p256-v1, systemVersion 7) is fixed-shape
+# at exactly 4 claim slots (VegaProofSystem.MAX_CLAIMS_V1 in
+# siros-sdk-kotlin), which the full ISO 18013-5 mDL scope's 11+ mandatory
+# claims can never satisfy - pid_mdoc's mdoc is the one scope this stack
+# already issues with exactly 4 total claims (family_name, given_name,
+# age_over_18, plus a server-attached pseudonym_seed - see vc-config.yaml's
+# "pseudonym_seed: true" comment), so it's what's actually testable against
+# the real, deployed circuit without waiting on a larger one.
+#
+# zk_system_type.id must equal the wallet's PROVER-key circuit id
+# (VegaProofSystem echoes ZkSystemSpec.id back as the wire zkSystemId - see
+# SirosWallet.buildZkPresentationToken) - vc's own getOrLoadVegaVerifierKey
+# resolves the sibling verifier-key entry from this by System/SystemVersion,
+# not by string substitution. zk_system_type.system must equal
+# VegaProofSystem.systemId ("vega-mc-p256-v1") for the wallet to select this
+# spec via matchingSpec.
+templates:
+  - id: "pid_mdoc_zk_vega"
+    name: "PID (mdoc) - ZK Proof (Vega)"
+    description: "Request PID mdoc claims via a Vega zero-knowledge proof instead of a plain mdoc disclosure - Vega early-testing circuit, see go-zk-circuits' r7 catalog notes"
+    version: "1.0"
+    oidc_scopes:
+      - "pid_mdoc_zk"
+    dcql:
+      credentials:
+        - id: "pid_mdoc_zk"
+          format: "mso_mdoc_zk"
+          meta:
+            doctype_value: "eu.europa.ec.eudi.pid.1"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r7"
+                system: "vega-mc-p256-v1"
+          claims:
+            - path: ["eu.europa.ec.eudi.pid.1", "family_name"]
+            - path: ["eu.europa.ec.eudi.pid.1", "given_name"]
+    claim_mappings:
+      family_name: "family_name"
+      given_name: "given_name"
+    enabled: true
