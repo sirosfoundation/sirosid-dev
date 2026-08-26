@@ -193,7 +193,18 @@ def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation
     # target is its own static verification/result page, which never exchanges
     # the code. Mirrors the local path's equivalent in
     # scripts/generate-tunnel-config.py.
-    verifier["supported_wallets"] = {"SIROS ID": frontend_cb_url}
+    verifier["supported_wallets"] = {
+        "SIROS ID": frontend_cb_url,
+        # Same mechanism, second entry: gives the presentation page a
+        # SECOND "Open with X" button using the native SDK's own openid4vp
+        # deep-link scheme (siros-sdk-kotlin/siros-sdk-swift's registered
+        # intent-filter/associated-domain) instead of the web wallet's
+        # https callback route - without this, same-device testing against
+        # a native SDK sample app had no way to reach it at all (only the
+        # QR image, meant for a second device, or this "SIROS ID" button,
+        # which opens wallet-frontend instead).
+        "SIROS Native App": "openid4vp://cb",
+    }
     verifier["outbound"]["oidc_provider"]["static_clients"] = [
         {
             "client_id": "wallet-web",
