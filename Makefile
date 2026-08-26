@@ -1170,7 +1170,7 @@ render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack 
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [WALLET_ATTESTATION=no, default: yes])
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [WALLET_ATTESTATION=no, default: yes])
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -1188,6 +1188,7 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		$(if $(TRUSTED_ISSUERS),--trusted-issuer "$(TRUSTED_ISSUERS)") \
 		$(if $(TRUSTED_VERIFIERS),--trusted-verifier "$(TRUSTED_VERIFIERS)") \
 		$(if $(TRUSTED_VERIFIER_ROOTS),--trusted-verifier-root "$(TRUSTED_VERIFIER_ROOTS)") \
+		$(if $(ZK_CIRCUITS_SOURCES),--zk-circuits-source "$(ZK_CIRCUITS_SOURCES)") \
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation)
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
