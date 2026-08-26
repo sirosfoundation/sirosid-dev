@@ -93,7 +93,7 @@ def run(cmd, **kwargs):
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
                     conformance: bool = False, extra_trusted_issuers: list = None,
                     wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
-                    extra_trusted_verifier_roots: list = None) -> list:
+                    extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -113,6 +113,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     patch_cmd = [sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password]
     if wallet_attestation:
         patch_cmd.append("--wallet-attestation")
+    for source in (zk_circuits_sources or []):
+        patch_cmd += ["--zk-circuits-source", source]
     run(patch_cmd, cwd=SIROSID_DEV_ROOT)
     return docs
 
@@ -728,6 +730,12 @@ def main():
                               "https://verifier.multipaz.org/verifier/readerRootCert. Preferred over "
                               "--trusted-verifier's x509_hash leaf-pinning for this case, since the root "
                               "survives future leaf-certificate rotations. Repeatable.")
+    parser.add_argument("--zk-circuits-source", action="append",
+                         help="Extra verifier.zk_circuits.sources entry, tried ahead of vc's built-in "
+                              "https://zk-circuits.fly.dev default - for a circuit not yet published "
+                              "there, e.g. https://zk-circuits-test.fly.dev while a Vega circuit variant "
+                              "awaits its expert review. Repeatable, and each value may be a "
+                              "comma-separated list.")
     args = parser.parse_args()
 
     extra_trusted_issuers = []
@@ -742,6 +750,10 @@ def main():
     for pair in (args.trusted_verifier_root or []):
         for path in (p.strip() for p in pair.split(",") if p.strip()):
             extra_trusted_verifier_roots.append(Path(path).read_text())
+
+    zk_circuits_sources = []
+    for pair in (args.zk_circuits_source or []):
+        zk_circuits_sources.extend(v.strip() for v in pair.split(",") if v.strip())
 
     image_overrides = {}
     for pair in args.images.split(","):
@@ -775,7 +787,7 @@ def main():
     # Android/iOS wellknown values, instead of a second `helm template` call.
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
                            args.conformance, extra_trusted_issuers, args.wallet_attestation,
-                           extra_trusted_verifiers, extra_trusted_verifier_roots)
+                           extra_trusted_verifiers, extra_trusted_verifier_roots, zk_circuits_sources)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

@@ -59,7 +59,8 @@ def fly_internal(env: str, component: str, port: int) -> str:
     return f"sirosid-{env}-{component}.internal:{port}"
 
 
-def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation: bool = False) -> dict:
+def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation: bool = False,
+          zk_circuits_sources: list = None) -> dict:
     apigw_url = fly_url(env, "vc-apigw")
     registry_url = fly_url(env, "vc-registry")
     verifier_url = fly_url(env, "vc-verifier")
@@ -210,6 +211,20 @@ def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation
     # here rather than only papering over it with more memory.
     config["registry"]["token_status_lists"]["section_size"] = 10000
 
+    # verifier.zk_circuits.sources (pkg/model.ZkCircuitsConfig in vc) is
+    # unset by default, so the deployed verifier falls back to vc's own
+    # hardcoded https://zk-circuits.fly.dev - fine for the Longfellow
+    # circuits already published there, but a circuit still gated
+    # `published: false` on that real, public catalog (e.g. a Vega
+    # variant awaiting its own expert review, or the r7-early-testing
+    # circuit deployed on zk-circuits-test.fly.dev in the meantime - see
+    # go-zk-circuits' publish/vega-mc-r7-early-testing PR) needs an
+    # explicit, additional source ahead of the public default. Only set
+    # when requested (fly-up.py's --zk-circuits-source) - most
+    # environments need nothing here at all.
+    if zk_circuits_sources:
+        verifier.setdefault("zk_circuits", {})["sources"] = zk_circuits_sources
+
     return config
 
 
@@ -227,11 +242,17 @@ def main():
                               "their WIA alone (no pre-registered client_id) - see render-helm-config.py's "
                               "--wallet-attestation, which must be passed alongside this for the wallet "
                               "side (wia.issuer/omit_x5c) to match.")
+    parser.add_argument("--zk-circuits-source", action="append", default=None,
+                         help="Additional verifier.zk_circuits.sources entry (repeatable), tried ahead "
+                              "of vc's built-in https://zk-circuits.fly.dev default. Use for a circuit "
+                              "not yet published there, e.g. https://zk-circuits-test.fly.dev while a "
+                              "Vega circuit variant awaits its expert review.")
     args = parser.parse_args()
 
     base_path = Path(args.base)
     config = yaml.safe_load(base_path.read_text())
-    patched = patch(config, args.env, args.mongo_password, args.wallet_attestation)
+    patched = patch(config, args.env, args.mongo_password, args.wallet_attestation,
+                     zk_circuits_sources=args.zk_circuits_source)
 
     out_path = Path(args.out) if args.out else (
         SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}" / "vc-config.yaml"
