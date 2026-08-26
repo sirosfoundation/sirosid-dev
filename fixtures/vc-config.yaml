@@ -270,6 +270,16 @@ verifier:
   # (dc-api-polyfill.js); falls back to QR/redirect when unavailable.
   digital_credentials:
     enable: true
+    # auto_attempt: false - confirmed via live testing that Android's own
+    # OS-level DC API credential matcher rejects the ZK-mdoc "mso_mdoc_zk"
+    # format (feat/vega-zknative branch, sirosfoundation/vc) with its own
+    # system dialog before any application code runs - no JS-catchable
+    # failure to fall back from. Same-device testing still works via the
+    # presentation-definition UI's "open in wallet" link (same openid4vp://
+    # deep link, just requires a click instead of firing automatically).
+    # DC API itself stays enabled (enable: true) - only the automatic
+    # attempt-on-page-load is skipped.
+    auto_attempt: false
   inbound:
     openid4vp:
       token_endpoint: "http://localhost:9001/token"
