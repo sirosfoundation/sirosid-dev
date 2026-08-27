@@ -1,0 +1,31 @@
+{
+  "format": "mso_mdoc",
+  "doctype": "org.iso.18013.5.1.mDL",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "mDL (Vega ZK 4-claim)",
+      "description": "Mobile Driving Licence, trimmed to exactly 4 org.iso.18013.5.1 elements to fit VegaProofSystem's fixed 4-slot circuit AND its hardcoded mDL docType/namespace assumption (see zk-cred-vega's mso.rs module doc) - the full mDL scope has 30+ mandatory/optional claims (too many claim slots), while pid_mdoc's docType/namespace ('eu.europa.ec.eudi.pid.1') doesn't match what the circuit's Sig_structure reconstruction hardcodes ('org.iso.18013.5.1.mDL'/'org.iso.18013.5.1').",
+      "background_color": "#1a365d",
+      "text_color": "#ffffff"
+    }
+  ],
+  "claims": {
+    "org.iso.18013.5.1": {
+      "family_name": {
+        "mandatory": true,
+        "value_type": "tstr"
+      },
+      "given_name": {
+        "mandatory": true,
+        "value_type": "tstr"
+      },
+      "age_over_18": {
+        "value_type": "bool"
+      },
+      "pseudonym_seed": {
+        "value_type": "bstr"
+      }
+    }
+  }
+}

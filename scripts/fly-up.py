@@ -242,9 +242,24 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     # actual wallet UI - a real browser rendering real pages needs more than
     # the 256MB default (same OOM risk already hit and fixed for
     # conformance-server's JVM process).
+    #
+    # vc-verifier (zknative builds only, but memory_mb has no build-tag
+    # awareness so this applies unconditionally): a Vega ZK verifier/prover
+    # key decompresses to ~110MB on its own, before any of the native
+    # NeutronNova-folding verify computation's own working memory -
+    # confirmed OOM-killed at 256MB (dmesg: "Out of memory: Killed process
+    # ... (vc_service)") mid-request, surfacing to the wallet only as a
+    # opaque 502 with an empty body. Bumped 2048->4096 2026-08-27: a live
+    # gdc Vega presentation still OOM-killed the whole process
+    # (exit_code=137, oom_killed=true) at 2048MB after multiple prior
+    # verify calls in the same process - shared-cpu-1x caps at 2048MB, so
+    # this also needs 2 cpus (see the `cpus` param below) to unlock the
+    # higher ceiling.
     memory_mb = {
         "vc-registry": 1024, "mongodb": 512, "conformance-server": 1024, "conformance-runner": 1024,
+        "vc-verifier": 4096,
     }.get(name, 256)
+    cpus = 2 if name == "vc-verifier" else 1
     tcp_passthrough_port = None
     if name == "conformance":
         # See CONFORMANCE_COMPONENTS: this image's baked-in nginx.conf
@@ -255,7 +270,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         primary_public_port = None
         tcp_passthrough_port = 8443
     write_fly_toml(toml_path, app, primary_public_port, process_cmd=process_cmd,
-                    health_check_path=comp["checks"], memory_mb=memory_mb,
+                    health_check_path=comp["checks"], memory_mb=memory_mb, cpus=cpus,
                     internal_check=comp.get("internal_check"), tcp_passthrough_port=tcp_passthrough_port)
 
     deploy_args = ["deploy", "-a", app, "-c", str(toml_path), "-i", image,

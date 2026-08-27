@@ -1,0 +1,18 @@
+{
+  "alice-001": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "mdl_zk4",
+      "document_id": "document_id_mdl_zk4_alice-001",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "alice-001"
+    ],
+    "document_data": {
+      "family_name": "Mirren",
+      "given_name": "Helen",
+      "age_over_18": true
+    }
+  }
+}

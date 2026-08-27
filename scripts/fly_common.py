@@ -464,8 +464,8 @@ def ensure_secret(app: str, key: str, value: str, force: bool = False):
 
 
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
-                    health_check_path: str | None = None, memory_mb: int = 256, internal_check: dict | None = None,
-                    tcp_passthrough_port: int | None = None):
+                    health_check_path: str | None = None, memory_mb: int = 256, cpus: int = 1,
+                    internal_check: dict | None = None, tcp_passthrough_port: int | None = None):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -576,7 +576,7 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
         lines += [
             "[[vm]]",
             "  cpu_kind = 'shared'",
-            "  cpus = 1",
+            f"  cpus = {cpus}",
             f"  memory_mb = {memory_mb}",
             "",
         ]

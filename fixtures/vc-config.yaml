@@ -52,6 +52,14 @@ common:
     pid_mdoc:
       mddl_file_path: "/metadata/pid_mdoc.mdoc.json"
       format: "mso_mdoc"
+    # 4-claim org.iso.18013.5.1.mDL variant for Vega ZK testing - see
+    # mdl_zk4.mdoc.json's own comment for why neither "mdl" (30+ claims,
+    # over VegaProofSystem's fixed 4-slot circuit) nor "pid_mdoc" (right
+    # claim count, wrong docType/namespace - zk-cred-vega's mso.rs
+    # hardcodes org.iso.18013.5.1.mDL) works as the Vega ZK test credential.
+    mdl_zk4:
+      mddl_file_path: "/metadata/mdl_zk4.mdoc.json"
+      format: "mso_mdoc"
 
 kafka:
   enabled: false
@@ -138,11 +146,15 @@ apigw:
         pid_mdoc:
           auth_provider: oidc
           auth_claims: ["given_name", "family_name"]
+        mdl_zk4:
+          auth_provider: oidc
+          auth_claims: ["given_name", "family_name"]
       import:
         file_paths:
           - "/bootstrapping/diploma.json"
           - "/bootstrapping/pid_1_8.json"
           - "/bootstrapping/mdl.json"
+          - "/bootstrapping/mdl_zk4.json"
           - "/bootstrapping/pid_mdoc.json"
   delivery:
     openid4vci:
@@ -180,6 +192,7 @@ apigw:
             - "diploma"
             - "ehic"
             - "mdl"
+            - "mdl_zk4"
             - "pid_mdoc"
         "e2e-test-client-2":
           type: "public"
@@ -326,14 +339,22 @@ verifier:
   # conversion for why the two are separate).
   presets:
     "PID (mdoc) - ZK Proof (Vega)":
-      pid_mdoc:
+      mdl_zk4:
         format: "mso_mdoc_zk"
         zk_system_type:
-          - id: "vega-mc-p256-v1-prover-key-r7"
+          - id: "vega-mc-p256-v1-prover-key-r11"
             system: "vega-mc-p256-v1"
         claims:
-          - path: ["eu.europa.ec.eudi.pid.1", "family_name"]
-          - path: ["eu.europa.ec.eudi.pid.1", "given_name"]
+          - path: ["org.iso.18013.5.1", "family_name"]
+          - path: ["org.iso.18013.5.1", "given_name"]
+    "Age Over 18 - ZK Proof (Vega)":
+      mdl_zk4:
+        format: "mso_mdoc_zk"
+        zk_system_type:
+          - id: "vega-mc-p256-v1-prover-key-r11"
+            system: "vega-mc-p256-v1"
+        claims:
+          - path: ["org.iso.18013.5.1", "age_over_18"]
 
 # =============================================================================
 # Registry Service - Token Status Lists and Revocation
