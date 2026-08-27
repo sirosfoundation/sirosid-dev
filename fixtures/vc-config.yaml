@@ -342,7 +342,7 @@ verifier:
       mdl_zk4:
         format: "mso_mdoc_zk"
         zk_system_type:
-          - id: "vega-mc-p256-v1-prover-key-r11"
+          - id: "vega-mc-p256-v1-prover-key-r12"
             system: "vega-mc-p256-v1"
         claims:
           - path: ["org.iso.18013.5.1", "family_name"]
@@ -351,7 +351,7 @@ verifier:
       mdl_zk4:
         format: "mso_mdoc_zk"
         zk_system_type:
-          - id: "vega-mc-p256-v1-prover-key-r11"
+          - id: "vega-mc-p256-v1-prover-key-r12"
             system: "vega-mc-p256-v1"
         claims:
           - path: ["org.iso.18013.5.1", "age_over_18"]
