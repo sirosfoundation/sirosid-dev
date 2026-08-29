@@ -339,22 +339,26 @@ verifier:
   # conversion for why the two are separate).
   presets:
     "PID (mdoc) - ZK Proof (Vega)":
-      mdl_zk4:
-        format: "mso_mdoc_zk"
-        zk_system_type:
-          - id: "vega-mc-p256-v1-prover-key-r12"
-            system: "vega-mc-p256-v1"
-        claims:
-          - path: ["org.iso.18013.5.1", "family_name"]
-          - path: ["org.iso.18013.5.1", "given_name"]
+      category: "ZK Proofs"
+      credentials:
+        mdl_zk4:
+          format: "mso_mdoc_zk"
+          zk_system_type:
+            - id: "vega-mc-p256-v1-prover-key-r12"
+              system: "vega-mc-p256-v1"
+          claims:
+            - path: ["org.iso.18013.5.1", "family_name"]
+            - path: ["org.iso.18013.5.1", "given_name"]
     "Age Over 18 - ZK Proof (Vega)":
-      mdl_zk4:
-        format: "mso_mdoc_zk"
-        zk_system_type:
-          - id: "vega-mc-p256-v1-prover-key-r12"
-            system: "vega-mc-p256-v1"
-        claims:
-          - path: ["org.iso.18013.5.1", "age_over_18"]
+      category: "ZK Proofs"
+      credentials:
+        mdl_zk4:
+          format: "mso_mdoc_zk"
+          zk_system_type:
+            - id: "vega-mc-p256-v1-prover-key-r12"
+              system: "vega-mc-p256-v1"
+          claims:
+            - path: ["org.iso.18013.5.1", "age_over_18"]
 
 # =============================================================================
 # Registry Service - Token Status Lists and Revocation

@@ -61,6 +61,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
+from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
     app_exists, app_name, app_url, assetlinks_json,
@@ -753,24 +754,35 @@ def main():
                               "comma-separated list.")
     args = parser.parse_args()
 
-    extra_trusted_issuers = []
+    # environments/<env>.yaml (if present) supplies persisted defaults for a
+    # named, durable environment - see scripts/env_config.py's module doc
+    # for the full precedence (file first, CLI appends/overrides on top).
+    env_cfg = load_environment_config(args.env)
+
+    cli_trusted_issuers = []
     for pair in (args.trusted_issuer or []):
-        extra_trusted_issuers.extend(v.strip() for v in pair.split(",") if v.strip())
+        cli_trusted_issuers.extend(v.strip() for v in pair.split(",") if v.strip())
+    extra_trusted_issuers = merge_list(env_cfg["trusted_issuers"], cli_trusted_issuers)
 
-    extra_trusted_verifiers = []
+    cli_trusted_verifiers = []
     for pair in (args.trusted_verifier or []):
-        extra_trusted_verifiers.extend(v.strip() for v in pair.split(",") if v.strip())
+        cli_trusted_verifiers.extend(v.strip() for v in pair.split(",") if v.strip())
+    extra_trusted_verifiers = merge_list(env_cfg["trusted_verifiers"], cli_trusted_verifiers)
 
-    extra_trusted_verifier_roots = []
+    cli_trusted_verifier_root_paths = []
     for pair in (args.trusted_verifier_root or []):
-        for path in (p.strip() for p in pair.split(",") if p.strip()):
-            extra_trusted_verifier_roots.append(Path(path).read_text())
+        cli_trusted_verifier_root_paths.extend(p.strip() for p in pair.split(",") if p.strip())
+    # Merged as PATHS (not yet-read content) so file/CLI de-duplication works
+    # on the same representation; each resulting path is read once below.
+    trusted_verifier_root_paths = merge_list(env_cfg["trusted_verifier_roots"], cli_trusted_verifier_root_paths)
+    extra_trusted_verifier_roots = [Path(p).read_text() for p in trusted_verifier_root_paths]
 
-    zk_circuits_sources = []
+    cli_zk_circuits_sources = []
     for pair in (args.zk_circuits_source or []):
-        zk_circuits_sources.extend(v.strip() for v in pair.split(",") if v.strip())
+        cli_zk_circuits_sources.extend(v.strip() for v in pair.split(",") if v.strip())
+    zk_circuits_sources = merge_list(env_cfg["zk_circuits_sources"], cli_zk_circuits_sources)
 
-    image_overrides = {}
+    cli_image_overrides = {}
     for pair in args.images.split(","):
         pair = pair.strip()
         if not pair:
@@ -781,7 +793,11 @@ def main():
         component = component.strip()
         if component not in {c["name"] for c in COMPONENTS}:
             raise SystemExit(f"--images: unknown component {component!r} - see fly_common.COMPONENTS")
-        image_overrides[component] = image.strip()
+        cli_image_overrides[component] = image.strip()
+    image_overrides = merge_images(env_cfg["images"], cli_image_overrides)
+
+    args.conformance = args.conformance or env_cfg["conformance"]
+    args.wallet_attestation = args.wallet_attestation or env_cfg["wallet_attestation"]
 
     if not shutil.which("flyctl"):
         raise SystemExit("flyctl not found - install it first (https://fly.io/docs/flyctl/install/)")
@@ -790,7 +806,7 @@ def main():
     out_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    identities = load_android_apps(extra=args.android_app)
+    identities = load_android_apps(extra=merge_list(env_cfg["android_apps"], args.android_app or []))
     # Fresh every run, not persisted/reused - see ensure_secret(force=True)'s
     # docstring for why that's fine specifically for mongo (no persistent
     # volume, so there's no old data a stale password would need to match).

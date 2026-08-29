@@ -391,6 +391,7 @@ help: ## Show this help
 	@echo "  make fly-up ENV=<name> [OPTIONS]     Deploy a named Fly.io environment"
 	@echo "  make fly-status ENV=<name>           Show Fly app status for a named environment"
 	@echo "  make fly-down ENV=<name>             Tear down a named Fly.io environment"
+	@echo "  make env-show ENV=<name>             Print a named environment's persisted config (environments/<name>.yaml)"
 	@echo ""
 	@echo "$(GREEN)Tunnel Targets:$(NC)"
 	@echo "  make tunnel-status                   Show active tunnel URLs and host processes"
@@ -483,10 +484,17 @@ help: ## Show this help
 	@echo "$(GREEN)Fly.io Options:$(NC)  (pass on the make command line to 'make fly-up')"
 	@echo ""
 	@echo "  $(YELLOW)ENV=$(NC)<name>            Required. Environment name (sirosid-<name>-*.fly.dev apps)"
+	@echo "                     If environments/<name>.yaml exists, its persisted"
+	@echo "                     images/trusted-issuers/verifiers/etc. are merged in as"
+	@echo "                     defaults automatically - see 'make env-show ENV=<name>'"
+	@echo "                     and environments/README.md. Every option below adds to"
+	@echo "                     (or, for IMAGES=, overrides per-component) that file for"
+	@echo "                     this one run - it does not edit the file."
 	@echo ""
 	@echo "  $(YELLOW)IMAGES=$(NC)<component=ref,...>"
 	@echo "                     Ad-hoc, per-environment image override, e.g. your own"
-	@echo "                     branch build - never touches any checked-in file"
+	@echo "                     branch build - a one-off run only unless also saved to"
+	@echo "                     environments/<name>.yaml"
 	@echo ""
 	@echo "  $(YELLOW)CONFORMANCE=$(NC)<yes|no>"
 	@echo "                     Also deploy the OpenID conformance suite (3 extra apps)"
@@ -1170,7 +1178,7 @@ render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack 
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [WALLET_ATTESTATION=no, default: yes])
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [WALLET_ATTESTATION=no, default: yes]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -1207,6 +1215,13 @@ fly-status: ## Show Fly app status for a named environment (make fly-status ENV=
 		flyctl status -a "sirosid-$(ENV)-$$c" 2>&1 | head -5; \
 		echo ""; \
 	done
+
+env-show: ## Print a named environment's persisted config (make env-show ENV=<name>) - what `make fly-up ENV=<name>` will merge in from environments/<name>.yaml, if any
+	@if [ -z "$(ENV)" ]; then \
+		echo "$(RED)Error: ENV=<name> is required, e.g. make env-show ENV=gdc$(NC)"; \
+		exit 1; \
+	fi
+	python3 scripts/env_config.py --env "$(ENV)"
 
 # =============================================================================
 # Setup — clone sibling repositories

@@ -1,0 +1,47 @@
+# Persisted config for `make fly-up ENV=gdc` - see scripts/env_config.py's
+# module doc for the full schema/precedence. Update this file (not just the
+# CLI flags) whenever gdc's intended state changes, so the next `make
+# fly-up ENV=gdc` - by anyone, in any session - reproduces it without
+# having to remember/repeat every flag from scratch.
+#
+# Purpose: demonstrate Vega ZK end-to-end, and test real BLE/NFC proximity
+# presentation using a credential issued by the Geneva 2026 interop event's
+# reference issuer (geneva2026.mdoc.online).
+
+images:
+  # Built from a local integration branch combining upstream vc PR #620
+  # (native Vega ZK/PPID verification, r12 circuit) and PR #626 (config-
+  # driven/progressive preset buttons) - both still open as of this pin.
+  # All four vc-services MUST be bumped together: they share one config
+  # file (fixtures/vc-config.yaml) unmarshaled into the same model.Cfg, so
+  # leaving one on an older binary while another expects a newer config
+  # shape (e.g. the nested `presets.*.credentials` shape PR #626 adds)
+  # crash-loops it on startup.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:integration-1788040215
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:integration-1788040215
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:integration-1788040215
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:integration-1788040215
+
+# geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
+# mdoc issuer - trusted here so a wallet can receive a credential from it
+# for the proximity-presentation test.
+trusted_issuers:
+  - https://geneva2026.mdoc.online
+
+# Every multipaz-based verifier used for interop testing so far - both
+# need their own reader-CA root below (ISO 18013-5 out-of-band trust
+# convention, not a public CA) since neither's request-signing cert chains
+# to a system CA.
+trusted_verifiers:
+  - https://verifier.multipaz.org
+  - https://siros-multipaz-verifier.fly.dev
+trusted_verifier_roots:
+  - fixtures/trusted-roots/multipaz-reader-ca.pem
+  - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
+
+# Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
+# catalog yet (pending expert review) - this is where it actually lives.
+zk_circuits_sources:
+  - https://zk-circuits-test.fly.dev
+
+wallet_attestation: true
