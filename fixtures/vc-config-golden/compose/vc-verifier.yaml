@@ -1,0 +1,133 @@
+common:
+  production: false
+  ha:
+    enable: true
+  mongo:
+    uri: mongodb://mongodb:27017
+  tracing:
+    addr: localhost:4318
+    timeout: 1
+  credential_metadata:
+    pid_1_8:
+      vctm_file_path: /metadata/vctm_pid_arf_1_8.json
+      format: dc+sd-jwt
+    pid_1_5:
+      vctm_file_path: /metadata/vctm_pid_arf_1_5.json
+      format: dc+sd-jwt
+    ehic:
+      vctm_file_path: /metadata/vctm_ehic.json
+      format: dc+sd-jwt
+    diploma:
+      vctm_file_path: /metadata/vctm_diploma.json
+      format: dc+sd-jwt
+    siros_id:
+      vctm_file_path: /metadata/vctm_siros_id.json
+      format: dc+sd-jwt
+    mdl:
+      mddl_file_path: /metadata/mdl.mdoc.json
+      format: mso_mdoc
+    pid_mdoc:
+      mddl_file_path: /metadata/pid_mdoc.mdoc.json
+      format: mso_mdoc
+    mdl_zk4:
+      mddl_file_path: /metadata/mdl_zk4.mdoc.json
+      format: mso_mdoc
+verifier:
+  api_server:
+    addr: :9001
+    tls:
+      enable: false
+  public_url: http://vc-verifier.localhost:9001
+  supported_wallets:
+    SIROS ID (dev): http://localhost:3000/id/default/cb
+  key_config:
+    private_key_path: /pki/signing_ec_private.pem
+    chain_path: /pki/signing_ec_chain.pem
+  outbound:
+    oidc_provider:
+      issuer: http://vc-verifier.localhost:9001
+      static_clients:
+      - client_id: wallet-web
+        token_endpoint_auth_method: none
+        redirect_uris:
+        - http://localhost:3000/id/default/verification/result
+        allowed_scopes:
+        - openid
+        - pid
+        - ehic
+        - diploma
+        - mdl
+      session_duration: 900
+      code_duration: 600
+      access_token_duration: 3600
+      id_token_duration: 3600
+      refresh_token_duration: 86400
+      subject_type: pairwise
+      subject_salt: <redacted>
+  digital_credentials:
+    enable: false
+    auto_attempt: false
+  inbound:
+    openid4vp:
+      token_endpoint: http://vc-verifier.localhost:9001/token
+      clients:
+        e2e-test-client:
+          type: public
+          redirect_uri: http://localhost:3000/cb
+          scopes:
+          - pid
+          - diploma
+          - ehic
+          - mdl
+      supported_credentials:
+      - vct: urn:eudi:pid:arf-1.8:1
+        scopes:
+        - pid
+      - vct: urn:eudi:pid:arf-1.5:1
+        scopes:
+        - pid
+      - vct: urn:eudi:ehic:1
+        scopes:
+        - ehic
+      - vct: urn:eudi:diploma:1
+        scopes:
+        - diploma
+      - vct: org.iso.18013.5.1.mDL
+        scopes:
+        - mdl
+      presentation_timeout: 300
+      presentation_requests_dir: /presentation_requests
+      preferred_vp_formats:
+        dc+sd-jwt:
+          sd-jwt_alg_values:
+          - ES256
+          kb-jwt_alg_values:
+          - ES256
+  presets:
+    PID (mdoc) - ZK Proof (Vega):
+      category: ZK Proofs
+      credentials:
+        mdl_zk4:
+          format: mso_mdoc_zk
+          zk_system_type:
+          - id: vega-mc-p256-v1-prover-key-r12
+            system: vega-mc-p256-v1
+          claims:
+          - path:
+            - org.iso.18013.5.1
+            - family_name
+          - path:
+            - org.iso.18013.5.1
+            - given_name
+    Age Over 18 - ZK Proof (Vega):
+      category: ZK Proofs
+      credentials:
+        mdl_zk4:
+          format: mso_mdoc_zk
+          zk_system_type:
+          - id: vega-mc-p256-v1-prover-key-r12
+            system: vega-mc-p256-v1
+          claims:
+          - path:
+            - org.iso.18013.5.1
+            - age_over_18

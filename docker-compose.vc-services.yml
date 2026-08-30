@@ -48,10 +48,15 @@ services:
     image: vc-registry-e2e-test:local
     container_name: vc-registry-e2e
     ports:
-      - "9004:8080"     # HTTP API
+      # Host and container port MUST match, same as vc-apigw/vc-verifier: the
+      # registry's public_url ends up in the status_list.uri of every issued
+      # credential, and that one URL has to resolve both from a wallet on the
+      # host and from inside the compose network.
+      - "9004:9004"     # HTTP API
       - "9094:8090"     # gRPC for inter-service communication
     volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-registry.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-registry-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
@@ -60,7 +65,7 @@ services:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:9004/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -78,16 +83,13 @@ services:
     image: vc-issuer-e2e-test:local
     container_name: vc-issuer-e2e
     ports:
-      - "9000:8080"     # HTTP API (OpenID4VCI endpoints)
+      - "9000:8081"     # HTTP API (OpenID4VCI endpoints)
       - "9190:8090"     # gRPC for apigw communication
     volumes:
-      # Local-patched (fixtures/vc-config.yaml's own "https://vc-proxy:8443"
-      # only resolves under CONFORMANCE=yes/TUNNELS=yes - see the Makefile's
-      # `up:` target and scripts/generate-tunnel-config.py). CONFORMANCE=yes
-      # overrides this back to the raw file (docker-compose.conformance.yml).
-      - ./fixtures/vc-config-local.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-issuer.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-issuer-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
-      - ./fixtures/vc-metadata:/metadata:ro
+      - ./fixtures/rendered/vctms:/vctms:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt
@@ -97,7 +99,7 @@ services:
       vc-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -122,10 +124,11 @@ services:
       - "9001:9001"     # HTTP API (OpenID4VP + OIDC endpoints)
       - "9091:8090"     # gRPC
     volumes:
-      - ./fixtures/vc-config-local.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-verifier.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-verifier-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
-      - ./fixtures/vc-metadata:/metadata:ro
-      - ./fixtures/vc-presentation-requests:/presentation_requests:ro
+      - ./fixtures/rendered/vctms:/vctms:ro
+      - ./fixtures/rendered/pres-reqs:/pres-reqs:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt
@@ -158,16 +161,16 @@ services:
       # Host and container port MUST match: apigw advertises ONE public URL
       # (see the Makefile's VC_APIGW_PUBLIC_URL) that both the compose network
       # and the host browser have to be able to use, and a URL carries one
-      # port. The generated vc-config-local.yaml repoints api_server.addr to
+      # port. The rendered config repoints api_server.addr to
       # 9003 to suit. CONFORMANCE=yes overrides this back to 9003:8080, since
       # it mounts the base config (addr :8080) and fronts apigw with vc-proxy.
       - "9003:9003"     # HTTP API (OAuth2/OpenID4VCI endpoints)
     volumes:
-      # Local-patched - see the matching comment on vc-issuer's mount above.
-      - ./fixtures/vc-config-local.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-apigw.yaml:/config.yaml:ro
+      - ./fixtures/rendered/vc-apigw-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
-      - ./fixtures/vc-metadata:/metadata:ro
-      - ./fixtures/vc-bootstrapping:/bootstrapping:ro
+      - ./fixtures/rendered/vctms:/vctms:ro
+      - ./fixtures/rendered/documents:/documents:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt

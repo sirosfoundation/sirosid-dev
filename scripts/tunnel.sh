@@ -264,7 +264,7 @@ EOF
     info "For the wallet Android app, build with:"
     info "  WWWALLET_FACETEC_API_BASE_URL=\"${facetec_api_url}/process-request\""
     info "vc-apigw's config (credential_issuer, token_endpoint, CORS) is regenerated"
-    info "automatically by 'make up TUNNELS=yes VC=yes' — see scripts/generate-tunnel-config.py"
+    info "automatically by 'make up TUNNELS=yes VC=yes' — see scripts/render-helm-config.py"
     info "Run 'make tunnel-stop' to tear down tunnels"
 }
 

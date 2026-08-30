@@ -52,7 +52,7 @@ FLY_REGION = "arn"
 # mini-oidc's OIDC client registered for vc-apigw's auth_providers.oidc (PID/EHIC
 # issuance) - a single source of truth for both sides of this pairing:
 # mini_oidc_config() (below) sets these as the client mini-oidc itself knows
-# about, and scripts/patch-vc-config-fly.py sets the SAME values explicitly in
+# about, and render-helm-config.py feeds the SAME values explicitly into
 # apigw's oidc config, instead of each independently hardcoding a literal that
 # only works because it happens to match the other (previously: vc-config.yaml's
 # base fixture hardcoded "apigw-oidc-client"/"test-secret", and this module's

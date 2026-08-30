@@ -32,6 +32,7 @@ value - there is no way to *disable* a file-enabled flag from the CLI,
 since neither has a negating flag today; edit the file directly for that.
 
 Schema (all keys optional):
+    values: {...}                  # free-form Helm values, see below
     images: {component: image_ref}
     trusted_issuers: [url, ...]
     trusted_verifiers: [identity, ...]
@@ -50,6 +51,24 @@ overrides the file's (last-one-wins, same as `images`) rather than merging -
 there's exactly one value per environment, unlike the list-typed fields
 above.
 
+`values:` is an arbitrary siros-id-stack values tree, deep-merged LAST by
+render-helm-config.py - after values-base.yaml, the target's own
+values-dev/values-fly.yaml, and the generated per-run overlay. It is not
+validated here; `helm template` is the validator. Everything the chart can
+express is reachable through it, including each service's `extraConfig`
+escape hatch for fields the chart doesn't model - which is the point: adding
+a one-off override for an environment should not need a code change in five
+files, as adding `dc_api_enable` did.
+
+The typed keys above are sugar for the common cases and keep working; where
+both set the same thing, `values:` wins, since it is merged last. Prefer the
+typed key when one exists - it is validated, and it is what `make env-show`
+prints.
+
+Applies to both targets: `make up ENV=<name>` layers the same file as
+`make fly-up ENV=<name>`. Keys that only make sense for one of them (image
+pins for Fly apps, say) are simply ignored by the other.
+
 Run directly to pretty-print what a name resolves to (for Makefile's
 `make env-show ENV=<name>` / debugging):
     python3 scripts/env_config.py --env gdc
@@ -65,7 +84,7 @@ _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", 
               "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
 _STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable")
-_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images",))
+_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values"))
 
 
 def config_path(env_name: str, root: Path = None) -> Path:
@@ -78,8 +97,8 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     every known key) whether or not environments/<env_name>.yaml exists -
     callers never need to guess which keys are present."""
     root = root or SIROSID_DEV_ROOT
-    result = {"images": {}, **{k: [] for k in _LIST_KEYS}, **{k: False for k in _BOOL_KEYS},
-              **{k: "" for k in _STR_KEYS}}
+    result = {"images": {}, "values": {}, **{k: [] for k in _LIST_KEYS},
+              **{k: False for k in _BOOL_KEYS}, **{k: "" for k in _STR_KEYS}}
 
     path = config_path(env_name, root)
     if not path.exists():
@@ -113,6 +132,11 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     for key in _STR_KEYS:
         if key in raw:
             result[key] = str(raw[key])
+
+    values = raw.get("values") or {}
+    if not isinstance(values, dict):
+        raise SystemExit(f"{path}: 'values' must be a mapping (a Helm values tree)")
+    result["values"] = values
 
     return result
 

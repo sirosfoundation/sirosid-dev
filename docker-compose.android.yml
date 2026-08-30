@@ -11,21 +11,18 @@
 #   ./scripts/android-test.sh restart
 #
 # Prerequisites:
-#   - Run scripts/generate-android-config.py first to create
-#     fixtures/vc-config-android.yaml from the base config.
+#   - Run `make android-config` first: it re-renders the vc services' config
+#     from the chart with the apigw and mini-oidc advertised at the Waydroid
+#     gateway address rather than the host's own localhost, which the device
+#     cannot reach. (This used to be a separately pre-patched copy of the
+#     whole config file, mounted here.)
 #   - Waydroid running with ADB accessible.
 #
-# This overlay:
-#   - Mounts the Android-patched vc-config for vc-apigw
-#     (external OIDC URLs reachable from the Android browser)
-#   - Sets mini-oidc ISSUER to the host gateway so ID token issuer
-#     matches the vc-apigw OIDC RP issuer_url.
+# This overlay only sets mini-oidc's ISSUER to the host gateway, so the ID
+# token issuer matches the vc-apigw OIDC RP's issuer_url; everything else
+# comes from the rendered config.
 
 services:
-  vc-apigw:
-    volumes:
-      - ./fixtures/vc-config-android.yaml:/config.yaml:ro
-
   mini-oidc:
     environment:
       - ISSUER=http://${WAYDROID_GATEWAY:-192.168.240.1}:9005

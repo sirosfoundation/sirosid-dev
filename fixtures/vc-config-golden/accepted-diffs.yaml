@@ -1,0 +1,160 @@
+# Differences between the chart-rendered vc configs and the goldens that are
+# deliberate, with the reason. Anything not listed here fails
+# `make vc-config-parity`.
+#
+# The goldens were seeded from what fixtures/vc-config.yaml and its three
+# patcher scripts produced on 2026-08-30, so this file is the complete record
+# of how the chart-rendered config differs from the hand-maintained one it
+# replaced. Once the goldens are re-seeded from a chart render (--update),
+# entries here that describe the migration itself can go.
+#
+# A `path` matches itself and everything under it. `kind` (added/removed/
+# changed) narrows an entry to one direction.
+
+_shared: &shared
+  # --- mount points moved to the chart's names -------------------------------
+  # The chart mounts VCTM/MDDL documents at /vctms, bootstrapping documents at
+  # /documents and presentation-request templates at /pres-reqs, where the old
+  # fixtures used /metadata, /bootstrapping and /presentation_requests. The
+  # compose and Fly mounts follow the chart now; the content is identical.
+  - path: common.credential_metadata
+    reason: "vctm_file_path/mddl_file_path now /vctms/<scope>.json (chart mount point); doctype is newly carried through"
+  - path: apigw.data_sources.datastore.import.file_paths
+    reason: "bootstrapping documents mount at /documents, not /bootstrapping"
+  - path: apigw.identity_mapping_import.file_paths
+    reason: "as above"
+  - path: verifier.inbound.openid4vp.presentation_requests_dir
+    reason: "presentation-request templates mount at /pres-reqs, not /presentation_requests"
+
+  # --- inert additions the chart makes ---------------------------------------
+  - path: apigw.api_server.api_auth
+    reason: >-
+      Rendered with jwks.enable false (values-base.yaml turns it back off), so
+      the admin API is open exactly as it was before. The chart insists on
+      rendering the block; only the SPOCP rules list comes with it, and rules
+      alone enforce nothing when no auth method is enabled.
+  - path: apigw.api_server.trust_proxy_tls
+    reason: "harmless behind the compose/Fly proxies, and correct behind a real gateway"
+  - path: common.ha.cache_database_name
+    reason: "the chart names each service's HA cache database explicitly instead of letting vc default it"
+  - path: common.branding
+    reason: "blanked to empty paths in values-base.yaml - vc validates a non-empty branding path as a real PNG at startup"
+  - path: common.tracing
+    reason: "the chart renders an explicit enable flag (off, features.otlpCollector) rather than an addr with no toggle"
+  - path: apigw.delivery.credential_offers.wallets.native
+    reason: >-
+      The standard OpenID4VCI same-device scheme, registered by both native
+      sample apps. Fly had it and docker-compose did not, purely because the
+      two were patched by different scripts - both get it now.
+  - path: apigw.data_sources.datastore.scopes.siros_id
+    reason: >-
+      features.credentialTypes is 1:1 scope-to-type, so every declared type
+      gets a data source. siros_id is issued through the facetec flow's API
+      rather than a data source, so this scope resolves nothing - additive,
+      not breaking.
+
+  # --- api_server.tls / grpc tls --------------------------------------------
+  - path: apigw.api_server.tls
+    reason: "vc defaults tls.enable to false; the chart omits the block rather than writing it out"
+  - path: issuer.api_server.tls
+    reason: "as above"
+  - path: issuer.grpc_server.tls
+    reason: "the chart terminates inter-service gRPC with cert-manager mTLS; both targets set tls false and the cert paths are then never read"
+  - path: registry.api_server.tls
+    reason: "as above"
+  - path: registry.grpc_server.tls
+    reason: "as above"
+  - path: verifier.api_server.tls
+    reason: "as above"
+  - path: apigw.issuer_client
+    reason: "chart renders mTLS cert paths alongside addr; tls is set false per target, so they are inert"
+  - path: apigw.registry_client
+    reason: "as above"
+  - path: issuer.registry_client
+    reason: "as above"
+
+  # --- secrets moved out of the config file ---------------------------------
+  - path: apigw.auth_providers.oidc.registration.preconfigured.client_secret
+    reason: "moved to the rendered secrets file (common.secret_file_path), the chart's own model"
+  - path: registry.admin_gui.password
+    reason: "as above"
+  - path: verifier.outbound.oidc_provider.subject_salt
+    reason: "as above - and now generated once into fixtures/rendered-secrets/ rather than a literal in a checked-in file"
+  - path: common.secret_file_path
+    reason: "newly set; render-helm-config.py does the secrets-renderer initContainer's job"
+  - path: registry.admin_gui.username
+    reason: "the chart names the admin user explicitly; the fixture relied on vc's default"
+
+  # --- corrections ----------------------------------------------------------
+  - path: apigw.registry_public_url
+    reason: >-
+      Was https://vc-proxy:8445, a host that only exists under CONFORMANCE=yes -
+      unreachable in a plain `make up`, so status-list URIs on issued
+      credentials could never resolve. Now the registry's real address.
+  - path: registry.public_url
+    reason: "as above"
+  - path: apigw.delivery.credential_offers.wallets.local.redirect_uri
+    reason: >-
+      Was http://localhost:3000/cb - the SPA has no bare /cb route outside
+      BASE_PATH=/id/default/, so that callback landed on a blank page. The
+      same bug was already fixed for Fly in patch-vc-config-fly.py.
+  - path: verifier.preferred_vp_formats
+    reason: >-
+      Moved from verifier.inbound.openid4vp.preferred_vp_formats, which is not
+      where vc's schema has it (it is a top-level Verifier field). Nested
+      there it was silently ignored, since vc unmarshals non-strictly.
+  - path: verifier.inbound.openid4vp.preferred_vp_formats
+    reason: "removed from the wrong nesting - see above"
+  - path: registry.token_status_lists.section_size
+    reason: "now set for both targets, not just Fly; vc's 1,000,000 default builds that many decoy documents in memory on first boot"
+
+  # --- clients the chart derives --------------------------------------------
+  - path: apigw.delivery.openid4vci.clients
+    reason: >-
+      The chart adds a client keyed by the wallet frontend's own origin+base
+      path, which is the client_id the web wallet actually presents. The
+      hand-written e2e-test-client/-2 are kept alongside it in values-base.yaml.
+  - path: verifier.inbound.openid4vp.clients
+    reason: "as above, presentation side"
+  - path: verifier.supported_wallets
+    reason: "the chart derives the web frontend entry; the native app is merged in via extraConfig"
+  - path: verifier.outbound.oidc_provider.static_clients
+    reason: "the chart does not model static OIDC clients of the verifier's own OP; nothing in either target uses them"
+  - path: verifier.outbound.oidc_provider.enable_userinfo
+    reason: "the chart sets it explicitly (true, vc's own default)"
+  - path: verifier.digital_credentials.use_jar
+    reason: "the chart writes vc's default (false) explicitly"
+  - path: verifier.digital_credentials.enable
+    kind: removed
+    reason: >-
+      When DC API is off the chart omits the whole block rather than writing
+      enable: false, which is the same thing - vc defaults Enable to false.
+  - path: verifier.trust
+    reason: "the verifier now consults the PDP, as it does in production - previously absent, i.e. allow-all"
+  - path: apigw.trust
+    reason: >-
+      Likewise. Only consulted for attestation-based client auth, which is off
+      by default here, so pre-registered clients are unaffected. Worth
+      watching the first time an environment turns wallet attestation on.
+
+compose:
+  - *shared
+  - path: apigw.api_server.cors.allowed_origins
+    reason: "restated in values-base.yaml; the apigw's own URL was in the list for an admin UI that is not served locally"
+  - path: issuer.api_server.addr
+    reason: ":8081 not :8080 - the chart gives issuer-core its own port, and it is only reached over gRPC anyway"
+  - path: registry.api_server.addr
+    reason: ":9004, so the published and container ports match (see docker-compose.vc-services.yml)"
+  - path: common.mongo
+    reason: "issuer-core has no mongo of its own in the chart; the old shared config file gave every service the same block"
+
+fly-gdc:
+  - *shared
+  - path: apigw.api_server.cors.allowed_origins
+    reason: "as compose; the environment's own frontend origin is derived by the chart rather than appended by a patch script"
+  - path: issuer.api_server.addr
+    reason: "as compose"
+  - path: common.mongo
+    reason: "as compose"
+  - path: verifier.zk_circuits
+    reason: "now driven by environments/<name>.yaml's zk_circuits_sources rather than a CLI-only flag"

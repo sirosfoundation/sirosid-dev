@@ -20,16 +20,12 @@
 #   - ADB authorized on the device
 #   - Run `make usb-android-setup` first to set up port forwarding + config
 #
-# This overlay:
-#   - Mounts the Android-patched vc-config for vc-apigw
-#     (OIDC URLs use localhost since `adb reverse` maps device's localhost → host)
-#   - Sets mini-oidc ISSUER to localhost (reachable via adb reverse)
+# `make usb-android-config` re-renders the vc services' config from the chart
+# with localhost as the advertised address (`adb reverse` maps the device's
+# localhost to the host). This overlay only sets mini-oidc's ISSUER to match;
+# everything else comes from the rendered config.
 
 services:
-  vc-apigw:
-    volumes:
-      - ./fixtures/vc-config-android-usb.yaml:/config.yaml:ro
-
   mini-oidc:
     environment:
       - ISSUER=http://localhost:9005

@@ -17,11 +17,72 @@
 #     hostnames get rewritten to the docker-compose service names and
 #     http://localhost ports sirosid-dev already uses.
 tenant:
-  id: dev
+  # "default" everywhere else in this repo - the Makefile's TENANT_ID, the
+  # wallet frontend's BASE_PATH=/id/default/, and the tenant
+  # register-vc-services POSTs to. tenant.id feeds the vc services' public
+  # URLs now, so it has to agree with them.
+  id: default
   namespace: sirosid-dev
 
 domain:
   root: localhost
+
+# Explicit per-service hostnames, replacing the chart's
+# <tenant>.<service>.<domain> derivation. These carry a port, because in
+# docker-compose one advertised public URL has to work both from the host
+# browser and from inside the compose network - which is also why the
+# published and container ports have to be equal for apigw and the verifier
+# (see docker-compose.vc-services.yml's own comment on that).
+#
+# The chart hardcodes an https:// scheme in front of each of these;
+# render-helm-config.py rewrites it to http:// for exactly this host list, via
+# vc_render.COMPOSE_PLAIN_HTTP_HOSTS - keep the two in step.
+hostnames:
+  issuer: "vc-apigw.localhost:9003"
+  issuerRegistry: "vc-registry.localhost:9004"
+  verifier: "vc-verifier.localhost:9001"
+  walletFrontend: "localhost:3000"
+  walletBackend: "localhost:8080"
+
+issuer:
+  authProviders:
+    oidc:
+      # mini-oidc, reachable under the same name from both the host and the
+      # compose network (see the Makefile's MINI_OIDC_ISSUER).
+      issuerUrl: "http://mini-oidc.localhost:9005"
+      clientId: "apigw-oidc-client"
+  apigw:
+    extraConfig:
+      apigw:
+        api_server:
+          addr: ":9003"
+        # The chart wires cert-manager mTLS between k8s Services; compose has
+        # no such certs and talks plaintext gRPC over the compose network.
+        # The cert paths the chart also renders are simply never read when
+        # tls is false (vc's GRPCClientTLS).
+        issuer_client:
+          addr: "vc-issuer:8090"
+          tls: false
+        registry_client:
+          addr: "vc-registry:8090"
+          tls: false
+  core:
+    extraConfig:
+      issuer:
+        registry_client:
+          addr: "vc-registry:8090"
+          tls: false
+  registry:
+    extraConfig:
+      registry:
+        api_server:
+          addr: ":9004"
+
+verifier:
+  extraConfig:
+    verifier:
+      api_server:
+        addr: ":9001"
 
 # The chart's own default is "" (no longer a non-empty placeholder as of the
 # siros-id-stack chart) - required (siros-id-stack's own README: "the chart
@@ -73,13 +134,6 @@ pdp:
         credential-issuer: pid-issuers
         verifier: verifiers
         credential-verifier: verifiers
-
-# Not consumed by sirosid-dev yet (issuer/verifier alignment is a follow-up),
-# but 04-issuer.yaml `fail`s the whole render without one of these set.
-issuer:
-  apiAuth:
-    jwks:
-      enabled: true
 
 replicas:
   pdp: 1

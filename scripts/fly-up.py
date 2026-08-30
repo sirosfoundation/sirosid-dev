@@ -96,7 +96,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                     wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
                     extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
                     rical_provider_url: str = None, rical_root_certificate_pem: str = None,
-                    dc_api_enable: str = "") -> list:
+                    dc_api_enable: str = "", env_values: dict = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -114,15 +114,15 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    wallet_attestation=wallet_attestation, extra_trusted_verifiers=extra_trusted_verifiers,
                    extra_trusted_verifier_roots=extra_trusted_verifier_roots,
                    rical_provider_url=rical_provider_url,
-                   rical_root_certificate_pem=rical_root_certificate_pem)
-    patch_cmd = [sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password]
-    if wallet_attestation:
-        patch_cmd.append("--wallet-attestation")
-    for source in (zk_circuits_sources or []):
-        patch_cmd += ["--zk-circuits-source", source]
-    if dc_api_enable:
-        patch_cmd += ["--dc-api-enable", dc_api_enable]
-    run(patch_cmd, cwd=SIROSID_DEV_ROOT)
+                   rical_root_certificate_pem=rical_root_certificate_pem,
+                   # The vc services' config comes out of this same render
+                   # now, rather than a second pass over a hand-written
+                   # fixtures/vc-config.yaml (scripts/patch-vc-config-fly.py,
+                   # removed) - so a chart change reaches the issuer and
+                   # verifier the way it already reached wallet-backend.
+                   zk_circuits_sources=zk_circuits_sources,
+                   dc_api_enable=dc_api_enable,
+                   env_values=env_values)
     return docs
 
 
@@ -230,7 +230,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     # decoy docs before a single bulk InsertMany on first boot (empty status
     # list collection) - confirmed OOM-killed at the default 256MB machine
     # size (anon-rss >150MB and climbing). Also trimmed via
-    # patch-vc-config-fly.py's section_size override, but bumping memory too
+    # issuer.registry.tokenStatusLists.sectionSize in values-base.yaml, but bumping memory too
     # since other vc-services may have similar headroom needs under load.
     #
     # mongodb: the official image's docker-entrypoint.sh bootstraps
@@ -317,23 +317,23 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--env", f"RP_BASE_URL={app_url(env, 'mini-oidc')}",
             "--env", "CLIENT_ID=mini-oidc-rp",
             # Must match apigw's auth_providers.oidc.redirect_uri, set to the
-            # same value in patch-vc-config-fly.py.
+            # same value the rendered apigw config carries.
             "--env", f"APIGW_REDIRECT_URI={apigw_redirect}",
             # Explicit, not relying on mini_oidc_config()'s own defaults to
-            # coincidentally match what patch-vc-config-fly.py sets on apigw's
+            # coincidentally match what the rendered config sets on apigw's
             # side - see fly_common.MINI_OIDC_APIGW_CLIENT_ID/_SECRET.
             "--env", f"APIGW_CLIENT_ID={MINI_OIDC_APIGW_CLIENT_ID}",
             "--env", f"APIGW_CLIENT_SECRET={MINI_OIDC_APIGW_CLIENT_SECRET}",
             "--file-local", f"/etc/mini-oidc/configs/config.production.yaml={config_path}",
         ]
     elif name == "vc-registry":
-        deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=False)
+        deploy_args += _vc_service_files(app, out_dir, pki_dir, "vc-registry", metadata=False)
     elif name == "vc-issuer":
-        deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=True)
+        deploy_args += _vc_service_files(app, out_dir, pki_dir, "vc-issuer", metadata=True)
     elif name == "vc-verifier":
-        deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=True, presentation_requests=True)
+        deploy_args += _vc_service_files(app, out_dir, pki_dir, "vc-verifier", metadata=True, presentation_requests=True)
     elif name == "vc-apigw":
-        deploy_args += _vc_service_files(app, out_dir, pki_dir, metadata=True, bootstrapping=True)
+        deploy_args += _vc_service_files(app, out_dir, pki_dir, "vc-apigw", metadata=True, bootstrapping=True)
     elif name == "pdp":
         deploy_args += ["--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
     elif name == "wallet-backend":
@@ -477,7 +477,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         print(f"{name}: {app_url(env, name)}")
 
 
-def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
+def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, service: str, metadata: bool,
                        presentation_requests: bool = False, bootstrapping: bool = False) -> list:
     # The private key authenticates every credential this environment issues -
     # a Fly secret (encrypted, write-only), not a --file-local file (stored
@@ -487,29 +487,30 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, metadata: bool,
     # check_pki_consistency() for why ensure_secret's default
     # never-rotate-if-already-set behavior is safe here specifically.
     ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
+    # Each service gets its OWN rendered config now, not one file shared by all
+    # four - they no longer have to be bumped in lockstep just because a config
+    # shape moved (see environments/gdc.yaml's images comment).
     args = [
         "--env", "VC_CONFIG_YAML=/config.yaml",
         "--env", "SSL_CERT_FILE=/pki/rootCA.crt",
-        "--file-local", f"/config.yaml={out_dir / 'vc-config.yaml'}",
+        "--file-local", f"/config.yaml={out_dir / f'{service}.yaml'}",
+        "--file-local", f"/secrets/secrets.yaml={out_dir / f'{service}-secrets.yaml'}",
         "--file-local", f"/pki/rootCA.crt={pki_dir / 'rootCA.crt'}",
         "--file-secret", "/pki/signing_ec_private.pem=vcSigningKey",
         "--file-local", f"/pki/signing_ec_chain.pem={pki_dir / 'signing_ec_chain.pem'}",
     ]
+    # These three directories are rendered from the chart's own ConfigMaps
+    # (vctms, verifier-pres-reqs, issuer-documents) rather than uploaded
+    # straight from fixtures/, so their mount points are the chart's names.
     if metadata:
-        metadata_dir = SIROSID_DEV_ROOT / "fixtures" / "vc-metadata"
-        for f in sorted(metadata_dir.glob("*.json")):
-            args += ["--file-local", f"/metadata/{f.name}={f}"]
+        for f in sorted((out_dir / "vctms").glob("*")):
+            args += ["--file-local", f"/vctms/{f.name}={f}"]
     if presentation_requests:
-        pr_dir = SIROSID_DEV_ROOT / "fixtures" / "vc-presentation-requests"
-        for f in sorted(pr_dir.glob("*.yaml")):
-            args += ["--file-local", f"/presentation_requests/{f.name}={f}"]
+        for f in sorted((out_dir / "pres-reqs").glob("*")):
+            args += ["--file-local", f"/pres-reqs/{f.name}={f}"]
     if bootstrapping:
-        # identity_mapping_import/data_sources.datastore.import in vc-config.yaml
-        # point at these paths - see that file's comment for why apigw needs its
-        # own fixtures rather than reusing vc repo's bootstrapping/ directory.
-        bootstrap_dir = SIROSID_DEV_ROOT / "fixtures" / "vc-bootstrapping"
-        for f in sorted(bootstrap_dir.glob("*.json")):
-            args += ["--file-local", f"/bootstrapping/{f.name}={f}"]
+        for f in sorted((out_dir / "documents").glob("*")):
+            args += ["--file-local", f"/documents/{f.name}={f}"]
     return args
 
 
@@ -564,7 +565,7 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
         # App.tsx registers the OID4VCI callback at "cb/*" (relative to the
         # SPA's BASE_PATH router), so a bare "/" redirect lands on the
         # dashboard instead of OpenIDFlowCallback, and (separately) doesn't
-        # match what patch-vc-config-fly.py registers as this environment's
+        # match what the rendered apigw config registers as this environment's
         # e2e-test-client redirect_uri - confirmed live as the cause of every
         # web-initiated authorization_code credential issuance failing with
         # vc-apigw's "invalid_client".
@@ -592,7 +593,7 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
     }
     if wallet_attestation:
         # Pairs with patch_wallet_backend_fly's wia.issuer/omit_x5c and
-        # patch-vc-config-fly.py's apigw.trust.wallet_attestation - without
+        # the rendered apigw config's trust.wallet_attestation - without
         # this, wallet-backend never generates/attaches a WIA at all, so the
         # OAuth-Client-Attestation headers vc-apigw is now configured to
         # accept never get sent.
@@ -852,7 +853,12 @@ def main():
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
                            args.conformance, extra_trusted_issuers, args.wallet_attestation,
                            extra_trusted_verifiers, extra_trusted_verifier_roots, zk_circuits_sources,
-                           rical_provider_url, rical_root_certificate_pem, dc_api_enable)
+                           rical_provider_url, rical_root_certificate_pem, dc_api_enable,
+                           # environments/<name>.yaml's free-form `values:`
+                           # block, deep-merged over everything else - the
+                           # escape hatch for anything the typed keys above
+                           # don't cover (see scripts/env_config.py).
+                           env_cfg.get("values") or {})
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

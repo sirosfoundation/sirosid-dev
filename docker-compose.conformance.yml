@@ -28,49 +28,13 @@ services:
     environment:
       - WALLET_HTTP_CLIENT_INSECURE_SKIP_VERIFY=true
 
-  # Override docker-compose.vc-services.yml's default local-patched mount
-  # (compose merges `volumes:` by target path across -f files, same as
-  # docker-compose.tunnel-vc.yml's override below): this overlay runs a real
-  # vc-proxy container (below), so the base fixtures/vc-config.yaml's
-  # "https://vc-proxy:8443" identity is actually reachable here, unlike the
-  # plain VC=yes case.
-  vc-issuer:
-    volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
-
-  # Base config leaves verifier.api_server.addr at :8080 - see vc-apigw below
-  # for why `!override` is required on ports.
-  vc-verifier:
-    volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
-    ports: !override
-      - "9001:8080"
-      - "9091:8090"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  vc-apigw:
-    volumes:
-      - ./fixtures/vc-config.yaml:/config.yaml:ro
-    # The base config leaves api_server.addr at :8080, so undo the local path's
-    # 9003:9003 alignment and its matching healthcheck. Conformance doesn't need
-    # the one-URL-for-both-sides property the local path does - vc-proxy (below)
-    # is the browser-facing front here.
-    # `!override` because compose MERGES (appends to) ports lists across -f
-    # files rather than replacing them - without it this ends up publishing
-    # both 9003:9003 and 9003:8080 and the host port collides.
-    ports: !override
-      - "9003:8080"
-    healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
+  # The vc services need no overrides here any more. `make up CONFORMANCE=yes`
+  # renders their config from the chart with vc-proxy (below) as the
+  # advertised host, so apigw/registry present the https://vc-proxy:8443 /
+  # :8445 identity the conformance suite drives them through, while still
+  # listening on the same ports as every other mode. Previously this overlay
+  # remounted a third copy of the config file and had to undo the local
+  # path's port alignment along with it.
 
   conformance-suite-server:
     image: registry.gitlab.com/openid/conformance-suite:latest

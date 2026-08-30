@@ -45,13 +45,31 @@ local changes in the sibling checkouts.
   environment can't resolve another's `.internal` addresses).
 
 Both paths share one underlying mechanism: `scripts/render-helm-config.py`
-renders wallet-backend/PDP config from the same `siros-id-stack` chart, just
-with different hostname targets (`--target fly` uses `.internal`/`.fly.dev`,
-the local `PDP=helm` path uses compose service names). This is why `PDP=helm`
-locally and any `fly-up` deploy are the two contexts where a stale/wrong
-`../siros-id-stack` checkout will silently produce wrong config — always
-check `git -C ../siros-id-stack branch --show-current` if PDP behavior looks
-off in either mode.
+renders **every** service's config — wallet-backend, the PDP, and the four vc
+services (issuer-apigw, issuer-core, issuer-registry, verifier) — from the
+same `siros-id-stack` chart, just with different hostname targets (`--target
+fly` uses `.internal`/`.fly.dev`, compose uses `*.localhost` service
+aliases). Nothing is hand-maintained in parallel any more:
+`fixtures/vc-config.yaml` and the four mechanically-patched copies of it are
+gone, along with `generate-tunnel-config.py`, `generate-android-config.py`
+and `patch-vc-config-fly.py`.
+
+Values layering, later wins (`values-base.yaml` → `values-dev/fly.yaml` →
+per-run generated overlay → `environments/<name>.yaml`'s `values:` block).
+Every mode that used to need its own pre-patched config file is now just a
+different hostname set: TUNNELS, DOMAIN, Android/Waydroid, CONFORMANCE.
+
+This means a stale or wrong `../siros-id-stack` checkout now silently
+produces wrong config for **anything**, not just the PDP — always check
+`git -C ../siros-id-stack branch --show-current` first when behavior looks
+off, and run `make vc-config-parity` (below) to see exactly what moved.
+
+**`make vc-config-parity`** renders the chart for both targets and
+semantically diffs the result against checked-in goldens
+(`fixtures/vc-config-golden/`), with every accepted difference justified in
+`accepted-diffs.yaml`. Run it after touching the chart, `values-base.yaml`,
+or the renderer — it is the only thing that would catch an upstream chart
+change quietly dropping a field this repo depends on.
 
 ### `make up` — key flags (see `make help` for the full, current list)
 
@@ -59,7 +77,12 @@ off in either mode.
   wallet-backend + PDP config from the chart (see above); the other modes are
   hand-maintained env vars/CLI flags, kept independently and known to drift
   from the chart (that's the whole reason `PDP=helm` exists — see
-  "Helm alignment" below).
+  "Helm alignment" below). Note `VC=yes` renders the vc services' config from
+  the chart regardless of `PDP=`, so `helm` is now only about wallet-backend
+  and the PDP themselves.
+- `ENV=<name>` — layers `environments/<name>.yaml` onto a local `make up` too,
+  not just `fly-up`. Its `values:` block is free-form chart values merged last,
+  so a one-off override needs no code change anywhere.
 - `AS_RULES=allow-all|baseline` — SPOCP policy for wallet-backend's built-in
   Authorization Server (passkey login + token endpoint), separate from the
   `PDP=` trust policy above. Default `allow-all` (`fixtures/as-rules/`) is an
@@ -71,7 +94,8 @@ off in either mode.
   to its image-baked rules when unset. Use `baseline` only when directly
   testing AS rule behavior, e.g. reproducing a Fly-only 403 locally.
 - `VC=yes` — adds production-like issuer/verifier/apigw/registry + mongodb,
-  built from `../vc`.
+  built from `../vc`. Requires `helm` and `../siros-id-stack`, since their
+  config is rendered from the chart.
 - `TRANSPORT=websocket|wmp|http` — wallet transport; `http` is deprecated.
 - `CONFORMANCE=yes` — layers in VC services + VC↔go-trust wiring
   (`docker-compose.vc-go-trust.yml`) and the OpenID conformance suite overlay,

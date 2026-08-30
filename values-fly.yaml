@@ -21,14 +21,6 @@ gateway:
   name: gateway
   namespace: siros-shared
 
-# Not consumed by sirosid-dev's Fly deployment yet (issuer/verifier alignment
-# beyond vc-services' existing fixtures/vc-config.yaml is a follow-up), but
-# 04-issuer.yaml `fail`s the whole render without one of these set.
-issuer:
-  apiAuth:
-    jwks:
-      enabled: true
-
 replicas:
   pdp: 1
   walletBackend: 1

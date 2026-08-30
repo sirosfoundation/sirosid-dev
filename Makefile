@@ -58,7 +58,6 @@ WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
 R2PS_COMPOSE := docker-compose.r2ps.yml
 DOMAIN_COMPOSE := docker-compose.domain.yml
 TUNNEL_COMPOSE := docker-compose.tunnel.yml
-TUNNEL_VC_COMPOSE := docker-compose.tunnel-vc.yml
 FACETEC_COMPOSE := docker-compose.facetec.yml
 GOLDEN_COMPOSE := docker-compose.golden.yml
 GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
@@ -327,17 +326,13 @@ endif
 # Cloudflare quick tunnels (host-managed, not container-managed)
 ifneq ($(call _truthy,$(TUNNELS)),)
 	COMPOSE_FILES += -f $(TUNNEL_COMPOSE)
-  ifneq ($(call _truthy,$(VC)),)
-	COMPOSE_FILES += -f $(TUNNEL_VC_COMPOSE)
-  endif
 	_TUNNELS_LABEL := yes
-	# When VC services are also in the stack, vc-apigw/vc-issuer need a tunnel-patched
-	# config too — the base fixtures/vc-config.yaml hardcodes "https://vc-proxy:8443"
-	# (only reachable when the separate conformance overlay is active), which would
-	# otherwise end up embedded as an unreachable credential_issuer in every credential
-	# offer. See scripts/generate-tunnel-config.py and the config-regeneration step below.
+	# The vc services need no compose overlay of their own under TUNNELS any
+	# more: render-helm-config reads .env.tunnel and feeds the tunnel hosts to
+	# the chart as `hostnames:`, so every one of them advertises a reachable
+	# URL. The old overlay mounted a pre-patched config onto vc-apigw and
+	# vc-issuer only, which silently left vc-verifier on localhost URLs.
 	ifneq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
-		COMPOSE_FILES += -f $(TUNNEL_VC_COMPOSE)
 		_TUNNEL_VC_LABEL := yes
 	else
 		_TUNNEL_VC_LABEL := no
@@ -656,13 +651,6 @@ ifneq ($(call _truthy,$(TUNNELS)),)
 		exit 1; \
 	fi
 	@$(MAKE) --no-print-directory ensure-tunnels
-ifneq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
-	@# Regenerate the tunnel-patched vc-config now that .env.tunnel is populated
-	@# (either just now, or reused from an already-running tunnel session).
-	@. ./.env.tunnel && python3 scripts/generate-tunnel-config.py \
-		--apigw-url "$$TUNNEL_VC_APIGW_URL" \
-		--frontend-url "$$TUNNEL_FRONTEND_URL"
-endif
 endif
 ifneq ($(call _truthy,$(VC)),)
 	@$(MAKE) --no-print-directory ensure-local-hosts
@@ -699,30 +687,12 @@ ifneq ($(call _truthy,$(VC)),)
 		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
 		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
-	@# Regenerate the local-patched vc-config: the base fixtures/vc-config.yaml
-	@# hardcodes "https://vc-proxy:8443" as apigw/issuer's public identity,
-	@# which only resolves under CONFORMANCE=yes (a real vc-proxy container)
-	@# or TUNNELS=yes (its own tunnel-patched config, generated above). Plain
-	@# `make up VC=yes` has neither, so vc-apigw would otherwise advertise an
-	@# unreachable credential_issuer/token_endpoint/credential_endpoint to
-	@# the browser - reuses the exact same generator, just pointed at the
-	@# in-network vc-apigw URL instead of a tunnel URL. Harmless to also run
-	@# this under TUNNELS=yes/CONFORMANCE=yes: docker-compose.tunnel-vc.yml
-	@# and docker-compose.conformance.yml each mount their own correct config
-	@# over top of this one.
-	@python3 scripts/generate-tunnel-config.py \
-		--apigw-url "$(VC_APIGW_PUBLIC_URL)" \
-		--frontend-url "$(FRONTEND_URL)" \
-		--oidc-issuer-url "$(MINI_OIDC_ISSUER)" \
-		--oidc-redirect-uri "$(VC_APIGW_PUBLIC_URL)/oidcrp/callback" \
-		--apigw-listen-port "$(VC_APIGW_PORT)" \
-		--verifier-url "$(VC_VERIFIER_PUBLIC_URL)" \
-		--verifier-listen-port "$(VC_VERIFIER_PORT)" \
-		--wallet-link-url "$(FRONTEND_URL)$(WALLET_BASE_PATH)cb" \
-		--wallet-link-name "$(WALLET_NAME)" \
-		--wallet-oidc-redirect-uri "$(FRONTEND_URL)$(WALLET_BASE_PATH)verification/result" \
-		--dc-api-enable "$(if $(call _truthy,$(DC_API)),true,false)" \
-		--output fixtures/vc-config-local.yaml
+	@# Render every vc service's config from the siros-id-stack chart, the same
+	@# way PDP=helm already renders wallet-backend's and the PDP's. This
+	@# replaced fixtures/vc-config.yaml and the four mechanically-patched
+	@# copies of it (local/tunnel/android/android-usb) that had drifted apart
+	@# in more than hostnames - see values-base.yaml's header.
+	@$(MAKE) --no-print-directory render-helm-config
 endif
 ifeq ($(PDP),helm)
 	@# Pre-flight: $(SIROS_ID_STACK_PATH) must exist to render config from
@@ -733,7 +703,9 @@ ifeq ($(PDP),helm)
 		exit 1; \
 	fi
 	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - PDP=helm renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
+  ifeq ($(call _truthy,$(VC)),)
 	@$(MAKE) --no-print-directory render-helm-config
+  endif
 endif
 ifneq ($(call _truthy,$(FACETEC)),)
 	@# Pre-flight: ../facetec-api must exist for the facetec-api build
@@ -824,7 +796,7 @@ endif
 endif
 ifneq ($(call _truthy,$(VC)),)
 	@# vc-apigw/vc-issuer read their whole config from a bind-mounted file that
-	@# this target regenerates on every run (fixtures/vc-config-local.yaml, or
+	@# this target regenerates on every run (fixtures/rendered/vc-*.yaml, or
 	@# -tunnel.yaml under TUNNELS=yes). `docker compose up -d` only diffs the
 	@# compose *service definition* - never the CONTENT of a mounted file - so
 	@# an otherwise-unchanged spec leaves the old containers running with the
@@ -1052,7 +1024,7 @@ register-vc-services: ## Register VC issuer and verifier with backend
 	@# match), which for the plain VC=yes path is VC_APIGW_PUBLIC_URL - see its
 	@# definition above for why that's the bridge-gateway URL and not
 	@# vc-apigw:8080. The .env.tunnel branch below still wins under TUNNELS=yes,
-	@# where generate-tunnel-config.py has set the tunnel URL as PublicURL.
+	@# where the rendered config has the tunnel URL as PublicURL.
 	@_VC_APIGW_REG_URL="$(VC_APIGW_PUBLIC_URL)"; \
 	_VC_VERIFIER_REG_URL="$(VC_VERIFIER_PUBLIC_URL)"; \
 	if [ -f .env.tunnel ]; then \
@@ -1170,7 +1142,7 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
 # =============================================================================
 
-render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack chart (use ANDROID_APPS=pkg=fingerprint,... to add debug/Play Store keys)
+render-helm-config: ## Render wallet-backend/PDP/vc-services config from the siros-id-stack chart (ANDROID_APPS=pkg=fingerprint,... adds debug/Play Store keys; ENV=<name> layers environments/<name>.yaml)
 	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
 		echo "$(RED)Error: siros-id-stack repo not found at $(SIROS_ID_STACK_PATH)$(NC)"; \
 		echo "  Run: make setup   (clones all required sibling repos)"; \
@@ -1180,7 +1152,22 @@ render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack 
 	@_HASHES=$$(python3 scripts/android_apps.py --apk-key-hashes $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
 	_FLAGS=""; \
 	for h in $$_HASHES; do _FLAGS="$$_FLAGS --android-apk-key-hash $$h"; done; \
-	python3 scripts/render-helm-config.py --chart-dir "$(SIROS_ID_STACK_PATH)" $$_FLAGS
+	for h in $(VC_HOSTNAMES); do _FLAGS="$$_FLAGS --hostname $$h"; done; \
+	$(if $(call _truthy,$(CONFORMANCE)),_FLAGS="$$_FLAGS --hostname issuer=vc-proxy:8443 --hostname issuerRegistry=vc-proxy:8445";) \
+	if [ -n "$(call _truthy,$(TUNNELS))" ] && [ -f .env.tunnel ]; then \
+		. ./.env.tunnel; \
+		for h in "issuer=$${TUNNEL_VC_APIGW_URL#https://}" \
+		         "verifier=$${TUNNEL_VC_VERIFIER_URL#https://}" \
+		         "walletFrontend=$${TUNNEL_FRONTEND_URL#https://}" \
+		         "walletBackend=$${TUNNEL_BACKEND_URL#https://}"; do \
+			case "$$h" in *=) ;; *) _FLAGS="$$_FLAGS --hostname $$h" ;; esac; \
+		done; \
+	fi; \
+	python3 scripts/render-helm-config.py --chart-dir "$(SIROS_ID_STACK_PATH)" $$_FLAGS \
+		--dc-api-enable "$(if $(call _truthy,$(DC_API)),true,false)" \
+		$(if $(MINI_OIDC_URL),--mini-oidc-url "$(MINI_OIDC_URL)") \
+		$(if $(ENV),--env "$(ENV)" --env-values) \
+		$(if $(ZK_CIRCUITS_SOURCES),--zk-circuits-source "$(ZK_CIRCUITS_SOURCES)")
 
 # =============================================================================
 # Fly.io — named ephemeral environments (see scripts/fly-up.py, fly-down.py)

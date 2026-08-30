@@ -25,7 +25,7 @@ services:
       - WEBAUTHN_RPID=${DOMAIN}
       # /id/default/cb, not the bare origin - see docker-compose.test.yml's
       # own OPENID4VCI_REDIRECT_URI comment. NOTE: unlike TUNNELS=yes (see
-      # generate-tunnel-config.py), DOMAIN= has no matching mechanism that
+      # render-helm-config's --hostname), DOMAIN= has no matching mechanism that
       # registers this dynamic host against e2e-test-client's redirect_uri
       # list in vc-config.yaml - authorization_code-flow credentials (any
       # auth_provider: oidc scope) will still 401 with invalid_client under

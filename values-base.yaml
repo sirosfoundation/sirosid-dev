@@ -1,0 +1,411 @@
+# Shared Helm values for BOTH deployment targets - the first `-f` layered by
+# scripts/render-helm-config.py for `make up` and `make fly-up` alike.
+#
+# Layering (later wins, deep-merged by helm):
+#   siros-id-stack/values.yaml   the chart's own defaults
+#   values-base.yaml             this file - what sirosid-dev issues and verifies
+#   values-dev.yaml              compose-only: plain http, plain mongo, local ports
+#   values-fly.yaml              fly-only: image pins, Fly hostnames
+#   values.generated.yaml        per-run: hostnames, PDP whitelist, mongo password
+#   environments/<name>.yaml     per-environment `values:` block, merged last
+#
+# This file replaced fixtures/vc-config.yaml, which was a hand-written copy of
+# the same config the chart already renders, mechanically URL-patched into five
+# variants (local/tunnel/android/android-usb/fly) by three separate scripts.
+# Those variants had drifted apart in more than hostnames - the android one was
+# missing three credential types and the whole identity-mapping import - which
+# is the reason this exists. Anything genuinely target-specific belongs in
+# values-dev/values-fly, not here.
+#
+# This is never applied to a real cluster.
+
+tenant:
+  id: default
+  displayName: "SIROS ID (dev)"
+
+features:
+  production: false
+  # Secrets are rendered by render-helm-config.py rather than by the chart's
+  # in-cluster secret-generator CronJob; there is no cluster to run it in.
+  generateSecrets: false
+
+  # The credential types this environment issues. One entry drives, for every
+  # service that needs it: common.credential_metadata, the mounted VCTM/MDDL
+  # document, apigw's data_sources scope, and the verifier's supported
+  # credentials - previously four hand-synchronised places.
+  #
+  # `vctm.file`/`mdocSchema.file` are resolved by render-helm-config.py
+  # relative to this repo (the chart's own Files.Get cannot read outside the
+  # chart directory) and inlined as `data` before helm sees them.
+  credentialTypes:
+    pid_1_8:
+      vct: "urn:eudi:pid:arf-1.8:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_pid_arf_1_8.json}
+      issuance:
+        authProvider: oidc
+        # datastore, not assertion: this VCTM makes date_of_expiry a mandatory
+        # top-level claim, and mini-oidc is an authentication provider with no
+        # such field, so an assertion-built credential can never satisfy it.
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
+    pid_1_5:
+      vct: "urn:eudi:pid:arf-1.5:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_pid_arf_1_5.json}
+      issuance:
+        authProvider: oidc
+        source: assertion
+    ehic:
+      vct: "urn:eudi:ehic:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_ehic.json}
+      issuance:
+        authProvider: oidc
+        source: assertion
+    diploma:
+      vct: "urn:eudi:diploma:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_diploma.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
+    siros_id:
+      vct: "https://registry.siros.org/sirosfoundation/siros_id.vctm.json"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_siros_id.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
+    # ISO 18013-5 mdoc types. These carry an MDDL schema rather than a VCTM;
+    # `vct` is unused for mdoc DCQL matching (the doctype comes from the
+    # schema) but SupportedCredentialConfig.VCT is required, so it holds the
+    # doctype string for readability.
+    mdl:
+      vct: "org.iso.18013.5.1.mDL"
+      doctype: "org.iso.18013.5.1.mDL"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/mdl.mdoc.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
+    pid_mdoc:
+      vct: "eu.europa.ec.eudi.pid.1"
+      doctype: "eu.europa.ec.eudi.pid.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/pid_mdoc.mdoc.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
+    # 4-claim org.iso.18013.5.1.mDL variant for Vega ZK testing. Neither "mdl"
+    # (30+ claims, over VegaProofSystem's fixed 4-slot circuit) nor "pid_mdoc"
+    # (right claim count, wrong docType/namespace - zk-cred-vega's mso.rs
+    # hardcodes org.iso.18013.5.1.mDL) works as the Vega ZK test credential.
+    mdl_zk4:
+      vct: "org.iso.18013.5.1.mDL"
+      doctype: "org.iso.18013.5.1.mDL"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/mdl_zk4.mdoc.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
+
+issuer:
+  # 04-issuer.yaml fails the whole render unless one of apiAuth.jwks/oidc is
+  # enabled. Nothing in either deployment target calls the admin API with a
+  # JWT, so this is a render guard, not a live auth configuration.
+  apiAuth:
+    jwks:
+      enabled: true
+
+  authProviders:
+    oidc:
+      enabled: true
+      # issuerUrl/clientId are per-target (mini-oidc's address differs between
+      # compose, Waydroid, a tunnel and Fly) - see values.generated.yaml.
+      sessionDuration: 300
+      scopes: [openid, profile]
+
+  # Imports the mini-oidc test users (alice-001/bob-002/carol-003) so the
+  # datastore-backed scopes can resolve a document for whoever actually logs
+  # in - vc's own bootstrapping fixtures cover a disjoint set of synthetic
+  # Skatteverket/SUNET/Ladok identities that match none of them.
+  identitymappingImport:
+    identities:
+      identity_mappings: {file: fixtures/vc-bootstrapping/identity_mappings.json}
+  datastoreImport:
+    documents:
+      diploma: {file: fixtures/vc-bootstrapping/diploma.json}
+      pid_1_8: {file: fixtures/vc-bootstrapping/pid_1_8.json}
+      mdl: {file: fixtures/vc-bootstrapping/mdl.json}
+      mdl_zk4: {file: fixtures/vc-bootstrapping/mdl_zk4.json}
+      pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
+
+  apigw:
+    cors:
+      allowedMethods: [GET, POST, OPTIONS]
+      allowedHeaders: [Authorization, Content-Type]
+      # Appended to the frontend origin the chart derives - so this stays
+      # correct under TUNNELS=yes/DOMAIN=, where the browser's origin is the
+      # tunnel/custom host rather than localhost. localhost:* covers the
+      # ad-hoc ports conformance runs and device testing bind.
+      extraAllowedOrigins:
+        - "http://localhost:3000"
+        - "http://localhost:*"
+    openid4vci:
+      # refresh_token is on top of vc's own default pair, for the credential
+      # re-issuance/renewal engine action - without it the apigw token
+      # endpoint rejects grant_type=refresh_token with unsupported_grant_type
+      # no matter what the wallet-backend does.
+      grantTypes:
+        - authorization_code
+        - "urn:ietf:params:oauth:grant-type:pre-authorized_code"
+        - refresh_token
+    extraConfig:
+      common:
+        # The chart points these at PNGs a branding initContainer decodes into
+        # an emptyDir; there is no such container here, and vc validates a
+        # non-empty branding path as a real PNG at startup (image_png), so a
+        # dangling path is a crash, not a missing logo. Blank means vc's own
+        # built-in assets.
+        branding:
+          logo_path: ""
+          favicon_path: ""
+      apigw:
+        api_server:
+          # The chart requires one of apiAuth.jwks/oidc to be enabled and
+          # renders an api_auth block accordingly - a deliberate refusal to
+          # ship an unauthenticated admin API. Neither deployment target has
+          # anything to issue an admin JWT, and an enabled jwks block without
+          # an `issuer` fails vc's own required_if validation at startup, so
+          # the rendered config turns it back off. That leaves the admin API
+          # open, exactly as fixtures/vc-config.yaml always had it: these are
+          # local and ephemeral stacks on private networks. Do not copy this
+          # into anything long-lived.
+          api_auth:
+            jwks:
+              enable: false
+        # create-pki.sh generates one EC key/chain per environment; the chart's
+        # cert-manager paths (/sign-cert, /sign-cert-chain) have nothing behind
+        # them in either docker-compose or Fly.
+        key_config:
+          private_key_path: "/pki/signing_ec_private.pem"
+          chain_path: "/pki/signing_ec_chain.pem"
+        delivery:
+          credential_offers:
+            wallets:
+              # The chart derives one wallet from the web frontend. These are
+              # the extra offer targets local and device testing use; a deep
+              # link is not a URL the chart can append "/cb" to, which is why
+              # they are here rather than in features.extraWallets.
+              e2e_test:
+                label: "E2E Test Wallet"
+                redirect_uri: "http://localhost:3000/callback"
+              android:
+                label: "SIROS Android (Waydroid)"
+                redirect_uri: "siros-sample://callback"
+              native:
+                label: "Native app (OpenID4VCI same-device)"
+                redirect_uri: "openid-credential-offer://"
+          openid4vci:
+            clients:
+              # register-vc-services (Makefile) and fly-up.py both register
+              # this exact client_id with wallet-backend as THE client for
+              # OID4VCI authorization_code flows against this issuer, web and
+              # native alike. Both redirect_uris have to stay valid: the
+              # native app's deep link, and the web wallet's real callback
+              # route under BASE_PATH=/id/default/. Dropping either one 401s
+              # that platform's flow with vc-apigw's invalid_client.
+              e2e-test-client:
+                type: public
+                redirect_uri:
+                  - "siros-sample://callback"
+                  - "http://localhost:3000/id/default/cb"
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc]
+              e2e-test-client-2:
+                type: public
+                redirect_uri: "http://localhost:3000/id/default/cb"
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc]
+        data_sources:
+          assertion:
+            scopes:
+              # "pid" is an OAuth scope with no credential type of its own -
+              # it resolves to whichever PID version the wallet negotiates,
+              # so it cannot be expressed as a features.credentialTypes entry
+              # (those are 1:1 scope-to-type). The verifier's
+              # supported_credentials below maps both PID VCTs onto it.
+              pid:
+                auth_provider: oidc
+      common:
+        # No secrets-renderer initContainer outside Kubernetes; the renderer
+        # writes this file itself. See render-helm-config.py.
+        secret_file_path: "/secrets/secrets.yaml"
+
+  core:
+    # Attach a random pseudonym_seed to every issued credential - the wallet
+    # derives the session-specific pairwise_pseudonym from it at ZK
+    # presentation time, and it is never itself disclosed.
+    pseudonymSeed: true
+    jwtAttribute:
+      enableNotBefore: true
+      validDuration: 3600
+    extraConfig:
+      issuer:
+        key_config:
+          private_key_path: "/pki/signing_ec_private.pem"
+          chain_path: "/pki/signing_ec_chain.pem"
+        # Without an mdoc block c.mdocIssuer stays nil and MakeMDoc fails with
+        # "mdoc issuer not configured" for every mso_mdoc scope, even though
+        # the rest of the mdoc config works. Reuses this environment's SD-JWT
+        # signing chain rather than a separate IACA-rooted one - a test
+        # environment, not a real trust anchor.
+        mdoc:
+          certificate_chain_path: "/pki/signing_ec_chain.pem"
+        jwt_attribute:
+          verifiable_credential_type: "https://credential.e2etest.local/identity_credential"
+
+  registry:
+    tokenStatusLists:
+      # vc's default of 1,000,000 builds that many decoy documents in memory
+      # as one slice before a single bulk insert - OOM-killed on a small
+      # machine, and pointless at this scale.
+      sectionSize: 10000
+    adminGui:
+      enabled: true
+    extraConfig:
+      registry:
+        token_status_lists:
+          key_config:
+            private_key_path: "/pki/signing_ec_private.pem"
+            chain_path: "/pki/signing_ec_chain.pem"
+      common:
+        secret_file_path: "/secrets/secrets.yaml"
+
+verifier:
+  oidc_provider:
+    enabled: true
+    subjectType: pairwise
+    sessionDuration: 900
+    codeDuration: 600
+    accessTokenDuration: 3600
+    idTokenDuration: 3600
+    refreshTokenDuration: 86400
+  presentationTimeout: 300
+  preferredVpFormats:
+    "dc+sd-jwt":
+      sd-jwt_alg_values: [ES256]
+      kb-jwt_alg_values: [ES256]
+  # W3C Digital Credentials API (browser navigator.credentials.get()) support.
+  # Falls back to QR/redirect where unavailable. Overridden per run by
+  # `make up DC_API=...` / `make fly-up ENV=x DC_API_ENABLE=...`, which reach
+  # the same value on both targets now (build_toggles_overlay).
+  digitalCredentials:
+    enabled: true
+
+  # Selectable options in the verifier's own presentation-definition UI. NOT
+  # the same thing as presentationRequestTemplates below, which are only
+  # reachable through a real OIDC /authorize?scope=... request.
+  #
+  # The chart passes presets through verbatim, which matters here: this shape
+  # (category/credentials/zk_system_type) is only understood by the vc build
+  # pinned in environments/gdc.yaml, not by vc main.
+  presets:
+    "PID (mdoc) - ZK Proof (Vega)":
+      category: "ZK Proofs"
+      credentials:
+        mdl_zk4:
+          format: "mso_mdoc_zk"
+          zk_system_type:
+            - id: "vega-mc-p256-v1-prover-key-r12"
+              system: "vega-mc-p256-v1"
+          claims:
+            - path: ["org.iso.18013.5.1", "family_name"]
+            - path: ["org.iso.18013.5.1", "given_name"]
+    "Age Over 18 - ZK Proof (Vega)":
+      category: "ZK Proofs"
+      credentials:
+        mdl_zk4:
+          format: "mso_mdoc_zk"
+          zk_system_type:
+            - id: "vega-mc-p256-v1-prover-key-r12"
+              system: "vega-mc-p256-v1"
+          claims:
+            - path: ["org.iso.18013.5.1", "age_over_18"]
+
+  # Loaded from fixtures/vc-presentation-requests/*.yaml by
+  # render-helm-config.py and rendered into the one pres-reqs.yaml the
+  # verifier's template loader reads.
+  presentationRequestTemplatesFrom: fixtures/vc-presentation-requests
+
+  extraConfig:
+    common:
+      # See the apigw's copy of this - vc validates a non-empty branding path
+      # as a real PNG at startup.
+      branding:
+        logo_path: ""
+        favicon_path: ""
+    verifier:
+      digital_credentials:
+        # Not a field vc main has - it comes from the Vega ZK branch the
+        # images in environments/gdc.yaml are built from, and is ignored
+        # elsewhere (vc unmarshals non-strictly). Android's own OS-level DC
+        # API matcher rejects the ZK "mso_mdoc_zk" format with a system
+        # dialog before any application code runs, so there is no
+        # JS-catchable failure to fall back from; DC API itself stays on,
+        # only the automatic attempt-on-page-load is skipped. Same-device
+        # testing still works through the "open in wallet" link.
+        auto_attempt: false
+      supported_wallets:
+        # Merged on top of the web frontend entry the chart derives. The
+        # native SDK sample app registers this openid4vp scheme.
+        "SIROS Native App": "openid4vp://cb"
+      key_config:
+        private_key_path: "/pki/signing_ec_private.pem"
+        chain_path: "/pki/signing_ec_chain.pem"
+      inbound:
+        openid4vp:
+          # Restated in full because a list in extraConfig replaces rather
+          # than appends. The chart derives one entry per credential type
+          # under its own scope; this environment instead serves both PID
+          # versions under a single "pid" scope, which that 1:1 model can't
+          # express.
+          supported_credentials:
+            - vct: "urn:eudi:pid:arf-1.8:1"
+              scopes: ["pid"]
+            - vct: "urn:eudi:pid:arf-1.5:1"
+              scopes: ["pid"]
+            - vct: "urn:eudi:ehic:1"
+              scopes: ["ehic"]
+            - vct: "urn:eudi:diploma:1"
+              scopes: ["diploma"]
+            - vct: "org.iso.18013.5.1.mDL"
+              scopes: ["mdl"]
+    common:
+      secret_file_path: "/secrets/secrets.yaml"
+
+pdp:
+  # Both targets supply a real whitelist of their own reachable URLs through
+  # pdp.extraRegistries in values.generated.yaml; the chart's built-in one is
+  # hardcoded https:// placeholder hostnames.
+  default_whitelist: false
+
+# Required for the HTTPRoute parentRefs to render at all. Never applied to a
+# real cluster, so any placeholder works.
+gateway:
+  name: gateway
+  namespace: siros-shared
+
+global:
+  certManager:
+    createIssuers: false

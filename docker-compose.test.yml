@@ -49,7 +49,7 @@ services:
       # cause of every web-initiated authorization_code credential issuance
       # (any auth_provider: oidc scope, e.g. pid/pid_1_5/pid_1_8/ehic/diploma)
       # failing with vc-apigw's "invalid_client" (same root cause found and
-      # fixed for Fly environments, see patch-vc-config-fly.py/fly-up.py).
+      # fixed for Fly environments, see render-helm-config.py/fly-up.py).
       - OPENID4VCI_REDIRECT_URI=http://localhost:3000/id/default/cb
       - STATIC_PUBLIC_URL=http://localhost:3000
       - STATIC_NAME=${WALLET_NAME:-SIROS ID (dev)}
