@@ -96,7 +96,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                     wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
                     extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
                     rical_provider_url: str = None, rical_root_certificate_pem: str = None,
-                    dc_api_enable: str = "", env_values: dict = None) -> list:
+                    dc_api_enable: str = "", credential_registries: list = None,
+                    env_values: dict = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -122,6 +123,12 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    # verifier the way it already reached wallet-backend.
                    zk_circuits_sources=zk_circuits_sources,
                    dc_api_enable=dc_api_enable,
+                   # Both halves of the stack resolve credential metadata from
+                   # the SAME registries - vc through
+                   # common.credential_registry, wallet-backend through its
+                   # registry.yaml sources - so they cannot disagree about
+                   # what a type looks like. One render sets both.
+                   credential_registries=credential_registries,
                    env_values=env_values)
     return docs
 
@@ -793,6 +800,9 @@ def main():
                               "COSE_Sign1 envelope (the out-of-band trust anchor per Annex F.3.1) - "
                               "must be paired with --rical-provider-url. See "
                               "fixtures/trusted-roots/README.md.")
+    parser.add_argument("--credential-registries", default="",
+                        help="Comma-separated registry base URLs (the Makefile's "
+                             "CREDENTIAL_REGISTRIES, passed only for REGISTRY=external).")
     parser.add_argument("--dc-api-enable", default="", choices=["", "true", "false"],
                          help="Override verifier.digital_credentials.enable (W3C DC API support) for "
                               "this environment only - fixtures/vc-config.yaml's own default is "
@@ -838,6 +848,12 @@ def main():
 
     dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
+    # Ordered: later registries override earlier ones for the same
+    # vct/doctype, so the file's list comes first and a CLI one extends it.
+    credential_registries = merge_list(
+        env_cfg["credential_registries"],
+        [u.strip() for u in args.credential_registries.split(",") if u.strip()])
+
     cli_image_overrides = {}
     for pair in args.images.split(","):
         pair = pair.strip()
@@ -876,6 +892,7 @@ def main():
                            args.conformance, extra_trusted_issuers, args.wallet_attestation,
                            extra_trusted_verifiers, extra_trusted_verifier_roots, zk_circuits_sources,
                            rical_provider_url, rical_root_certificate_pem, dc_api_enable,
+                           credential_registries,
                            # environments/<name>.yaml's free-form `values:`
                            # block, deep-merged over everything else - the
                            # escape hatch for anything the typed keys above

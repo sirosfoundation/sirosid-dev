@@ -584,6 +584,39 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     return overlay
 
 
+def patch_registry_sources(config: dict, registries: list) -> dict:
+    """Point wallet-backend's VCTM registry at the same registries vc resolves
+    from.
+
+    Two components independently need each type's metadata: vc builds the
+    credential from it and derives DCQL queries from it, and wallet-backend
+    serves it to the wallet, which renders and DCQL-matches against it. When
+    they disagree nothing errors - the wallet just holds a credential it can
+    never present - so they are always pointed at one list.
+
+    The chart renders a single `source.url` plus `local_overrides: [/vctms]`.
+    One URL can only ever name one registry, so a list needs `sources`;
+    local_overrides goes with it, since the whole point of an external
+    registry is that nothing is vendored and an override would silently
+    outrank it.
+
+    Kept on each registry's legacy .well-known index rather than its TS11
+    /api/v1/schemas.json endpoint: TS11 lists only fully TS11-compliant
+    credentials - 26 entries on registry.siros.org today against 37 in the
+    legacy index - so switching would silently drop every type not migrated
+    yet. This is the obvious "modernisation" someone will reach for; don't,
+    until the two agree.
+    """
+    config.pop("source", None)
+    config["sources"] = [
+        {"url": f"{u.rstrip('/')}/.well-known/vctm-registry.json", "mode": "registry",
+         "timeout": "30s"}
+        for u in registries
+    ]
+    config.setdefault("dynamic_cache", {})["enabled"] = True
+    return config
+
+
 def build_toggles_overlay(zk_circuits_sources: list = None, dc_api_enable: str = "") -> dict:
     """The per-run verifier toggles that mean the same thing on both targets.
 
@@ -611,7 +644,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            rical_provider_url: str = None, rical_root_certificate_pem: str = None,
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
-           env_values: dict = None) -> list:
+           credential_registries: list = None, env_values: dict = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -713,6 +746,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         # for this target rather than fixing the image or adding a real Fly
         # volume for what's disposable data.
         registry_cfg.setdefault("cache", {})["path"] = "/tmp/vctm-cache.json"
+    if credential_registries:
+        registry_cfg = patch_registry_sources(registry_cfg, credential_registries)
     (out_dir / "wallet-backend-registry.yaml").write_text(yaml.dump(registry_cfg, sort_keys=False))
     print(f"wrote {out_dir / 'wallet-backend.yaml'}")
     print(f"wrote {out_dir / 'wallet-backend-registry.yaml'}")
@@ -759,7 +794,9 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                             # docker-compose.vc-services.yml defaults to.
                             "OIDC_PROVIDER_CLIENT_SECRET": fly_common.MINI_OIDC_APIGW_CLIENT_SECRET,
                         },
-                        env=env, mongo_password=mongo_password)
+                        env=env, mongo_password=mongo_password,
+                        credential_types=(base.get("features") or {}).get("credentialTypes") or {},
+                        credential_registries=credential_registries)
 
     if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
@@ -809,6 +846,11 @@ def main():
     parser.add_argument("--zk-circuits-source", action="append", default=[],
                         help="zk-circuits catalog mirror base URL, repeatable/comma-separated; "
                              "empty uses vc's own default.")
+    parser.add_argument("--credential-registries", default="",
+                        help="Comma-separated registry base URLs (the Makefile's "
+                             "CREDENTIAL_REGISTRIES, passed only for REGISTRY=external). When set, "
+                             "both vc and wallet-backend resolve credential metadata from these "
+                             "registries instead of from documents vendored into this repo.")
     parser.add_argument("--env-values", action="store_true",
                         help="also layer environments/<env>.yaml's `values:` block (requires --env)")
     parser.add_argument("--conformance", action="store_true",
@@ -846,7 +888,9 @@ def main():
            mongo_password=args.mongo_password, conformance=args.conformance,
            dc_api_enable=args.dc_api_enable, zk_circuits_sources=zk_sources,
            hostnames=dict(h.split("=", 1) for h in args.hostname),
-           mini_oidc_url=args.mini_oidc_url, env_values=env_values)
+           mini_oidc_url=args.mini_oidc_url,
+           credential_registries=[u.strip() for u in args.credential_registries.split(",") if u.strip()],
+           env_values=env_values)
 
 
 if __name__ == "__main__":
