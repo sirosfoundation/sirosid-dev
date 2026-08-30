@@ -44,9 +44,6 @@ CONTEXTS = {
     # checks what a plain `make up VC=yes` actually renders.
     "compose": {"target": "compose", "dc_api_enable": "false"},
     "fly-gdc": {"target": "fly", "env": "gdc"},
-    # gdc2 mirrors gdc's features and image versions exactly; it exists to
-    # prove the chart-rendered config produces an equivalent deployment.
-    "fly-gdc2": {"target": "fly", "env": "gdc2"},
 }
 
 

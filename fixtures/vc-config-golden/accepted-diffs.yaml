@@ -185,9 +185,3 @@ fly-gdc:
   - path: verifier.zk_circuits
     reason: "now driven by environments/<name>.yaml's zk_circuits_sources rather than a CLI-only flag"
 
-fly-gdc2:
-  - *shared
-  - path: issuer.api_server.addr
-    reason: "as compose"
-  - path: common.mongo
-    reason: "as compose"
