@@ -59,6 +59,14 @@ services:
       - ./fixtures/rendered/cache:/cache
       - ./fixtures/vc-pki/signing_ec_private.pem:/app/fixtures/signing_ec_private.pem:ro
       - ./fixtures/as-rules:/app/fixtures/as-rules:ro
+      # go-wallet-backend's built-in Authorization Server. The chart renders
+      # as.signing_key_path=/as-cert/tls.key and as.rules_dir=/as-rules from a
+      # cert-manager Certificate and a ConfigMap; here they are this
+      # environment's own EC key and the rules rendered from that same
+      # ConfigMap. A missing signing key is fatal at startup, not a fall-back
+      # to the image's baked-in rules.
+      - ./fixtures/vc-pki/signing_ec_private.pem:/as-cert/tls.key:ro
+      - ./fixtures/rendered/as-rules:/as-rules:ro
       - ./fixtures/vc-pki/wallet_provider_ec_private.pem:/app/fixtures/wallet_provider_ec_private.pem:ro
       - ./fixtures/vc-pki/wallet_provider_ec.crt:/app/fixtures/wallet_provider_ec.crt:ro
       - ./fixtures/vc-pki/rootCA.crt:/app/fixtures/rootCA.crt:ro

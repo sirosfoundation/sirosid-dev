@@ -726,6 +726,12 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     cache_dir.mkdir(exist_ok=True)
     cache_dir.chmod(0o777)
 
+    # --- wallet-backend AS rules + signing key ---
+    # See vc_render.write_as_rules: the chart's `as:` block names paths that
+    # only exist in Kubernetes, and a missing signing key is fatal.
+    vc_render.write_as_rules(docs, out_dir)
+    print(f"wrote {out_dir / 'as-rules'}/")
+
     # --- pdp ---
     pdp_data = extract_configmap_data(docs, "pdp-main")
     (out_dir / "pdp.yaml").write_text(pdp_data["config.yaml"])

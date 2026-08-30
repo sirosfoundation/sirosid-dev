@@ -284,6 +284,25 @@ def _write_documents(docs: list, out_dir: Path, cm_name: str, subdir: str,
     return target
 
 
+def write_as_rules(docs: list, out_dir: Path) -> Path:
+    """Materialize the chart's wallet-backend AS rules as a directory.
+
+    siros-id-stack main gained an `as:` block for go-wallet-backend's built-in
+    Authorization Server, pointing at a cert-manager Certificate
+    (/as-cert/tls.key) and a ConfigMap mounted at /as-rules. Neither exists
+    outside Kubernetes, and go-wallet-backend treats a missing signing key as
+    fatal, not as "fall back to the image's baked-in rules":
+
+      fatal: failed to initialize AS module: as: failed to load signing key:
+      open /as-cert/tls.key: no such file or directory
+
+    So both targets supply those two paths themselves rather than patching the
+    config to point somewhere else - the config stays exactly what the chart
+    rendered, and the environment matches it.
+    """
+    return _write_documents(docs, out_dir, "wallet-backend-as-rules", "as-rules")
+
+
 def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_secret,
               plain_http_hosts: set = None, secret_overrides: dict = None,
               env: str = None, mongo_password: str = None) -> None:

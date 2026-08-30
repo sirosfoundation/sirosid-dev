@@ -367,11 +367,24 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # root), so a credential issuer that already trusts this
         # environment's rootCA gets a Key Attestation trust anchor for free.
         ensure_secret(app, "walletProviderKey", (pki_dir / "wallet_provider_ec_private.pem").read_text())
+        # Reuses this environment's EC signing key rather than minting a
+        # separate identity: the AS signs its own access tokens, which nothing
+        # outside the environment validates against a published chain.
+        ensure_secret(app, "asSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
         deploy_args += [
             "--file-secret", "/main-secrets/walletProviderKey=walletProviderKey",
+            # go-wallet-backend's built-in Authorization Server. The chart
+            # renders as.signing_key_path=/as-cert/tls.key and
+            # as.rules_dir=/as-rules from a cert-manager Certificate and a
+            # ConfigMap; on Fly those are a secret and an uploaded file. A
+            # missing signing key is fatal at startup, not a fall-back to the
+            # image's baked-in rules.
+            "--file-secret", "/as-cert/tls.key=asSigningKey",
             "--file-local", f"/main-config/walletProviderCert.pem={pki_dir / 'wallet_provider_ec.crt'}",
             "--file-local", f"/main-config/walletProviderCA.pem={pki_dir / 'rootCA.crt'}",
         ]
+        for rules in sorted((out_dir / "as-rules").glob("*")):
+            deploy_args += ["--file-local", f"/as-rules/{rules.name}={rules}"]
     elif name == "wallet-proxy":
         conf_path = out_dir / "wallet-proxy.conf"
         conf_path.write_text(wallet_proxy_conf(env))
@@ -682,10 +695,20 @@ def register_vc_services(env: str, admin_token: str):
         except (urllib.error.URLError, TimeoutError) as e:
             last_err = e
             time.sleep(2)
-    print(f"WARNING: could not register VC services with wallet-backend after retries ({last_err}) - "
-          "the wallet UI may show no available issuers/verifiers. Retry manually once the environment "
-          f"is up: POST {proxy_url}/admin/tenants/default/issuers|verifiers "
-          "with 'Authorization: Bearer <adminToken>'.", file=sys.stderr)
+    # Loud and fatal, not a warning: an environment with no registered issuer
+    # looks completely healthy - every app up, every check passing - and fails
+    # only when a user tries to sign up or add a credential. That is a much
+    # worse thing to hand someone than a failed deploy. Seen for real:
+    # wallet-backend was crash-looping while this ran, so registration
+    # silently did nothing and the deploy still reported "Environment is up".
+    raise SystemExit(
+        f"\nERROR: could not register VC services with wallet-backend after retries ({last_err}).\n"
+        f"  The environment is deployed but the wallet has NO issuers or verifiers, so signup and\n"
+        f"  credential issuance will fail. Check wallet-backend is actually serving:\n"
+        f"    flyctl logs -a sirosid-{env}-wallet-backend\n"
+        f"  then re-run `make fly-up ENV={env}` (idempotent), or register by hand:\n"
+        f"    POST {proxy_url}/admin/tenants/default/issuers|verifiers"
+        " with 'Authorization: Bearer <adminToken>'")
 
 
 def main():
