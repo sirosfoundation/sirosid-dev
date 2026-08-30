@@ -33,6 +33,12 @@ _shared: &shared
       the admin API is open exactly as it was before. The chart insists on
       rendering the block; only the SPOCP rules list comes with it, and rules
       alone enforce nothing when no auth method is enabled.
+  - path: apigw.issuer_metadata
+    reason: >-
+      Added upstream (siros-id-stack main, 2026-08-30): issuer display
+      metadata with the tenant's name and logo as an inline data URL. New
+      capability from the chart, not something this repo asked for - and
+      exactly the kind of change this harness exists to surface.
   - path: apigw.api_server.trust_proxy_tls
     reason: "harmless behind the compose/Fly proxies, and correct behind a real gateway"
   - path: common.ha.cache_database_name
@@ -178,3 +184,10 @@ fly-gdc:
     reason: "as compose"
   - path: verifier.zk_circuits
     reason: "now driven by environments/<name>.yaml's zk_circuits_sources rather than a CLI-only flag"
+
+fly-gdc2:
+  - *shared
+  - path: issuer.api_server.addr
+    reason: "as compose"
+  - path: common.mongo
+    reason: "as compose"

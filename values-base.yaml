@@ -283,11 +283,10 @@ issuer:
           verifiable_credential_type: "https://credential.e2etest.local/identity_credential"
 
   registry:
-    tokenStatusLists:
-      # vc's default of 1,000,000 builds that many decoy documents in memory
-      # as one slice before a single bulk insert - OOM-killed on a small
-      # machine, and pointless at this scale.
-      sectionSize: 10000
+    # The chart's default is 1,000,000, and first boot builds that many decoy
+    # documents in memory as one slice before a single bulk insert - it gets
+    # OOM-killed on a Fly machine this size, and is pointless at this scale.
+    sectionSize: 10000
     adminGui:
       enabled: true
     extraConfig:
