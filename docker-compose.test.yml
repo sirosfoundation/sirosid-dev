@@ -62,7 +62,11 @@ services:
       - DISPLAY_CONSOLE=true
       # Credentials
       - LOGIN_WITH_PASSWORD=false
-      - DID_KEY_VERSION=jwk_jcs-pub
+      # DIIP v5 requires did:jwk as the Holder identifier. Set to jwk_jcs-pub or p256-pub to
+      # exercise the legacy did:key behaviour instead.
+      - DID_KEY_VERSION=jwk
+      # DIIP v5 mandates the `jwt` proof type; key attestation stays preferred where the
+      # issuer supports it, since DIIP does not exclude it.
       - OPENID4VCI_PROOF_TYPE_PRECEDENCE=attestation,jwt
       - OPENID4VP_SAN_DNS_CHECK=false
       - OPENID4VP_SAN_DNS_CHECK_SSL_CERTS=false

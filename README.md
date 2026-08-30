@@ -405,6 +405,44 @@ cd ../sirosid-tests && make test-conformance
 # Conformance UI: https://localhost.emobix.co.uk:8443/
 ```
 
+## DIIP v5 Compliance
+
+The wallet targets the [Decentralized Identity Interop Profile
+v5](https://github.com/FIDEScommunity/DIIP/blob/main/spec/spec.md). See
+[DIIP-V5.md](DIIP-V5.md) for the requirement-by-requirement matrix and how to exercise each
+part locally.
+
+The dev stack runs with `DID_KEY_VERSION=jwk` so holder keys are `did:jwk`, as DIIP v5
+requires. Set it to `jwk_jcs-pub` or `p256-pub` in `docker-compose.test.yml` to exercise the
+legacy `did:key` behaviour.
+
+DIIP mandates the IETF Token Status List for revocation, and `vc-registry` publishes real ones
+under `make up VC=yes` — no fixture needed. It implements the draft directly, signing tokens
+with the `registry.token_status_lists.key_config` keys in `fixtures/vc-config.yaml`, and
+`vc-apigw` allocates each issued credential a section/index so its `status.status_list.uri`
+already points at a live list:
+
+```bash
+# Aggregation of all Status List Token URIs (draft §9.3)
+curl http://localhost:9004/statuslists
+
+# An individual Status List Token (draft §8.1), as application/statuslist+jwt
+curl http://localhost:9004/statuslists/0
+```
+
+Both `application/statuslist+jwt` and `application/statuslist+cwt` are supported. To flip a
+credential to revoked or suspended, use the registry's admin GUI at
+<http://localhost:9004/admin/login> (`admin` / `e2e-admin-password`, from
+`fixtures/vc-config.yaml`).
+
+One caveat when testing revocation end-to-end in a browser: the tokens' `iss`/`sub` — and the
+`status.status_list.uri` written into issued credentials — come from `registry.public_url`,
+which is `https://vc-proxy:8445`. That proxy is only defined in `docker-compose.conformance.yml`,
+so under a plain `make up VC=yes` the URI a credential points at isn't resolvable from the host
+browser, and the wallet treats an unfetchable status list as a warning rather than a failure
+(see [DIIP-V5.md](DIIP-V5.md)). Read the list directly on `:9004` to inspect it, or bring the
+stack up with `CONFORMANCE=yes` for a reachable `vc-proxy`.
+
 ## R2PS (Remote PAKE-Protected Signing)
 
 An advanced, currently deprioritized WSCD option: a remote HSM-backed signing
