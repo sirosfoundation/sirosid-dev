@@ -521,6 +521,16 @@ help: ## Show this help
 	@echo "                     Enable wallet-provider Key Attestation"
 	@echo "                     default: $(GREEN)yes$(NC)"
 	@echo ""
+	@echo "  $(YELLOW)RICAL_PROVIDER_URL=$(NC)<url> $(YELLOW)RICAL_ROOT_CERT=$(NC)<path>"
+	@echo "                     Registers PDP's mdocrical registry (ISO 18013-5 2nd ed."
+	@echo "                     Annex F reader-trust) for BLE/NFC proximity presentation -"
+	@echo "                     must both be set together. See fixtures/trusted-roots/README.md"
+	@echo ""
+	@echo "  $(YELLOW)DC_API_ENABLE=$(NC)<true|false>"
+	@echo "                     Override verifier.digital_credentials.enable (W3C DC API"
+	@echo "                     support) for this environment only - default (unset) leaves"
+	@echo "                     fixtures/vc-config.yaml's own value (true) untouched"
+	@echo ""
 	@echo "  $(YELLOW)ANDROID_APPS=$(NC)<pkg=fingerprint,...>"
 	@echo "                     Same option as 'make up' - see Stack Options above"
 	@echo ""
@@ -1178,7 +1188,7 @@ render-helm-config: ## Render wallet-backend/PDP config from the siros-id-stack 
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [WALLET_ATTESTATION=no, default: yes]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [RICAL_PROVIDER_URL=url] [RICAL_ROOT_CERT=path] [WALLET_ATTESTATION=no, default: yes] [DC_API_ENABLE=true|false]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -1197,7 +1207,10 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		$(if $(TRUSTED_VERIFIERS),--trusted-verifier "$(TRUSTED_VERIFIERS)") \
 		$(if $(TRUSTED_VERIFIER_ROOTS),--trusted-verifier-root "$(TRUSTED_VERIFIER_ROOTS)") \
 		$(if $(ZK_CIRCUITS_SOURCES),--zk-circuits-source "$(ZK_CIRCUITS_SOURCES)") \
-		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation)
+		$(if $(RICAL_PROVIDER_URL),--rical-provider-url "$(RICAL_PROVIDER_URL)") \
+		$(if $(RICAL_ROOT_CERT),--rical-root-cert "$(RICAL_ROOT_CERT)") \
+		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation) \
+		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)")
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \

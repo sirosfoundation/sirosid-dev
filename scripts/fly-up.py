@@ -94,7 +94,9 @@ def run(cmd, **kwargs):
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
                     conformance: bool = False, extra_trusted_issuers: list = None,
                     wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
-                    extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None) -> list:
+                    extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
+                    rical_provider_url: str = None, rical_root_certificate_pem: str = None,
+                    dc_api_enable: str = "") -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -110,12 +112,16 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
                    conformance=conformance, extra_trusted_issuers=extra_trusted_issuers,
                    wallet_attestation=wallet_attestation, extra_trusted_verifiers=extra_trusted_verifiers,
-                   extra_trusted_verifier_roots=extra_trusted_verifier_roots)
+                   extra_trusted_verifier_roots=extra_trusted_verifier_roots,
+                   rical_provider_url=rical_provider_url,
+                   rical_root_certificate_pem=rical_root_certificate_pem)
     patch_cmd = [sys.executable, "scripts/patch-vc-config-fly.py", "--env", env, "--mongo-password", mongo_password]
     if wallet_attestation:
         patch_cmd.append("--wallet-attestation")
     for source in (zk_circuits_sources or []):
         patch_cmd += ["--zk-circuits-source", source]
+    if dc_api_enable:
+        patch_cmd += ["--dc-api-enable", dc_api_enable]
     run(patch_cmd, cwd=SIROSID_DEV_ROOT)
     return docs
 
@@ -752,6 +758,23 @@ def main():
                               "there, e.g. https://zk-circuits-test.fly.dev while a Vega circuit variant "
                               "awaits its expert review. Repeatable, and each value may be a "
                               "comma-separated list.")
+    parser.add_argument("--rical-provider-url",
+                         help="URL to fetch the RICAL (ISO 18013-5 2nd ed. Annex F reader-trust list) "
+                              "from - registers PDP's mdocrical registry so BLE/NFC proximity "
+                              "presentation's mdoc-reader-auth check can grant trust to a reader whose "
+                              "cert chain appears in that list. Must be paired with "
+                              "--rical-root-cert. One provider per environment (last-one-wins vs. "
+                              "environments/<env>.yaml, unlike the repeatable trust flags above).")
+    parser.add_argument("--rical-root-cert",
+                         help="Path to the PEM-encoded certificate that signs the RICAL's own "
+                              "COSE_Sign1 envelope (the out-of-band trust anchor per Annex F.3.1) - "
+                              "must be paired with --rical-provider-url. See "
+                              "fixtures/trusted-roots/README.md.")
+    parser.add_argument("--dc-api-enable", default="", choices=["", "true", "false"],
+                         help="Override verifier.digital_credentials.enable (W3C DC API support) for "
+                              "this environment only - fixtures/vc-config.yaml's own default is "
+                              "true for every environment. Last-one-wins vs. "
+                              "environments/<env>.yaml's dc_api_enable, same as the RICAL flags above.")
     args = parser.parse_args()
 
     # environments/<env>.yaml (if present) supplies persisted defaults for a
@@ -781,6 +804,16 @@ def main():
     for pair in (args.zk_circuits_source or []):
         cli_zk_circuits_sources.extend(v.strip() for v in pair.split(",") if v.strip())
     zk_circuits_sources = merge_list(env_cfg["zk_circuits_sources"], cli_zk_circuits_sources)
+
+    # Scalar, last-one-wins (CLI overrides file) - one RICAL provider per
+    # environment, unlike the repeatable trust flags above.
+    rical_provider_url = args.rical_provider_url or env_cfg["rical_provider_url"] or None
+    rical_root_cert_path = args.rical_root_cert or env_cfg["rical_root_cert"] or None
+    rical_root_certificate_pem = Path(rical_root_cert_path).read_text() if rical_root_cert_path else None
+    if bool(rical_provider_url) != bool(rical_root_certificate_pem):
+        raise SystemExit("--rical-provider-url and --rical-root-cert must both be set, or neither")
+
+    dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
     cli_image_overrides = {}
     for pair in args.images.split(","):
@@ -818,7 +851,8 @@ def main():
     # Android/iOS wellknown values, instead of a second `helm template` call.
     docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
                            args.conformance, extra_trusted_issuers, args.wallet_attestation,
-                           extra_trusted_verifiers, extra_trusted_verifier_roots, zk_circuits_sources)
+                           extra_trusted_verifiers, extra_trusted_verifier_roots, zk_circuits_sources,
+                           rical_provider_url, rical_root_certificate_pem, dc_api_enable)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

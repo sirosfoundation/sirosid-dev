@@ -45,3 +45,10 @@ zk_circuits_sources:
   - https://zk-circuits-test.fly.dev
 
 wallet_attestation: true
+
+# Geneva 2026 interop event's RICAL (ISO 18013-5 2nd ed. Annex F reader-trust
+# list) - registers PDP's mdocrical registry so BLE/NFC proximity
+# presentation's mdoc-reader-auth check can trust the event's reader tools.
+# See fixtures/trusted-roots/README.md for provenance of the root cert.
+rical_provider_url: https://geneva2026.mdoc.online/TrustedLists/Rical.rical
+rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem

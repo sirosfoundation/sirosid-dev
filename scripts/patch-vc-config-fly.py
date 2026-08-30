@@ -60,7 +60,7 @@ def fly_internal(env: str, component: str, port: int) -> str:
 
 
 def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation: bool = False,
-          zk_circuits_sources: list = None) -> dict:
+          zk_circuits_sources: list = None, dc_api_enable: str = "") -> dict:
     apigw_url = fly_url(env, "vc-apigw")
     registry_url = fly_url(env, "vc-registry")
     verifier_url = fly_url(env, "vc-verifier")
@@ -236,6 +236,15 @@ def patch(config: dict, env: str, mongo_password: str = None, wallet_attestation
     if zk_circuits_sources:
         verifier.setdefault("zk_circuits", {})["sources"] = zk_circuits_sources
 
+    # verifier.digital_credentials.enable (W3C DC API support) is already
+    # `true` in the base fixtures/vc-config.yaml for every environment - this
+    # only exists to let one environment diverge from that shared default
+    # (e.g. a second env deliberately testing the QR/redirect-only path).
+    # Same tri-state ("" = leave the base value untouched) convention as
+    # generate-tunnel-config.py's --dc-api-enable, for the same setting.
+    if dc_api_enable:
+        verifier.setdefault("digital_credentials", {})["enable"] = dc_api_enable == "true"
+
     return config
 
 
@@ -258,12 +267,17 @@ def main():
                               "of vc's built-in https://zk-circuits.fly.dev default. Use for a circuit "
                               "not yet published there, e.g. https://zk-circuits-test.fly.dev while a "
                               "Vega circuit variant awaits its expert review.")
+    parser.add_argument("--dc-api-enable", default="", choices=["", "true", "false"],
+                         help="Set verifier.digital_credentials.enable for this environment only. "
+                              "Omit to leave the base config's value (true) untouched - see "
+                              "generate-tunnel-config.py's --dc-api-enable for the same toggle on the "
+                              "local-tunnel path.")
     args = parser.parse_args()
 
     base_path = Path(args.base)
     config = yaml.safe_load(base_path.read_text())
     patched = patch(config, args.env, args.mongo_password, args.wallet_attestation,
-                     zk_circuits_sources=args.zk_circuits_source)
+                     zk_circuits_sources=args.zk_circuits_source, dc_api_enable=args.dc_api_enable)
 
     out_path = Path(args.out) if args.out else (
         SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}" / "vc-config.yaml"

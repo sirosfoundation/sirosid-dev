@@ -40,6 +40,15 @@ Schema (all keys optional):
     android_apps: ["package=fingerprint", ...]
     conformance: bool
     wallet_attestation: bool
+    rical_provider_url: url        # RICAL (ISO 18013-5 2nd ed. Annex F) reader-trust list
+    rical_root_cert: path          # relative to sirosid-dev root - PEM signer of the RICAL above
+    dc_api_enable: "true" | "false"   # verifier.digital_credentials.enable override; "" (default) leaves
+                                      # fixtures/vc-config.yaml's own value (true) untouched
+
+For the scalar fields (the two RICAL ones plus dc_api_enable), a CLI value
+overrides the file's (last-one-wins, same as `images`) rather than merging -
+there's exactly one value per environment, unlike the list-typed fields
+above.
 
 Run directly to pretty-print what a name resolves to (for Makefile's
 `make env-show ENV=<name>` / debugging):
@@ -55,7 +64,8 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
               "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
-_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + ("images",))
+_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable")
+_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images",))
 
 
 def config_path(env_name: str, root: Path = None) -> Path:
@@ -68,7 +78,8 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     every known key) whether or not environments/<env_name>.yaml exists -
     callers never need to guess which keys are present."""
     root = root or SIROSID_DEV_ROOT
-    result = {"images": {}, **{k: [] for k in _LIST_KEYS}, **{k: False for k in _BOOL_KEYS}}
+    result = {"images": {}, **{k: [] for k in _LIST_KEYS}, **{k: False for k in _BOOL_KEYS},
+              **{k: "" for k in _STR_KEYS}}
 
     path = config_path(env_name, root)
     if not path.exists():
@@ -98,6 +109,10 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     for key in _BOOL_KEYS:
         if key in raw:
             result[key] = bool(raw[key])
+
+    for key in _STR_KEYS:
+        if key in raw:
+            result[key] = str(raw[key])
 
     return result
 

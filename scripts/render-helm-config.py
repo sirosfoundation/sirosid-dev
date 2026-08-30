@@ -301,7 +301,9 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                               extra_trusted_issuers: list = None,
                               wallet_attestation: bool = False,
                               extra_trusted_verifiers: list = None,
-                              extra_trusted_verifier_roots: list = None) -> dict:
+                              extra_trusted_verifier_roots: list = None,
+                              rical_provider_url: str = None,
+                              rical_root_certificate_pem: str = None) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
@@ -454,30 +456,49 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     if extra_trusted_verifier_roots:
         whitelist_config["additional_trusted_roots"] = extra_trusted_verifier_roots
 
+    extra_registries = {
+        "whitelist": whitelist_config,
+        # The whitelist registry above only ever caches JWT-signing
+        # keys (via jwt-vc-issuer/jwks_uri discovery) - it has no
+        # notion of an issuer's mdoc_iacas_uri. An mdoc issuer's
+        # extractIssuerKeyMaterial (go-wallet-backend) prioritizes
+        # mdoc_iacas_uri over JWKS, so any issuer offering mso_mdoc
+        # credentials needs this separate registry too, or trust
+        # evaluation permanently denies with "no keys cached for
+        # entity" regardless of whitelist membership. Reuses the same
+        # pid_issuers list as the trust boundary (not "trust any
+        # issuer that publishes a valid IACA").
+        "mdociaca": {
+            "enabled": True,
+            "name": f"sirosid-{env} mDOC IACA registry",
+            "description": "IACA cert validation for mso_mdoc issuers (rendered from siros-id-stack schema)",
+            "issuer_allowlist": pid_issuers,
+        },
+    }
+
+    # RICAL (ISO 18013-5 2nd ed. Annex F) reader-trust: a separate registry
+    # from the whitelist above, since it path-validates a reader's x5c
+    # chain against a centrally-published, COSE_Sign1-signed trust-anchor
+    # list rather than checking URL membership. go-trust's mdocrical
+    # registry self-declares its own supported resource type ("x5c") and
+    # needs no entry in whitelist_config["actions"] - it's asked for every
+    # "mdoc-reader-auth" evaluation once registered, same as mdociaca is
+    # asked for every mso_mdoc issuer check without an actions-map entry.
+    if rical_provider_url and rical_root_certificate_pem:
+        extra_registries["mdocrical"] = {
+            "enabled": True,
+            "name": f"sirosid-{env} RICAL registry",
+            "description": "Reader-trust list for mdoc BLE/NFC proximity presentation (rendered from siros-id-stack schema)",
+            "rical_provider_url": rical_provider_url,
+            "rical_root_certificate_pem": rical_root_certificate_pem,
+        }
+
     return {
         "tenant": {"id": env},
         "pdp": {
             "default_whitelist": False,
             "externalUrl": f"http://sirosid-{env}-pdp.internal:8080",
-            "extraRegistries": {
-                "whitelist": whitelist_config,
-                # The whitelist registry above only ever caches JWT-signing
-                # keys (via jwt-vc-issuer/jwks_uri discovery) - it has no
-                # notion of an issuer's mdoc_iacas_uri. An mdoc issuer's
-                # extractIssuerKeyMaterial (go-wallet-backend) prioritizes
-                # mdoc_iacas_uri over JWKS, so any issuer offering mso_mdoc
-                # credentials needs this separate registry too, or trust
-                # evaluation permanently denies with "no keys cached for
-                # entity" regardless of whitelist membership. Reuses the same
-                # pid_issuers list as the trust boundary (not "trust any
-                # issuer that publishes a valid IACA").
-                "mdociaca": {
-                    "enabled": True,
-                    "name": f"sirosid-{env} mDOC IACA registry",
-                    "description": "IACA cert validation for mso_mdoc issuers (rendered from siros-id-stack schema)",
-                    "issuer_allowlist": pid_issuers,
-                },
-            },
+            "extraRegistries": extra_registries,
         },
     }
 
@@ -486,7 +507,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
            extra_trusted_issuers: list = None, wallet_attestation: bool = False,
-           extra_trusted_verifiers: list = None, extra_trusted_verifier_roots: list = None) -> list:
+           extra_trusted_verifiers: list = None, extra_trusted_verifier_roots: list = None,
+           rical_provider_url: str = None, rical_root_certificate_pem: str = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -509,7 +531,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         overlay_path = out_dir / "values.generated.yaml"
         overlay_path.write_text(yaml.dump(
             build_fly_values_overlay(env, conformance, extra_trusted_issuers, wallet_attestation,
-                                      extra_trusted_verifiers, extra_trusted_verifier_roots), sort_keys=False))
+                                      extra_trusted_verifiers, extra_trusted_verifier_roots,
+                                      rical_provider_url, rical_root_certificate_pem), sort_keys=False))
         values_files.append(overlay_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")
@@ -526,7 +549,24 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password,
                                                 wallet_attestation)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
-    (out_dir / "wallet-backend-registry.yaml").write_text(wb_data["registry.yaml"])
+
+    registry_cfg = yaml.safe_load(wb_data["registry.yaml"])
+    if target == "fly":
+        # The chart's /cache mount (templates/04-wallet-backend.yaml) is a
+        # real k8s emptyDir, writable via the pod's fsGroup securityContext -
+        # but fly-up.py deploys this same rendered config as a plain Fly
+        # Machine, not a Kubernetes pod, so fsGroup never applies and /cache
+        # is whatever the image provides for uid 65532 (usually nothing
+        # writable). Confirmed live: "failed to create cache directory:
+        # mkdir /cache: permission denied" on every poll, so the fetcher
+        # silently never persists its cache and refetches all VCTMs each
+        # cycle. /tmp is conventionally world-writable regardless of image
+        # USER, and this cache is a pure performance optimization (refetched
+        # from registry.siros.org on miss) - safe to just redirect it there
+        # for this target rather than fixing the image or adding a real Fly
+        # volume for what's disposable data.
+        registry_cfg.setdefault("cache", {})["path"] = "/tmp/vctm-cache.json"
+    (out_dir / "wallet-backend-registry.yaml").write_text(yaml.dump(registry_cfg, sort_keys=False))
     print(f"wrote {out_dir / 'wallet-backend.yaml'}")
     print(f"wrote {out_dir / 'wallet-backend-registry.yaml'}")
 
@@ -537,9 +577,11 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     (out_dir / "vctms").mkdir(exist_ok=True)
 
     # registry.yaml's cache.path lives under /cache, which Helm mounts as an
-    # emptyDir (writable by the pod's fsGroup). go-wallet-backend runs as
-    # uid 65532 (Dockerfile:45), and a bind-mounted dir defaults to the host
-    # user's ownership, so it must be made world-writable here explicitly.
+    # emptyDir (writable by the pod's fsGroup) - true for the compose target's
+    # own bind-mounted dir below. go-wallet-backend runs as uid 65532
+    # (Dockerfile:45), and a bind-mounted dir defaults to the host user's
+    # ownership, so it must be made world-writable here explicitly. Fly's
+    # override above replaces this path entirely for that target instead.
     cache_dir = out_dir / "cache"
     cache_dir.mkdir(exist_ok=True)
     cache_dir.chmod(0o777)
