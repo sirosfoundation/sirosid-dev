@@ -28,16 +28,21 @@ images:
 trusted_issuers:
   - https://geneva2026.mdoc.online
 
-# Every multipaz-based verifier used for interop testing so far - both
-# need their own reader-CA root below (ISO 18013-5 out-of-band trust
-# convention, not a public CA) since neither's request-signing cert chains
-# to a system CA.
+# Every OpenID4VP verifier used for interop testing so far - each needs its
+# own reader-CA root below (ISO 18013-5 out-of-band trust convention, not a
+# public CA) since none of their request-signing certs chain to a system CA.
+# geneva2026.mdoc.online's own reader-CA root is a SEPARATE cert from
+# geneva2026-rical-root.pem above - that one only covers RICAL (BLE/NFC
+# proximity mdoc-reader-auth), not this remote-presentation credential-
+# verifier check. See fixtures/trusted-roots/README.md for both.
 trusted_verifiers:
   - https://verifier.multipaz.org
   - https://siros-multipaz-verifier.fly.dev
+  - https://geneva2026.mdoc.online
 trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
   - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
+  - fixtures/trusted-roots/geneva2026-verifier-reader-ca.pem
 
 # Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
 # catalog yet (pending expert review) - this is where it actually lives.

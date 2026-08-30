@@ -56,3 +56,30 @@ and re-verifies it against this root on its own cache TTL, so this repo only
 needs to carry the root, never the RICAL document itself.
 
 Usage: `make fly-up ENV=<name> RICAL_PROVIDER_URL=https://geneva2026.mdoc.online/TrustedLists/Rical.rical RICAL_ROOT_CERT=fixtures/trusted-roots/geneva2026-rical-root.pem` (already persisted in `environments/gdc.yaml`, so a plain `make fly-up ENV=gdc` picks it up automatically).
+
+## geneva2026-verifier-reader-ca.pem
+
+**Not the same root as `geneva2026-rical-root.pem` above** - RICAL and
+`additional_trusted_roots` are two separate trust mechanisms (see that
+entry's note), and only RICAL was wired up for gdc before now. This root is
+the one that actually needs to be in `TRUSTED_VERIFIER_ROOTS` for a wallet to
+trust remote OpenID4VP presentation requests (`client_id_scheme=x509_san_dns`,
+`client_id=x509_san_dns:geneva2026.mdoc.online`) from the event's reference
+verifier - the RICAL registry only covers ISO 18013-5 BLE/NFC proximity
+mdoc-reader-auth, a distinct action from the `credential-verifier` AuthZEN
+action a remote OpenID4VP request goes through.
+
+Subject/issuer: `Reader CA Certificate Default Relying Party Geneva 2026,
+C=CH, O=Aptitude`, self-signed, valid 2026-06-11 to 2046-06-11 (sha256
+fingerprint
+`FE:9E:2A:ED:30:87:D2:0C:26:E1:2E:53:63:FC:EB:93:30:24:E6:B0:2F:82:C9:BE:8F:27:0D:20:C1:6C:3D:CA`).
+Has a subjectAltName URI of `https://geneva2026.mdoc.online` embedded,
+confirming it's the right root for that specific verifier identity, not a
+same-name guess. Extracted 2026-08-31 from the same `geneva2026/` folder of
+event-organizer-distributed certs as `geneva2026-rical-root.pem`
+(`Reader CA Certificate Default Relying Party Geneva 2026.cer` - there's also
+a second cert in that folder, `Reader CA Certificate Relying Party not on
+RICAL Geneva 2026.cer`, deliberately left unused here since it's the event's
+negative-test-case root, not this verifier's).
+
+Usage: `make fly-up ENV=<name> TRUSTED_VERIFIER_ROOTS=fixtures/trusted-roots/geneva2026-verifier-reader-ca.pem TRUSTED_VERIFIERS=https://geneva2026.mdoc.online ...` (persisted in `environments/gdc.yaml`, so a plain `make fly-up ENV=gdc` picks it up automatically).
