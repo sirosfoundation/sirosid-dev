@@ -64,6 +64,35 @@ GOLDEN_GO_TRUST_COMPOSE := docker-compose.golden-go-trust.yml
 GOLDEN_VC_COMPOSE := docker-compose.golden-vc.yml
 
 # Stack options (override on command line)
+# Credential type metadata source.
+#
+#   vendored  (default, today) - each scope resolves its VCTM/MDDL from a
+#             document in fixtures/vc-metadata, rendered into the chart's
+#             vctms ConfigMap and mounted into vc-issuer/vc-apigw/vc-verifier.
+#   external  - scopes resolve by identifier (vct for sd-jwt, doctype for
+#             mso_mdoc) from a TS11 registry instead, and wallet-backend's own
+#             VCTM registry reads the same list. Nothing is vendored.
+#
+# Opt-in while both paths are supported; the intent is to invert this once
+# external is the proven default. Honored identically by `make up` and
+# `make fly-up`.
+REGISTRY ?= vendored
+
+# Ordered, comma-separated list of TS11 registries. Later entries override
+# earlier ones for the same vct/doctype, which is how a deployment-local
+# registry extends or overrides a shared upstream one. Mirrors within a single
+# registry are raced (first hit wins); distinct registries are not.
+CREDENTIAL_REGISTRIES ?= https://registry.siros.org
+
+_REGISTRY_EXTERNAL := $(filter external,$(REGISTRY))
+ifeq ($(REGISTRY),vendored)
+  _REGISTRY_LABEL := vendored (fixtures/vc-metadata)
+else ifeq ($(REGISTRY),external)
+  _REGISTRY_LABEL := external ($(CREDENTIAL_REGISTRIES))
+else
+  $(error Unknown REGISTRY mode '$(REGISTRY)'. Use: vendored, external)
+endif
+
 PDP ?= allow
 AS_RULES ?= allow-all
 VC ?=
@@ -436,6 +465,16 @@ help: ## Show this help
 	@echo "                     permissive, so every other feature gets a working AS for free"
 	@echo "                     baseline: go-wallet-backend's own real policy (rules/default.rules) -"
 	@echo "                     use only when directly testing AS rule behavior"
+	@echo ""
+	@echo "  $(YELLOW)REGISTRY=$(NC)<vendored|external>
+	@echo "                     Where credential type metadata comes from (also honored by fly-up)"
+	@echo "                     default: $(GREEN)vendored$(NC) - documents in fixtures/vc-metadata"
+	@echo "                     external: vc and wallet-backend both resolve types from"
+	@echo "                     \$$(CREDENTIAL_REGISTRIES) instead - nothing vendored"
+	@echo ""
+	@echo "  $(YELLOW)CREDENTIAL_REGISTRIES=$(NC)<url,...>"
+	@echo "                     Ordered registry list for REGISTRY=external (later overrides earlier)"
+	@echo "                     default: $(GREEN)$(CREDENTIAL_REGISTRIES)$(NC)"
 	@echo ""
 	@echo "  $(YELLOW)VC=$(NC)<yes|no>"
 	@echo "                     Enable production-like VC services"
@@ -1166,6 +1205,7 @@ render-helm-config: ## Render wallet-backend/PDP/vc-services config from the sir
 	python3 scripts/render-helm-config.py --chart-dir "$(SIROS_ID_STACK_PATH)" $$_FLAGS \
 		--dc-api-enable "$(if $(call _truthy,$(DC_API)),true,false)" \
 		$(if $(MINI_OIDC_URL),--mini-oidc-url "$(MINI_OIDC_URL)") \
+		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)") \
 		$(if $(ENV),--env "$(ENV)" --env-values) \
 		$(if $(ZK_CIRCUITS_SOURCES),--zk-circuits-source "$(ZK_CIRCUITS_SOURCES)")
 
@@ -1197,7 +1237,8 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		$(if $(RICAL_PROVIDER_URL),--rical-provider-url "$(RICAL_PROVIDER_URL)") \
 		$(if $(RICAL_ROOT_CERT),--rical-root-cert "$(RICAL_ROOT_CERT)") \
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation) \
-		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)")
+		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)") \
+		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)")
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \

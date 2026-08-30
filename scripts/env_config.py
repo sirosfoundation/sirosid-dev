@@ -38,6 +38,9 @@ Schema (all keys optional):
     trusted_verifiers: [identity, ...]
     trusted_verifier_roots: [path, ...]           # relative to sirosid-dev root
     zk_circuits_sources: [url, ...]
+    credential_registries: [url, ...]   # TS11 registries to resolve credential
+                                        # metadata from; ordered, later wins.
+                                        # Only consulted with REGISTRY=external.
     android_apps: ["package=fingerprint", ...]
     conformance: bool
     wallet_attestation: bool
@@ -81,7 +84,7 @@ from pathlib import Path
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
-              "android_apps")
+              "credential_registries", "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
 _STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable")
 _KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values"))

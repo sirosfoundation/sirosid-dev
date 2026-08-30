@@ -93,6 +93,13 @@ change quietly dropping a field this repo depends on.
   `WALLET_AS_RULES_DIR` and go-wallet-backend's `EnableForRole()` falls back
   to its image-baked rules when unset. Use `baseline` only when directly
   testing AS rule behavior, e.g. reproducing a Fly-only 403 locally.
+- `REGISTRY=vendored|external` — where credential type metadata comes from.
+  `vendored` (default) renders each type's VCTM/MDDL from `fixtures/vc-metadata`
+  into the chart's `vctms` ConfigMap. `external` drops the documents entirely
+  and resolves each scope by identifier — `vct` for `dc+sd-jwt`, `doctype` for
+  `mso_mdoc` — from `CREDENTIAL_REGISTRIES` (ordered, later overrides earlier).
+  Honored identically by `make up` and `make fly-up`; persistable per
+  environment as `credential_registries:` in `environments/<name>.yaml`.
 - `VC=yes` — adds production-like issuer/verifier/apigw/registry + mongodb,
   built from `../vc`. Requires `helm` and `../siros-id-stack`, since their
   config is rendered from the chart.
@@ -139,6 +146,34 @@ change quietly dropping a field this repo depends on.
   PDP's system CA pool (go-trust#123+), for a verifier whose request-signing
   cert is issued by a self-signed "reader CA" root meant to be trusted
   out-of-band rather than a public CA. See the PDP gotcha below.
+
+## Credential metadata: two components, one list
+
+Two components independently need each type's metadata document, and when they
+disagree **nothing errors** — the wallet just holds a credential it can never
+present:
+
+- **vc** — the issuer builds the credential from it; the verifier derives its
+  DCQL presentation queries from it (`common.credential_registry`)
+- **go-wallet-backend** — its registry serves it to the wallet, which renders
+  and DCQL-matches against it (`registry.yaml`'s `sources`)
+
+`REGISTRY=external` therefore sets both from one `--credential-registries`
+value, in one render (`scripts/render-helm-config.py`). There is no second
+place to keep in step — which there used to be, four of them, before the vc
+services' config was rendered from the chart.
+
+The identifiers each scope switches to are read out of
+`values-base.yaml`'s `features.credentialTypes`, the same values the chart
+already renders `supported_credentials` and the VCTM mounts from, so the
+vendored and registry-resolved paths cannot drift apart while both exist.
+
+Both paths use each registry's legacy `.well-known/vctm-registry.json` index,
+**not** its TS11 `/api/v1/schemas.json` endpoint. TS11 lists only fully
+TS11-compliant credentials — 26 entries on registry.siros.org today against 37
+in the legacy index — so switching would silently drop every type not migrated
+yet. That is the obvious "modernisation" to reach for; don't, until the two
+agree.
 
 ## Why `values-fly.yaml` overrides exist (don't remove without checking)
 
