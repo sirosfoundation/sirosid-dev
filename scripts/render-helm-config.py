@@ -97,6 +97,13 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
             android_origins.append(origin)
     config["server"]["rp_origins"] = ["http://localhost:3000"] + android_origins
     config["server"]["base_url"] = "http://localhost:8080"
+    # The chart's `as:` block derives its external_url/issuer from the
+    # walletBackend hostname with a hardcoded https:// scheme, same as
+    # server.base_url above - and the AS issuer ends up in every access token
+    # it mints, so it has to be the URL clients actually reach.
+    if config.get("as"):
+        config["as"]["external_url"] = config["server"]["base_url"]
+        config["as"]["issuer"] = config["server"]["base_url"]
     config["server"]["cors"]["allowed_origins"] = ["http://localhost:3000"]
     config["trust"]["registry_url"] = "http://localhost:8080/registry"
     config["storage"]["mongodb"] = {
