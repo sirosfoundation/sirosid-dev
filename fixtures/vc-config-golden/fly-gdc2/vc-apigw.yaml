@@ -1,0 +1,201 @@
+apigw:
+  api_server:
+    addr: :8080
+    cors:
+      allowed_headers:
+      - Authorization
+      - Content-Type
+      allowed_methods:
+      - GET
+      - POST
+      - OPTIONS
+      allowed_origins:
+      - https://sirosid-gdc2-wallet-frontend.fly.dev
+      - http://localhost:3000
+      - http://localhost:*
+    trust_proxy_tls: true
+  auth_providers:
+    oidc:
+      enable: true
+      issuer_url: https://sirosid-gdc2-mini-oidc.fly.dev
+      redirect_uri: https://sirosid-gdc2-vc-apigw.fly.dev/oidcrp/callback
+      registration:
+        preconfigured:
+          client_id: apigw-oidc-client
+          enable: true
+          client_secret: <redacted>
+      scopes:
+      - openid
+      - profile
+      session_duration: 300
+  data_sources:
+    assertion:
+      scopes:
+        ehic:
+          auth_provider: oidc
+        pid:
+          auth_provider: oidc
+        pid_1_5:
+          auth_provider: oidc
+    datastore:
+      import:
+        file_paths:
+        - /documents/diploma.json
+        - /documents/mdl.json
+        - /documents/mdl_zk4.json
+        - /documents/pid_1_8.json
+        - /documents/pid_mdoc.json
+      scopes:
+        diploma:
+          auth_claims:
+          - given_name
+          - family_name
+          auth_provider: oidc
+        mdl:
+          auth_claims:
+          - given_name
+          - family_name
+          auth_provider: oidc
+        mdl_zk4:
+          auth_claims:
+          - given_name
+          - family_name
+          auth_provider: oidc
+        pid_1_8:
+          auth_claims:
+          - given_name
+          - family_name
+          auth_provider: oidc
+        pid_mdoc:
+          auth_claims:
+          - given_name
+          - family_name
+          auth_provider: oidc
+        siros_id:
+          auth_claims:
+          - given_name
+          - family_name
+          auth_provider: oidc
+  delivery:
+    credential_offers:
+      issuer_url: https://sirosid-gdc2-vc-apigw.fly.dev
+      wallets:
+        android:
+          label: SIROS Android (Waydroid)
+          redirect_uri: siros-sample://callback
+        e2e_test:
+          label: E2E Test Wallet
+          redirect_uri: http://localhost:3000/callback
+        local:
+          label: SIROS ID (dev)
+          redirect_uri: https://sirosid-gdc2-wallet-frontend.fly.dev/id/default/cb
+        native:
+          label: Native app (OpenID4VCI same-device)
+          redirect_uri: openid-credential-offer://
+    openid4vci:
+      clients:
+        e2e-test-client:
+          redirect_uri:
+          - siros-sample://callback
+          - http://localhost:3000/id/default/cb
+          - https://sirosid-gdc2-wallet-frontend.fly.dev/id/default/cb
+          scopes:
+          - pid
+          - pid_1_5
+          - pid_1_8
+          - diploma
+          - ehic
+          - mdl
+          - mdl_zk4
+          - pid_mdoc
+          type: public
+        e2e-test-client-2:
+          redirect_uri: http://localhost:3000/id/default/cb
+          scopes:
+          - pid
+          - pid_1_5
+          - pid_1_8
+          - diploma
+          - ehic
+          - mdl
+          - pid_mdoc
+          type: public
+        https://sirosid-gdc2-wallet-frontend.fly.dev/id/default/:
+          redirect_uri: https://sirosid-gdc2-wallet-frontend.fly.dev/id/default/cb
+          scopes:
+          - diploma
+          - ehic
+          - mdl
+          - mdl_zk4
+          - pid_1_5
+          - pid_1_8
+          - pid_mdoc
+          - siros_id
+          type: public
+      grant_types:
+      - authorization_code
+      - urn:ietf:params:oauth:grant-type:pre-authorized_code
+      - refresh_token
+      token_endpoint: https://sirosid-gdc2-vc-apigw.fly.dev/token
+  identity_mapping_import:
+    file_paths:
+    - /documents/identity_mappings.json
+  issuer_client:
+    addr: sirosid-gdc2-vc-issuer.internal:8090
+    ca_file_path: /client-cert/ca.crt
+    cert_file_path: /client-cert/tls.crt
+    key_file_path: /client-cert/tls.key
+    server_name: issuer-core
+    tls: false
+  key_config:
+    chain_path: /pki/signing_ec_chain.pem
+    private_key_path: /pki/signing_ec_private.pem
+  public_url: https://sirosid-gdc2-vc-apigw.fly.dev
+  registry_client:
+    addr: sirosid-gdc2-vc-registry.internal:8090
+    ca_file_path: /client-cert/ca.crt
+    cert_file_path: /client-cert/tls.crt
+    key_file_path: /client-cert/tls.key
+    server_name: issuer-registry
+    tls: false
+  registry_public_url: https://sirosid-gdc2-vc-registry.fly.dev
+  trust:
+    pdp_url: http://sirosid-gdc2-pdp.internal:8080
+common:
+  credential_metadata:
+    diploma:
+      format: dc+sd-jwt
+      vctm_file_path: /vctms/diploma.json
+    ehic:
+      format: dc+sd-jwt
+      vctm_file_path: /vctms/ehic.json
+    mdl:
+      doctype: org.iso.18013.5.1.mDL
+      format: mso_mdoc
+      mddl_file_path: /vctms/mdl.mdoc.json
+    mdl_zk4:
+      doctype: org.iso.18013.5.1.mDL
+      format: mso_mdoc
+      mddl_file_path: /vctms/mdl_zk4.mdoc.json
+    pid_1_5:
+      format: dc+sd-jwt
+      vctm_file_path: /vctms/pid_1_5.json
+    pid_1_8:
+      format: dc+sd-jwt
+      vctm_file_path: /vctms/pid_1_8.json
+    pid_mdoc:
+      doctype: eu.europa.ec.eudi.pid.1
+      format: mso_mdoc
+      mddl_file_path: /vctms/pid_mdoc.mdoc.json
+    siros_id:
+      format: dc+sd-jwt
+      vctm_file_path: /vctms/siros_id.json
+  ha:
+    cache_database_name: issuer-apigw_cache
+    enable: true
+  mongo:
+    uri: mongodb://<redacted>@sirosid-gdc2-mongodb.internal:27017/?authSource=admin
+  production: false
+  tracing:
+    addr: otlp-collector:4318
+    enable: false

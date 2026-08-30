@@ -1,0 +1,33 @@
+common:
+  ha:
+    cache_database_name: issuer-registry_cache
+    enable: true
+  mongo:
+    uri: mongodb://<redacted>@sirosid-gdc2-mongodb.internal:27017/?authSource=admin
+  production: false
+  tracing:
+    addr: otlp-collector:4318
+    enable: false
+registry:
+  admin_gui:
+    enable: true
+    username: admin
+    password: <redacted>
+  api_server:
+    addr: :8080
+  grpc_server:
+    addr: :8090
+    tls:
+      allowed_client_dns:
+        issuer-apigw: CN=issuer-apigw-client,OU=clients,O=siros-id
+        issuer-core: CN=issuer-core-client,OU=clients,O=siros-id
+      cert_file_path: /server-cert/tls.crt
+      client_ca_path: /server-cert/ca.crt
+      enable: false
+      key_file_path: /server-cert/tls.key
+  public_url: https://sirosid-gdc2-vc-registry.fly.dev
+  token_status_lists:
+    key_config:
+      chain_path: /pki/signing_ec_chain.pem
+      private_key_path: /pki/signing_ec_private.pem
+    section_size: 10000

@@ -1,0 +1,106 @@
+# Persisted config for `make fly-up ENV=gdc2` - see scripts/env_config.py's
+# module doc for the full schema/precedence. Update this file (not just the
+# CLI flags) whenever gdc2's intended state changes, so the next `make
+# fly-up ENV=gdc2` - by anyone, in any session - reproduces it without
+# having to remember/repeat every flag from scratch.
+#
+# Purpose: same feature set and image versions as gdc, deployed from the
+# chart-rendered vc config rather than the hand-maintained
+# fixtures/vc-config.yaml gdc was built with - i.e. the environment that
+# proves the two produce an equivalent, working deployment. Keep it in step
+# with environments/gdc.yaml; the only intended difference is which registry
+# namespace the images come from.
+
+images:
+  # The same four images gdc pins, but as bare local tags rather than
+  # registry.fly.io/sirosid-gdc-* refs: a registry.fly.io namespace belongs to
+  # one Fly app, so gdc2's apps cannot pull from gdc's. fly-up.py pushes a
+  # bare tag that exists in the local Docker daemon into the deploying app's
+  # own namespace (see fly_common.is_local_docker_image/push_local_image), so
+  # these are the identical image contents under a different name. Recreate
+  # them with:
+  #   for c in apigw issuer registry verifier; do \
+  #     docker tag registry.fly.io/sirosid-gdc-vc-$c:integration-1788040215 \
+  #                vc-$c-gdc-integration:1788040215; done
+  #
+  # Built from a local integration branch combining upstream vc PR #620
+  # (native Vega ZK/PPID verification, r12 circuit) and PR #626 (config-
+  # driven/progressive preset buttons) - both still open as of this pin.
+  vc-verifier: vc-verifier-gdc-integration:1788040215
+  vc-apigw: vc-apigw-gdc-integration:1788040215
+  vc-issuer: vc-issuer-gdc-integration:1788040215
+  vc-registry: vc-registry-gdc-integration:1788040215
+
+# geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
+# mdoc issuer - trusted here so a wallet can receive a credential from it
+# for the proximity-presentation test.
+trusted_issuers:
+  - https://geneva2026.mdoc.online
+
+# Every multipaz-based verifier used for interop testing so far - both
+# need their own reader-CA root below (ISO 18013-5 out-of-band trust
+# convention, not a public CA) since neither's request-signing cert chains
+# to a system CA.
+trusted_verifiers:
+  - https://verifier.multipaz.org
+  - https://siros-multipaz-verifier.fly.dev
+trusted_verifier_roots:
+  - fixtures/trusted-roots/multipaz-reader-ca.pem
+  - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
+
+# Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
+# catalog yet (pending expert review) - this is where it actually lives.
+zk_circuits_sources:
+  - https://zk-circuits-test.fly.dev
+
+wallet_attestation: true
+
+# Geneva 2026 interop event's RICAL (ISO 18013-5 2nd ed. Annex F reader-trust
+# list) - registers PDP's mdocrical registry so BLE/NFC proximity
+# presentation's mdoc-reader-auth check can trust the event's reader tools.
+# See fixtures/trusted-roots/README.md for provenance of the root cert.
+rical_provider_url: https://geneva2026.mdoc.online/TrustedLists/Rical.rical
+rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
+
+# Free-form chart values, deep-merged last - see scripts/env_config.py and
+# environments/README.md. Anything the chart can express is reachable here
+# without a code change anywhere else.
+values:
+  verifier:
+    # Selectable options in the verifier's own presentation-definition UI.
+    # NOT the same thing as presentation-request templates, which are only
+    # reachable through a real OIDC /authorize?scope=... request.
+    #
+    # This lives here rather than in values-base.yaml because the
+    # category/credentials/zk_system_type shape only exists on the Vega ZK
+    # branch the images pinned above are built from - a verifier built from
+    # vc main panics on it at startup.
+    # Selectable options in the verifier's own presentation-definition UI. NOT
+    # the same thing as presentationRequestTemplates below, which are only
+    # reachable through a real OIDC /authorize?scope=... request.
+    #
+    # The chart passes presets through verbatim, which matters here: this shape
+    # (category/credentials/zk_system_type) is only understood by the vc build
+    # pinned in environments/gdc.yaml, not by vc main.
+    presets:
+      "PID (mdoc) - ZK Proof (Vega)":
+        category: "ZK Proofs"
+        credentials:
+          mdl_zk4:
+            format: "mso_mdoc_zk"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r12"
+                system: "vega-mc-p256-v1"
+            claims:
+              - path: ["org.iso.18013.5.1", "family_name"]
+              - path: ["org.iso.18013.5.1", "given_name"]
+      "Age Over 18 - ZK Proof (Vega)":
+        category: "ZK Proofs"
+        credentials:
+          mdl_zk4:
+            format: "mso_mdoc_zk"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r12"
+                system: "vega-mc-p256-v1"
+            claims:
+              - path: ["org.iso.18013.5.1", "age_over_18"]
