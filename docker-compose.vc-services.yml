@@ -56,7 +56,6 @@ services:
       - "9094:8090"     # gRPC for inter-service communication
     volumes:
       - ./fixtures/rendered/vc-registry.yaml:/config.yaml:ro
-      - ./fixtures/rendered/vc-registry-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
@@ -87,7 +86,6 @@ services:
       - "9190:8090"     # gRPC for apigw communication
     volumes:
       - ./fixtures/rendered/vc-issuer.yaml:/config.yaml:ro
-      - ./fixtures/rendered/vc-issuer-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
     environment:
@@ -125,7 +123,6 @@ services:
       - "9091:8090"     # gRPC
     volumes:
       - ./fixtures/rendered/vc-verifier.yaml:/config.yaml:ro
-      - ./fixtures/rendered/vc-verifier-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
       - ./fixtures/rendered/pres-reqs:/pres-reqs:ro
@@ -167,7 +164,6 @@ services:
       - "9003:9003"     # HTTP API (OAuth2/OpenID4VCI endpoints)
     volumes:
       - ./fixtures/rendered/vc-apigw.yaml:/config.yaml:ro
-      - ./fixtures/rendered/vc-apigw-secrets.yaml:/secrets/secrets.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
       - ./fixtures/rendered/documents:/documents:ro

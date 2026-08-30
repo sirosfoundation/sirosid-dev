@@ -494,7 +494,6 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, service: str, meta
         "--env", "VC_CONFIG_YAML=/config.yaml",
         "--env", "SSL_CERT_FILE=/pki/rootCA.crt",
         "--file-local", f"/config.yaml={out_dir / f'{service}.yaml'}",
-        "--file-local", f"/secrets/secrets.yaml={out_dir / f'{service}-secrets.yaml'}",
         "--file-local", f"/pki/rootCA.crt={pki_dir / 'rootCA.crt'}",
         "--file-secret", "/pki/signing_ec_private.pem=vcSigningKey",
         "--file-local", f"/pki/signing_ec_chain.pem={pki_dir / 'signing_ec_chain.pem'}",

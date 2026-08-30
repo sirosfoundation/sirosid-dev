@@ -52,3 +52,46 @@ wallet_attestation: true
 # See fixtures/trusted-roots/README.md for provenance of the root cert.
 rical_provider_url: https://geneva2026.mdoc.online/TrustedLists/Rical.rical
 rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
+
+# Free-form chart values, deep-merged last - see scripts/env_config.py and
+# environments/README.md. Anything the chart can express is reachable here
+# without a code change anywhere else.
+values:
+  verifier:
+    # Selectable options in the verifier's own presentation-definition UI.
+    # NOT the same thing as presentation-request templates, which are only
+    # reachable through a real OIDC /authorize?scope=... request.
+    #
+    # This lives here rather than in values-base.yaml because the
+    # category/credentials/zk_system_type shape only exists on the Vega ZK
+    # branch the images pinned above are built from - a verifier built from
+    # vc main panics on it at startup.
+    # Selectable options in the verifier's own presentation-definition UI. NOT
+    # the same thing as presentationRequestTemplates below, which are only
+    # reachable through a real OIDC /authorize?scope=... request.
+    #
+    # The chart passes presets through verbatim, which matters here: this shape
+    # (category/credentials/zk_system_type) is only understood by the vc build
+    # pinned in environments/gdc.yaml, not by vc main.
+    presets:
+      "PID (mdoc) - ZK Proof (Vega)":
+        category: "ZK Proofs"
+        credentials:
+          mdl_zk4:
+            format: "mso_mdoc_zk"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r12"
+                system: "vega-mc-p256-v1"
+            claims:
+              - path: ["org.iso.18013.5.1", "family_name"]
+              - path: ["org.iso.18013.5.1", "given_name"]
+      "Age Over 18 - ZK Proof (Vega)":
+        category: "ZK Proofs"
+        credentials:
+          mdl_zk4:
+            format: "mso_mdoc_zk"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r12"
+                system: "vega-mc-p256-v1"
+            claims:
+              - path: ["org.iso.18013.5.1", "age_over_18"]

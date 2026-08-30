@@ -116,6 +116,26 @@ _shared: &shared
       hand-written e2e-test-client/-2 are kept alongside it in values-base.yaml.
   - path: verifier.inbound.openid4vp.clients
     reason: "as above, presentation side"
+  - path: verifier.inbound.openid4vp.supported_credentials
+    reason: >-
+      Now derived 1:1 from features.credentialTypes, so all eight types are
+      presentable rather than five, and the "pid" alias - which resolved to
+      two different VCTs - is gone. That alias could not survive: the chart
+      derives every client's scopes from the same map, and vc rejects the
+      mismatch in both directions
+      (client_scope_not_in_supported_credentials for the five types that had
+      no entry, supported_credential_scope_unused for "pid" itself). An RP
+      now asks for pid_1_8 or pid_1_5 explicitly. Found by booting the
+      verifier against the rendered config.
+  - path: verifier.presets
+    reason: >-
+      Moved to environments/gdc.yaml's `values:` block. The only presets this
+      repo has use a category/credentials/zk_system_type shape that exists
+      solely on the Vega ZK branch gdc pins images from, and a verifier built
+      from vc main panics on it at startup ("cannot unmarshal !!str `ZK
+      Proofs` into model.VerificationPresetScope"). They had never actually
+      reached a local `make up` - the generated copy predated them - so this
+      takes no capability away, it stops a latent crash.
   - path: verifier.supported_wallets
     reason: "the chart derives the web frontend entry; the native app is merged in via extraConfig"
   - path: verifier.outbound.oidc_provider.static_clients

@@ -174,6 +174,32 @@ def patch_vc_compose(config: dict, plain_http_hosts: set) -> dict:
     return config
 
 
+def strip_unrenderable(config: dict) -> dict:
+    """Drop the two blocks the chart renders for a Kubernetes deployment that
+    vc then refuses to start without the rest of that deployment.
+
+    Both had to be REMOVED rather than overridden, which extraConfig cannot do
+    (mergeOverwrite has no delete). Both were found by booting the images:
+
+    - common.branding points at PNGs a branding initContainer decodes into an
+      emptyDir. vc validates a branding path with `image_png`, and that runs
+      even for an empty string, so there is no value that means "no branding":
+        panic: validation:image_png field:logo_path
+    - apigw.api_server.api_auth carries SPOCP rules, and vc's
+      api_auth_rules_require_auth validator rejects rules with no auth method
+      enabled. Neither target has anything to issue an admin JWT, and the
+      chart insists on rendering the block (it refuses to ship an
+      unauthenticated admin API), so it comes out here instead:
+        panic: validation:api_auth_rules_require_auth
+      That leaves the admin API open, exactly as fixtures/vc-config.yaml
+      always had it - fine for a local or ephemeral private stack, and not
+      something to copy anywhere long-lived.
+    """
+    (config.get("common") or {}).pop("branding", None)
+    ((config.get("apigw") or {}).get("api_server") or {}).pop("api_auth", None)
+    return config
+
+
 def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: str = None) -> dict:
     """Replace the chart's MongoDB Community Operator connection with this
     target's real one.
@@ -199,13 +225,23 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
     return config
 
 
-def render_secrets(docs: list, out_dir: Path, secrets_dir: Path, gen_secret,
-                   overrides: dict = None) -> None:
-    """Do the secrets-renderer initContainer's job: envsubst each service's
-    secrets.yaml.template into one secrets file.
+def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen_secret,
+                  overrides: dict = None) -> dict:
+    """Do the secrets-renderer initContainer's job, but merge the result into
+    the config rather than leaving it in a separate file.
 
-    One file per service rather than one shared, matching the per-service
-    configs - and each service only ever reads its own section anyway.
+    The chart mounts a Secret and has an initContainer envsubst it into a
+    `medium: Memory` emptyDir owned by the pod's fsGroup. Neither target can
+    reproduce that ownership: a docker-compose bind mount keeps the host
+    user's uid and Fly writes uploaded files as root, while the vc process
+    runs as `vcservice` - and vc's LoadSecrets refuses any secrets file with
+    group/world permission bits, so there is no mode that is both readable by
+    the container and acceptable to vc. Confirmed by booting it:
+      panic: cannot read secrets file "/secrets/secrets.yaml": permission denied
+
+    Inlining is what fixtures/vc-config.yaml did before this too. These are
+    generated test values in an ephemeral, private stack; the config file is
+    not published anywhere the secrets file wouldn't be.
     """
     values = {var: gen_secret(secrets_dir / name) for var, name in VC_SECRETS.items()}
     # A few of these aren't ours to generate: the apigw's OIDC client secret
@@ -213,19 +249,25 @@ def render_secrets(docs: list, out_dir: Path, secrets_dir: Path, gen_secret,
     # targets (fly_common sets the same constants as mini-oidc's own
     # APIGW_CLIENT_ID/_SECRET env vars).
     values.update(overrides or {})
-    for cm_name, filename in VC_CONFIGMAPS.items():
-        data = extract_configmap_data(docs, cm_name)
-        template = data.get("secrets.yaml.template")
-        path = out_dir / filename.replace(".yaml", "-secrets.yaml")
-        if not template:
-            # issuer-core has no secrets of its own, but its config still
-            # names a secret_file_path - vc's LoadSecrets errors on a missing
-            # file, so write a valid empty one rather than skipping it.
-            path.write_text("{}\n")
+
+    template = extract_configmap_data(docs, cm_name).get("secrets.yaml.template")
+    if template:
+        resolved = yaml.safe_load(
+            re.sub(r"\$\{(\w+)\}", lambda m: values.get(m.group(1), ""), template)) or {}
+        config = _deep_merge(config, resolved)
+    # Nothing reads a secrets file here, and vc errors on a path it cannot
+    # read - so make sure the chart's default never survives into the config.
+    (config.get("common") or {}).pop("secret_file_path", None)
+    return config
+
+
+def _deep_merge(base: dict, overlay: dict) -> dict:
+    for key, value in overlay.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
         else:
-            path.write_text(re.sub(r"\$\{(\w+)\}", lambda m: values.get(m.group(1), ""), template))
-        # vc refuses to read a secrets file with any group/world bit set.
-        path.chmod(0o600)
+            base[key] = value
+    return base
 
 
 def _write_documents(docs: list, out_dir: Path, cm_name: str, subdir: str,
@@ -253,10 +295,10 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
         # issuer-core is the one service with no mongo of its own.
         if (config.get("common") or {}).get("mongo"):
             config = patch_vc_mongo(config, target, env, mongo_password)
+        config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides)
+        config = strip_unrenderable(config)
         (out_dir / filename).write_text(yaml.dump(config, sort_keys=False))
         print(f"wrote {out_dir / filename}")
-
-    render_secrets(docs, out_dir, secrets_dir, gen_secret, secret_overrides)
 
     # /vctms in the chart, but vc's credential_metadata paths are written by
     # siros-id.vc.credentialMetadata as /vctms/<scope>.json too, so the mount

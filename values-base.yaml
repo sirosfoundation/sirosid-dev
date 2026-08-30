@@ -262,6 +262,13 @@ issuer:
       validDuration: 3600
     extraConfig:
       issuer:
+        # The chart terminates inter-service gRPC with cert-manager mTLS.
+        # Neither target has those certs, and the client side is already set
+        # to plaintext - without this the server refuses to start at all:
+        #   failed to load server certificate: open /server-cert/tls.crt
+        grpc_server:
+          tls:
+            enable: false
         key_config:
           private_key_path: "/pki/signing_ec_private.pem"
           chain_path: "/pki/signing_ec_chain.pem"
@@ -285,6 +292,10 @@ issuer:
       enabled: true
     extraConfig:
       registry:
+        # See issuer.core's copy - the gRPC server side of the same thing.
+        grpc_server:
+          tls:
+            enable: false
         token_status_lists:
           key_config:
             private_key_path: "/pki/signing_ec_private.pem"
@@ -313,35 +324,16 @@ verifier:
   digitalCredentials:
     enabled: true
 
-  # Selectable options in the verifier's own presentation-definition UI. NOT
-  # the same thing as presentationRequestTemplates below, which are only
-  # reachable through a real OIDC /authorize?scope=... request.
-  #
-  # The chart passes presets through verbatim, which matters here: this shape
-  # (category/credentials/zk_system_type) is only understood by the vc build
-  # pinned in environments/gdc.yaml, not by vc main.
-  presets:
-    "PID (mdoc) - ZK Proof (Vega)":
-      category: "ZK Proofs"
-      credentials:
-        mdl_zk4:
-          format: "mso_mdoc_zk"
-          zk_system_type:
-            - id: "vega-mc-p256-v1-prover-key-r12"
-              system: "vega-mc-p256-v1"
-          claims:
-            - path: ["org.iso.18013.5.1", "family_name"]
-            - path: ["org.iso.18013.5.1", "given_name"]
-    "Age Over 18 - ZK Proof (Vega)":
-      category: "ZK Proofs"
-      credentials:
-        mdl_zk4:
-          format: "mso_mdoc_zk"
-          zk_system_type:
-            - id: "vega-mc-p256-v1-prover-key-r12"
-              system: "vega-mc-p256-v1"
-          claims:
-            - path: ["org.iso.18013.5.1", "age_over_18"]
+  # verifier.presets - the selectable options in the verifier's own
+  # presentation-definition UI - deliberately live in environments/gdc.yaml
+  # rather than here. The chart passes presets through verbatim, and the only
+  # ones this repo has use a category/credentials/zk_system_type shape that
+  # exists solely on the Vega ZK branch gdc pins images from. Feeding them to
+  # a verifier built from ../vc main panics it at startup:
+  #   cannot unmarshal !!str `ZK Proofs` into model.VerificationPresetScope
+  # (They were in fixtures/vc-config.yaml, but had never actually reached a
+  # local `make up` - the generated copy predated them - so this is not a
+  # capability being taken away.)
 
   # Loaded from fixtures/vc-presentation-requests/*.yaml by
   # render-helm-config.py and rendered into the one pres-reqs.yaml the
@@ -373,24 +365,6 @@ verifier:
       key_config:
         private_key_path: "/pki/signing_ec_private.pem"
         chain_path: "/pki/signing_ec_chain.pem"
-      inbound:
-        openid4vp:
-          # Restated in full because a list in extraConfig replaces rather
-          # than appends. The chart derives one entry per credential type
-          # under its own scope; this environment instead serves both PID
-          # versions under a single "pid" scope, which that 1:1 model can't
-          # express.
-          supported_credentials:
-            - vct: "urn:eudi:pid:arf-1.8:1"
-              scopes: ["pid"]
-            - vct: "urn:eudi:pid:arf-1.5:1"
-              scopes: ["pid"]
-            - vct: "urn:eudi:ehic:1"
-              scopes: ["ehic"]
-            - vct: "urn:eudi:diploma:1"
-              scopes: ["diploma"]
-            - vct: "org.iso.18013.5.1.mDL"
-              scopes: ["mdl"]
     common:
       secret_file_path: "/secrets/secrets.yaml"
 
