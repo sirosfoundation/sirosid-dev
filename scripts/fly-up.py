@@ -62,6 +62,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
+from vc_render import _deep_merge as deep_merge  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
     MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
@@ -861,6 +862,33 @@ def main():
 
     dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
+    # The issuer's blind BBS secret key, read from a gitignored local file
+    # and merged into the values tree here rather than written in
+    # environments/<name>.yaml.
+    #
+    # It cannot live in that file: it is the whole of the issuer's BBS
+    # signing capability, and those files are committed. It also cannot be a
+    # mounted volume - siros-id-stack models specific named secret volumes
+    # and has no generic extra-file mechanism - which is why vc accepts the
+    # key inline in its config at all.
+    env_values = env_cfg.get("values") or {}
+    bbs_secret_key_file = env_cfg["bbs_secret_key_file"] or None
+    if bbs_secret_key_file:
+        path = Path(bbs_secret_key_file)
+        if not path.is_absolute():
+            path = SIROSID_DEV_ROOT / path
+        if not path.exists():
+            raise SystemExit(
+                f"bbs_secret_key_file {path} does not exist. Run `make bbs-keys` to generate the "
+                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
+            )
+        env_values = deep_merge(
+            env_values,
+            {"issuer": {"core": {"extraConfig": {"issuer": {"bbs": {
+                "secret_key": path.read_text().strip(),
+            }}}}}},
+        )
+
     # Region. Every level here is an explicit pin; if none is set we take
     # Fly's own suggestion, which is the right default when contributors are
     # in different places. Most specific first:
@@ -930,7 +958,7 @@ def main():
                            # block, deep-merged over everything else - the
                            # escape hatch for anything the typed keys above
                            # don't cover (see scripts/env_config.py).
-                           env_cfg.get("values") or {})
+                           env_values)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

@@ -1,5 +1,11 @@
 # Generated PKI
 fixtures/vc-pki/*.key
+# Blind BBS issuer keys. The secret is the whole of the issuer's BBS signing
+# capability and openssl cannot produce or read it - see
+# fixtures/create-bbs-keys.sh. The public half is ignored here too, and
+# published deliberately by pasting it into environments/<name>.yaml.
+fixtures/vc-pki/*.sk
+fixtures/vc-pki/*.pk
 fixtures/vc-pki/*.crt
 fixtures/vc-pki/*.pem
 
