@@ -131,11 +131,20 @@ images:
   # with "reader certificate chain not present in RICAL" despite Scytales
   # being explicitly listed in the RICAL by name.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.20.4 -
+  # Bumped from 0.20.4 to 0.20.5: 0.20.4 predates go-trust#153 - without it,
+  # WhitelistRegistry's additional_trusted_roots parses PEMs via stdlib
+  # crypto/x509 directly, which can't handle brainpoolP256r1 (used by real
+  # ISO 18013-5/eIDAS reader-CA roots, e.g. Geneva 2026's OpenID4VP verifier
+  # root) - and one such root failed the *entire* registry's CA pool
+  # construction, denying every other whitelisted verifier too. Confirmed
+  # live 2026-08-31 against gdc: adding geneva2026.mdoc.online's root without
+  # this fix broke trust for verifier.multipaz.org as a side effect.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.20.5 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here. (Chart's own pin is still 0.9.0 as of this
   # commit, so it has not caught up.)
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.4"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.5"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo

@@ -59,16 +59,17 @@ Usage: `make fly-up ENV=<name> RICAL_PROVIDER_URL=https://geneva2026.mdoc.online
 
 ## geneva2026-verifier-reader-ca.pem
 
-**NOT currently usable as a `TRUSTED_VERIFIER_ROOTS` entry - confirmed broken
-2026-08-31, do not re-add to `environments/gdc.yaml` without fixing the root
-cause first.** In principle this is the right mechanism: `geneva2026-rical-
-root.pem` above only covers RICAL (ISO 18013-5 BLE/NFC proximity mdoc-
-reader-auth), a separate trust check from the `credential-verifier` AuthZEN
-action a remote OpenID4VP presentation request goes through, and this cert's
-embedded subjectAltName URI of `https://geneva2026.mdoc.online` confirms it's
-the right root for that verifier identity - not a same-name guess. Subject/
-issuer: `Reader CA Certificate Default Relying Party Geneva 2026, C=CH,
-O=Aptitude`, self-signed, valid 2026-06-11 to 2046-06-11 (sha256 fingerprint
+This root is the one that lets a wallet trust remote OpenID4VP presentation
+requests (`client_id_scheme=x509_san_dns`,
+`client_id=x509_san_dns:geneva2026.mdoc.online`) from the event's reference
+verifier - `geneva2026-rical-root.pem` above only covers RICAL (ISO 18013-5
+BLE/NFC proximity mdoc-reader-auth), a separate trust check from the
+`credential-verifier` AuthZEN action a remote OpenID4VP request goes
+through. This cert's embedded subjectAltName URI of
+`https://geneva2026.mdoc.online` confirms it's the right root for that
+verifier identity, not a same-name guess. Subject/issuer: `Reader CA
+Certificate Default Relying Party Geneva 2026, C=CH, O=Aptitude`,
+self-signed, valid 2026-06-11 to 2046-06-11 (sha256 fingerprint
 `FE:9E:2A:ED:30:87:D2:0C:26:E1:2E:53:63:FC:EB:93:30:24:E6:B0:2F:82:C9:BE:8F:27:0D:20:C1:6C:3D:CA`).
 Extracted from the same `geneva2026/` folder of event-organizer-distributed
 certs as `geneva2026-rical-root.pem` (`Reader CA Certificate Default Relying
@@ -77,27 +78,21 @@ CA Certificate Relying Party not on RICAL Geneva 2026.cer`, deliberately
 unused here since it's the event's negative-test-case root, not this
 verifier's).
 
-**Why it's broken:** this cert's key uses the `brainpoolP256r1` curve
-(`openssl x509 -noout -text` -> `ASN1 OID: brainpoolP256r1`), which Go's
-standard `crypto/x509` package does not support (`x509.ParseCertificate`
-returns `x509: unsupported elliptic curve`) - unlike NIST P-256/P-384/P-521.
-go-trust 0.20.4's whitelist registry parses `additional_trusted_roots` PEMs
-through this same stdlib path, so adding this cert doesn't just fail to add
-*this* root - it fails the *entire* CA pool construction for the whole
-registry ("system CA pool unavailable: additional_trusted_roots[N]: failed
-to parse PEM certificate"), which denied every other verifier in the same
-whitelist too, including the previously-working `verifier.multipaz.org` and
-`siros-multipaz-verifier.fly.dev` entries. Confirmed live against gdc's PDP
-logs before reverting. RICAL's own registry evidently has separate brainpool
-support (go-trust's changelog around the 0.18.0 bump mentions adding it
-specifically "for the real Geneva 2026 RICAL/VICAL root") - `additional_
-trusted_roots`/the whitelist registry does not share that support.
+**Needs go-trust >= 0.20.5.** This cert's key uses the `brainpoolP256r1`
+curve (`openssl x509 -noout -text` -> `ASN1 OID: brainpoolP256r1`), which
+Go's standard `crypto/x509` package does not support natively - unlike NIST
+P-256/P-384/P-521. Before go-trust#153 (fixed in 0.20.5), the whitelist
+registry parsed `additional_trusted_roots` PEMs directly via stdlib
+`x509.CertPool.AppendCertsFromPEM`, which doesn't just fail to add *this*
+root on an unsupported curve - it fails the *entire* CA pool construction
+for the whole registry ("system CA pool unavailable: additional_trusted_
+roots[N]: failed to parse PEM certificate"), denying every other whitelisted
+verifier too. Confirmed live 2026-08-31: adding this root without the fix
+briefly broke trust for `verifier.multipaz.org` and
+`siros-multipaz-verifier.fly.dev` as a side effect. go-trust#153 wires a
+`CryptoExt` (the same brainpool-aware parsing RICAL/VICAL already had, per
+go-trust's 0.18.0 changelog) into the whitelist registry's
+`additional_trusted_roots` path too - `values-fly.yaml`'s `images.pdp` pin
+must be >= `0.20.5` for this entry to work.
 
-**What a real fix needs** (not done as part of this entry): either (a)
-go-trust's whitelist registry gains the same brainpool curve support RICAL/
-VICAL already have for `additional_trusted_roots` parsing, ideally also
-fixed to skip-and-warn on one bad root rather than failing the whole pool,
-or (b) geneva2026.mdoc.online's OpenID4VP verifier trust moves to a registry
-mechanism built the way mdocrical already is, rather than through
-`additional_trusted_roots`. Until one of those lands, there is no way to
-trust this verifier for remote OpenID4VP presentation on this stack.
+Usage: `make fly-up ENV=<name> TRUSTED_VERIFIER_ROOTS=fixtures/trusted-roots/geneva2026-verifier-reader-ca.pem TRUSTED_VERIFIERS=https://geneva2026.mdoc.online ...` (persisted in `environments/gdc.yaml`, so a plain `make fly-up ENV=gdc` picks it up automatically).
