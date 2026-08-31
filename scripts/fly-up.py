@@ -733,6 +733,10 @@ def register_vc_services(env: str, admin_token: str):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", required=True)
+    parser.add_argument("--region", default="",
+                         help="Pin this run's Fly region (e.g. 'arn'), overriding "
+                              "environments/<name>.yaml's `region:`, $FLY_REGION, .fly-region, and "
+                              "Fly's own detected suggestion - see the region-resolution comment below.")
     parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"))
     parser.add_argument("--android-app", action="append",
                          help="package=fingerprint (SHA-256, colon-separated hex, as printed by "

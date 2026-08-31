@@ -202,7 +202,14 @@ images:
   # when the host sends no Access-Control-Allow-Origin). Asset delivery only -
   # nothing is substituted from the registry, and an unreachable or oversized
   # image leaves the issuer's original URL untouched.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.15.0"
+  #
+  # 0.15.0 -> 0.15.2 (skipping 0.15.1, never pinned here): #296 allowlists the
+  # "mdoc-issuer-auth" SPOCP action through the authzen_proxy (mirrors #279's
+  # "mdoc-reader-auth" fix above, same class of gap). #298 recognizes the
+  # "x509_hash" client_id_scheme and the "mdoc-openid4vp://" URI scheme -
+  # needed for a NIST reference verifier that used both during Geneva 2026
+  # interop testing.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.15.2"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
