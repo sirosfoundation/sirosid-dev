@@ -14,18 +14,36 @@
 #
 #   make bbs-keys        # generates fixtures/vc-pki/bbs_issuer.{sk,pk}
 #
-# then paste the printed public key into `publicKey` below. The pair is
-# checked at issuer startup, so a mismatch fails the boot rather than every
-# issuance.
+# That is the whole of it - nothing has to be pasted in here afterwards.
+# Both halves are read from the generated files at render time, so this file
+# stays the same for everyone while each developer's keys stay their own.
+# The pair is checked at issuer startup, so a mismatch fails the boot rather
+# than every issuance.
 
-# The issuer's blind BBS secret key. A path, read at deploy time, because
+# TEMPORARY - delete this line when siros-id-stack#5 merges, at which point
+# main has the chart's `issuer.core.bbs` values and this environment renders
+# against it like every other one.
+#
+# Until then, rendering against main does not fail: it quietly produces an
+# issuer config with no `bbs:` section at all, so the deploy succeeds and
+# every `format: jwp` issuance then fails somewhere that says nothing about
+# a chart version. Asserted rather than checked out, since siros-id-stack is
+# read-only here and may hold someone else's work.
+chart_ref: feat/issuer-bbs
+
+# The issuer's blind BBS key pair, both read at render time from the files
+# `make bbs-keys` writes.
+#
+# The public half is inlined into the chart's issuer.core.bbs.publicKey; it
+# is not secret. The secret half is not: it is handed to the renderer as a
+# secret override, which substitutes the chart's own ${BBS_SECRET_KEY}
+# placeholder - the same thing Kubernetes' secrets-renderer initContainer
+# does - so it never lands in a values file or a rendered ConfigMap.
+bbs_public_key_file: fixtures/vc-pki/bbs_issuer.pk
+
+# A path rather than an inline value because
 # this file is committed and that key is the whole of the issuer's BBS
 # signing capability. fixtures/vc-pki/ is gitignored.
-#
-# It is handed to the renderer as a secret override, which substitutes the
-# chart's own ${BBS_SECRET_KEY} placeholder - the same thing Kubernetes'
-# secrets-renderer initContainer does. So it never lands in a values file or
-# a rendered ConfigMap.
 bbs_secret_key_file: fixtures/vc-pki/bbs_issuer.sk
 
 # IMAGES ARE REQUIRED HERE, and the default images will not do.
@@ -64,14 +82,11 @@ values:
       # key fails when the chart renders rather than when the issuer boots.
       bbs:
         enabled: true
-        # The public half of the pair `make bbs-keys` generated. Safe to
-        # commit, and it has to be somewhere a verifier can read it:
-        # nothing publishes a BBS issuer key yet (OpenID4VCI issuer
-        # metadata has no member for one), so today a wallet is handed it
-        # out of band.
+        # publicKey is filled in from bbs_public_key_file above, at render
+        # time. A wallet needs it too and is handed it out of band: nothing
+        # publishes a BBS issuer key yet, since OpenID4VCI issuer metadata
+        # has no member for one.
         #
-        # TODO: paste the output of `make bbs-keys` here.
-        publicKey: ""
         # 24h rather than the chart's 8760h default: a test environment's
         # credentials should expire on their own rather than linger.
         defaultValidity: "24h"
