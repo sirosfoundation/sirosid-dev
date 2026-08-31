@@ -8,6 +8,13 @@
 # presentation using a credential issued by the Geneva 2026 interop event's
 # reference issuer (geneva2026.mdoc.online).
 
+# gdc's machines already run here, and a named, shared environment pins its
+# own region so it does not land somewhere different depending on who
+# redeployed it. Without this it would follow whoever ran fly-up (Fly's
+# suggestion is per-machine - from Stockholm it answers 'fra'), leaving the
+# fly.toml disagreeing with where the machines actually are.
+region: arn
+
 images:
   # Built from a local integration branch combining upstream vc PR #620
   # (native Vega ZK/PPID verification, r12 circuit) and PR #626 (config-

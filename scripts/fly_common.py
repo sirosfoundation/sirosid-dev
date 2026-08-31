@@ -11,6 +11,8 @@ Android/tunnel testing already works.
 """
 import base64
 import json
+import urllib.error
+import urllib.request
 import subprocess
 import sys
 import time
@@ -47,17 +49,41 @@ MINI_OIDC_IMAGE = _values_fly_image(
     "miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.4"
 )
 FLY_ORG = "sirosfoundation"
-# Default only - override per environment with `region:` in
-# environments/<name>.yaml, or `make fly-up ENV=x REGION=<code>`. Nothing else
-# pins a region: apps are created without one, no machine is placed with an
-# explicit --region, and there are no volumes. It reaches exactly one place,
-# write_fly_toml's primary_region.
-#
-# primary_region states a PREFERENCE, not a constraint - it is where Fly puts
-# the first machine. Changing it does not move machines that already exist, so
-# moving a live environment means `make fly-down ENV=x` then `fly-up` again
-# (which loses mongodb's data, since it has no volume).
-FLY_REGION = "arn"
+
+# Last-resort fallback ONLY, for when Fly's own suggestion can't be reached
+# (offline, or the header shape changed). The default is detect_region()
+# below - contributors are in different places, and pinning everyone to one
+# region put every environment several hundred kilometres from most of them.
+FLY_REGION_FALLBACK = "arn"
+
+
+def detect_region() -> str:
+    """Fly's own suggestion for where to run: the anycast edge nearest here.
+
+    Every Fly API response carries `fly-request-id: <id>-<region>`, and the
+    region is whichever edge anycast routed to - which is what `fly launch`
+    means by the nearest region. One HEAD request, short timeout, and any
+    failure falls back rather than blocking a deploy.
+
+    Note this is genuinely per-machine: from Stockholm it answers 'fra', not
+    'arn', so it is Fly's routing view rather than raw geography. That is the
+    right thing to follow - it is the same view that decides where traffic to
+    the deployed apps lands.
+    """
+    req = urllib.request.Request("https://api.fly.io/", method="HEAD")
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            request_id = resp.headers.get("fly-request-id", "")
+    except urllib.error.HTTPError as e:
+        # The bare path 404s, but the edge still stamps the header on its way
+        # out - that response is just as good as a 200 for this.
+        request_id = e.headers.get("fly-request-id", "")
+    except Exception:
+        return ""
+    region = request_id.rsplit("-", 1)[-1] if "-" in request_id else ""
+    # Shape check rather than a hardcoded region list, which would go stale:
+    # every Fly region code is three lowercase letters.
+    return region if len(region) == 3 and region.isalpha() and region.islower() else ""
 
 # mini-oidc's OIDC client registered for vc-apigw's auth_providers.oidc (PID/EHIC
 # issuance) - a single source of truth for both sides of this pairing:
@@ -476,7 +502,7 @@ def ensure_secret(app: str, key: str, value: str, force: bool = False):
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
                     health_check_path: str | None = None, memory_mb: int = 256, cpus: int = 1,
                     internal_check: dict | None = None, tcp_passthrough_port: int | None = None,
-                    region: str = FLY_REGION):
+                    region: str = ""):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -497,7 +523,7 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
     """
     lines = [
         f"app = '{app}'",
-        f"primary_region = '{region}'",
+        f"primary_region = '{region or FLY_REGION_FALLBACK}'",
         "",
     ]
     if process_cmd is not None:

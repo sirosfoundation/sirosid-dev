@@ -63,8 +63,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from fly_common import (  # noqa: E402
-    COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION, MINI_OIDC_APIGW_CLIENT_ID,
-    MINI_OIDC_APIGW_CLIENT_SECRET,
+    COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
+    MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
     app_exists, app_name, app_url, assetlinks_json,
     ensure_app, ensure_running, ensure_secret, existing_secret_names, is_local_docker_image, machine_private_ip,
     mini_oidc_config, network_name, push_local_image, wait_for_checks, wallet_frontend_conf,
@@ -179,7 +179,7 @@ def generate_android_assets(docs: list, out_dir: Path, identities: list) -> Path
 
 def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_dir: Path, pki_dir: Path,
                       assetlinks_path: Path, image_overrides: dict, mongo_password: str, conformance: bool = False,
-                      wallet_attestation: bool = False, region: str = FLY_REGION):
+                      wallet_attestation: bool = False, region: str = ""):
     name = comp["name"]
     app = app_name(env, name)
     ensure_app(app, network=network_name(env), allocate_public_ips=(name == "conformance"))
@@ -857,18 +857,32 @@ def main():
 
     dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
-    # Region, most specific first:
-    #   --region / REGION=      this run only
+    # Region. Every level here is an explicit pin; if none is set we take
+    # Fly's own suggestion, which is the right default when contributors are
+    # in different places. Most specific first:
+    #   --region / REGION=        this run only
     #   environments/<name>.yaml  a named, shared environment pins its own, so
     #                             everyone redeploying gdc lands in one place
-    #   $FLY_REGION               the developer's own default, for scratch
-    #                             environments that have no file (alice, bob)
-    #   fly_common.FLY_REGION     the built-in fallback
+    #   $FLY_REGION               an ad-hoc shell default
+    #   .fly-region               this developer's default
+    #   detect_region()           Fly's suggestion - the anycast edge nearest
+    #                             here, i.e. what `fly launch` would pick
+    #   FLY_REGION_FALLBACK       only if that is unreachable
     # primary_region is a preference, not a constraint, and changing it does
-    # not move machines that already exist - see fly_common.FLY_REGION.
-    region = (args.region or env_cfg["region"] or os.environ.get("FLY_REGION")
-              or _personal_region() or FLY_REGION)
-    print(f"region: {region}")
+    # not move machines that already exist - see fly_common.detect_region.
+    pinned = (args.region or env_cfg["region"] or os.environ.get("FLY_REGION")
+              or _personal_region())
+    if pinned:
+        region = pinned
+        print(f"region: {region} (pinned)")
+    else:
+        region = detect_region()
+        if region:
+            print(f"region: {region} (Fly's suggestion for this machine - "
+                  f"pin it with REGION=, environments/{args.env}.yaml's `region:`, or .fly-region)")
+        else:
+            region = FLY_REGION_FALLBACK
+            print(f"region: {region} (fallback - could not reach Fly to ask)")
 
     cli_image_overrides = {}
     for pair in args.images.split(","):
