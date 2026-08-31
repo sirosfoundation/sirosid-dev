@@ -14,13 +14,18 @@
 #
 #   make bbs-keys        # generates fixtures/vc-pki/bbs_issuer.{sk,pk}
 #
-# then paste the printed public key into `public_key` below. The pair is
+# then paste the printed public key into `publicKey` below. The pair is
 # checked at issuer startup, so a mismatch fails the boot rather than every
 # issuance.
 
 # The issuer's blind BBS secret key. A path, read at deploy time, because
 # this file is committed and that key is the whole of the issuer's BBS
 # signing capability. fixtures/vc-pki/ is gitignored.
+#
+# It is handed to the renderer as a secret override, which substitutes the
+# chart's own ${BBS_SECRET_KEY} placeholder - the same thing Kubernetes'
+# secrets-renderer initContainer does. So it never lands in a values file or
+# a rendered ConfigMap.
 bbs_secret_key_file: fixtures/vc-pki/bbs_issuer.sk
 
 # IMAGES ARE REQUIRED HERE, and the default images will not do.
@@ -53,39 +58,47 @@ images: {}
 values:
   issuer:
     core:
-      extraConfig:
-        issuer:
-          bbs:
-            # The public half of the pair `make bbs-keys` generated. Safe to
-            # commit, and it has to be somewhere a verifier can read it:
-            # nothing publishes a BBS issuer key yet (OpenID4VCI issuer
-            # metadata has no member for one), so today a wallet is handed
-            # it out of band.
-            #
-            # TODO: paste the output of `make bbs-keys` here.
-            public_key: ""
-            # 24h rather than the 8760h default: a test environment's
-            # credentials should expire on their own rather than linger.
-            default_validity: 24h
+      # Typed chart values, not `extraConfig`. siros-id-stack models blind
+      # BBS as of chart 1.1.0, so this environment does not have to reach
+      # around the chart to configure it - which also means a missing public
+      # key fails when the chart renders rather than when the issuer boots.
+      bbs:
+        enabled: true
+        # The public half of the pair `make bbs-keys` generated. Safe to
+        # commit, and it has to be somewhere a verifier can read it:
+        # nothing publishes a BBS issuer key yet (OpenID4VCI issuer
+        # metadata has no member for one), so today a wallet is handed it
+        # out of band.
+        #
+        # TODO: paste the output of `make bbs-keys` here.
+        publicKey: ""
+        # 24h rather than the chart's 8760h default: a test environment's
+        # credentials should expire on their own rather than linger.
+        defaultValidity: "24h"
 
+  # `features.credentialTypes`, not a top-level key: that is where the chart
+  # reads it (values-base.yaml puts it there too). Written at the top level
+  # it is silently ignored rather than rejected.
+  #
   # One credential type, deliberately small. Every claim is one the flow
   # needs - four the issuer supplies, one the wallet commits to and the
   # issuer never sees. More claims make the message vector longer and the
   # test slower without testing anything new.
-  credentialTypes:
-    pid_bbs:
-      vct: "urn:siros:pid:bbs:1"
-      # Not a variant of dc+sd-jwt despite sharing the SD-JWT VC data model.
-      # The container is different - JWP has its own issued and presented
-      # forms, and selective disclosure is BBS itself rather than `_sd`
-      # digests - which is why it needs its own format identifier. "jwp" is
-      # what the native SDKs already record for it.
-      format: jwp
-      vctm: {file: fixtures/vc-metadata/vctm_pid_bbs.json}
-      issuance:
-        authProvider: oidc
-        # assertion, not datastore: this type's issuer-supplied claims are
-        # exactly what mini-oidc can assert, so there is nothing to look up.
-        source: assertion
-        authOptions:
-          claims: [given_name, family_name]
+  features:
+    credentialTypes:
+      pid_bbs:
+        vct: "urn:siros:pid:bbs:1"
+        # Not a variant of dc+sd-jwt despite sharing the SD-JWT VC data model.
+        # The container is different - JWP has its own issued and presented
+        # forms, and selective disclosure is BBS itself rather than `_sd`
+        # digests - which is why it needs its own format identifier. "jwp" is
+        # what the native SDKs already record for it.
+        format: jwp
+        vctm: {file: fixtures/vc-metadata/vctm_pid_bbs.json}
+        issuance:
+          authProvider: oidc
+          # assertion, not datastore: this type's issuer-supplied claims are
+          # exactly what mini-oidc can assert, so there is nothing to look up.
+          source: assertion
+          authOptions:
+            claims: [given_name, family_name]

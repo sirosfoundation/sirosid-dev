@@ -62,7 +62,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
-from vc_render import _deep_merge as deep_merge  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
     MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
@@ -98,7 +97,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                     wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
                     extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
                     rical_provider_url: str = None, rical_root_certificate_pem: str = None,
-                    dc_api_enable: str = "", env_values: dict = None) -> list:
+                    dc_api_enable: str = "", env_values: dict = None,
+                    bbs_secret_key: str = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -124,7 +124,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    # verifier the way it already reached wallet-backend.
                    zk_circuits_sources=zk_circuits_sources,
                    dc_api_enable=dc_api_enable,
-                   env_values=env_values)
+                   env_values=env_values,
+                   bbs_secret_key=bbs_secret_key)
     return docs
 
 
@@ -862,16 +863,17 @@ def main():
 
     dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
-    # The issuer's blind BBS secret key, read from a gitignored local file
-    # and merged into the values tree here rather than written in
-    # environments/<name>.yaml.
+    # The issuer's blind BBS secret key, read from a gitignored local file.
     #
-    # It cannot live in that file: it is the whole of the issuer's BBS
-    # signing capability, and those files are committed. It also cannot be a
-    # mounted volume - siros-id-stack models specific named secret volumes
-    # and has no generic extra-file mechanism - which is why vc accepts the
-    # key inline in its config at all.
-    env_values = env_cfg.get("values") or {}
+    # It cannot live in environments/<name>.yaml: that file is committed and
+    # this is the whole of the issuer's BBS signing capability. It goes to
+    # the renderer as a secret OVERRIDE rather than into the values tree,
+    # which is how the chart already models it - issuer-core's
+    # secrets.yaml.template carries ${BBS_SECRET_KEY}, and render_vc
+    # substitutes it exactly the way Kubernetes' secrets-renderer
+    # initContainer would. So the key never reaches a values file or a
+    # rendered ConfigMap on either target.
+    bbs_secret_key = None
     bbs_secret_key_file = env_cfg["bbs_secret_key_file"] or None
     if bbs_secret_key_file:
         path = Path(bbs_secret_key_file)
@@ -882,12 +884,7 @@ def main():
                 f"bbs_secret_key_file {path} does not exist. Run `make bbs-keys` to generate the "
                 "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
             )
-        env_values = deep_merge(
-            env_values,
-            {"issuer": {"core": {"extraConfig": {"issuer": {"bbs": {
-                "secret_key": path.read_text().strip(),
-            }}}}}},
-        )
+        bbs_secret_key = path.read_text().strip()
 
     # Region. Every level here is an explicit pin; if none is set we take
     # Fly's own suggestion, which is the right default when contributors are
@@ -958,7 +955,7 @@ def main():
                            # block, deep-merged over everything else - the
                            # escape hatch for anything the typed keys above
                            # don't cover (see scripts/env_config.py).
-                           env_values)
+                           env_cfg.get("values") or {}, bbs_secret_key)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

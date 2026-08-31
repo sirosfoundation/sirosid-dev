@@ -686,7 +686,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            rical_provider_url: str = None, rical_root_certificate_pem: str = None,
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
-           env_values: dict = None) -> list:
+           env_values: dict = None, bbs_secret_key: str = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -835,6 +835,15 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                             # fly-up.py sets from these same constants and
                             # docker-compose.vc-services.yml defaults to.
                             "OIDC_PROVIDER_CLIENT_SECRET": fly_common.MINI_OIDC_APIGW_CLIENT_SECRET,
+                            # Also not ours to generate, and for a sharper
+                            # reason: a random 32 bytes IS a well-formed
+                            # BLS12-381 scalar, just not the one matching the
+                            # configured public key. The issuer would start,
+                            # sign, and produce credentials nothing can
+                            # verify. Empty unless an environment supplies it,
+                            # and the chart only references ${BBS_SECRET_KEY}
+                            # when issuer.core.bbs is enabled.
+                            **({"BBS_SECRET_KEY": bbs_secret_key} if bbs_secret_key else {}),
                         },
                         env=env, mongo_password=mongo_password)
 
