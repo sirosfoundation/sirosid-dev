@@ -56,6 +56,7 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 import argparse
 import secrets
 import string
+import subprocess
 import sys
 from pathlib import Path
 
@@ -103,13 +104,48 @@ def check_chart_supported(chart_dir: Path):
     raise SystemExit(
         f"\nERROR: the chart at {chart_dir} is too old for this repo's values-base.yaml.\n"
         + "".join(f"  missing: {m}  ({why})\n" for m, why in missing)
-        + "\n  Update it:\n"
-          "    make setup                       # fast-forwards it if it is on main\n"
-          f"    git -C {chart_dir} pull          # or by hand\n"
-          "\n  If it is deliberately checked out to a branch or an older commit, either\n"
-          "  switch it back to main or point elsewhere with SIROS_ID_STACK_PATH=<dir>.\n"
-          "  Without this, `helm template` fails inside the chart's own templates with\n"
-          "  no indication that the checkout is the problem.")
+        + "\n" + _chart_update_hint(chart_dir)
+        + "\n  Without this, `helm template` fails inside the chart's own templates with\n"
+          "  no indication that the checkout is the problem.\n")
+
+
+def _git(chart_dir: Path, *args) -> str:
+    try:
+        r = subprocess.run(["git", "-C", str(chart_dir), *args], capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def _chart_update_hint(chart_dir: Path) -> str:
+    """Say which of `make setup`'s three outcomes applies here.
+
+    `make setup` fast-forwards the chart, but only when it is on main and the
+    pull succeeds; the other two cases print a coloured note and setup carries
+    on, which is easy to miss in its output. Naming the actual case turns
+    "run make setup" into something the reader can act on.
+    """
+    if not (chart_dir / ".git").exists():
+        return (f"  {chart_dir} is not a git checkout, so `make setup` cannot update it.\n"
+                "  Replace it with a clone of sirosfoundation/siros-id-stack, or point\n"
+                "  SIROS_ID_STACK_PATH=<dir> at one.\n")
+    branch = _git(chart_dir, "branch", "--show-current")
+    dirty = bool(_git(chart_dir, "status", "--porcelain"))
+    if branch != "main":
+        return (f"  It is on branch '{branch or 'a detached HEAD'}', not main - `make setup`\n"
+                "  deliberately leaves it alone in that case (so a PR branch someone is\n"
+                "  testing is not yanked out from under them) and only prints a note.\n"
+                "  Either switch it back:\n"
+                f"    git -C {chart_dir} checkout main && git -C {chart_dir} pull\n"
+                "  or point at another checkout with SIROS_ID_STACK_PATH=<dir>.\n")
+    if dirty:
+        return ("  It is on main but has local changes, so `make setup`'s\n"
+                "  `git pull --ff-only` cannot fast-forward it (setup reports this as\n"
+                "  'update failed' and continues). Stash or commit them, then:\n"
+                f"    git -C {chart_dir} pull\n")
+    return ("  It is on main and clean, so it just needs pulling:\n"
+            "    make setup\n"
+            f"  or: git -C {chart_dir} pull\n")
 
 
 def gen_secret(path: Path, length: int = 32) -> str:
