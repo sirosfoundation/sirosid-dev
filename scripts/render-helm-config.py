@@ -678,6 +678,39 @@ def build_toggles_overlay(zk_circuits_sources: list = None, dc_api_enable: str =
     return {"verifier": verifier} if verifier else {}
 
 
+
+def assert_chart_ref(chart_dir: Path, chart_ref: str) -> None:
+    """Stop if ../siros-id-stack is not on the ref this environment needs.
+
+    Asserted rather than checked out. That repo is consumed read-only and
+    may hold someone else's work in progress, so silently moving it is worse
+    than refusing - and a wrong checkout does not fail loudly on its own: it
+    renders a config that is merely missing whatever the branch adds, which
+    then surfaces as a puzzling runtime error in a service.
+
+    Only used while an environment depends on unmerged chart work. The
+    environment file's own comment should say what to delete it for.
+    """
+    if not chart_ref:
+        return
+    try:
+        actual = subprocess.run(
+            ["git", "-C", str(chart_dir), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print(f"warning: cannot read {chart_dir}'s git ref; expected {chart_ref!r}", file=sys.stderr)
+        return
+    if actual != chart_ref:
+        raise SystemExit(
+            f"This environment needs siros-id-stack on {chart_ref!r}, but {chart_dir} is on "
+            f"{actual!r}.\n\n"
+            f"    git -C {chart_dir} fetch origin {chart_ref} && "
+            f"git -C {chart_dir} checkout {chart_ref}\n\n"
+            "Rendering against the wrong ref does not fail here - it quietly produces a config "
+            "missing whatever that branch adds."
+        )
+
+
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
@@ -686,7 +719,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            rical_provider_url: str = None, rical_root_certificate_pem: str = None,
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
-           env_values: dict = None, bbs_secret_key: str = None) -> list:
+           env_values: dict = None, bbs_secret_key: str = None,
+           chart_ref: str = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -695,6 +729,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     """
     if target == "fly" and not env:
         raise ValueError("target 'fly' requires env")
+
+    assert_chart_ref(chart_dir, chart_ref)
 
     out_dir = Path(out_dir) if out_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered"
     if target == "fly":
