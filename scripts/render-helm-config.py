@@ -73,6 +73,45 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 WALLET_BACKEND_SECRETS = ["jwtSecret", "adminToken"]
 
 
+# Markers that must be present in ../siros-id-stack for values-base.yaml to
+# render at all. A chart older than these fails deep inside `helm template`
+# with an error naming one of the chart's own template lines and no hint that
+# the reader's checkout is simply out of date - which is exactly what happened
+# the first time someone pulled this repo without pulling the chart:
+#
+#   execution error at (siros-id-stack/templates/03-cred-common.yaml:12:24):
+#   Object must contain non-empty .data or .file property
+#
+# (An mdoc credential type declares `mdocSchema` and no `vctm`, so the old
+# template's unconditional dataOrFile on `.vctm` got nil.)
+REQUIRED_CHART_MARKERS = [
+    ("templates/_helpers.tpl", "siros-id.vc.renderConfig",
+     "per-service config rendering with an extraConfig escape hatch"),
+    ("templates/_helpers.tpl", "mdocSchema",
+     "ISO 18013-5 mdoc credential types (features.credentialTypes[].mdocSchema)"),
+]
+
+
+def check_chart_supported(chart_dir: Path):
+    """Fail early and legibly when ../siros-id-stack predates what this repo needs."""
+    missing = [
+        (marker, why) for rel, marker, why in REQUIRED_CHART_MARKERS
+        if marker not in (chart_dir / rel).read_text(errors="ignore")
+    ] if (chart_dir / "templates" / "_helpers.tpl").is_file() else []
+    if not missing:
+        return
+    raise SystemExit(
+        f"\nERROR: the chart at {chart_dir} is too old for this repo's values-base.yaml.\n"
+        + "".join(f"  missing: {m}  ({why})\n" for m, why in missing)
+        + "\n  Update it:\n"
+          "    make setup                       # fast-forwards it if it is on main\n"
+          f"    git -C {chart_dir} pull          # or by hand\n"
+          "\n  If it is deliberately checked out to a branch or an older commit, either\n"
+          "  switch it back to main or point elsewhere with SIROS_ID_STACK_PATH=<dir>.\n"
+          "  Without this, `helm template` fails inside the chart's own templates with\n"
+          "  no indication that the checkout is the problem.")
+
+
 def gen_secret(path: Path, length: int = 32) -> str:
     """Idempotent: an existing generated secret is reused, never rotated in place."""
     if path.exists():
@@ -637,6 +676,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # it references VCTM/MDDL/bootstrapping documents by repo-relative path,
     # and helm's Files.Get cannot read outside the chart directory, so those
     # are inlined as `data` first (see vc_render.inline_file_refs).
+    check_chart_supported(Path(chart_dir))
+
     base = yaml.safe_load((SIROSID_DEV_ROOT / "values-base.yaml").read_text())
     vc_render.inline_file_refs(base)
     vc_render.expand_presentation_request_templates(base)
