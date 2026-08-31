@@ -1175,7 +1175,7 @@ render-helm-config: ## Render wallet-backend/PDP/vc-services config from the sir
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [RICAL_PROVIDER_URL=url] [RICAL_ROOT_CERT=path] [WALLET_ATTESTATION=no, default: yes] [DC_API_ENABLE=true|false]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [REGION=<code>] [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [RICAL_PROVIDER_URL=url] [RICAL_ROOT_CERT=path] [WALLET_ATTESTATION=no, default: yes] [DC_API_ENABLE=true|false]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -1197,7 +1197,8 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		$(if $(RICAL_PROVIDER_URL),--rical-provider-url "$(RICAL_PROVIDER_URL)") \
 		$(if $(RICAL_ROOT_CERT),--rical-root-cert "$(RICAL_ROOT_CERT)") \
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation) \
-		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)")
+		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)") \
+		$(if $(REGION),--region "$(REGION)")
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \

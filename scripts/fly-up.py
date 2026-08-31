@@ -63,7 +63,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from fly_common import (  # noqa: E402
-    COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
+    COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION, MINI_OIDC_APIGW_CLIENT_ID,
+    MINI_OIDC_APIGW_CLIENT_SECRET,
     app_exists, app_name, app_url, assetlinks_json,
     ensure_app, ensure_running, ensure_secret, existing_secret_names, is_local_docker_image, machine_private_ip,
     mini_oidc_config, network_name, push_local_image, wait_for_checks, wallet_frontend_conf,
@@ -178,7 +179,7 @@ def generate_android_assets(docs: list, out_dir: Path, identities: list) -> Path
 
 def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_dir: Path, pki_dir: Path,
                       assetlinks_path: Path, image_overrides: dict, mongo_password: str, conformance: bool = False,
-                      wallet_attestation: bool = False):
+                      wallet_attestation: bool = False, region: str = FLY_REGION):
     name = comp["name"]
     app = app_name(env, name)
     ensure_app(app, network=network_name(env), allocate_public_ips=(name == "conformance"))
@@ -276,7 +277,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # "public port -> http_service" computation above would otherwise do.
         primary_public_port = None
         tcp_passthrough_port = 8443
-    write_fly_toml(toml_path, app, primary_public_port, process_cmd=process_cmd,
+    write_fly_toml(toml_path, app, primary_public_port, region=region, process_cmd=process_cmd,
                     health_check_path=comp["checks"], memory_mb=memory_mb, cpus=cpus,
                     internal_check=comp.get("internal_check"), tcp_passthrough_port=tcp_passthrough_port)
 
@@ -644,6 +645,24 @@ def _persistent_secret(out_dir: Path, name: str) -> str:
     return value
 
 
+def _personal_region() -> str:
+    """This developer's own default Fly region, from a gitignored `.fly-region`.
+
+    Contributors are in different places, and a scratch environment should
+    come up near whoever is using it. Same per-developer-dotfile convention as
+    .android-apps / .env.android. A named environment's own `region:` still
+    wins, so a shared one like gdc does not drift depending on who deployed it.
+    """
+    path = SIROSID_DEV_ROOT / ".fly-region"
+    if not path.is_file():
+        return ""
+    for line in path.read_text().splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            return line
+    return ""
+
+
 def register_vc_services(env: str, admin_token: str):
     """Mirrors the local Makefile's register-vc-services target: without
     this, wallet-backend has zero registered issuers/verifiers even though
@@ -838,6 +857,19 @@ def main():
 
     dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
+    # Region, most specific first:
+    #   --region / REGION=      this run only
+    #   environments/<name>.yaml  a named, shared environment pins its own, so
+    #                             everyone redeploying gdc lands in one place
+    #   $FLY_REGION               the developer's own default, for scratch
+    #                             environments that have no file (alice, bob)
+    #   fly_common.FLY_REGION     the built-in fallback
+    # primary_region is a preference, not a constraint, and changing it does
+    # not move machines that already exist - see fly_common.FLY_REGION.
+    region = (args.region or env_cfg["region"] or os.environ.get("FLY_REGION")
+              or _personal_region() or FLY_REGION)
+    print(f"region: {region}")
+
     cli_image_overrides = {}
     for pair in args.images.split(","):
         pair = pair.strip()
@@ -926,7 +958,8 @@ def main():
         for comp in all_components:
             print(f"--- {comp['name']} ---")
             deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path,
-                              image_overrides, mongo_password, args.conformance, args.wallet_attestation)
+                              image_overrides, mongo_password, args.conformance, args.wallet_attestation,
+                              region=region)
             deployed.append(comp["name"])
     except subprocess.CalledProcessError as e:
         # No auto-rollback - components deployed so far are left running

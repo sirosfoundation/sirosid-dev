@@ -41,6 +41,12 @@ Schema (all keys optional):
     android_apps: ["package=fingerprint", ...]
     conformance: bool
     wallet_attestation: bool
+    region: str                    # Fly region for this environment's machines
+                                   # (arn, fra, iad, ...). A named, shared
+                                   # environment pins its own so everyone
+                                   # redeploying it lands in the same place;
+                                   # without one, $FLY_REGION then the built-in
+                                   # default apply. Only affects NEW machines.
     rical_provider_url: url        # RICAL (ISO 18013-5 2nd ed. Annex F) reader-trust list
     rical_root_cert: path          # relative to sirosid-dev root - PEM signer of the RICAL above
     dc_api_enable: "true" | "false"   # verifier.digital_credentials.enable override; "" (default) leaves
@@ -83,7 +89,7 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
               "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
-_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable")
+_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region")
 _KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values"))
 
 

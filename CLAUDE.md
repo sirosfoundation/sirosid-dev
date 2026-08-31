@@ -128,6 +128,21 @@ change quietly dropping a field this repo depends on.
   no manual `docker tag`/`push`/`flyctl auth docker` needed. A fully-qualified
   ref (has a `/`) is always passed through untouched even if it's also
   cached locally.
+- `REGION=<code>` — where this environment's machines go (`arn`, `fra`, `iad`,
+  …; `flyctl platform regions` lists them). Contributors are in different
+  places, so the usual way to set this is once, per developer, in a gitignored
+  `.fly-region` (copy `.fly-region.example`) — not on every command. Most
+  specific wins: `REGION=` → `environments/<name>.yaml`'s `region:` →
+  `$FLY_REGION` → `.fly-region` → `arn`.
+
+  A **named, shared** environment should pin `region:` in its own file, so it
+  doesn't land somewhere different depending on who redeployed it; the
+  personal default is for scratch environments (`ENV=alice`) that have no file.
+
+  `primary_region` is a preference, not a constraint — it's where Fly places
+  the *first* machine. Changing it does **not** move machines that already
+  exist, so relocating a live environment means `fly-down` then `fly-up`, which
+  loses mongodb's data (no volume).
 - `ANDROID_APPS=` — same as local (see above).
 - `CONFORMANCE=yes` — deploys 3 extra apps (`conformance-mongodb`,
   `conformance-server`, `conformance` nginx front) after the core 10.

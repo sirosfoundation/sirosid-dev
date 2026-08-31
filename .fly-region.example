@@ -1,0 +1,18 @@
+# Your own default Fly region for scratch environments (`make fly-up ENV=alice`).
+# Copy to `.fly-region` - that name is gitignored, this one is not.
+#
+# Contributors are in different places; a scratch environment should come up
+# near whoever is using it. `flyctl platform regions` lists them all. Common:
+#   arn  Stockholm      fra  Frankfurt     lhr  London
+#   iad  Virginia       sjc  San Jose      ord  Chicago
+#   nrt  Tokyo          syd  Sydney        gru  Sao Paulo
+#
+# Overridden, most specific first, by:
+#   make fly-up ENV=x REGION=fra     just this run
+#   environments/<x>.yaml `region:`  a shared, named environment pins its own,
+#                                    so it does not drift with whoever deploys
+#   $FLY_REGION                      an ad-hoc shell default
+#
+# Only affects where NEW machines are placed - it does not move an environment
+# that already exists.
+arn

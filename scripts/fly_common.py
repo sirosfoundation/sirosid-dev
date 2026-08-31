@@ -47,6 +47,16 @@ MINI_OIDC_IMAGE = _values_fly_image(
     "miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.4"
 )
 FLY_ORG = "sirosfoundation"
+# Default only - override per environment with `region:` in
+# environments/<name>.yaml, or `make fly-up ENV=x REGION=<code>`. Nothing else
+# pins a region: apps are created without one, no machine is placed with an
+# explicit --region, and there are no volumes. It reaches exactly one place,
+# write_fly_toml's primary_region.
+#
+# primary_region states a PREFERENCE, not a constraint - it is where Fly puts
+# the first machine. Changing it does not move machines that already exist, so
+# moving a live environment means `make fly-down ENV=x` then `fly-up` again
+# (which loses mongodb's data, since it has no volume).
 FLY_REGION = "arn"
 
 # mini-oidc's OIDC client registered for vc-apigw's auth_providers.oidc (PID/EHIC
@@ -465,7 +475,8 @@ def ensure_secret(app: str, key: str, value: str, force: bool = False):
 
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
                     health_check_path: str | None = None, memory_mb: int = 256, cpus: int = 1,
-                    internal_check: dict | None = None, tcp_passthrough_port: int | None = None):
+                    internal_check: dict | None = None, tcp_passthrough_port: int | None = None,
+                    region: str = FLY_REGION):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -486,7 +497,7 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
     """
     lines = [
         f"app = '{app}'",
-        f"primary_region = '{FLY_REGION}'",
+        f"primary_region = '{region}'",
         "",
     ]
     if process_cmd is not None:
