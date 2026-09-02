@@ -209,7 +209,31 @@ images:
   # "x509_hash" client_id_scheme and the "mdoc-openid4vp://" URI scheme -
   # needed for a NIST reference verifier that used both during Geneva 2026
   # interop testing.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.15.2"
+  #
+  # 0.15.2 -> 0.16.0: #302 restores the `client_status` (WIA) and
+  # `key_storage_status` (KA) claims that WE BUILD CS-04 §7.1.2/§7.1.3
+  # require on every Wallet Unit Attestation. They were removed in 0.10.0
+  # (#261) because this wallet provider implements no revocation-chaining -
+  # true, but not a licence to omit the claims: a CS-04-conformant PID or
+  # Attestation Provider rejects a WUA without them outright. The WE BUILD
+  # ITB testbed does exactly that ("Key Attestation missing required
+  # key_storage_status"), which is what blocked the ITB run. Both claims now
+  # point at the wallet provider's own Token Status List, served all-VALID
+  # and never revoked - the short WIA/KA lifetimes are still what actually
+  # bound exposure here, so this changes what a WUA *says*, not what it
+  # guarantees.
+  #
+  # Also in 0.16.0: the KA emitted no key_storage/user_authentication/
+  # certification at all when a client omitted security_properties. All
+  # three are required on every KA, so each now falls back to the weakest
+  # ISO 18045 value rather than being absent.
+  #
+  # Nothing here needs a config change on Fly: status_list defaults to
+  # enabled and derives its URI from server.base_url, which the chart
+  # already sets to the public wallet-backend hostname
+  # (siros-id-stack/templates/04-wallet-backend.yaml), so the URI a WUA
+  # references is publicly resolvable.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.16.0"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
