@@ -1,0 +1,46 @@
+# go-trust reading the trust anchors siros-wrpac-tool publishes.
+#
+# Both list formats are configured on purpose. A deployment publishes the same
+# two anchors as an ETSI TS 119 602 LoTE and an ETSI TS 119 612 TSL, and which
+# one a given consumer speaks is not something this stack should decide for it -
+# wiring both here means the local stack exercises the same two paths a real
+# deployment has to support.
+
+server:
+  host: 0.0.0.0
+  port: 6001
+
+registries:
+  # ETSI TS 119 602 - the newer JSON list the EUDI wallet ecosystem is moving to.
+  lote:
+    enabled: true
+    name: wrpac-lote
+    description: SIROS test deployment trust anchors (TS 119 602)
+    sources:
+      - http://wrpac-registrar:8080/lote.json
+    # The list is signed by the registrar, whose certificate chains to the
+    # Access CA that is itself in the list. Verification is off here because a
+    # local stack regenerates that CA on demand and there is nowhere
+    # independent to anchor it - a real deployment must set this true.
+    verify_jws: false
+    fetch_timeout: 10s
+    refresh_interval: 30s
+
+  # ETSI TS 119 612 - the XML list every existing eIDAS trusted-list consumer
+  # already speaks.
+  etsi:
+    enabled: true
+    name: wrpac-tsl
+    description: SIROS test deployment trust anchors (TS 119 612)
+    # tsl_files, not tsl_urls, and deliberately so: go-trust's config-file path
+    # builds etsi.TSLConfig without ever copying TSLURLs across (nor
+    # allow_network_access, follow_refs, max_ref_depth, fetch_timeout or
+    # user_agent), so a tsl_urls entry here is silently ignored and the registry
+    # then fails to start with "no trust data loaded". The same document is
+    # bind-mounted into the container by docker-compose.wrpac.yml.
+    #
+    # Do not "fix" this back to tsl_urls without checking cmd/gt/main.go first.
+    tsl_files:
+      - /app/tsl.xml
+    # Same reasoning as verify_jws above.
+    require_signature: false

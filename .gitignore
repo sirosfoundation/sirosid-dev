@@ -63,3 +63,12 @@ fixtures/rendered-secrets/
 # Python bytecode cache
 __pycache__/
 *.pyc
+
+# siros-wrpac-tool deployment: holds the Access CA key, the CRL number and the
+# status list indices. Regenerated locally by `make wrpac-pki`; never shared,
+# because reusing a status list index would transfer a previous holder's
+# revocation to a new certificate.
+fixtures/wrpac-pki/
+fixtures/wrpac-clients/*.key
+fixtures/wrpac-clients/*.csr
+fixtures/wrpac-clients/*.issued/
