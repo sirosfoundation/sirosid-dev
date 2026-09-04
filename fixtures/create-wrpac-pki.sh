@@ -45,7 +45,7 @@ fi
 
 if [ -z "${WRPAC_TOOL}" ] || [ ! -x "${WRPAC_TOOL}" ]; then
     cat >&2 <<MSG
-siros-wrpac-tool not found.
+siros-wrpac-tool not found (v0.2.0 or later is required for the tsl command).
 
 Build it from the sibling checkout:
 
@@ -96,6 +96,14 @@ echo "Reconciling client specs against the register..."
 # given consumer speaks is not something this stack should have to decide.
 echo "Publishing trust anchors as a LoTE (TS 119 602)..."
 "${WRPAC_TOOL}" lote -d "${WRPAC_DIR}" --distribution-point "${BASE_URL}/lote.json"
+
+# Requires siros-wrpac-tool v0.2.0+. Checked rather than assumed: an older
+# build fails here with an unknown-command error after having already created a
+# deployment, which reads as a broken script rather than an old binary.
+if ! "${WRPAC_TOOL}" tsl --help >/dev/null 2>&1; then
+    echo "siros-wrpac-tool has no 'tsl' command - v0.2.0 or later is required." >&2
+    exit 1
+fi
 
 echo "Publishing trust anchors as a TSL (TS 119 612)..."
 "${WRPAC_TOOL}" tsl -d "${WRPAC_DIR}" --distribution-point "${BASE_URL}/tsl.xml"

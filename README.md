@@ -260,6 +260,7 @@ register, not something openssl can mint — so the material comes from
 [siros-wrpac-tool](https://github.com/sirosfoundation/siros-wrpac-tool):
 
 ```sh
+# v0.2.0 or later: the tsl command arrived there
 git clone git@github.com:sirosfoundation/siros-wrpac-tool.git ../siros-wrpac-tool
 make -C ../siros-wrpac-tool build
 
