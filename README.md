@@ -247,6 +247,42 @@ adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.siros.sdk.sample
 | `PDP=mock` | Legacy mock-trust-pdp (no go-trust) |
 | `PDP=helm` | go-trust whitelist + wallet-backend, both configured from config files rendered off the [siros-id-stack](https://github.com/sirosfoundation/siros-id-stack) chart (see `scripts/render-helm-config.py`) instead of hand-maintained env vars/flags. Requires a sibling `../siros-id-stack` checkout. This is the transitional step towards aligning sirosid-dev's config with the production Helm chart — over time the other PDP modes' hand-maintained env vars are meant to be replaced by this path, not kept alongside it indefinitely. |
 
+### WRPAC/WRPRC registration (CIR (EU) 2025/848)
+
+Under CIR (EU) 2025/848 issuers and verifiers alike are **registered
+wallet-relying parties**: each holds an access certificate (**WRPAC**) saying
+who it is and a registration certificate (**WRPRC**) saying what it registered
+for. The wallet checks the WRPRC before requesting issuance (ARF v3.0.0
+§6.6.2.3) or releasing attributes.
+
+`create-pki.sh` cannot produce these — a WRPRC is a signed JWT against a
+register, not something openssl can mint — so the material comes from
+[siros-wrpac-tool](https://github.com/sirosfoundation/siros-wrpac-tool):
+
+```sh
+# v0.2.0 or later: the tsl command arrived there
+git clone git@github.com:sirosfoundation/siros-wrpac-tool.git ../siros-wrpac-tool
+make -C ../siros-wrpac-tool build
+
+make wrpac-pki
+docker compose -f docker-compose.test.yml -f docker-compose.wrpac.yml up -d
+```
+
+This mints a WRPAC and WRPRC for the local `vc-issuer` and `vc-verifier` from
+the specs in `fixtures/wrpac-clients/`, and publishes the deployment's trust
+anchors in **both** list formats — an ETSI TS 119 602 LoTE and an ETSI TS 119
+612 TSL — because go-trust reads either and a real deployment has to support
+both. `go-trust-wrpac` on port 9099 is configured with both registries.
+
+| File | Description |
+|------|-------------|
+| `fixtures/wrpac-clients/*.yaml` | Per-party registration specs; the filename stem is the client id |
+| `fixtures/wrpac-pki/` | The deployment: CA key, register, CRL number, status list indices. Gitignored and **must persist** — reusing a status index would transfer a previous holder's revocation to a new certificate |
+| `fixtures/go-trust-wrpac.yaml` | go-trust with both the `lote` and `etsi` registries pointed at the published anchors |
+
+Each client keeps its own key: only a CSR reaches the deployment, which
+certifies the public key and never holds the private half.
+
 ### AS (Authorization Server) Rules
 
 `AS_RULES=` selects the SPOCP policy wallet-backend's built-in Authorization

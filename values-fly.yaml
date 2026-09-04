@@ -140,11 +140,19 @@ images:
   # live 2026-08-31 against gdc: adding geneva2026.mdoc.online's root without
   # this fix broke trust for verifier.multipaz.org as a side effect.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.20.5 -
+  # Bumped from 0.20.5 to 0.20.6: 0.20.5 predates go-trust#159 - configuring
+  # the ETSI TSL registry from a config file silently dropped tsl_urls (and
+  # follow_refs, max_ref_depth, allow_network_access, user_agent and
+  # fetch_timeout), so the registry started with nothing to load and exited
+  # with "no trust data loaded" while the config plainly named a TSL. Only
+  # tsl_files worked. Needed here for the WRPAC/WRPRC trust anchors, which are
+  # published as both a LoTE and a TSL.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.20.6 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here. (Chart's own pin is still 0.9.0 as of this
   # commit, so it has not caught up.)
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.5"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.6"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo

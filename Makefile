@@ -1138,6 +1138,18 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 	@echo "$(GREEN)Generating PKI...$(NC)"
 	cd fixtures && ./create-pki.sh
 
+# WRPAC/WRPRC material comes from siros-wrpac-tool, a separate repo: under CIR
+# (EU) 2025/848 issuers and verifiers alike are registered wallet-relying
+# parties, each holding an access certificate and a registration certificate.
+# create-pki.sh cannot produce these - a WRPRC is a signed JWT against a
+# register, not something openssl can mint.
+#
+# Publishes the anchors as both a TS 119 602 LoTE and a TS 119 612 TSL, because
+# go-trust reads either and a real deployment has to support both.
+wrpac-pki: ## Generate WRPAC/WRPRC trust anchors and client certificates (needs ../siros-wrpac-tool)
+	@echo "$(GREEN)Generating WRPAC/WRPRC material...$(NC)"
+	cd fixtures && ./create-wrpac-pki.sh
+
 # =============================================================================
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
 # =============================================================================

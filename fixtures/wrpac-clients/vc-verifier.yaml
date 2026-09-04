@@ -1,0 +1,24 @@
+# The local vc-verifier as a registered wallet-relying party.
+#
+# The verifier side of the same mechanism: the wallet checks this WRPRC before
+# releasing attributes to a presentation request.
+name: SIROS Test Verifier
+organization: SIROS Foundation
+
+identifier: VATSE-556677889902
+country: SE
+
+support_uri: http://vc-verifier.localhost:9001/support
+email: support@vc-verifier.localhost
+
+subject_kind: legal
+assurance: normalised
+
+csr: vc-verifier.csr
+
+# A verifier requests attributes rather than issuing them, so it holds the
+# general service provider entitlement and no provides_attestations.
+entitlements:
+  - https://uri.etsi.org/19475/Entitlement/Service_Provider
+
+validity: 8760h
