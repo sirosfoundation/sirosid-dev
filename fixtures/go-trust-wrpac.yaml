@@ -32,15 +32,12 @@ registries:
     enabled: true
     name: wrpac-tsl
     description: SIROS test deployment trust anchors (TS 119 612)
-    # tsl_files, not tsl_urls, and deliberately so: go-trust's config-file path
-    # builds etsi.TSLConfig without ever copying TSLURLs across (nor
-    # allow_network_access, follow_refs, max_ref_depth, fetch_timeout or
-    # user_agent), so a tsl_urls entry here is silently ignored and the registry
-    # then fails to start with "no trust data loaded". The same document is
-    # bind-mounted into the container by docker-compose.wrpac.yml.
-    #
-    # Do not "fix" this back to tsl_urls without checking cmd/gt/main.go first.
-    tsl_files:
-      - /app/tsl.xml
+    # Fetched over HTTP like the LoTE beside it. Requires go-trust 0.20.6+:
+    # earlier versions dropped tsl_urls when the ETSI registry was configured
+    # from a file, and started with nothing to load (go-trust#159).
+    tsl_urls:
+      - http://wrpac-registrar:8080/tsl.xml
+    allow_network_access: true
+    fetch_timeout: 10s
     # Same reasoning as verify_jws above.
     require_signature: false

@@ -42,10 +42,12 @@ services:
       - e2e-test-network
 
   go-trust-wrpac:
-    build:
-      context: ${GO_TRUST_PATH:-../go-trust}
-      dockerfile: Dockerfile
-    image: go-trust-e2e-test:local
+    # The released image rather than a local build, unlike the other go-trust
+    # services here: this config needs 0.20.6+ for tsl_urls to be honoured
+    # (go-trust#159), and building from a sibling checkout would silently pick
+    # up whatever that checkout happens to be on - reproducing the very bug
+    # this overlay is meant to exercise past.
+    image: ghcr.io/sirosfoundation/go-trust:0.20.6
     container_name: go-trust-wrpac-e2e-test
     ports:
       - "9099:6001"
@@ -54,11 +56,6 @@ services:
       - GO_TRUST_EXTERNAL_URL=http://localhost:9099
     volumes:
       - ./fixtures/go-trust-wrpac.yaml:/app/go-trust-wrpac.yaml:ro
-      # The TSL is mounted rather than fetched: go-trust ignores tsl_urls when
-      # the registry is configured from a file. See fixtures/go-trust-wrpac.yaml.
-      # The LoTE alongside it *is* fetched over HTTP, which is why the registrar
-      # is still a dependency.
-      - ./fixtures/wrpac-pki/public/tsl.xml:/app/tsl.xml:ro
     depends_on:
       wrpac-registrar:
         condition: service_healthy
