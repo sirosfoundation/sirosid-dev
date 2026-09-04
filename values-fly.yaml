@@ -233,7 +233,25 @@ images:
   # already sets to the public wallet-backend hostname
   # (siros-id-stack/templates/04-wallet-backend.yaml), so the URI a WUA
   # references is publicly resolvable.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.16.0"
+  #
+  # 0.16.0 -> 0.17.0: #304 adds the engine-driven `request_attestation`
+  # sign step. The per-flow OAuth-Client-Attestation PoP must name the
+  # issuer's authorization server as `aud`, which is only known after the
+  # engine has resolved the offer and issuer metadata - so the engine now
+  # asks the client for WIA + PoP at that point instead of expecting them
+  # up front on FlowStart (still honoured when present). This is what lets
+  # wallet-frontend (wallet-frontend#196) attest at all: a browser cannot
+  # fetch a cross-origin credential_offer_uri itself. Client compatibility:
+  # an SDK/frontend build that predates the action never answers, and the
+  # engine gives up after 10s and proceeds unattested - so older native
+  # app builds keep working against this env with a one-off delay per
+  # issuance until siros-sdk-kotlin#154 / siros-sdk-swift#122 ship. The
+  # stacked follow-ups that drop the SDKs' own discovery (kotlin#156,
+  # swift#123) require an env on this version or newer.
+  #
+  # No config change needed here: the step is unconditional in the engine
+  # and has no knobs.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.17.0"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
