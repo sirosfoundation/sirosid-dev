@@ -54,6 +54,7 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 --target fly's secrets live in Fly's own secret store (see fly_common.py).
 """
 import argparse
+import copy
 import secrets
 import string
 import subprocess
@@ -793,6 +794,16 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # anything above it - see scripts/env_config.py. Applies to both targets:
     # `make up ENV=<name>` and `make fly-up ENV=<name>` layer the same file.
     if env_values:
+        # Preprocessed exactly like values-base.yaml above, and for the same
+        # reason: an environment may declare its own credential type, and
+        # `vctm: {file: ...}` is a path relative to THIS repo. Helm's
+        # Files.Get resolves inside the chart, finds nothing, and returns an
+        # empty string - so the document renders as a zero-byte file with no
+        # error anywhere, and the first sign of trouble is a service
+        # panicking at startup with "unexpected end of JSON input".
+        env_values = copy.deepcopy(env_values)
+        vc_render.inline_file_refs(env_values)
+        vc_render.expand_presentation_request_templates(env_values)
         env_values_path = out_dir / "values.environment.yaml"
         env_values_path.write_text(yaml.dump(env_values, sort_keys=False))
         values_files.append(env_values_path)
