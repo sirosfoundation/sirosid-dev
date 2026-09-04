@@ -1,0 +1,119 @@
+# Persisted config for `make fly-up ENV=bbs` - see scripts/env_config.py's
+# module doc for the full schema/precedence. Update this file (not just the
+# CLI flags) whenever bbs's intended state changes, so the next `make fly-up
+# ENV=bbs` - by anyone, in any session - reproduces it without having to
+# remember every flag from scratch.
+#
+# Purpose: exercise blind BBS issuance and presentation end to end. Copied
+# from gdc.yaml and then stripped: gdc exists to demonstrate Vega ZK and
+# real BLE/NFC proximity against the Geneva 2026 interop event, and none of
+# that trust configuration is needed here. Kept separate rather than added
+# to gdc precisely so that testing one cannot disturb the other.
+#
+# BEFORE THE FIRST DEPLOY
+#
+#   make bbs-keys        # generates fixtures/vc-pki/bbs_issuer.{sk,pk}
+#
+# That is the whole of it - nothing has to be pasted in here afterwards.
+# Both halves are read from the generated files at render time, so this file
+# stays the same for everyone while each developer's keys stay their own.
+# The pair is checked at issuer startup, so a mismatch fails the boot rather
+# than every issuance.
+
+# TEMPORARY - delete this line when siros-id-stack#5 merges, at which point
+# main has the chart's `issuer.core.bbs` values and this environment renders
+# against it like every other one.
+#
+# Until then, rendering against main does not fail: it quietly produces an
+# issuer config with no `bbs:` section at all, so the deploy succeeds and
+# every `format: jwp` issuance then fails somewhere that says nothing about
+# a chart version. Asserted rather than checked out, since siros-id-stack is
+# read-only here and may hold someone else's work.
+chart_ref: feat/issuer-bbs
+
+# The issuer's blind BBS key pair, both read at render time from the files
+# `make bbs-keys` writes.
+#
+# The public half is inlined into the chart's issuer.core.bbs.publicKey; it
+# is not secret. The secret half is not: it is handed to the renderer as a
+# secret override, which substitutes the chart's own ${BBS_SECRET_KEY}
+# placeholder - the same thing Kubernetes' secrets-renderer initContainer
+# does - so it never lands in a values file or a rendered ConfigMap.
+bbs_public_key_file: fixtures/vc-pki/bbs_issuer.pk
+
+# A path rather than an inline value because
+# this file is committed and that key is the whole of the issuer's BBS
+# signing capability. fixtures/vc-pki/ is gitignored.
+bbs_secret_key_file: fixtures/vc-pki/bbs_issuer.sk
+
+# IMAGES ARE REQUIRED HERE, and the default images will not do.
+#
+# A stock vc-issuer is built CGO_ENABLED=0 with no build tags, which
+# compiles pkg/bbs's stub: every call returns ErrUnavailable. A `format:
+# jwp` credential configuration would resolve, pass every check in the
+# APIGW and the issuer service, and then fail at the signer. Wired and dead.
+#
+# Build from SUNET/vc's feat/bbs-issuer-native (PR #616), which links
+# zk-cred-bbs into the static binary:
+#
+#   cd ../vc
+#   make bbs-native-lib          # stages the crate; needs Rust + network
+#   make docker-build-issuer VERSION=bbs-<date>
+#   docker tag ... registry.fly.io/sirosid-bbs-vc-issuer:bbs-<date>
+#   fly deploy --image ... -a sirosid-bbs-vc-issuer
+#
+# All four vc services share one config file unmarshaled into the same
+# model.Cfg, so they must be bumped together: leaving one on an older binary
+# while another expects a newer config shape crash-loops it on startup.
+#
+# TODO: fill these in once the first BBS-capable images are pushed. Left
+# empty deliberately rather than pointing at the stock images, which would
+# deploy cleanly and then refuse every jwp issuance.
+images: {}
+
+# Free-form chart values, deep-merged last - see scripts/env_config.py and
+# environments/README.md.
+values:
+  issuer:
+    core:
+      # Typed chart values, not `extraConfig`. siros-id-stack models blind
+      # BBS as of chart 1.1.0, so this environment does not have to reach
+      # around the chart to configure it - which also means a missing public
+      # key fails when the chart renders rather than when the issuer boots.
+      bbs:
+        enabled: true
+        # publicKey is filled in from bbs_public_key_file above, at render
+        # time. A wallet needs it too and is handed it out of band: nothing
+        # publishes a BBS issuer key yet, since OpenID4VCI issuer metadata
+        # has no member for one.
+        #
+        # 24h rather than the chart's 8760h default: a test environment's
+        # credentials should expire on their own rather than linger.
+        defaultValidity: "24h"
+
+  # `features.credentialTypes`, not a top-level key: that is where the chart
+  # reads it (values-base.yaml puts it there too). Written at the top level
+  # it is silently ignored rather than rejected.
+  #
+  # One credential type, deliberately small. Every claim is one the flow
+  # needs - four the issuer supplies, one the wallet commits to and the
+  # issuer never sees. More claims make the message vector longer and the
+  # test slower without testing anything new.
+  features:
+    credentialTypes:
+      pid_bbs:
+        vct: "urn:siros:pid:bbs:1"
+        # Not a variant of dc+sd-jwt despite sharing the SD-JWT VC data model.
+        # The container is different - JWP has its own issued and presented
+        # forms, and selective disclosure is BBS itself rather than `_sd`
+        # digests - which is why it needs its own format identifier. "jwp" is
+        # what the native SDKs already record for it.
+        format: jwp
+        vctm: {file: fixtures/vc-metadata/vctm_pid_bbs.json}
+        issuance:
+          authProvider: oidc
+          # assertion, not datastore: this type's issuer-supplied claims are
+          # exactly what mini-oidc can assert, so there is nothing to look up.
+          source: assertion
+          authOptions:
+            claims: [given_name, family_name]

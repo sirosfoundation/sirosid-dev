@@ -62,6 +62,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
+from vc_render import _deep_merge as deep_merge  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
     MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
@@ -97,7 +98,8 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                     wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
                     extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
                     rical_provider_url: str = None, rical_root_certificate_pem: str = None,
-                    dc_api_enable: str = "", env_values: dict = None) -> list:
+                    dc_api_enable: str = "", env_values: dict = None,
+                    bbs_secret_key: str = None, chart_ref: str = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -123,7 +125,9 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    # verifier the way it already reached wallet-backend.
                    zk_circuits_sources=zk_circuits_sources,
                    dc_api_enable=dc_api_enable,
-                   env_values=env_values)
+                   env_values=env_values,
+                   bbs_secret_key=bbs_secret_key,
+                   chart_ref=chart_ref)
     return docs
 
 
@@ -861,6 +865,50 @@ def main():
 
     dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
 
+    # The issuer's blind BBS secret key, read from a gitignored local file.
+    #
+    # It cannot live in environments/<name>.yaml: that file is committed and
+    # this is the whole of the issuer's BBS signing capability. It goes to
+    # the renderer as a secret OVERRIDE rather than into the values tree,
+    # which is how the chart already models it - issuer-core's
+    # secrets.yaml.template carries ${BBS_SECRET_KEY}, and render_vc
+    # substitutes it exactly the way Kubernetes' secrets-renderer
+    # initContainer would. So the key never reaches a values file or a
+    # rendered ConfigMap on either target.
+    bbs_secret_key = None
+    bbs_secret_key_file = env_cfg["bbs_secret_key_file"] or None
+    if bbs_secret_key_file:
+        path = Path(bbs_secret_key_file)
+        if not path.is_absolute():
+            path = SIROSID_DEV_ROOT / path
+        if not path.exists():
+            raise SystemExit(
+                f"bbs_secret_key_file {path} does not exist. Run `make bbs-keys` to generate the "
+                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
+            )
+        bbs_secret_key = path.read_text().strip()
+
+    # The public half, by contrast, goes straight into the values tree: it is
+    # not secret, and the chart wants it as issuer.core.bbs.publicKey. Read
+    # from a file for the same reason the secret is - `make bbs-keys` then
+    # covers both, and environments/<name>.yaml stays free of a key that
+    # differs per developer.
+    env_values = env_cfg.get("values") or {}
+    bbs_public_key_file = env_cfg["bbs_public_key_file"] or None
+    if bbs_public_key_file:
+        path = Path(bbs_public_key_file)
+        if not path.is_absolute():
+            path = SIROSID_DEV_ROOT / path
+        if not path.exists():
+            raise SystemExit(
+                f"bbs_public_key_file {path} does not exist. Run `make bbs-keys` to generate the "
+                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
+            )
+        env_values = deep_merge(
+            env_values,
+            {"issuer": {"core": {"bbs": {"publicKey": path.read_text().strip()}}}},
+        )
+
     # Region. Every level here is an explicit pin; if none is set we take
     # Fly's own suggestion, which is the right default when contributors are
     # in different places. Most specific first:
@@ -930,7 +978,8 @@ def main():
                            # block, deep-merged over everything else - the
                            # escape hatch for anything the typed keys above
                            # don't cover (see scripts/env_config.py).
-                           env_cfg.get("values") or {})
+                           env_values, bbs_secret_key,
+                           env_cfg["chart_ref"] or None)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

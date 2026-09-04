@@ -54,6 +54,7 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 --target fly's secrets live in Fly's own secret store (see fly_common.py).
 """
 import argparse
+import copy
 import secrets
 import string
 import subprocess
@@ -678,6 +679,39 @@ def build_toggles_overlay(zk_circuits_sources: list = None, dc_api_enable: str =
     return {"verifier": verifier} if verifier else {}
 
 
+
+def assert_chart_ref(chart_dir: Path, chart_ref: str) -> None:
+    """Stop if ../siros-id-stack is not on the ref this environment needs.
+
+    Asserted rather than checked out. That repo is consumed read-only and
+    may hold someone else's work in progress, so silently moving it is worse
+    than refusing - and a wrong checkout does not fail loudly on its own: it
+    renders a config that is merely missing whatever the branch adds, which
+    then surfaces as a puzzling runtime error in a service.
+
+    Only used while an environment depends on unmerged chart work. The
+    environment file's own comment should say what to delete it for.
+    """
+    if not chart_ref:
+        return
+    try:
+        actual = subprocess.run(
+            ["git", "-C", str(chart_dir), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print(f"warning: cannot read {chart_dir}'s git ref; expected {chart_ref!r}", file=sys.stderr)
+        return
+    if actual != chart_ref:
+        raise SystemExit(
+            f"This environment needs siros-id-stack on {chart_ref!r}, but {chart_dir} is on "
+            f"{actual!r}.\n\n"
+            f"    git -C {chart_dir} fetch origin {chart_ref} && "
+            f"git -C {chart_dir} checkout {chart_ref}\n\n"
+            "Rendering against the wrong ref does not fail here - it quietly produces a config "
+            "missing whatever that branch adds."
+        )
+
+
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
@@ -686,7 +720,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            rical_provider_url: str = None, rical_root_certificate_pem: str = None,
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
-           env_values: dict = None) -> list:
+           env_values: dict = None, bbs_secret_key: str = None,
+           chart_ref: str = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -695,6 +730,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     """
     if target == "fly" and not env:
         raise ValueError("target 'fly' requires env")
+
+    assert_chart_ref(chart_dir, chart_ref)
 
     out_dir = Path(out_dir) if out_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered"
     if target == "fly":
@@ -757,6 +794,16 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # anything above it - see scripts/env_config.py. Applies to both targets:
     # `make up ENV=<name>` and `make fly-up ENV=<name>` layer the same file.
     if env_values:
+        # Preprocessed exactly like values-base.yaml above, and for the same
+        # reason: an environment may declare its own credential type, and
+        # `vctm: {file: ...}` is a path relative to THIS repo. Helm's
+        # Files.Get resolves inside the chart, finds nothing, and returns an
+        # empty string - so the document renders as a zero-byte file with no
+        # error anywhere, and the first sign of trouble is a service
+        # panicking at startup with "unexpected end of JSON input".
+        env_values = copy.deepcopy(env_values)
+        vc_render.inline_file_refs(env_values)
+        vc_render.expand_presentation_request_templates(env_values)
         env_values_path = out_dir / "values.environment.yaml"
         env_values_path.write_text(yaml.dump(env_values, sort_keys=False))
         values_files.append(env_values_path)
@@ -835,6 +882,15 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                             # fly-up.py sets from these same constants and
                             # docker-compose.vc-services.yml defaults to.
                             "OIDC_PROVIDER_CLIENT_SECRET": fly_common.MINI_OIDC_APIGW_CLIENT_SECRET,
+                            # Also not ours to generate, and for a sharper
+                            # reason: a random 32 bytes IS a well-formed
+                            # BLS12-381 scalar, just not the one matching the
+                            # configured public key. The issuer would start,
+                            # sign, and produce credentials nothing can
+                            # verify. Empty unless an environment supplies it,
+                            # and the chart only references ${BBS_SECRET_KEY}
+                            # when issuer.core.bbs is enabled.
+                            **({"BBS_SECRET_KEY": bbs_secret_key} if bbs_secret_key else {}),
                         },
                         env=env, mongo_password=mongo_password)
 
