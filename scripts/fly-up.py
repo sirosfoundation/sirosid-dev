@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Spin up a named Fly.io environment for sirosid-dev: `make fly-up ENV=<name>`.
 
-Deploys 10 Fly apps under sirosfoundation, prefixed `sirosid-<env>-`: mongodb,
+Deploys 11 Fly apps under sirosfoundation, prefixed `sirosid-<env>-`: mongodb,
 mini-oidc, vc-registry, vc-issuer, vc-verifier, vc-apigw, pdp, wallet-backend,
-wallet-proxy, wallet-frontend - see scripts/fly_common.py's COMPONENTS table
+wallet-proxy, env-admin, wallet-frontend - see scripts/fly_common.py's COMPONENTS table
 and scripts/render-helm-config.py's module docstring for the overall design
 (images pulled straight from the siros-id-stack chart's values.yaml, config
 rendered from the same chart, no local Docker build).
@@ -42,11 +42,17 @@ No `depends_on` equivalent on Fly - components are deployed strictly in
 COMPONENTS order and each `fly deploy` blocks on its own health checks
 (fly.toml `[[http_service.checks]]`) before the next one starts.
 
-Mongo has no persistent volume (ephemeral - data resets on stop/restart, per
-the tenant's own decision for what's meant to be a throwaway demo/test
-environment). PKI (vc-services signing keys) and the WebAuthn AS signing key
-are generated fresh per environment rather than reusing sirosid-dev's shared
-local dev PKI, since Fly environments are reachable over the public internet.
+Mongo data lives on a Fly volume (fly_common.ensure_volume / the `mount` on
+the mongodb and conformance-mongodb components), so it survives redeploys,
+image bumps and host maintenance. Consequences handled here: the root
+password is persisted per environment instead of rotated per run
+(resolve_mongo_password), a volume pins the app to its region (ensure_volume
+refuses to move), and `fly-down` deletes the data unless `--keep-data`.
+Clearing the data without a teardown is env-admin's job (the dashboard's
+"Clear all data", `make fly-storage-clear`). PKI (vc-services signing keys)
+and the WebAuthn AS signing key are generated fresh per environment rather
+than reusing sirosid-dev's shared local dev PKI, since Fly environments are
+reachable over the public internet.
 """
 import argparse
 import json
@@ -63,12 +69,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from fly_common import (  # noqa: E402
-    COMPONENTS, CONFORMANCE_COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
+    COMPONENTS, CONFORMANCE_COMPONENTS, ENV_ADMIN_IMAGE, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
     MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
-    app_exists, app_name, app_url, assetlinks_json,
-    ensure_app, ensure_running, ensure_secret, existing_secret_names, is_local_docker_image, machine_private_ip,
-    mini_oidc_config, network_name, push_local_image, wait_for_checks, wallet_frontend_conf,
-    wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
+    app_exists, app_name, app_url, assetlinks_json, create_deploy_token, destroy_machines_without_mount,
+    ensure_app, ensure_running, ensure_secret, ensure_volume, existing_secret_names, is_local_docker_image,
+    list_volumes, machine_private_ip, mini_oidc_config, network_name, push_local_image, read_machine_file,
+    wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
 )
 from helm_render_lib import (  # noqa: E402
     extract_configmap_data, extract_deployment_image, extract_init_container_image, extract_mongo_version,
@@ -284,14 +290,23 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     deploy_args = ["deploy", "-a", app, "-c", str(toml_path), "-i", image,
                    "--ha=false", "--strategy", "immediate", "--yes"]
 
+    volume = None
+    if "mount" in comp:
+        # Volume first: `fly deploy` does not create volumes, and a machine
+        # that predates the mount cannot have one attached (see the helper).
+        volume = ensure_volume(app, comp["mount"]["volume"], region)
+        destroy_machines_without_mount(app)
+
     if name == "mongodb":
-        # force=True: mongo has no persistent volume, so every deploy starts
-        # from empty data anyway - regenerating the root password on every
-        # run (rather than trying to preserve one across runs, which we
-        # couldn't even read back from Fly's write-only secret store) is both
-        # simpler and strictly safe, since there's no old data it would need
-        # to keep matching.
-        ensure_secret(app, "mongoRootPassword", mongo_password, force=True)
+        # Not rotated once data exists: the volume keeps the data the root
+        # user was created with (MONGO_INITDB_ROOT_* only applies to an EMPTY
+        # /data/db), so the secret must stay what resolve_mongo_password()
+        # found. A freshly CREATED volume is the exception and needs force:
+        # an environment deployed before volumes existed still carries the
+        # last run's rotated secret, which nothing knows any more - without
+        # force, ensure_secret would keep it while every consumer gets the
+        # new password, and Mongo auth would fail everywhere.
+        ensure_secret(app, "mongoRootPassword", mongo_password, force=bool(volume and volume.get("created")))
         deploy_args += [
             "--env", "MONGO_INITDB_ROOT_USERNAME=root",
             "--env", "MONGO_INITDB_ROOT_PASSWORD_FILE=/run/secrets/mongoRootPassword",
@@ -412,6 +427,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
+            # The Storage card - the very same file the local dashboard mounts.
+            "--file-local", f"/usr/share/nginx/storage-card.js={SIROSID_DEV_ROOT / 'dashboard' / 'storage-card.js'}",
         ]
         deploy_args += _wallet_frontend_env(env, docs, android_identities, wallet_attestation)
     elif name == "conformance-server":
@@ -446,6 +463,49 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         hosts_path = out_dir / "conformance-hosts"
         hosts_path.write_text(f"{server_ip} server\n")
         deploy_args += ["--file-local", f"/etc/hosts={hosts_path}"]
+    elif name == "env-admin":
+        # sirosid-dev's own image (env-admin/Dockerfile). The pin comes from
+        # values-fly.yaml like mini-oidc's; until the publish workflow has
+        # pushed that tag (first release), or when testing a local change,
+        # build it here and push into this app's registry.fly.io namespace -
+        # the same path `IMAGES=<local tag>` already takes.
+        if name not in image_overrides and not _image_pullable(image):
+            print(f"env-admin: {image} is not pullable - building env-admin/Dockerfile locally instead")
+            local_tag = "sirosid-env-admin:local"
+            run(["docker", "build", "-q", "-f", "env-admin/Dockerfile", "-t", local_tag, "."], cwd=SIROSID_DEV_ROOT)
+            image = push_local_image(app, local_tag)
+            deploy_args[deploy_args.index("-i") + 1] = image
+        # One app-scoped deploy token per Mongo consumer, minted fresh every
+        # run: enough for the Machines API on that app, nothing else in the
+        # org. Stored as ONE secret (a JSON map) so env-admin's config stays a
+        # single file.
+        consumers = [c for c in ["wallet-backend", "vc-registry", "vc-issuer", "vc-verifier", "vc-apigw"]]
+        if conformance:
+            consumers.append("conformance-server")
+        tokens = {app_name(env, c): create_deploy_token(app_name(env, c)) for c in consumers if app_exists(app_name(env, c))}
+        ensure_secret(app, "flyApiTokens", json.dumps(tokens), force=True)
+        ensure_secret(app, "envAdminToken", _persistent_secret(out_dir, "adminToken"))
+        ensure_secret(app, "mongoUri",
+                      f"mongodb://root:{mongo_password}@{app_name(env, 'mongodb')}.internal:27017/?authSource=admin",
+                      force=True)
+        deploy_args += [
+            "--env", "ENV_ADMIN_PLATFORM=fly",
+            "--env", f"ENV_ADMIN_ENV_NAME={env}",
+            "--env", "ENV_ADMIN_TOKEN_FILE=/run/secrets/envAdminToken",
+            "--env", "MONGO_URI_FILE=/run/secrets/mongoUri",
+            "--env", "FLY_API_TOKENS_FILE=/run/secrets/flyApiTokens",
+            # Every non-system database - this Mongo serves only this environment.
+            "--env", "MONGO_DATABASES=*",
+            "--env", "CONSUMERS=" + json.dumps([{"name": c, "target": app_name(env, c)} for c in consumers]),
+            # Bootstrap after a reset - the same three values
+            # register_vc_services() uses at deploy time.
+            "--env", f"ADMIN_URL={app_url(env, 'wallet-proxy')}",
+            "--env", f"ISSUER_URL={app_url(env, 'vc-apigw')}",
+            "--env", f"VERIFIER_URL={app_url(env, 'vc-verifier')}",
+            "--file-secret", "/run/secrets/envAdminToken=envAdminToken",
+            "--file-secret", "/run/secrets/mongoUri=mongoUri",
+            "--file-secret", "/run/secrets/flyApiTokens=flyApiTokens",
+        ]
     elif name == "conformance-runner":
         # Same FRONTEND_URL/ADMIN_URL/ADMIN_TOKEN values already printed in
         # main()'s "run sirosid-tests manually" summary block below - this
@@ -624,11 +684,64 @@ def _rand_secret(length: int = 32) -> str:
     return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
+def _image_pullable(ref: str) -> bool:
+    """Whether a registry ref resolves - `docker manifest inspect` needs no
+    pull and works for public GHCR images without login. False also when
+    there is no docker at all, in which case the caller's local-build fallback
+    fails with its own clear error."""
+    try:
+        return subprocess.run(["docker", "manifest", "inspect", ref], capture_output=True).returncode == 0
+    except FileNotFoundError:
+        return False
+
+
+def resolve_mongo_password(env: str, out_dir: Path) -> str:
+    """The Mongo root password this environment's VOLUME was initialised with.
+
+    Before volumes it was regenerated every run (empty data every time, so
+    nothing to match). Now the data persists, and MONGO_INITDB_ROOT_* only
+    applies to an empty /data/db, so the password has to be the one already
+    in use. Three sources, in order:
+
+      1. this machine's cache (fixtures/rendered/fly-<env>/mongoRootPassword,
+         written by the run that created the volume)
+      2. the running mongodb machine itself - Fly secrets cannot be read back
+         through the API, but the --file-secret is readable from inside via
+         `fly ssh console`, which is how a developer who did not do the last
+         deploy avoids rendering a mismatched password into every consumer
+      3. fresh - only when neither the cache nor a mongodb machine with the
+         secret exists (a brand-new environment, or one whose volume was just
+         cleared), in which case the data is empty and this run initialises it
+
+    Anything else is a hard stop: deploying a guessed password would leave
+    every consumer failing Mongo auth against data nobody can then reach.
+    """
+    cached = out_dir / "mongoRootPassword"
+    if cached.exists():
+        return cached.read_text().strip()
+    app = app_name(env, "mongodb")
+    has_volume = any(v.get("state") != "destroyed" for v in list_volumes(app)) if app_exists(app) else False
+    if has_volume and "mongoRootPassword" in existing_secret_names(app):
+        print(f"{app}: no local password cache but a volume exists - reading the password back from the machine")
+        ensure_running(app)
+        value = read_machine_file(app, "/run/secrets/mongoRootPassword")
+        if not value:
+            raise SystemExit(
+                f"\n{app} has a data volume and a root password set, but this machine has no cached copy\n"
+                f"and reading it back over `fly ssh console` failed. Deploying a new password would lock\n"
+                f"every consumer out of the existing data. Either copy fixtures/rendered/fly-{env}/\n"
+                f"from the machine that last deployed this environment, or clear its data first:\n"
+                f"  make fly-storage-clear ENV={env}   (or: make fly-down ENV={env} without KEEP_DATA)")
+        cached.write_text(value)
+        return value
+    return _persistent_secret(out_dir, "mongoRootPassword")
+
+
 def _persistent_secret(out_dir: Path, name: str) -> str:
-    """Unlike mongodb's password (regenerated every run - mongo has no
-    persistent volume, so there's no old state to match), wallet-backend's
-    jwtSecret/adminToken back a long-lived app (real user sessions, and now
-    also register_vc_services()'s own Bearer auth) - `ensure_secret()` already
+    """wallet-backend's jwtSecret/adminToken back a long-lived app (real user
+    sessions, and now also register_vc_services()'s own Bearer auth), and
+    since Mongo got a volume its root password is one of these too (see
+    resolve_mongo_password) - `ensure_secret()` already
     never rotates an already-set Fly secret, but Fly secrets can't be read
     back, so without this, a rerun would generate a brand-new value that's
     silently discarded (ensure_secret sees the OLD one still set and skips)
@@ -913,10 +1026,9 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     identities = load_android_apps(extra=merge_list(env_cfg["android_apps"], args.android_app or []))
-    # Fresh every run, not persisted/reused - see ensure_secret(force=True)'s
-    # docstring for why that's fine specifically for mongo (no persistent
-    # volume, so there's no old data a stale password would need to match).
-    mongo_password = _rand_secret()
+    # Persisted per environment: the Mongo volume's data was initialised with
+    # it and MONGO_INITDB_ROOT_* never re-applies to a non-empty /data/db.
+    mongo_password = resolve_mongo_password(args.env, out_dir)
 
     print(f"=== Rendering config for environment '{args.env}' ===")
     # docs is the full rendered manifest (not just wallet-backend/pdp) -
@@ -962,12 +1074,16 @@ def main():
         # sake. "conformance" (nginx) deploys last of all - it needs
         # conformance-server's machine to already exist to look up its
         # private IP (see deploy_component()'s "conformance" branch).
-        non_frontend = [c for c in COMPONENTS if c["name"] != "wallet-frontend"]
+        # env-admin goes after conf_before too: it mints a deploy token for
+        # conformance-server, which has to exist first (see its COMPONENTS
+        # comment), and wallet-frontend's nginx resolves it at startup.
+        non_frontend = [c for c in COMPONENTS if c["name"] not in ("wallet-frontend", "env-admin")]
+        env_admin = [c for c in COMPONENTS if c["name"] == "env-admin"]
         frontend = [c for c in COMPONENTS if c["name"] == "wallet-frontend"]
         conf_before, conf_after = [], []
         for c in CONFORMANCE_COMPONENTS:
             (conf_after if c["name"] == "conformance" else conf_before).append(c)
-        all_components = non_frontend + conf_before + frontend + conf_after
+        all_components = non_frontend + conf_before + env_admin + frontend + conf_after
     else:
         all_components = COMPONENTS
     print(f"=== Deploying {len(all_components)} apps to Fly (org: {FLY_ORG}) ===")
@@ -1017,7 +1133,9 @@ def main():
         print("Or run them from the dashboard's Conformance tab (same specs, driven by")
         print(f"conformance-runner): {app_url(args.env, 'wallet-frontend')}")
     print()
-    print(f"Tear down with: make fly-down ENV={args.env}")
+    print(f"Storage: Mongo data persists on a Fly volume across redeploys. Clear it from the dashboard's")
+    print(f"Storage card, or: make fly-storage-clear ENV={args.env}")
+    print(f"Tear down with: make fly-down ENV={args.env}   (KEEP_DATA=yes keeps the volume for the next fly-up)")
 
 
 if __name__ == "__main__":
