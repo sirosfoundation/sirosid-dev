@@ -72,3 +72,9 @@ fixtures/wrpac-pki/
 fixtures/wrpac-clients/*.key
 fixtures/wrpac-clients/*.csr
 fixtures/wrpac-clients/*.issued/
+
+# make install - the boot manager's virtualenv
+.venv/
+
+# bootmgr editable install metadata (make install)
+*.egg-info/

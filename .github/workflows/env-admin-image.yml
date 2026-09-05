@@ -1,0 +1,55 @@
+# Publishes env-admin (env-admin/Dockerfile, sirosid-dev's own storage-reset
+# service - see env-admin/server.py) to GHCR. values-fly.yaml pins the
+# version tag; fly-up deploys whatever is pinned there.
+#
+#   main branch push touching env-admin/ or scripts/bootstrap.py -> :main, :sha-<short>
+#   git tag env-admin-v1.2.3                                     -> :1.2.3
+#
+# Local `make up` never uses this image - it builds env-admin/Dockerfile from
+# the checkout like every other sirosid-dev-owned container (mocks/).
+name: env-admin image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "env-admin/**"
+      - "scripts/bootstrap.py"
+      - ".github/workflows/env-admin-image.yml"
+    tags:
+      - "env-admin-v*"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: tags
+        run: |
+          IMAGE=ghcr.io/${{ github.repository_owner }}/sirosid-env-admin
+          if [[ "${GITHUB_REF}" == refs/tags/env-admin-v* ]]; then
+            echo "tags=${IMAGE}:${GITHUB_REF#refs/tags/env-admin-v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tags=${IMAGE}:main,${IMAGE}:sha-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: env-admin/Dockerfile
+          push: true
+          tags: ${{ steps.tags.outputs.tags }}

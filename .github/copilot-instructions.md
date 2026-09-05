@@ -87,7 +87,12 @@ R2PS=yes      → + r2ps.yml
 DOMAIN=<x>    → + domain.yml
 TUNNELS=yes   → + tunnel.yml [+ tunnel-vc.yml if VC services are present]
 GOLDEN=yes    → + golden.yml [+ golden-go-trust.yml]
+VC or PDP=helm → + docker-compose.mongodb.yml (appended last; the persistent Mongo volume)
 ```
+
+`scripts/stack.py` holds the same matrix as data (`make plan` prints the
+result) and `tests/test_stack_parity.py` asserts it agrees with the Makefile -
+change both or the test fails.
 
 `docker-compose.vc-go-trust.yml` is intentionally NOT included when `VC=yes`
 without `CONFORMANCE=yes` — it would duplicate services already in `go-trust.yml`

@@ -262,6 +262,11 @@
         </table>
       </div>
 
+      <div class="card" id="storage-card">
+        <h2>Storage</h2>
+        <div id="storage-body"><span class="meta">Checking env-admin&hellip;</span></div>
+      </div>
+
       <div class="card">
         <h2>Build Info</h2>
         <div id="build-info"><span class="meta">Loading&hellip;</span></div>
@@ -843,5 +848,8 @@ function toggleLogEntry(idx) {
   <div class="log-panel-body" id="log-panel-body"></div>
 </div>
 
+<!-- Storage card: status of every store + "Clear all data" via env-admin.
+     One file shared with the Fly dashboard (dashboard/storage-card.js). -->
+<script src="/storage-card.js"></script>
 </body>
 </html>

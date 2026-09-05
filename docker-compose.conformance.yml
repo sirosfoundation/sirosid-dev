@@ -159,4 +159,7 @@ services:
         max-file: "5"
 
 volumes:
+  # Explicit name so `make storage-status`/`storage-clear` and the boot
+  # manager find it regardless of the checkout's directory name.
   conformance-suite-mongodb-data:
+    name: sirosid-conformance-mongodb-data

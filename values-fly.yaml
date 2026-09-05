@@ -323,3 +323,13 @@ images:
   # enough to build a PID from. Dormant while apigw asks for "openid profile",
   # live the moment it asks for the credential type as the scope.
   miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.4"
+
+  # env-admin is sirosid-dev's OWN code (env-admin/), the privileged actor
+  # behind the dashboard's "Clear all data" / `make fly-storage-clear`.
+  # Published to GHCR by .github/workflows/env-admin-image.yml on a git tag
+  # `env-admin-v<version>` (the version is env-admin/server.py's VERSION).
+  # Not in the siros-id-stack chart, so pinned here like miniOidc above.
+  # Until the tag has been pushed - or when testing an env-admin change -
+  # fly-up notices the pin is not pullable and builds env-admin/Dockerfile
+  # locally into the app's registry.fly.io namespace instead.
+  envAdmin: "ghcr.io/sirosfoundation/sirosid-env-admin:0.1.0"

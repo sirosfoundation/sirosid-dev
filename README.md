@@ -29,15 +29,69 @@ make up
 Or if you already have the repos cloned:
 
 ```bash
+make install       # Boot manager: a terminal UI over everything below (see "Boot manager")
 make up            # Start default stack (go-trust allow-all)
 make up VC=yes     # … with production-like VC services
 make up GOLDEN=yes # … using pre-built golden release images
+make plan VC=yes   # Show what `make up` would do, without starting anything
 make status        # Check all service health
 make logs          # View Docker logs
-make down          # Stop everything
+make down          # Stop everything (Mongo data is kept - see "Storage")
 make update        # Force-update all repos to upstream
 make help          # Full option reference
 ```
+
+## Boot manager
+
+The option matrix behind `make up`/`make fly-up` has grown large. The boot
+manager is a terminal UI over it, for finding your way rather than
+remembering flags:
+
+```bash
+make install       # once: creates .venv, installs it, launches it
+make manage        # afterwards
+```
+
+It lists every environment in one place (the unnamed local stack, every
+`environments/<name>.yaml`, every `sirosid-<env>-*` deployment found on
+Fly), shows what booting one means before you do it (compose files,
+storage, pre-flight checks), edits an environment's options as a form with
+the help text next to each field, boots/stops/redeploys, tails logs, runs a
+doctor over the known gotchas, and has a Storage panel with the same
+"Clear all data" the dashboard has. Every action is a `make` command it
+shows before running, so nothing it does is out of reach of the shell.
+
+`scripts/stack.py` is what makes this possible: the option matrix as data
+(`make plan` prints it), with `tests/test_stack_parity.py` asserting it
+agrees with the Makefile's own `COMPOSE_FILES` logic.
+
+## Storage
+
+Mongo data lives on named volumes that survive `make down`:
+
+| volume | holds |
+|---|---|
+| `sirosid-mongodb-data` | wallet-backend (`PDP=helm` only - every other mode is an in-memory store) and the VC services |
+| `sirosid-conformance-mongodb-data` | the OpenID conformance suite's own database |
+| `sirosid-r2ps-softhsm-tokens`, `sirosid-attest-softhsm-tokens` | SoftHSM2 tokens (`R2PS=yes`) |
+
+```bash
+make storage-status            # every store: mode, size, whether it persists
+make storage-clear             # wipe + re-register issuer/verifier (YES=yes skips the prompt)
+make clean                     # the old way: containers, volumes and build cache, all gone
+```
+
+Clearing goes through **env-admin** (`env-admin/`, a small service every
+`make up` starts; also `sirosid-<env>-env-admin` on Fly): it stops the
+Mongo consumers, drops the application databases, starts them again so
+they recreate their indexes and seed data, and re-registers the issuer and
+verifier with wallet-backend (`scripts/bootstrap.py`, the same code `make
+up` and `make fly-up` run). The dashboard's **Storage** card is the same
+action with a button, on both targets. When the stack is down there is no
+env-admin, so `make storage-clear` removes the volumes instead.
+
+On Fly the same data sits on a Fly volume per Mongo app - see "Fly.io
+Deployment" for `KEEP_DATA=yes` and `make fly-storage-clear`.
 
 ## Prerequisites
 
@@ -467,9 +521,22 @@ chart's `values.yaml` - no local Docker build.
 
 ```bash
 make fly-up ENV=alice              # deploy a new environment
-make fly-status ENV=alice          # check all 10 apps
-make fly-down ENV=alice            # tear it down
+make fly-status ENV=alice          # check all 11 apps
+make fly-down ENV=alice            # tear it down (deletes the Mongo data too)
+make fly-down ENV=alice KEEP_DATA=yes   # tear down but keep the Mongo apps + volumes, machines stopped
+make fly-storage-clear ENV=alice   # wipe the data through env-admin (or the volumes, if down)
 ```
+
+Mongo data persists on a Fly volume (one per Mongo app, created by `fly-up`
+if missing), so a redeploy, an image bump or a Fly host restart no longer
+empties the environment. Two consequences: the Mongo root password is now
+cached per environment in `fixtures/rendered/fly-<env>/` and recovered from
+the running machine over `fly ssh console` when that cache is missing
+(another developer redeploying), and a volume pins its app to a region -
+`fly-up` refuses to move an environment with data rather than silently
+orphaning it. The dashboard's Storage card and `make fly-storage-clear` go
+through the environment's `env-admin` app, which restarts the Mongo
+consumers with one app-scoped Fly deploy token per consumer app.
 
 Requires `flyctl` installed and authenticated, and a sibling `../siros-id-stack`
 checkout (`make setup` clones it).
@@ -582,8 +649,13 @@ sirosid-dev/
 │                                  # images, transports, FaceTec, helm-config)
 │                                  # -- run `make help` for which flag adds
 │                                  # which overlay; there are ~30 of these
-├── nginx-e2e.conf                 # Frontend nginx config (dashboard + health proxies)
+├── nginx-e2e.conf                 # Frontend nginx config (dashboard + health + env-admin proxies)
+├── startup.html, dashboard/       # The local dashboard, and the Storage card both dashboards share
 ├── values-dev.yaml / values-fly.yaml   # Helm values overlays for render-helm-config.py
+├── environments/                  # Persisted per-environment config (Fly + local: block)
+├── env-admin/                     # The in-environment storage-reset service (local + Fly)
+├── bootmgr/                       # The boot manager TUI (make install)
+├── tests/                         # unittest suites: stack parity, env-admin, Fly storage
 ├── fixtures/                      # VC/PDP config templates, PKI, presentation requests
 ├── mocks/                         # mock-verifier (OpenID4VP) + trust-pdp (legacy AuthZEN) mocks
 └── scripts/                       # All Makefile-invoked automation (Fly deploy, Android/USB
