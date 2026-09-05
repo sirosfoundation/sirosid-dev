@@ -18,24 +18,11 @@
 #   VC_VERIFIER_URL - External verifier URL for whitelist (default: http://localhost:9001)
 
 services:
-  # MongoDB - persistent storage for VC services
-  mongodb:
-    # Pinned to match the siros-id-stack chart's values.yaml's
-    # images.mongoCommunityVersion, so local testing uses the same Mongo
-    # version production runs (via the MongoDB Community Operator).
-    image: mongo:7.0.24
-    container_name: vc-mongodb-e2e
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongodb-data:/data/db
-    healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
-    networks:
-      - e2e-test-network
+  # mongodb lives in docker-compose.mongodb.yml (its own overlay, on a named
+  # persistent volume) because wallet-backend needs it under PDP=helm too,
+  # not only alongside these services. The Makefile always loads that overlay
+  # together with this one; the `depends_on: mongodb` entries below resolve
+  # across files.
 
   # VC Registry - Token status lists and revocation
   # Required by issuer for credential status management
@@ -257,6 +244,3 @@ networks:
   e2e-test-network:
     name: e2e-test-network
     external: true
-
-volumes:
-  mongodb-data:

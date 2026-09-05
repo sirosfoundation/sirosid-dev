@@ -162,6 +162,13 @@ def main():
         "services": collect_services(),
         "generated": datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
     }
+    # Local only: lets the dashboard's "Clear all data" button skip the token
+    # prompt. The Makefile exports the token wallet-backend actually accepts
+    # in this mode (ENV_ADMIN_TOKEN); build-info.json is gitignored and
+    # served on localhost only. Fly dashboards have no build-info and prompt.
+    import os
+    if os.environ.get("ENV_ADMIN_TOKEN"):
+        info["env_admin_token"] = os.environ["ENV_ADMIN_TOKEN"]
     out_path = SIROSID_DEV_ROOT / "build-info.json"
     # Truncate in place rather than replacing the file: build-info.json is
     # bind-mounted into wallet-frontend, and swapping the inode would leave

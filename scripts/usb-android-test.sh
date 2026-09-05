@@ -69,6 +69,7 @@ USB_FORWARD_PORTS="${USB_FORWARD_PORTS:-3000 8080 8081 8082 8443 9000 9001 9003 
 COMPOSE_FILES=(
     -f docker-compose.test.yml
     -f docker-compose.vc-services.yml
+    -f docker-compose.mongodb.yml
     -f docker-compose.go-trust.yml
     -f docker-compose.go-trust-allow.yml
     -f docker-compose.android-usb.yml
