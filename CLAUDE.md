@@ -3,9 +3,22 @@
 This repo is a **harness, not a service**: it orchestrates sibling repos
 (go-wallet-backend, go-trust, vc, wallet-frontend, wallet-common, siros-id-stack)
 via a large self-documenting `Makefile`, docker-compose files, and Python
-scripts under `scripts/`. It has no application code of its own. Run
-`make help` for the authoritative, current list of targets/flags — this file
-only covers what `make help` and `README.md` don't: the non-obvious traps.
+scripts under `scripts/`. The only code of its own that runs inside an
+environment is `env-admin/` (the storage-reset service behind the
+dashboard's "Clear all data", ~one file) and the `mocks/`; everything else
+is orchestration. Run `make help` for the authoritative, current list of
+targets/flags — this file only covers what `make help` and `README.md`
+don't: the non-obvious traps.
+
+Three entry points share one core and must stay in step:
+- `make` — the CLI, and what CI runs.
+- the **boot manager** (`make install` / `make manage`, `bootmgr/`) — a
+  Textual TUI that only ever runs `make` commands it shows first.
+- `scripts/stack.py` — the `make up` option matrix as data (`make plan`).
+  The Makefile still builds `COMPOSE_FILES` itself; `tests/test_stack_parity.py`
+  fails when the two disagree, so **adding a compose overlay or flag means
+  editing both** (and its help string in `stack.py`'s `OPTIONS`, which is
+  where the TUI's per-field help comes from).
 
 ## Sibling repo layout
 
@@ -82,7 +95,23 @@ change quietly dropping a field this repo depends on.
   and the PDP themselves.
 - `ENV=<name>` — layers `environments/<name>.yaml` onto a local `make up` too,
   not just `fly-up`. Its `values:` block is free-form chart values merged last,
-  so a one-off override needs no code change anywhere.
+  so a one-off override needs no code change anywhere. Its `local:` block
+  supplies defaults for every `make up` option (`pdp`, `vc`, `transport`, ...
+  — `scripts/stack.py`'s `OPTIONS`), applied by the Makefile as plain
+  assignments so a flag on the command line still wins for that run.
+- **Storage:** Mongo lives in its own overlay (`docker-compose.mongodb.yml`),
+  loaded whenever the VC services are on **or** `PDP=helm` — the chart-rendered
+  wallet-backend config points at `mongodb://mongodb`, and before the overlay
+  `make up PDP=helm` without `VC=yes` pointed at a host that never started.
+  Its volume `sirosid-mongodb-data` survives `make down` (`make clean` and
+  `make storage-clear` remove it). wallet-backend in every non-helm mode is
+  an **in-memory** store — a container restart empties it; `make plan` and the
+  dashboard's Storage card both say so. Clearing while up goes through
+  env-admin (stop consumers → drop databases → start → wait healthy →
+  `scripts/bootstrap.py` re-registers issuer/verifier). The restart is not
+  optional: wallet-backend creates its default tenant and vc-apigw imports
+  its bootstrap documents **only at startup**, so a wipe without a restart
+  leaves a stack that looks healthy and cannot issue.
 - `AS_RULES=allow-all|baseline` — SPOCP policy for wallet-backend's built-in
   Authorization Server (passkey login + token endpoint), separate from the
   `PDP=` trust policy above. Default `allow-all` (`fixtures/as-rules/`) is an
@@ -146,8 +175,23 @@ change quietly dropping a field this repo depends on.
 
   `primary_region` is a preference, not a constraint — it's where Fly places
   the *first* machine. Changing it does **not** move machines that already
-  exist, so relocating a live environment means `fly-down` then `fly-up`, which
-  loses mongodb's data (no volume).
+  exist. Since Mongo got a volume, a volume also **pins** its app to its
+  region: `fly_common.ensure_volume` refuses a run targeting another region
+  while a volume exists, so relocating means clearing the data first
+  (`make fly-storage-clear ENV=<name>`, or `fly-down` without `KEEP_DATA`).
+- **Storage on Fly:** `mongodb` and `conformance-mongodb` mount a Fly volume
+  (`fly_common.STORAGE_APPS`, created by `fly-up` if missing). Data survives
+  redeploys, image bumps and host maintenance. `fly-down` destroys apps and
+  therefore volumes — a teardown deletes the data — unless `KEEP_DATA=yes`,
+  which leaves the two Mongo apps with machines stopped and keeps
+  `fixtures/rendered/fly-<env>/` (it caches the root password, see the gotcha
+  below). `env-admin` (11th app, deployed right before wallet-frontend) is the
+  reset actor; it holds one app-scoped deploy token per Mongo consumer
+  (minted every `fly-up`, never an org token) to stop/start them through the
+  Machines API. Its image is `values-fly.yaml`'s `images.envAdmin`; if that
+  pin isn't pullable (first release, or you're testing an env-admin change)
+  `fly-up` builds `env-admin/Dockerfile` locally and pushes it into the app's
+  registry.fly.io namespace — the one place `fly-up` builds anything.
 - `ANDROID_APPS=` — same as local (see above).
 - `CONFORMANCE=yes` — deploys 3 extra apps (`conformance-mongodb`,
   `conformance-server`, `conformance` nginx front) after the core 10.
@@ -261,19 +305,18 @@ itself (not via `make fly-up`) without `--mongo-password <value>` silently
 renders a Mongo connection URI with no credentials at all:** `mongo_password`
 defaults to `None`, and `patch_wallet_backend_fly()` does `mongo_auth =
 f"root:{mongo_password}@" if mongo_password else ""` — empty string, not an
-error. This happens because `fly-up.py`'s `main()` generates a fresh random
-`mongo_password` per invocation and sets it as *both* the mongodb app's own
-Fly secret (`force=True` — rotated every full `fly-up` run) *and* the value
-baked into the rendered config; the two are only guaranteed consistent within
-the same `fly-up.py` invocation. Hand-rendering one component's config to
-tweak a single field, then `flyctl deploy`-ing just that app, silently breaks
-that component's Mongo auth, because the freshly-rendered password won't
-match whatever's still set as the mongodb app's actual Fly secret from the
-last full `fly-up` run. For any single-field config tweak, just re-run `make
-fly-up ENV=<name>` again instead of hand-rolling a partial `flyctl deploy` —
-confirmed idempotent/safe, it redeploys every component with fresh,
-mutually-consistent config+secrets rather than clobbering anything that's
-already there.
+error. The password is the one in `fixtures/rendered/fly-<env>/mongoRootPassword`
+(`fly-up.py`'s `resolve_mongo_password()`): it is **no longer rotated per
+run** — the Mongo volume's data was initialised with it and
+`MONGO_INITDB_ROOT_*` never re-applies to a non-empty `/data/db`. If that
+cache is missing but the environment has a volume (someone else deployed it
+last), `fly-up` reads the password back from the running mongodb machine over
+`fly ssh console` (a `--file-secret` is readable from inside; the API cannot
+read secrets back) and refuses to continue if that fails, since deploying a
+guessed password would lock every consumer out of data nobody can then
+reach. For any single-field config tweak, just re-run `make fly-up ENV=<name>`
+— idempotent, redeploys every component with mutually-consistent config and
+secrets.
 
 **PDP boot appears stuck / "Issuer not trusted" right after `fly-up` with
 `TRUSTED_ISSUERS=` set (or any PDP redeploy with it already set):**
@@ -416,6 +459,10 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
   Fly-related rather than re-deriving it from scratch.
 - `scripts/render-helm-config.py`'s `build_fly_values_overlay()` — the
   whitelist/mdociaca construction referenced above.
+- `scripts/stack.py` (`make plan`) — the `make up` option matrix as data, with
+  each option's help; `scripts/storage.py` (`make storage-*`) — storage from
+  outside an environment; `env-admin/server.py` — the reset from inside;
+  `bootmgr/sirosid_bootmgr/harness.py` — everything the TUI knows, no UI.
 
 ## Working conventions
 
@@ -424,6 +471,18 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
   changes here unprompted, and never run `make fly-up`/`fly-down`/anything
   Fly-touching without confirming no one else has a deployment for that
   `ENV=` name in progress (`flyctl apps list`/`fly-status ENV=<name>` first).
+  `fly-down` now also **deletes the environment's data** (volumes go with the
+  apps) unless `KEEP_DATA=yes` — ask before a plain `fly-down` of a shared
+  environment.
+- Tests: `python3 -m unittest discover -s tests -p 'test_*.py'` (stack
+  parity needs `make`; nothing needs Docker or Fly). Run it after touching
+  the Makefile's compose logic, `scripts/stack.py`, `env-admin/`, or the Fly
+  scripts' pure parts.
+- `env-admin/` changes ship as an image: bump `VERSION` in `server.py`, push a
+  `env-admin-v<version>` tag after merge (`.github/workflows/env-admin-image.yml`
+  publishes `ghcr.io/sirosfoundation/sirosid-env-admin:<version>`), and bump
+  `values-fly.yaml`'s `images.envAdmin`. Local `make up` builds it from the
+  checkout regardless.
 - `values-fly.yaml` and `.golden-releases.yaml` are checked-in, shared
   defaults — changes to them affect every developer's next `fly-up`/`GOLDEN=`
   run, not just yours. `.android-apps`, `.env*` files are gitignored,
