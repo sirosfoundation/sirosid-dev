@@ -51,8 +51,31 @@ single boolean `dc_api_enable` took.
   environment's *intended* state changes - e.g. a new image build meant to
   stick around, not just a single test run.
 
+## `local:` - the local stack's options
+
+The same file also describes the environment's *local* docker-compose
+shape, so one document answers "what is this environment" for both
+targets. The keys are `make up`'s own options in lower case; `scripts/
+stack.py` is the single home of the list (`make plan` prints it, the boot
+manager edits it as a form with the help text next to each field):
+
+```yaml
+local:
+  pdp: helm          # allow | whitelist | deny | mock | helm
+  vc: true
+  transport: websocket
+  conformance: false
+```
+
+`make up ENV=<name>` applies the block as defaults; a flag on the command
+line (`make up ENV=<name> PDP=deny`) wins for that run only, exactly like
+the Fly flags above. `make plan ENV=<name>` shows the result without
+starting anything.
+
 ## Adding a new persisted environment
 
 Copy the shape from `gdc.yaml` and fill in only the keys that differ from
 the (all-empty/false) defaults. Nothing is required - an empty file
 (or no file at all) behaves exactly like today's CLI-flags-only path.
+The boot manager (`make install`) can create one for you: select the local
+stack, press `o`, set the options, and Save under a name.

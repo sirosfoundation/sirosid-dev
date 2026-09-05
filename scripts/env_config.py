@@ -51,6 +51,12 @@ Schema (all keys optional):
     rical_root_cert: path          # relative to sirosid-dev root - PEM signer of the RICAL above
     dc_api_enable: "true" | "false"   # verifier.digital_credentials.enable override; "" (default) leaves
                                       # fixtures/vc-config.yaml's own value (true) untouched
+    local: {...}                   # the LOCAL stack's options for this environment - the same
+                                   # knobs `make up` takes on the command line (pdp, vc,
+                                   # transport, conformance, r2ps, ...), so one file describes an
+                                   # environment for both targets. Validated by scripts/stack.py,
+                                   # which is the single home of the option matrix; `make up
+                                   # ENV=<name>` reads it as defaults and CLI flags win.
 
 For the scalar fields (the two RICAL ones plus dc_api_enable), a CLI value
 overrides the file's (last-one-wins, same as `images`) rather than merging -
@@ -90,7 +96,7 @@ _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", 
               "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
 _STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region")
-_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values"))
+_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values", "local"))
 
 
 def config_path(env_name: str, root: Path = None) -> Path:
@@ -103,7 +109,7 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     every known key) whether or not environments/<env_name>.yaml exists -
     callers never need to guess which keys are present."""
     root = root or SIROSID_DEV_ROOT
-    result = {"images": {}, "values": {}, **{k: [] for k in _LIST_KEYS},
+    result = {"images": {}, "values": {}, "local": {}, **{k: [] for k in _LIST_KEYS},
               **{k: False for k in _BOOL_KEYS}, **{k: "" for k in _STR_KEYS}}
 
     path = config_path(env_name, root)
@@ -143,6 +149,11 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     if not isinstance(values, dict):
         raise SystemExit(f"{path}: 'values' must be a mapping (a Helm values tree)")
     result["values"] = values
+
+    local = raw.get("local") or {}
+    if not isinstance(local, dict):
+        raise SystemExit(f"{path}: 'local' must be a mapping of stack option: value (see scripts/stack.py)")
+    result["local"] = local
 
     return result
 
