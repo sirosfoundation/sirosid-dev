@@ -91,7 +91,14 @@ DC_API ?= no
 # command line can never be overridden by a makefile assignment, so
 # `make up ENV=alice PDP=deny` still wins over the file's pdp: helm.
 ifneq ($(ENV),)
-  _ENV_LOCAL_DEFAULTS := $(shell python3 scripts/stack.py make-args --env "$(ENV)" --file-only 2>/dev/null)
+  # stack.py is silent for a missing file or one without a local: block, and
+  # prints a one-line diagnostic + exits 1 for an invalid key - so stderr is
+  # left alone (a redirect would turn "your defaults were ignored" into a
+  # silent no-op) and a rejected file stops the build here.
+  _ENV_LOCAL_DEFAULTS := $(shell python3 scripts/stack.py make-args --env "$(ENV)" --file-only)
+  ifneq ($(.SHELLSTATUS),0)
+    $(error environments/$(ENV).yaml has an invalid local: block (see above))
+  endif
   $(foreach kv,$(_ENV_LOCAL_DEFAULTS),$(eval $(kv)))
 endif
 
@@ -1002,7 +1009,9 @@ status: ## Check core service health
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vctm-registry" "✓ running" || true
 	@curl -sf $(FACETEC_API_URL)/livez >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "facetec-api" "✓ running" || true
-	@curl -sf http://$(_HOST):3002/health >/dev/null 2>&1 && \
+	@# env-admin is published on loopback only (docker-compose.test.yml), so
+	@# probe localhost even under DOMAIN=... where _HOST is the domain.
+	@curl -sf http://localhost:3002/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "env-admin" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "env-admin" "✗ not running"
 	@echo ""

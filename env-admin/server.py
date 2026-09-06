@@ -50,6 +50,7 @@ import sys
 import threading
 import time
 import traceback
+import uuid
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -74,7 +75,8 @@ def _env(name, default=""):
 def _read_token():
     path = _env("ENV_ADMIN_TOKEN_FILE")
     if path and os.path.exists(path):
-        return open(path).read().strip()
+        with open(path) as fh:
+            return fh.read().strip()
     return _env("ENV_ADMIN_TOKEN").strip()
 
 
@@ -123,9 +125,11 @@ class Config:
 
     def resolve_files(self):
         if self.mongo_uri_file and os.path.exists(self.mongo_uri_file):
-            self.mongo_uri = open(self.mongo_uri_file).read().strip()
+            with open(self.mongo_uri_file) as fh:
+                self.mongo_uri = fh.read().strip()
         if self.fly_tokens_file and os.path.exists(self.fly_tokens_file):
-            self.fly_tokens = json.loads(open(self.fly_tokens_file).read())
+            with open(self.fly_tokens_file) as fh:
+                self.fly_tokens = json.load(fh)
         return self
 
 
@@ -488,7 +492,10 @@ class State:
         with self.lock:
             if self.active and self.active.is_alive():
                 raise ResetBusy(self.active.id)
-            job_id = f"reset-{int(time.time())}"
+            # Timestamp for readable logs, random suffix so two resets started
+            # within the same second (the lock only serialises them, it does
+            # not space them out) never share an id in history or the SSE feed.
+            job_id = f"reset-{int(time.time())}-{uuid.uuid4().hex[:6]}"
             self.active = ResetJob(self.cfg, self.platform, self.bc, job_id, self.history)
             self.active.start()
             return job_id

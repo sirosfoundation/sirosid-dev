@@ -191,8 +191,13 @@ services:
       dockerfile: env-admin/Dockerfile
     image: sirosid-env-admin:local
     container_name: env-admin-e2e
+    # Loopback only: the host-side tooling (scripts/storage.py, the boot
+    # manager, `make status`) talks to localhost:3002; everything else goes
+    # through the /_admin/ proxy. Publishing on 0.0.0.0 would put the reset
+    # API itself on the LAN under DOMAIN=... - the token would still guard
+    # it, but there is no reason to expose it at all.
     ports:
-      - "3002:3002"
+      - "127.0.0.1:3002:3002"
     environment:
       - ENV_ADMIN_PLATFORM=docker
       # The token wallet-backend's admin API accepts in this mode - the
