@@ -223,6 +223,15 @@ else
 endif
 export ENV_ADMIN_TOKEN = $(_EFFECTIVE_ADMIN_TOKEN)
 export ENV_ADMIN_ENV_NAME = $(if $(ENV),$(ENV),local)
+# generate-build-info.py embeds this in build-info.json so the dashboard's
+# "Clear all data" button can skip the token prompt. build-info.json is served
+# by the frontend's nginx, which under TUNNELS=yes or DOMAIN=... is reachable
+# from outside this machine - and /_admin/ is proxied right next to it, so
+# the embedded token would let anyone holding the URL wipe the environment.
+# Only hand the token over when the stack is loopback-only.
+ifeq ($(call _truthy,$(TUNNELS))$(DOMAIN),)
+  export BUILD_INFO_ADMIN_TOKEN = $(_EFFECTIVE_ADMIN_TOKEN)
+endif
 # What env-admin re-registers with wallet-backend after a storage reset -
 # the same identities register-vc-services uses (TUNNELS=yes swaps in the
 # tunnel URLs inside `up`, where .env.tunnel is sourced).
