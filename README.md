@@ -90,6 +90,12 @@ up` and `make fly-up` run). The dashboard's **Storage** card is the same
 action with a button, on both targets. When the stack is down there is no
 env-admin, so `make storage-clear` removes the volumes instead.
 
+The button needs the environment's admin token plus the environment name
+typed as confirmation. A loopback-only local stack embeds the token in the
+gitignored `build-info.json` so the prompt is skipped; under `TUNNELS=yes`
+or `DOMAIN=` the dashboard is reachable from other machines, so the token is
+not embedded and the card prompts for it, as it always does on Fly.
+
 On Fly the same data sits on a Fly volume per Mongo app - see "Fly.io
 Deployment" for `KEEP_DATA=yes` and `make fly-storage-clear`.
 
