@@ -259,7 +259,22 @@ images:
   #
   # No config change needed here: the step is unconditional in the engine
   # and has no knobs.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.17.0"
+  #
+  # Bumped from 0.17.0 to 0.18.0: adds the issuer entitlement check
+  # (go-wallet-backend#306) that /v1/resolve returns as issuer_entitlement -
+  # under CIR (EU) 2025/848 a PID or attestation provider is a registered
+  # wallet-relying party in its own right, and ARF v3.0.0 section 6.6.2.3 asks
+  # the wallet to verify its registration before requesting issuance. The
+  # clients that act on the decision are siros-sdk-kotlin#157,
+  # siros-sdk-swift#124 and wallet-frontend#279.
+  #
+  # Left in its default warn mode: WALLET_AUTHZEN_PROXY_ISSUER_ENTITLEMENT_MODE
+  # is unset, so findings are reported and issuance still proceeds. The ARF
+  # obligation only applies 24 months after the amending Regulation enters into
+  # force, and this env issues from vc-issuer, whose WRPAC/WRPRC come from
+  # `make wrpac-pki` and are not yet part of every deployment here. Set it to
+  # `fail` to exercise refusal.
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.18.0"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
