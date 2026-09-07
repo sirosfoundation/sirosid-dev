@@ -58,6 +58,21 @@ trusted_verifiers:
   - https://verifier.multipaz.org
   - https://siros-multipaz-verifier.fly.dev
   - https://geneva2026.mdoc.online
+  # Google's public DC API test site, for browser-initiated presentation
+  # testing. Written as the plain origin because that is what a whitelist
+  # match actually compares against: an unsigned DC API request carries no
+  # signing certificate, so the subject is the origin Chrome verified, and a
+  # signed one using the x509_san_dns scheme is normalized to
+  # https://<host> before the match runs. Only x509_hash: subjects are
+  # compared un-normalized, and if the site's signed requests turn out to use
+  # that scheme it needs its hash added verbatim alongside this - the PDP's
+  # denial message quotes the exact string to paste.
+  #
+  # No reader-CA root below: the site's request-signing certificate is
+  # self-signed rather than chained (see values-fly.yaml's 0.12.1 -> 0.13.0
+  # note), so it is trusted by hash-pinning rather than by chain validation,
+  # which is the one scheme go-trust deliberately skips chain validation for.
+  - https://digital-credentials.dev
 trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
   - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
