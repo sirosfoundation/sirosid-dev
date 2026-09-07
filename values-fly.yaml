@@ -274,7 +274,13 @@ images:
   # force, and this env issues from vc-issuer, whose WRPAC/WRPRC come from
   # `make wrpac-pki` and are not yet part of every deployment here. Set it to
   # `fail` to exercise refusal.
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.18.0"
+  #
+  # Bumped from 0.18.0 to 0.18.4: picks up the go-webauthn 0.18 upgrade and
+  # the fix for it (go-wallet-backend#312). Skip 0.18.1 (does not build),
+  # 0.18.2 (rejects every WebAuthn sign-up and login with "Client returned the
+  # prf extension output which was not requested") and 0.18.3 (tagged on the
+  # wrong commit, same code as 0.18.2).
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.18.4"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
