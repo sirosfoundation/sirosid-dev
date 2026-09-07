@@ -134,5 +134,9 @@ services:
         condition: service_healthy
 
 volumes:
+  # Explicit names so `make storage-status`/`storage-clear` and the boot
+  # manager find them regardless of the checkout's directory name.
   r2ps-softhsm-tokens:
+    name: sirosid-r2ps-softhsm-tokens
   attest-softhsm-tokens:
+    name: sirosid-attest-softhsm-tokens
