@@ -29,6 +29,16 @@ images:
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:integration-1788040215
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:integration-1788040215
 
+  # Pinned here rather than in values-fly.yaml because that file is shared by
+  # every Fly environment and this is gdc's pin, not a vetted default for all
+  # of them - the shared pin stays where it is until someone decides it should
+  # move.
+  #
+  # gdc ran 0.15.2 until 2026-09-07, when a redeploy for an unrelated
+  # whitelist change picked up values-fly.yaml's 0.18.0 as a side effect;
+  # nobody chose 0.18.0 for this environment. 0.15.2 -> 0.18.0 -> 0.19.0.
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.19.0
+
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
 # mdoc issuer - trusted here so a wallet can receive a credential from it
 # for the proximity-presentation test.
