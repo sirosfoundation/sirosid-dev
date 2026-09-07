@@ -7,10 +7,12 @@
 # mainstream PKCS#11 HSM implements the curve, so this is a software key by
 # construction. zk-cred-bbs's `bbs-keygen` is the generator.
 #
-# Both halves land in vc-pki/, which is gitignored. The public half is
-# printed at the end so it can be pasted into an environments/<name>.yaml
-# `values:` block - it is public, and committing it is how a verifier and a
-# wallet learn which key to check against.
+# Both halves land in vc-pki/, which is gitignored. An environment reads
+# them from there at render time via bbs_public_key_file /
+# bbs_secret_key_file (see environments/bbs.yaml and scripts/env_config.py),
+# so nothing has to be pasted anywhere. The public half is echoed at the end
+# only because a wallet or verifier has to be handed it out of band: nothing
+# publishes a BBS issuer key yet.
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,12 +43,9 @@ cargo run --quiet --release --manifest-path "$crate/Cargo.toml" --features cli -
     "$@"
 
 echo
-echo "Paste the public key into environments/<name>.yaml:"
+echo "Wrote $out/bbs_issuer.sk (secret, 0600) and $out/bbs_issuer.pk (public)."
+echo "An environment with bbs_public_key_file/bbs_secret_key_file pointing at"
+echo "these (environments/bbs.yaml does) picks them up at render time - nothing"
+echo "to paste. Hand the public key to a wallet or verifier that needs it:"
 echo
-echo "values:"
-echo "  issuer:"
-echo "    core:"
-echo "      extraConfig:"
-echo "        issuer:"
-echo "          bbs:"
-echo "            public_key: \"$(tr -d '\n' < "$out/bbs_issuer.pk")\""
+echo "  $(tr -d '\n' < "$out/bbs_issuer.pk")"

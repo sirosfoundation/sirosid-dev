@@ -689,28 +689,51 @@ def assert_chart_ref(chart_dir: Path, chart_ref: str) -> None:
     renders a config that is merely missing whatever the branch adds, which
     then surfaces as a puzzling runtime error in a service.
 
+    Compared by COMMIT, not by branch name, so a detached HEAD at a tag or
+    at the branch tip (`git checkout <sha>`, a CI checkout) passes when it
+    points where the ref points. The branch name is only used for the
+    message.
+
+    A chart_dir that is not a git checkout (an exported tarball) cannot be
+    checked at all; that is a warning, not a refusal - the point is to catch
+    a stale checkout, and there is no checkout to be stale.
+
     Only used while an environment depends on unmerged chart work. The
     environment file's own comment should say what to delete it for.
     """
     if not chart_ref:
         return
-    try:
-        actual = subprocess.run(
-            ["git", "-C", str(chart_dir), "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, check=True).stdout.strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print(f"warning: cannot read {chart_dir}'s git ref; expected {chart_ref!r}", file=sys.stderr)
-        return
-    if actual != chart_ref:
-        raise SystemExit(
-            f"This environment needs siros-id-stack on {chart_ref!r}, but {chart_dir} is on "
-            f"{actual!r}.\n\n"
-            f"    git -C {chart_dir} fetch origin {chart_ref} && "
-            f"git -C {chart_dir} checkout {chart_ref}\n\n"
-            "Rendering against the wrong ref does not fail here - it quietly produces a config "
-            "missing whatever that branch adds."
-        )
 
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(chart_dir), *args],
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    try:
+        head = git("rev-parse", "HEAD")
+        branch = git("rev-parse", "--abbrev-ref", "HEAD")  # "HEAD" when detached
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print(f"warning: {chart_dir} is not a git checkout; cannot verify it is on {chart_ref!r}",
+              file=sys.stderr)
+        return
+    if branch == chart_ref:
+        return
+    # Detached, or on a differently named branch: accept if HEAD is the same
+    # commit as the ref - locally or as fetched from origin.
+    for candidate in (chart_ref, f"origin/{chart_ref}"):
+        try:
+            if git("rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}") == head:
+                return
+        except subprocess.CalledProcessError:
+            continue
+    actual = branch if branch != "HEAD" else f"detached HEAD at {head[:12]}"
+    raise SystemExit(
+        f"This environment needs siros-id-stack on {chart_ref!r}, but {chart_dir} is on "
+        f"{actual}.\n\n"
+        f"    git -C {chart_dir} fetch origin {chart_ref} && "
+        f"git -C {chart_dir} checkout {chart_ref}\n\n"
+        "Rendering against the wrong ref does not fail here - it quietly produces a config "
+        "missing whatever that branch adds."
+    )
 
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,

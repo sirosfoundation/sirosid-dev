@@ -254,17 +254,23 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
     if template:
         resolved = yaml.safe_load(
             re.sub(r"\$\{(\w+)\}", lambda m: values.get(m.group(1), ""), template)) or {}
-        config = _deep_merge(config, resolved)
+        config = deep_merge(config, resolved)
     # Nothing reads a secrets file here, and vc errors on a path it cannot
     # read - so make sure the chart's default never survives into the config.
     (config.get("common") or {}).pop("secret_file_path", None)
     return config
 
 
-def _deep_merge(base: dict, overlay: dict) -> dict:
+def deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge overlay into base IN PLACE and return base.
+
+    Public: fly-up.py layers per-environment values with it too, so the two
+    scripts agree on what "merge" means for nested dicts (overlay wins at the
+    leaves, dicts are merged rather than replaced).
+    """
     for key, value in overlay.items():
         if isinstance(value, dict) and isinstance(base.get(key), dict):
-            _deep_merge(base[key], value)
+            deep_merge(base[key], value)
         else:
             base[key] = value
     return base

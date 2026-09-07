@@ -68,7 +68,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
-from vc_render import _deep_merge as deep_merge  # noqa: E402
+from vc_render import deep_merge  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, ENV_ADMIN_IMAGE, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
     MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
@@ -1000,6 +1000,14 @@ def main():
                 "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
             )
         bbs_secret_key = path.read_text().strip()
+        if not bbs_secret_key:
+            # An empty string would be dropped by the `if bbs_secret_key`
+            # guard in the renderer and the issuer would boot with the
+            # chart's blank placeholder - a failure that says nothing about
+            # this file.
+            raise SystemExit(
+                f"bbs_secret_key_file {path} is empty. Re-run `make bbs-keys`."
+            )
 
     # The public half, by contrast, goes straight into the values tree: it is
     # not secret, and the chart wants it as issuer.core.bbs.publicKey. Read
@@ -1017,9 +1025,14 @@ def main():
                 f"bbs_public_key_file {path} does not exist. Run `make bbs-keys` to generate the "
                 "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
             )
+        bbs_public_key = path.read_text().strip()
+        if not bbs_public_key:
+            raise SystemExit(
+                f"bbs_public_key_file {path} is empty. Re-run `make bbs-keys`."
+            )
         env_values = deep_merge(
             env_values,
-            {"issuer": {"core": {"bbs": {"publicKey": path.read_text().strip()}}}},
+            {"issuer": {"core": {"bbs": {"publicKey": bbs_public_key}}}},
         )
 
     # Region. Every level here is an explicit pin; if none is set we take

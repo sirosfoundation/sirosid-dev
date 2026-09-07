@@ -1201,9 +1201,10 @@ wrpac-pki: ## Generate WRPAC/WRPRC trust anchors and client certificates (needs 
 # not an ECDSA key that signs a digest, so openssl cannot make one and no
 # PKCS#11 HSM can hold one. zk-cred-bbs ships the generator.
 #
-# Lands in the gitignored fixtures/vc-pki/, like every other private key
-# here. The public half is printed so it can be pasted into an
-# environments/<name>.yaml `values:` block, where it is safe to commit.
+# Both halves land in the gitignored fixtures/vc-pki/, like every other
+# private key here, and an environment picks them up from there via its
+# bbs_public_key_file / bbs_secret_key_file keys (see environments/bbs.yaml)
+# - nothing has to be pasted anywhere afterwards.
 bbs-keys: ## Generate the issuer's blind BBS key pair into fixtures/vc-pki/
 	@echo "$(GREEN)Generating blind BBS issuer key pair...$(NC)"
 	cd fixtures && ./create-bbs-keys.sh
