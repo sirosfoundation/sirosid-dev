@@ -77,5 +77,5 @@ starting anything.
 Copy the shape from `gdc.yaml` and fill in only the keys that differ from
 the (all-empty/false) defaults. Nothing is required - an empty file
 (or no file at all) behaves exactly like today's CLI-flags-only path.
-The boot manager (`make manage`) can create one for you: select the local
+The boot manager (`make boot`) can create one for you: select the local
 stack, press `o`, set the options, and Save under a name.

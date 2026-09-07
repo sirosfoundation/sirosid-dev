@@ -1,7 +1,7 @@
 """sirosid-dev boot manager - a terminal UI over the harness.
 
     make setup        # clones the sibling repos AND installs + launches this
-    make manage       # afterwards (or .venv/bin/sirosid-dev)
+    make boot       # afterwards (or .venv/bin/sirosid-dev)
 
 Every action is a `make` command the developer could have typed (harness.py
 builds them and this UI shows them before running), so the TUI can never do
@@ -468,6 +468,95 @@ class StorageScreen(AutoRefresh, Screen):
 
 
 # ---------------------------------------------------------------------------
+# Versions: what is actually running, and where it came from
+# ---------------------------------------------------------------------------
+
+class VersionsScreen(AutoRefresh, Screen):
+    """Build information for a running environment. Local: the same two
+    tables the dashboard's Build Info card shows (source repos' git state;
+    each running container's image and whether it was built here or pulled).
+    Fly: the image every app of the environment actually runs, from the
+    machine config - not the pin in values-fly.yaml, which can differ after
+    an IMAGES= override."""
+
+    BINDINGS = [Binding("escape", "back", "Back"), Binding("r", "refresh", "Refresh"),
+                Binding("A", "auto_refresh", "auto-refresh")]
+    DEFAULT_CSS = """
+    VersionsScreen VerticalScroll { padding: 0 2; }
+    VersionsScreen .section { text-style: bold; margin-top: 1; }
+    VersionsScreen DataTable { height: auto; max-height: 18; }
+    VersionsScreen #note { color: $text-muted; height: auto; }
+    """
+
+    def __init__(self, env: Environment):
+        super().__init__()
+        self.env = env
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        with VerticalScroll():
+            yield Static("loading…", id="note")
+            yield Static("Local stack - running images (what each container came from)", classes="section")
+            yield DataTable(id="services")
+            yield Static("Local stack - source repositories (git state on disk)", classes="section")
+            yield DataTable(id="components")
+            yield Static(f"Fly - sirosid-{self.env.name}-* deployed images", classes="section", id="fly-title")
+            yield DataTable(id="fly")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.sub_title = f"versions - {self.env.name}"
+        self.query_one("#services", DataTable).add_columns("service", "origin", "image", "image id", "started")
+        self.query_one("#components", DataTable).add_columns("repo", "branch", "commit", "last commit", "")
+        self.query_one("#fly", DataTable).add_columns("component", "image", "digest", "state", "region", "updated")
+        if not (self.env.env_arg and self.env.fly_deployed):
+            self.query_one("#fly-title", Static).update(
+                "Fly - " + ("not deployed" if self.env.env_arg else "the unnamed local stack has no Fly side"))
+        self.action_refresh()
+        self.start_auto_refresh()
+
+    def auto_tick(self) -> None:
+        self.action_refresh(include_fly=False)
+
+    @work(thread=True, exclusive=True, group="versions")
+    def action_refresh(self, include_fly: bool = True) -> None:
+        local = harness.local_versions()
+        self.app.call_from_thread(self.render_local, local)
+        if include_fly and self.env.env_arg and self.env.fly_deployed and harness.fly_available():
+            self.app.call_from_thread(self.query_one("#note", Static).update, "querying Fly machines…")
+            rows = harness.fly_versions(self.env.name)
+            self.app.call_from_thread(self.render_fly, rows)
+        else:
+            self.app.call_from_thread(self.query_one("#note", Static).update, self.auto_refresh_label()
+                                      + "   (r re-queries Fly)")
+
+    def render_local(self, info: dict) -> None:
+        t = self.query_one("#services", DataTable)
+        t.clear()
+        if not info["services"]:
+            t.add_row("(no running containers)", "", "", "", "")
+        for svc in info["services"]:
+            origin = Text(svc["origin"], style="green" if svc["origin"] == "local build" else "blue")
+            t.add_row(svc["service"], origin, svc["image"], svc["image_id"], svc["created"])
+        c = self.query_one("#components", DataTable)
+        c.clear()
+        for comp in info["components"]:
+            c.add_row(comp["name"], comp["branch"], comp["commit"][:10], comp["built"],
+                      Text("dirty", style="yellow") if comp["dirty"] else "")
+
+    def render_fly(self, rows: list[dict]) -> None:
+        t = self.query_one("#fly", DataTable)
+        t.clear()
+        for r in rows:
+            state = Text(r["state"], style="green" if r["state"] == "started" else "yellow")
+            t.add_row(r["component"], r["image"], r["digest"], state, r["region"], r["updated"])
+        self.query_one("#note", Static).update(self.auto_refresh_label() + "   (r re-queries Fly)")
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+# ---------------------------------------------------------------------------
 # Doctor
 # ---------------------------------------------------------------------------
 
@@ -513,7 +602,7 @@ and every sirosid-<env>-* deployment found on Fly. Select a row; the right side 
   [b]u[/b] make up (local)        [b]d[/b] make down (local)      [b]o[/b] options editor / plan
   [b]U[/b] make fly-up ENV=       [b]D[/b] make fly-down ENV=     [b]s[/b] / [b]S[/b] storage (local / fly)
   [b]l[/b] / [b]L[/b] logs (local / fly)  [b]e[/b] edit environments/<name>.yaml in $EDITOR
-  [b]h[/b] health checks          [b]x[/b] doctor                [b]r[/b] full refresh (incl. Fly)
+  [b]h[/b] health checks          [b]v[/b] versions / build info  [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
   [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] quit
 
 Everything runs as a `make` command shown at the top of the output screen, so it is reproducible from the shell.
@@ -526,7 +615,8 @@ class EnvironmentsScreen(AutoRefresh, Screen):
         Binding("U", "fly_up", "fly-up"), Binding("D", "fly_down", "fly-down"),
         Binding("s", "storage", "storage"), Binding("S", "fly_storage", "fly storage"),
         Binding("l", "logs", "logs"), Binding("L", "fly_logs", "fly logs"), Binding("e", "edit", "edit yaml"),
-        Binding("h", "health", "health"), Binding("x", "doctor", "doctor"), Binding("r", "refresh", "refresh"),
+        Binding("h", "health", "health"), Binding("v", "versions", "versions"), Binding("x", "doctor", "doctor"),
+        Binding("r", "refresh", "refresh"),
         Binding("question_mark", "help", "help"), Binding("A", "auto_refresh", "auto-refresh"),
         # "app.quit", not "quit": a screen binding's action is looked up on the
         # screen first and this screen has no action_quit, so a bare "quit"
@@ -741,6 +831,10 @@ class EnvironmentsScreen(AutoRefresh, Screen):
 
     def action_doctor(self) -> None:
         self.app.push_screen(DoctorScreen(self.selected))
+
+    def action_versions(self) -> None:
+        if e := self._need():
+            self.app.push_screen(VersionsScreen(e))
 
     def action_help(self) -> None:
         self.query_one("#detail", Static).update(HELP)

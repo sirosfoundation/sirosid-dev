@@ -21,7 +21,7 @@ WALLET_NAME ?= SIROS ID (dev)
         register-mocks register-vc-services clean show-branches show-images build-info pki \
         bbs-keys \
         render-helm-config fly-up fly-down fly-status \
-        plan _print-compose-files storage-status storage-clear fly-storage-clear manage \
+        plan _print-compose-files storage-status storage-clear fly-storage-clear boot \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
@@ -441,7 +441,7 @@ help: ## Show this help
 	@echo ""
 	@echo "$(GREEN)Primary Targets:$(NC)"
 	@echo "  make setup                           Bootstrap: clone sibling repos, install + launch the boot manager"
-	@echo "  make manage                          Launch the boot manager (after make setup)"
+	@echo "  make boot                          Launch the boot manager (after make setup)"
 	@echo "  make plan [STACK OPTIONS]            Show what 'make up' would do: compose files, storage, pre-flight"
 	@echo "  make up [STACK OPTIONS]              Start the stack with selected overlays"
 	@echo "  make down                            Stop stack containers"
@@ -1357,7 +1357,7 @@ setup: ## Bootstrap a checkout: clone the sibling repos, install the boot manage
 	fi
 	@$(MAKE) --no-print-directory _install-bootmgr
 	@echo ""
-	@echo "$(GREEN)Done.$(NC) Launch the boot manager any time with 'make manage', or 'make up' to start the stack directly."
+	@echo "$(GREEN)Done.$(NC) Launch the boot manager any time with 'make boot', or 'make up' to start the stack directly."
 	@if [ -t 0 ] && [ -z "$(NO_LAUNCH)" ]; then "$(VENV)/bin/sirosid-dev"; fi
 
 # The boot manager (bootmgr/, a Textual TUI over everything in this Makefile)
@@ -1376,7 +1376,7 @@ _install-bootmgr:
 	@"$(VENV)/bin/pip" install --quiet -e ./bootmgr
 	@echo "$(GREEN)Boot manager installed$(NC) ($(VENV)/bin/sirosid-dev)"
 
-manage: ## Launch the boot manager (run `make setup` first)
+boot: ## Launch the boot manager (run `make setup` first)
 	@if [ ! -x "$(VENV)/bin/sirosid-dev" ]; then \
 		echo "$(RED)Boot manager not installed - run: make setup$(NC)"; exit 1; \
 	fi

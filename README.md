@@ -48,7 +48,7 @@ remembering flags:
 
 ```bash
 make setup         # clones the sibling repos, installs the boot manager into .venv, launches it
-make manage        # afterwards
+make boot        # afterwards
 ```
 
 It lists every environment in one place (the unnamed local stack, every
@@ -659,7 +659,7 @@ sirosid-dev/
 ├── values-dev.yaml / values-fly.yaml   # Helm values overlays for render-helm-config.py
 ├── environments/                  # Persisted per-environment config (Fly + local: block)
 ├── env-admin/                     # The in-environment storage-reset service (local + Fly)
-├── bootmgr/                       # The boot manager TUI (installed by make setup, run by make manage)
+├── bootmgr/                       # The boot manager TUI (installed by make setup, run by make boot)
 ├── tests/                         # unittest suites: stack parity, env-admin, Fly storage
 ├── fixtures/                      # VC/PDP config templates, PKI, presentation requests
 ├── mocks/                         # mock-verifier (OpenID4VP) + trust-pdp (legacy AuthZEN) mocks

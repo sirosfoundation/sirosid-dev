@@ -348,6 +348,65 @@ def clear_storage(env: Environment, fly: bool, token: str, emit) -> tuple[str, s
 
 
 # ---------------------------------------------------------------------------
+# Versions / build information
+# ---------------------------------------------------------------------------
+
+def _build_info_module():
+    """scripts/generate-build-info.py (hyphenated name, loaded by path) - the
+    dashboard's own collectors, so the TUI and the dashboard's Build Info card
+    cannot disagree about what is running."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("generate_build_info", ROOT / "scripts" / "generate-build-info.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def local_versions() -> dict:
+    """{'components': [...git state per sibling repo...], 'services': [...running
+    container -> image, origin (local build / registry), image id, created...]}."""
+    mod = _build_info_module()
+    return {"components": mod.collect_components(), "services": mod.collect_services()}
+
+
+def fly_versions(env: str) -> list[dict]:
+    """One row per deployed Fly app of the environment: the image it actually
+    runs (tag + digest, from the machine config rather than any pin), machine
+    state, region and last update. Apps queried in parallel - one flyctl call
+    each, and an environment has eleven or more."""
+    from concurrent.futures import ThreadPoolExecutor
+    from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS, app_name
+
+    def one(comp: dict) -> dict | None:
+        app = app_name(env, comp["name"])
+        try:
+            out = subprocess.run(["flyctl", "machine", "list", "-a", app, "--json"], capture_output=True,
+                                 text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        if out.returncode != 0:
+            return None
+        try:
+            machines = json.loads(out.stdout or "[]")
+        except ValueError:
+            return None
+        if not machines:
+            return {"component": comp["name"], "app": app, "image": "(no machine)", "digest": "", "state": "-",
+                    "region": "", "updated": ""}
+        m = machines[0]
+        ref = m.get("image_ref") or {}
+        digest = (ref.get("digest") or "").replace("sha256:", "")[:12]
+        return {"component": comp["name"], "app": app, "image": (m.get("config") or {}).get("image", ""),
+                "digest": digest, "state": m.get("state", ""), "region": m.get("region", ""),
+                "updated": (m.get("updated_at") or "")[:19].replace("T", " ")}
+
+    comps = COMPONENTS + CONFORMANCE_COMPONENTS
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        rows = list(pool.map(one, comps))
+    return [r for r in rows if r]
+
+
+# ---------------------------------------------------------------------------
 # Doctor
 # ---------------------------------------------------------------------------
 

@@ -12,7 +12,7 @@ don't: the non-obvious traps.
 
 Three entry points share one core and must stay in step:
 - `make` — the CLI, and what CI runs.
-- the **boot manager** (installed by `make setup`, launched by `make manage`, `bootmgr/`) — a
+- the **boot manager** (installed by `make setup`, launched by `make boot`, `bootmgr/`) — a
   Textual TUI that only ever runs `make` commands it shows first.
 - `scripts/stack.py` — the `make up` option matrix as data (`make plan`).
   The Makefile still builds `COMPOSE_FILES` itself; `tests/test_stack_parity.py`
