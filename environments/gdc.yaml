@@ -73,6 +73,20 @@ trusted_verifiers:
   # note), so it is trusted by hash-pinning rather than by chain validation,
   # which is the one scheme go-trust deliberately skips chain validation for.
   - https://digital-credentials.dev
+  # And its signed requests, which do use the x509_hash scheme - confirmed
+  # from the PDP's own denial on 2026-09-07:
+  #
+  #   whitelist denied request subject=x509_hash:f1drGLOIT4kDBlJVsD-_33igSf5uwRnq3yO2NvcXEW0
+  #     reason="subject not in whitelist for action 'credential-verifier'"
+  #
+  # Pasted verbatim because x509_hash: subjects are compared un-normalized,
+  # unlike x509_san_dns:/x509_san_uri: which are reduced to https://<host>
+  # first. The origin entry above therefore cannot match a signed request, and
+  # this entry cannot match an unsigned one - both are needed.
+  #
+  # Hash-pinning is itself the trust decision for this scheme, so go-trust
+  # skips chain validation and no reader-CA root is required.
+  - x509_hash:f1drGLOIT4kDBlJVsD-_33igSf5uwRnq3yO2NvcXEW0
 trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
   - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
