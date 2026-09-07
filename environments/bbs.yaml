@@ -117,3 +117,11 @@ values:
           source: assertion
           authOptions:
             claims: [given_name, family_name]
+
+# The local docker-compose shape of this environment (`make up ENV=bbs`):
+# the chart-rendered wallet-backend + PDP config and the vc services built
+# from ../vc - and with them the persistent Mongo volume and env-admin, so the
+# BBS flow can be exercised and reset locally the same way as on Fly.
+local:
+  pdp: helm
+  vc: true
