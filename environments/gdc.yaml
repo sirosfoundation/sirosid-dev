@@ -68,6 +68,30 @@ trusted_verifier_roots:
 zk_circuits_sources:
   - https://zk-circuits-test.fly.dev
 
+# The sample app's signing keys, so wallet-backend's rp_origins (the
+# server-side WebAuthn accept-list) contains the apk-key-hash the app
+# actually presents. Without a matching entry, /auth/passkey/register/finish
+# fails with "Error validating origin" and signup returns 400 - while login
+# with an already-registered passkey keeps working, which makes it look like
+# a server regression rather than a missing accept-list entry.
+#
+# Persisted here on purpose. These previously lived only in `.android-apps`,
+# which is gitignored and per-checkout, so a `make fly-up ENV=gdc` from any
+# working copy that happened not to have that file silently deployed an
+# rp_origins with the app's keys missing - which is exactly what happened on
+# 2026-09-07. Environment state that the environment needs belongs in the
+# environment file, where anyone's next deploy reproduces it.
+#
+# Three keys, all for org.siros.sdk.sample: the repo's committed debug
+# keystore (sample-app/debug.keystore - what CI and a clean checkout build
+# with), a local per-developer debug keystore, and an older one kept so
+# devices still carrying that build can log in. `.android-apps` is still read
+# and still adds to this; nothing here replaces it.
+android_apps:
+  - org.siros.sdk.sample=A4:DF:EC:00:09:BF:CA:CD:A4:67:F7:D4:6D:A0:AD:96:1C:4E:38:D2:4F:42:5C:6A:21:7F:98:69:9C:C5:82:14
+  - org.siros.sdk.sample=C4:07:F2:6D:C3:B4:C8:F9:54:03:F1:A4:A3:6B:47:EA:82:11:6F:D6:3E:A9:AD:EE:56:D9:B4:9B:FA:96:D3:B4
+  - org.siros.sdk.sample=46:56:F0:24:08:55:32:F0:94:0F:53:60:A2:0E:6A:31:9A:0B:57:5B:38:C6:BD:F8:48:B6:95:09:39:CB:B0:2F
+
 wallet_attestation: true
 
 # Geneva 2026 interop event's RICAL (ISO 18013-5 2nd ed. Annex F reader-trust
