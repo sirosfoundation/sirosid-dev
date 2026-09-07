@@ -29,7 +29,6 @@ make up
 Or if you already have the repos cloned:
 
 ```bash
-make install       # Boot manager: a terminal UI over everything below (see "Boot manager")
 make up            # Start default stack (go-trust allow-all)
 make up VC=yes     # … with production-like VC services
 make up GOLDEN=yes # … using pre-built golden release images
@@ -48,7 +47,7 @@ manager is a terminal UI over it, for finding your way rather than
 remembering flags:
 
 ```bash
-make install       # once: creates .venv, installs it, launches it
+make setup         # clones the sibling repos, installs the boot manager into .venv, launches it
 make manage        # afterwards
 ```
 
@@ -660,7 +659,7 @@ sirosid-dev/
 ├── values-dev.yaml / values-fly.yaml   # Helm values overlays for render-helm-config.py
 ├── environments/                  # Persisted per-environment config (Fly + local: block)
 ├── env-admin/                     # The in-environment storage-reset service (local + Fly)
-├── bootmgr/                       # The boot manager TUI (make install)
+├── bootmgr/                       # The boot manager TUI (installed by make setup, run by make manage)
 ├── tests/                         # unittest suites: stack parity, env-admin, Fly storage
 ├── fixtures/                      # VC/PDP config templates, PKI, presentation requests
 ├── mocks/                         # mock-verifier (OpenID4VP) + trust-pdp (legacy AuthZEN) mocks

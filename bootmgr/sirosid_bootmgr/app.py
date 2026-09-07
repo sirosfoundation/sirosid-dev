@@ -1,6 +1,6 @@
 """sirosid-dev boot manager - a terminal UI over the harness.
 
-    make install      # once: creates .venv, installs this, launches it
+    make setup        # clones the sibling repos AND installs + launches this
     make manage       # afterwards (or .venv/bin/sirosid-dev)
 
 Every action is a `make` command the developer could have typed (harness.py
@@ -79,14 +79,14 @@ class AskText(ModalScreen[str | None]):
     AskText Button { margin-left: 1; }
     """
 
-    def __init__(self, title: str, placeholder: str = "", password: bool = False):
+    def __init__(self, title: str, placeholder: str = "", password: bool = False, value: str = ""):
         super().__init__()
-        self.title_text, self.placeholder, self.password = title, placeholder, password
+        self.title_text, self.placeholder, self.password, self.value = title, placeholder, password, value
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Label(Text(self.title_text, style="bold"))
-            yield Input(placeholder=self.placeholder, password=self.password, id="text")
+            yield Input(value=self.value, placeholder=self.placeholder, password=self.password, id="text")
             with Horizontal():
                 yield Button("Cancel", id="no")
                 yield Button("OK", id="yes", variant="primary")
@@ -99,6 +99,57 @@ class AskText(ModalScreen[str | None]):
     @on(Input.Submitted)
     def ok(self) -> None:
         self.dismiss(self.query_one("#text", Input).value.strip())
+
+
+# ---------------------------------------------------------------------------
+# Auto-refresh (shared by the screens that poll something)
+# ---------------------------------------------------------------------------
+
+class AutoRefresh:
+    """Mixin: a timer that calls `self.auto_tick()` every
+    `app.auto_refresh_seconds` seconds (0 disables). `A` opens a dialog to
+    change the interval; the setting is app-wide so every screen follows it."""
+
+    _auto_timer = None
+
+    def start_auto_refresh(self) -> None:
+        if self._auto_timer is not None:
+            self._auto_timer.stop()
+            self._auto_timer = None
+        seconds = self.app.auto_refresh_seconds
+        if seconds > 0:
+            self._auto_timer = self.set_interval(seconds, self.auto_tick)
+
+    def auto_refresh_label(self) -> str:
+        s = self.app.auto_refresh_seconds
+        return f"auto-refresh every {s}s (A to change)" if s > 0 else "auto-refresh off (A to change)"
+
+    def action_auto_refresh(self) -> None:
+        self.app.push_screen(
+            AskText("Seconds between automatic refreshes (0 turns auto-refresh off)",
+                    placeholder="3", value=str(self.app.auto_refresh_seconds)),
+            self._set_auto_refresh)
+
+    def _set_auto_refresh(self, value: str | None) -> None:
+        if value is None:
+            return
+        try:
+            seconds = int(value)
+            if seconds < 0:
+                raise ValueError
+        except ValueError:
+            self.notify("Enter a whole number of seconds (0 to turn it off).", severity="error")
+            return
+        self.app.auto_refresh_seconds = seconds
+        self.start_auto_refresh()
+        self.notify(self.auto_refresh_label())
+        self.on_auto_refresh_changed()
+
+    def on_auto_refresh_changed(self) -> None:  # screens override to update their hint line
+        pass
+
+    def auto_tick(self) -> None:  # screens override
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -282,8 +333,9 @@ class OptionsScreen(Screen):
 # Storage
 # ---------------------------------------------------------------------------
 
-class StorageScreen(Screen):
-    BINDINGS = [Binding("escape", "back", "Back"), Binding("r", "refresh", "Refresh"), Binding("c", "clear", "Clear all data")]
+class StorageScreen(AutoRefresh, Screen):
+    BINDINGS = [Binding("escape", "back", "Back"), Binding("r", "refresh", "Refresh"), Binding("c", "clear", "Clear all data"),
+                Binding("A", "auto_refresh", "auto-refresh")]
     DEFAULT_CSS = """
     StorageScreen #info { height: auto; padding: 1 2; }
     StorageScreen DataTable { height: auto; max-height: 12; margin: 0 2; }
@@ -312,6 +364,10 @@ class StorageScreen(Screen):
         self.sub_title = f"storage - {self.env.name} ({'fly' if self.fly else 'local'})"
         t = self.query_one("#dbs", DataTable)
         t.add_columns("database", "size", "collections", "documents")
+        self.load()
+        self.start_auto_refresh()
+
+    def auto_tick(self) -> None:
         self.load()
 
     @work(thread=True, exclusive=True, group="load")
@@ -457,20 +513,25 @@ and every sirosid-<env>-* deployment found on Fly. Select a row; the right side 
   [b]u[/b] make up (local)        [b]d[/b] make down (local)      [b]o[/b] options editor / plan
   [b]U[/b] make fly-up ENV=       [b]D[/b] make fly-down ENV=     [b]s[/b] / [b]S[/b] storage (local / fly)
   [b]l[/b] / [b]L[/b] logs (local / fly)  [b]e[/b] edit environments/<name>.yaml in $EDITOR
-  [b]h[/b] health checks          [b]x[/b] doctor                [b]r[/b] refresh   [b]q[/b] quit
+  [b]h[/b] health checks          [b]x[/b] doctor                [b]r[/b] full refresh (incl. Fly)
+  [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] quit
 
 Everything runs as a `make` command shown at the top of the output screen, so it is reproducible from the shell.
 """
 
 
-class EnvironmentsScreen(Screen):
+class EnvironmentsScreen(AutoRefresh, Screen):
     BINDINGS = [
         Binding("u", "up", "up"), Binding("d", "down", "down"), Binding("o", "options", "options"),
         Binding("U", "fly_up", "fly-up"), Binding("D", "fly_down", "fly-down"),
         Binding("s", "storage", "storage"), Binding("S", "fly_storage", "fly storage"),
         Binding("l", "logs", "logs"), Binding("L", "fly_logs", "fly logs"), Binding("e", "edit", "edit yaml"),
         Binding("h", "health", "health"), Binding("x", "doctor", "doctor"), Binding("r", "refresh", "refresh"),
-        Binding("question_mark", "help", "help"), Binding("q", "quit", "quit"),
+        Binding("question_mark", "help", "help"), Binding("A", "auto_refresh", "auto-refresh"),
+        # "app.quit", not "quit": a screen binding's action is looked up on the
+        # screen first and this screen has no action_quit, so a bare "quit"
+        # never reached the app.
+        Binding("q", "app.quit", "quit"),
     ]
     DEFAULT_CSS = """
     EnvironmentsScreen #body { height: 1fr; }
@@ -497,11 +558,32 @@ class EnvironmentsScreen(Screen):
         t = self.query_one("#envs", DataTable)
         t.add_columns("environment", "file", "local", "fly", "region")
         self.action_refresh()
+        self.start_auto_refresh()
+
+    def auto_tick(self) -> None:
+        # The automatic tick re-reads local state (docker, files) only: the
+        # Fly app list is a network round trip that is not worth repeating
+        # every few seconds - `r` still does the full refresh.
+        self.action_refresh(include_fly=False)
+
+    def on_auto_refresh_changed(self) -> None:
+        self.query_one("#hint", Static).update(self.hint_text())
+
+    def hint_text(self) -> str:
+        return ("? for help   " + self.auto_refresh_label()
+                + ("" if harness.fly_available() else "   (flyctl not found - Fly columns unavailable)"))
 
     @work(thread=True, exclusive=True, group="refresh")
-    def action_refresh(self) -> None:
-        self.app.call_from_thread(self.query_one("#hint", Static).update, "refreshing…")
-        envs = harness.load_environments(include_fly=harness.fly_available())
+    def action_refresh(self, include_fly: bool = True) -> None:
+        if include_fly:
+            self.app.call_from_thread(self.query_one("#hint", Static).update, "refreshing…")
+            envs = harness.load_environments(include_fly=harness.fly_available())
+        else:
+            # Keep the Fly column from the last full refresh.
+            deployed = {e.name for e in self.envs if e.fly_deployed}
+            envs = harness.load_environments(include_fly=False)
+            for e in envs:
+                e.fly_deployed = e.name in deployed
         local = harness.local_state()
         self.app.call_from_thread(self.render_envs, envs, local)
 
@@ -513,7 +595,7 @@ class EnvironmentsScreen(Screen):
             t.add_row(e.name, "yes" if e.has_file else ("-" if e.name == "local" else "no"),
                       local_state if e.name == "local" else ("(make up ENV=%s)" % e.name if e.has_file else "-"),
                       "deployed" if e.fly_deployed else "-", e.region or "", key=e.name)
-        self.query_one("#hint", Static).update("? for help" + ("" if harness.fly_available() else "   (flyctl not found - Fly columns unavailable)"))
+        self.query_one("#hint", Static).update(self.hint_text())
         if envs:
             self.select(self.selected.name if self.selected else envs[0].name)
 
@@ -667,6 +749,8 @@ class EnvironmentsScreen(Screen):
 class BootManager(App):
     TITLE = "sirosid-dev"
     CSS = "Screen { layout: vertical; }"
+    # Seconds between automatic refreshes on the screens that poll (A changes it; 0 = off).
+    auto_refresh_seconds = 3
 
     def on_mount(self) -> None:
         self.push_screen(EnvironmentsScreen())

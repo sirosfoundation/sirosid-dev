@@ -26,7 +26,7 @@ WALLET_NAME ?= SIROS ID (dev)
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
 	usb-android-conformance publish-conformance-results \
-	install tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
+	tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
 
 # =============================================================================
 # Configuration
@@ -440,9 +440,8 @@ help: ## Show this help
 	@echo "$(GREEN)sirosid-dev$(NC) — Local Development Environment"
 	@echo ""
 	@echo "$(GREEN)Primary Targets:$(NC)"
-	@echo "  make setup                           Clone sibling repos"
-	@echo "  make install                         Install + launch the boot manager (TUI over everything below)"
-	@echo "  make manage                          Launch the boot manager (after make install)"
+	@echo "  make setup                           Bootstrap: clone sibling repos, install + launch the boot manager"
+	@echo "  make manage                          Launch the boot manager (after make setup)"
 	@echo "  make plan [STACK OPTIONS]            Show what 'make up' would do: compose files, storage, pre-flight"
 	@echo "  make up [STACK OPTIONS]              Start the stack with selected overlays"
 	@echo "  make down                            Stop stack containers"
@@ -1319,7 +1318,7 @@ SETUP_REPOS := \
 	vc:main \
 	facetec-api:main
 
-setup: ## Clone sibling repos needed for local development
+setup: ## Bootstrap a checkout: clone the sibling repos, install the boot manager into .venv and launch it (NO_LAUNCH=yes to skip the launch)
 	@echo "$(GREEN)Setting up sibling repositories...$(NC)"
 	@for entry in $(SETUP_REPOS); do \
 		repo=$${entry%%:*}; \
@@ -1356,16 +1355,17 @@ setup: ## Clone sibling repos needed for local development
 			printf "  %-24s $(GREEN)cloned$(NC) (main)\n" "siros-id-stack" || \
 			printf "  %-24s $(RED)failed$(NC)\n" "siros-id-stack"; \
 	fi
+	@$(MAKE) --no-print-directory _install-bootmgr
 	@echo ""
-	@echo "$(GREEN)Done.$(NC) Run 'make install' for the boot manager, or 'make up' to start the stack directly."
+	@echo "$(GREEN)Done.$(NC) Launch the boot manager any time with 'make manage', or 'make up' to start the stack directly."
+	@if [ -t 0 ] && [ -z "$(NO_LAUNCH)" ]; then "$(VENV)/bin/sirosid-dev"; fi
 
-# =============================================================================
-# Dependency Installation
-# =============================================================================
-
+# The boot manager (bootmgr/, a Textual TUI over everything in this Makefile)
+# is part of `make setup` - one bootstrap target, not two. Kept as its own
+# hidden step so setup's clone loop and the venv install stay readable.
 VENV ?= .venv
 
-install: ## Install the boot manager (a TUI over make up/down, Fly environments and storage) into .venv, then launch it
+_install-bootmgr:
 	@command -v python3 >/dev/null 2>&1 || { echo "$(RED)Error: python3 not found$(NC)"; exit 1; }
 	@if [ ! -x "$(VENV)/bin/python" ]; then \
 		echo "$(GREEN)Creating $(VENV)...$(NC)"; \
@@ -1374,12 +1374,11 @@ install: ## Install the boot manager (a TUI over make up/down, Fly environments 
 	@echo "$(GREEN)Installing the boot manager into $(VENV)...$(NC)"
 	@"$(VENV)/bin/pip" install --quiet --upgrade pip
 	@"$(VENV)/bin/pip" install --quiet -e ./bootmgr
-	@echo "$(GREEN)Installed.$(NC) Launch it any time with: $(YELLOW)make manage$(NC)  (or $(VENV)/bin/sirosid-dev)"
-	@if [ -t 0 ] && [ -z "$(NO_LAUNCH)" ]; then "$(VENV)/bin/sirosid-dev"; fi
+	@echo "$(GREEN)Boot manager installed$(NC) ($(VENV)/bin/sirosid-dev)"
 
-manage: ## Launch the boot manager (run `make install` first)
+manage: ## Launch the boot manager (run `make setup` first)
 	@if [ ! -x "$(VENV)/bin/sirosid-dev" ]; then \
-		echo "$(RED)Boot manager not installed - run: make install$(NC)"; exit 1; \
+		echo "$(RED)Boot manager not installed - run: make setup$(NC)"; exit 1; \
 	fi
 	@"$(VENV)/bin/sirosid-dev"
 
