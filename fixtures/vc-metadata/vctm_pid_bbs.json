@@ -1,0 +1,70 @@
+{
+  "vct": "urn:siros:pid:bbs:1",
+  "name": "SIROS PID (blind BBS)",
+  "description": "A minimal person identification credential issued as a blind BBS credential in JWP Compact Serialization (draft-bormann-jwp-modular-bbs). Test credential type for the 'bbs' environment - not an ARF PID and not interoperable with one.",
+  "$comment": "Deliberately small. This type exists to exercise blind BBS issuance and presentation end to end, so every claim here is one the flow actually needs: issuer-supplied claims that end up in the credential's claim map, plus one holder-committed claim the issuer never sees. Adding claims makes the message vector longer and the test slower without testing anything new.",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "SIROS PID (BBS)",
+      "description": "Person identification credential, issued with blind BBS"
+    }
+  ],
+  "claims": [
+    {
+      "path": ["family_name"],
+      "sd": "always",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Last name",
+          "description": "Current last name or surname."
+        }
+      ]
+    },
+    {
+      "path": ["given_name"],
+      "sd": "always",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "First name",
+          "description": "Current first name or given name."
+        }
+      ]
+    },
+    {
+      "path": ["birth_date"],
+      "sd": "always",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Date of birth",
+          "description": "Day, month and year of birth."
+        }
+      ]
+    },
+    {
+      "path": ["age_over_18"],
+      "sd": "always",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Over 18",
+          "description": "Whether the holder is over 18. The claim a selective-disclosure presentation would reveal on its own, without birth_date."
+        }
+      ]
+    },
+    {
+      "path": ["device_pin_hash"],
+      "sd": "always",
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Device PIN commitment",
+          "description": "Contributed by the wallet and never seen by the issuer. Its RFC 6901 pointer travels in the credential request so the issuer can place it in the claim map; its value does not."
+        }
+      ]
+    }
+  ]
+}

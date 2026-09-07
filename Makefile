@@ -19,6 +19,7 @@ WALLET_NAME ?= SIROS ID (dev)
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts ensure-local-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
+        bbs-keys \
         render-helm-config fly-up fly-down fly-status \
         plan _print-compose-files storage-status storage-clear fly-storage-clear manage \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
@@ -1194,6 +1195,19 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 wrpac-pki: ## Generate WRPAC/WRPRC trust anchors and client certificates (needs ../siros-wrpac-tool)
 	@echo "$(GREEN)Generating WRPAC/WRPRC material...$(NC)"
 	cd fixtures && ./create-wrpac-pki.sh
+
+# Blind BBS needs its own key pair, and it cannot come from create-pki.sh:
+# a BBS secret is a BLS12-381 scalar consumed inside the signing algebra,
+# not an ECDSA key that signs a digest, so openssl cannot make one and no
+# PKCS#11 HSM can hold one. zk-cred-bbs ships the generator.
+#
+# Both halves land in the gitignored fixtures/vc-pki/, like every other
+# private key here, and an environment picks them up from there via its
+# bbs_public_key_file / bbs_secret_key_file keys (see environments/bbs.yaml)
+# - nothing has to be pasted anywhere afterwards.
+bbs-keys: ## Generate the issuer's blind BBS key pair into fixtures/vc-pki/
+	@echo "$(GREEN)Generating blind BBS issuer key pair...$(NC)"
+	cd fixtures && ./create-bbs-keys.sh
 
 # =============================================================================
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
