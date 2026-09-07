@@ -91,6 +91,7 @@ avoid conflicts with the conformance suite (both use 8443):
 # R2PS remapped to 9443/9444 to coexist with conformance suite on 8443
 docker compose -f docker-compose.test.yml \
   -f docker-compose.vc-services.yml \
+  -f docker-compose.mongodb.yml \
   -f docker-compose.go-trust.yml \
   -f docker-compose.go-trust-allow.yml \
   -f docker-compose.r2ps.yml \

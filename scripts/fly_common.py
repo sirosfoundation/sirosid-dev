@@ -48,7 +48,27 @@ def _values_fly_image(key: str, default: str) -> str:
 MINI_OIDC_IMAGE = _values_fly_image(
     "miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.4"
 )
+# env-admin is sirosid-dev's own code (env-admin/), published to GHCR by
+# .github/workflows/env-admin-image.yml. Not in the chart, so pinned here
+# like mini-oidc. fly-up falls back to building it locally when the pin is
+# not pullable yet (see fly-up.py's env-admin branch).
+ENV_ADMIN_IMAGE = _values_fly_image(
+    "envAdmin", "ghcr.io/sirosfoundation/sirosid-env-admin:0.1.0"
+)
 FLY_ORG = "sirosfoundation"
+
+# Components whose data lives on a Fly volume. `make fly-down ENV=x
+# KEEP_DATA=yes` leaves exactly these apps (machines stopped) so the next
+# fly-up finds the data again; scripts/storage.py addresses their volumes.
+STORAGE_APPS = ["mongodb", "conformance-mongodb"]
+VOLUME_SIZE_GB = 1
+
+
+def volume_name(component: str) -> str:
+    """Fly volume names allow [a-z0-9_] only - no hyphens. One name per
+    component (the app already scopes it), so `[mounts] source` in the
+    generated fly.toml is stable across environments."""
+    return component.replace("-", "_") + "_data"
 
 # Last-resort fallback ONLY, for when Fly's own suggestion can't be reached
 # (offline, or the header shape changed). The default is detect_region()
@@ -105,6 +125,12 @@ COMPONENTS = [
         "image": "mongo:{mongo_version}",
         "ports": [{"internal": 27017, "public": False}],
         "checks": None,
+        # Persistent: fly-up creates the volume if missing (ensure_volume) and
+        # mounts it here, so users/passkeys/credentials survive redeploys,
+        # image bumps and Fly host maintenance. The root password therefore
+        # can no longer be rotated per run - see fly-up.py's
+        # resolve_mongo_password().
+        "mount": {"volume": volume_name("mongodb"), "destination": "/data/db"},
         # No HTTP endpoint to check - a TCP check on mongod's own port, so
         # `deploy_component()` can wait for an actual accept-connections
         # signal instead of the fixed sleep() this replaces (see its comment
@@ -184,6 +210,24 @@ COMPONENTS = [
         "checks": "/.well-known/assetlinks.json",
     },
     {
+        # sirosid-dev's own env-admin (env-admin/server.py): the privileged
+        # actor behind the dashboard's "Clear all data", `make
+        # fly-storage-clear` and the boot manager. Internal-only, reached via
+        # wallet-frontend's /_admin/ proxy over 6PN exactly like
+        # conformance-runner. It restarts this environment's Mongo consumers
+        # through the Machines API with one app-scoped deploy token per
+        # consumer (fly-up.py's env-admin branch) - never an org token.
+        # Deployed right before wallet-frontend (whose nginx statically
+        # resolves env-admin.internal at startup - see wallet_frontend_conf)
+        # and after every consumer, since the tokens can only be minted for
+        # apps that already exist.
+        "name": "env-admin",
+        "image": ENV_ADMIN_IMAGE,
+        "ports": [{"internal": 3002, "public": False}],
+        "checks": None,
+        "internal_check": {"type": "http", "port": 3002, "path": "/health"},
+    },
+    {
         "name": "wallet-frontend",
         "image_from_helm_deployment": "wallet-frontend",
         "ports": [{"internal": 80, "public": True}],
@@ -212,6 +256,7 @@ CONFORMANCE_COMPONENTS = [
         "image": "mongo:6",
         "ports": [{"internal": 27017, "public": False}],
         "checks": None,
+        "mount": {"volume": volume_name("conformance-mongodb"), "destination": "/data/db"},
         "internal_check": {"type": "tcp", "port": 27017},
     },
     {
@@ -453,6 +498,128 @@ def destroy_app(name: str):
     run_fly("apps", "destroy", name, "--yes")
 
 
+def list_machines(app: str) -> list:
+    result = run_fly("machine", "list", "-a", app, "--json", check=False, capture=True)
+    if result.returncode != 0:
+        return []
+    try:
+        return json.loads(result.stdout or "[]")
+    except ValueError:
+        return []
+
+
+def stop_machines(app: str):
+    """For `fly-down --keep-data`: keep the app and its volume, stop paying
+    for a running machine. `fly-up` starts it again (ensure_running)."""
+    for m in list_machines(app):
+        if m.get("state") not in ("stopped", "destroyed"):
+            run_fly("machine", "stop", m["id"], "-a", app, check=False)
+
+
+def list_volumes(app: str) -> list:
+    result = run_fly("volumes", "list", "-a", app, "--json", check=False, capture=True)
+    if result.returncode != 0:
+        return []
+    try:
+        return json.loads(result.stdout or "[]")
+    except ValueError:
+        return []
+
+
+def ensure_volume(app: str, name: str, region: str, size_gb: int = VOLUME_SIZE_GB) -> dict:
+    """Create `name` in `region` for `app` unless one already exists.
+
+    A volume pins its machine to a region, so an existing volume in a
+    DIFFERENT region than this run wants is a hard error rather than a
+    silent second volume: Fly would place the machine with the new volume
+    and the old data would sit orphaned, which is the one outcome persistent
+    storage exists to prevent. Relocating an environment means clearing its
+    data (make fly-storage-clear / fly-down without KEEP_DATA) first.
+    """
+    existing = [v for v in list_volumes(app) if v.get("name") == name and v.get("state") != "destroyed"]
+    if existing:
+        vol = existing[0]
+        if region and vol.get("region") and vol["region"] != region:
+            raise SystemExit(
+                f"{app}: volume {name} ({vol['id']}) lives in region {vol['region']} but this run targets "
+                f"{region}. A volume pins its machine, so the environment cannot move without losing the data.\n"
+                f"  Either redeploy in {vol['region']} (REGION={vol['region']}, or pin region: in "
+                f"environments/<name>.yaml), or clear the data first: make fly-storage-clear ENV=<name> "
+                f"(or make fly-down ENV=<name> without KEEP_DATA) and deploy again.")
+        print(f"{app}: volume {name} exists ({vol['id']}, {vol.get('region')}, {vol.get('size_gb')} GB)")
+        return {**vol, "created": False}
+    result = run_fly("volumes", "create", name, "-a", app, "-r", region or FLY_REGION_FALLBACK,
+                     "-s", str(size_gb), "--yes", "--json", capture=True)
+    try:
+        vol = json.loads(result.stdout or "{}")
+    except ValueError:
+        vol = {}
+    print(f"{app}: created volume {name} ({vol.get('id', '?')}, {region}, {size_gb} GB)")
+    # `created` tells the caller the data is EMPTY - the one moment a Mongo
+    # root password may (must, for an app that predates volumes and still
+    # carries a rotated secret nobody knows) be set fresh.
+    return {**vol, "created": True}
+
+
+def destroy_machines_without_mount(app: str):
+    """A machine created before this component had a volume cannot have one
+    attached after the fact - `fly deploy` refuses to add a mount to an
+    existing machine. Its data was ephemeral anyway (that is the state this
+    migration ends), so destroy it and let the deploy create a fresh one on
+    the volume."""
+    for m in list_machines(app):
+        if not (m.get("config") or {}).get("mounts"):
+            print(f"{app}: machine {m['id']} predates the volume (no mount) - replacing it")
+            run_fly("machine", "destroy", m["id"], "-a", app, "--force", check=False)
+
+
+def create_deploy_token(app: str, name: str = "sirosid-env-admin", expiry: str = "8760h") -> str:
+    """An app-scoped deploy token: enough for the Machines API on THIS app
+    (list/stop/start), nothing on any other app in the org. Created fresh on
+    every fly-up (they are cheap and env-admin's secret is re-set with the
+    new set), and revoked by fly-down via revoke_tokens()."""
+    result = run_fly("tokens", "create", "deploy", "-a", app, "--name", name, "--expiry", expiry, "--json",
+                     capture=True)
+    try:
+        data = json.loads(result.stdout or "{}")
+        token = data.get("token") or ""
+    except ValueError:
+        token = ""
+    if not token:
+        # Older flyctl prints the bare token (sometimes prefixed "FlyV1 ").
+        token = result.stdout.strip().splitlines()[-1].strip() if result.stdout.strip() else ""
+    if not token:
+        raise SystemExit(f"could not create a deploy token for {app}: {result.stderr}")
+    return token
+
+
+def revoke_tokens(app: str, name: str = "sirosid-env-admin"):
+    """Best effort: an app-scoped token is useless once the app is destroyed,
+    so this is hygiene, not security-critical."""
+    result = run_fly("tokens", "list", "-a", app, "--json", check=False, capture=True)
+    if result.returncode != 0:
+        return
+    try:
+        tokens = json.loads(result.stdout or "[]")
+    except ValueError:
+        return
+    for t in tokens:
+        if t.get("Name", t.get("name")) == name:
+            run_fly("tokens", "revoke", t.get("ID", t.get("id")), check=False)
+
+
+def read_machine_file(app: str, path: str) -> str:
+    """Read a file from the app's running machine over `fly ssh console`.
+
+    Fly secrets cannot be read back through the API, but a `--file-secret`
+    IS readable from inside the machine it is mounted into - which is how a
+    developer who did not do the last deploy (and so has no local secret
+    cache) can recover mongodb's root password instead of deploying a
+    mismatched one. Empty string on any failure."""
+    result = run_fly("ssh", "console", "-a", app, "-C", f"cat {path}", check=False, capture=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
 def existing_secret_names(app: str) -> set:
     result = run_fly("secrets", "list", "-a", app, "--json", check=False, capture=True)
     if result.returncode != 0:
@@ -502,7 +669,7 @@ def ensure_secret(app: str, key: str, value: str, force: bool = False):
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
                     health_check_path: str | None = None, memory_mb: int = 256, cpus: int = 1,
                     internal_check: dict | None = None, tcp_passthrough_port: int | None = None,
-                    region: str = ""):
+                    region: str = "", mount: dict | None = None):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -530,6 +697,16 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
         lines += [
             "[processes]",
             f"  app = '{process_cmd}'",
+            "",
+        ]
+    if mount is not None:
+        # A Fly volume (created by ensure_volume before the deploy - `fly
+        # deploy` does not create volumes on its own). Pins the machine to
+        # the volume's region; see fly-up.py's region guard.
+        lines += [
+            "[mounts]",
+            f"  source = '{mount['volume']}'",
+            f"  destination = '{mount['destination']}'",
             "",
         ]
     if tcp_passthrough_port is not None:
@@ -815,6 +992,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     vc_apigw = f"{app_name(env, 'vc-apigw')}.internal"
     conformance_server = f"{app_name(env, 'conformance-server')}.internal"
     conformance_runner = f"{app_name(env, 'conformance-runner')}.internal"
+    env_admin = f"{app_name(env, 'env-admin')}.internal"
     conformance_health = (
         f"    location = /_health/conformance-server {{ proxy_pass "
         f"http://{conformance_server}:8080/api/runner/available; "
@@ -878,8 +1056,32 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/env-admin   {{ proxy_pass http://{env_admin}:3002/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
 {conformance_health}
 {conformance_proxy}
+    # env-admin (storage status + "Clear all data", see env-admin/server.py) -
+    # mirrors nginx-e2e.conf's local /_admin/ block: same-origin, SSE-safe.
+    # env-admin is always deployed (COMPONENTS), so like the health proxies
+    # above this static target always resolves at nginx startup.
+    location /_admin/ {{
+        proxy_pass http://{env_admin}:3002/;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 600s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding off;
+    }}
+
+    # The dashboard's Storage card - the same dashboard/storage-card.js the
+    # local dashboard uses, uploaded by fly-up next to the dashboard HTML.
+    location = /storage-card.js {{
+        default_type application/javascript;
+        alias /usr/share/nginx/storage-card.js;
+        add_header Cache-Control "no-store" always;
+    }}
+
     # Same-origin proxy for wallet-frontend's own API calls (AuthServerClient,
     # AuthZENClient, private-data sync, etc. - everything under BACKEND_URL,
     # see fly-up.py's _wallet_frontend_env setting WALLET_BACKEND_URL to THIS
@@ -940,21 +1142,18 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
     CSS near-verbatim), served at wallet-frontend's own bare / (see
     wallet_frontend_conf()).
 
-    What's dropped from the local version, and why: the local Conformance
-    Suite tab (SSE-driven test-runner UI + log viewer) talks to a
-    "conformance-runner" container that's a documented placeholder with no
-    real API (see conformance-runner/Dockerfile) - there was never anything
-    working to port. The real, functional piece (the OpenID conformance
-    suite itself) IS deployed when conformance_url is given (--conformance -
-    see CONFORMANCE_COMPONENTS) - shown as a plain link, since driving test
-    runs happens through the suite's own web UI either way, locally or on
-    Fly. Build Info (git metadata from locally-built images) is dropped too -
-    nothing to show for a Fly environment pulling published images. The
-    Services table stays, retargeted at this environment's actual deployed
-    services (see SERVICES below) - mock-trust-pdp/mock-verifier are dropped
-    (not deployed on Fly; pdp/vc-verifier are the real equivalents), mini-oidc/
-    vc-registry are added (deployed on Fly, no local equivalent in the
-    original list).
+    What differs from the local version: the Conformance tab (SSE-driven
+    runner UI + log viewer, ported verbatim) is only rendered when
+    conformance_url is given (--conformance deploys conformance-runner, see
+    CONFORMANCE_COMPONENTS), instead of always as locally. Build Info (git
+    metadata from locally-built images) is dropped - nothing to show for a
+    Fly environment pulling published images. The Services table stays,
+    retargeted at this environment's actual deployed services (see SERVICES
+    below) - mock-trust-pdp/mock-verifier are dropped (not deployed on Fly;
+    pdp/vc-verifier are the real equivalents), mini-oidc/vc-registry are
+    added (deployed on Fly, no local equivalent in the original list). The
+    Storage card (dashboard/storage-card.js, one file for both dashboards)
+    talks to env-admin through the same /_admin/ proxy as locally.
 
     What's ADDED beyond the local version: an Environment Info card (backend/
     API URL, WebAuthn RP ID, tenant ID) and a Native App Setup card (every
@@ -991,6 +1190,7 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         ("vc-issuer", "vc-issuer", 8080),
         ("vc-verifier", "vc-verifier", 8080),
         ("vc-apigw", "vc-apigw", 8080),
+        ("env-admin", "env-admin", 3002),
     ]
     if conformance_url:
         service_list.append(("conformance-server", "conformance-server", 8080))
@@ -1597,7 +1797,7 @@ function toggleLogEntry(idx) {
 
   <div class="content">
     <h1>Fly.io Environment: {env}</h1>
-    <div class="subtitle">sirosid-dev &middot; ephemeral deployment &middot; <code>make fly-down ENV={env}</code> to tear down</div>
+    <div class="subtitle">sirosid-dev &middot; Mongo data persists on a Fly volume across redeploys &middot; <code>make fly-down ENV={env}</code> to tear down (<code>KEEP_DATA=yes</code> keeps the volume)</div>
 
     <div class="card">
       <h2>Quick Links</h2>
@@ -1642,6 +1842,11 @@ function toggleLogEntry(idx) {
         <thead><tr><th>Service</th><th>Status</th><th>Details</th></tr></thead>
         <tbody id="svc-table"></tbody>
       </table>
+    </div>
+
+    <div class="card" id="storage-card">
+      <h2>Storage</h2>
+      <div id="storage-body"><span class="meta">Checking env-admin&hellip;</span></div>
     </div>
 {status_panel_close}
 {conformance_tab}
@@ -1719,6 +1924,7 @@ setInterval(checkAll, 10000);
 {conformance_js}
 </script>
 {conformance_log_viewer_html}
+<script src="/storage-card.js"></script>
 </body>
 </html>
 """
