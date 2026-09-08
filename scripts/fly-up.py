@@ -67,6 +67,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
+import bootstrap  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from vc_render import deep_merge  # noqa: E402
 from fly_common import (  # noqa: E402
@@ -803,14 +804,20 @@ def _personal_region() -> str:
 
 
 def register_vc_services(env: str, admin_token: str):
-    """Mirrors the local Makefile's register-vc-services target: without
-    this, wallet-backend has zero registered issuers/verifiers even though
-    every VC service is up and reachable - PDP's whitelist (a separate,
-    orthogonal trust-policy mechanism, see build_fly_values_overlay()) governs
-    who's TRUSTED to issue/verify, it doesn't populate the wallet's own
-    "available issuers/verifiers" list. Tenant "default" is
-    go-wallet-backend's domain.DefaultTenantID, auto-initialized on startup -
-    same one the local Makefile uses, not Fly-specific.
+    """Register this environment's vc-apigw and vc-verifier with wallet-backend's
+    default tenant - scripts/bootstrap.py, the same code `make up` and
+    env-admin's storage reset run, so the three cannot drift.
+
+    Why it matters: PDP's whitelist governs who is TRUSTED to issue/verify; it
+    does not populate the wallet's own list of available issuers/verifiers.
+    An environment with nothing registered looks completely healthy and fails
+    only when a user tries to add a credential.
+
+    Now that Mongo persists across deploys, "already registered" (HTTP 409) is
+    the normal outcome of a redeploy, not a failure - the first version of
+    this function treated it as one and failed every redeploy of an
+    environment that had data. bootstrap.register() handles 409 and also
+    prunes an issuer registered under a previous identifier.
 
     Retries for a while since wallet-proxy's public DNS/TLS can take a few
     seconds to become reachable right after its own deploy returns.
@@ -818,56 +825,28 @@ def register_vc_services(env: str, admin_token: str):
     proxy_url = app_url(env, "wallet-proxy")
     apigw_url = app_url(env, "vc-apigw")
     verifier_url = app_url(env, "vc-verifier")
-
-    def post(path: str, body: dict):
-        req = urllib.request.Request(
-            f"{proxy_url}{path}", data=json.dumps(body).encode(), method="POST",
-            headers={"Authorization": f"Bearer {admin_token}", "Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            return resp.status
-
     last_err = None
-    for _ in range(30):
+    for _ in range(15):
         try:
-            post("/admin/tenants/default/issuers", {
-                "credential_issuer_identifier": apigw_url,
-                "visible": True,
-                # Without this, wallet-backend has no registered client_id for
-                # this issuer and falls back to the "unregistered client"
-                # convention (client_id = redirect_uri) for the OID4VCI
-                # authorization_code flow - which vc-apigw's PAR endpoint
-                # rejects (401 invalid_client) since that string isn't a
-                # client_id it knows about. "e2e-test-client" is already
-                # configured in vc-apigw's own config (fixtures/vc-config.yaml)
-                # as a public+PKCE client matching the native app's redirect_uri
-                # and every credential scope - the same client local dev and
-                # CI conformance tests already use successfully for this exact
-                # flow, not a Fly-specific workaround.
-                "client_id": "e2e-test-client",
-            })
-            post("/admin/tenants/default/verifiers", {"name": "VC Verifier", "url": verifier_url})
-            print(f"registered vc-apigw ({apigw_url}) and vc-verifier ({verifier_url}) "
-                  "with wallet-backend's default tenant")
+            summary = bootstrap.register(proxy_url, admin_token, apigw_url, verifier_url)
+            print(f"vc-apigw ({apigw_url}): {summary['issuer']}; vc-verifier ({verifier_url}): {summary['verifier']}")
             return
-        except (urllib.error.URLError, TimeoutError) as e:
+        except bootstrap.BootstrapError as e:
             last_err = e
-            time.sleep(2)
+            time.sleep(4)
     # Loud and fatal, not a warning: an environment with no registered issuer
     # looks completely healthy - every app up, every check passing - and fails
-    # only when a user tries to sign up or add a credential. That is a much
-    # worse thing to hand someone than a failed deploy. Seen for real:
+    # only when a user tries to sign up or add a credential. Seen for real:
     # wallet-backend was crash-looping while this ran, so registration
     # silently did nothing and the deploy still reported "Environment is up".
     raise SystemExit(
         f"\nERROR: could not register VC services with wallet-backend after retries ({last_err}).\n"
-        f"  The environment is deployed but the wallet has NO issuers or verifiers, so signup and\n"
+        f"  The environment is deployed but the wallet may have NO issuers or verifiers, so signup and\n"
         f"  credential issuance will fail. Check wallet-backend is actually serving:\n"
         f"    flyctl logs -a sirosid-{env}-wallet-backend\n"
         f"  then re-run `make fly-up ENV={env}` (idempotent), or register by hand:\n"
-        f"    POST {proxy_url}/admin/tenants/default/issuers|verifiers"
-        " with 'Authorization: Bearer <adminToken>'")
-
+        f"    python3 scripts/bootstrap.py --admin-url {proxy_url} --admin-token <adminToken> "
+        f"--issuer-url {apigw_url} --verifier-url {verifier_url}")
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
