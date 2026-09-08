@@ -72,7 +72,8 @@ from vc_render import deep_merge  # noqa: E402
 from fly_common import (  # noqa: E402
     COMPONENTS, CONFORMANCE_COMPONENTS, ENV_ADMIN_IMAGE, FLY_ORG, FLY_REGION_FALLBACK, detect_region,
     MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
-    app_exists, app_name, app_url, assetlinks_json, create_deploy_token, destroy_machines_without_mount,
+    app_exists, app_name, app_url, assert_volume_mounted, assetlinks_json, create_deploy_token,
+    destroy_machines_without_mount,
     ensure_app, ensure_running, ensure_secret, ensure_volume, existing_secret_names, is_local_docker_image,
     list_volumes, machine_private_ip, mini_oidc_config, network_name, push_local_image, read_machine_file,
     wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
@@ -302,7 +303,13 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         tcp_passthrough_port = 8443
     write_fly_toml(toml_path, app, primary_public_port, region=region, process_cmd=process_cmd,
                     health_check_path=comp["checks"], memory_mb=memory_mb, cpus=cpus,
-                    internal_check=comp.get("internal_check"), tcp_passthrough_port=tcp_passthrough_port)
+                    internal_check=comp.get("internal_check"), tcp_passthrough_port=tcp_passthrough_port,
+                    # The volume mount for the storage apps. Regression note: the
+                    # first release generated the toml WITHOUT this, so the volume
+                    # existed but nothing used it and every deploy replaced the
+                    # machine - assert_volume_mounted() below now fails the deploy
+                    # rather than letting that pass silently again.
+                    mount=comp.get("mount"))
 
     deploy_args = ["deploy", "-a", app, "-c", str(toml_path), "-i", image,
                    "--ha=false", "--strategy", "immediate", "--yes"]
@@ -549,6 +556,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         ]
 
     run(["flyctl"] + deploy_args, cwd=SIROSID_DEV_ROOT)
+    if "mount" in comp:
+        assert_volume_mounted(app, comp["mount"]["volume"])
     ensure_running(app)
 
     if "internal_check" in comp:

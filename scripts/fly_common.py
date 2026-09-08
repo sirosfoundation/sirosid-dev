@@ -435,7 +435,10 @@ def ensure_running(app: str):
     except ValueError:
         return
     for m in machines:
-        if m.get("state") != "started":
+        # Only a machine that is actually at rest. Right after a deploy a
+        # machine is briefly 'created'/'starting'/'replacing', and a start
+        # request then fails with a failed_precondition that only looks alarming.
+        if m.get("state") in ("stopped", "suspended"):
             run_fly("machine", "start", m["id"], "-a", app, check=False)
 
 
@@ -559,6 +562,31 @@ def ensure_volume(app: str, name: str, region: str, size_gb: int = VOLUME_SIZE_G
     # root password may (must, for an app that predates volumes and still
     # carries a rotated secret nobody knows) be set fresh.
     return {**vol, "created": True}
+
+
+def machine_has_mount(machine: dict, volume: str) -> bool:
+    """Whether a machine's config mounts the named volume (by volume name or
+    id - the API reports the id, the fly.toml names the volume)."""
+    for m in (machine.get("config") or {}).get("mounts") or []:
+        if m.get("name") == volume or m.get("volume") == volume or str(m.get("volume", "")).startswith("vol_"):
+            return True
+    return False
+
+
+def assert_volume_mounted(app: str, volume: str):
+    """Fail the deploy if the app's machine did not come up with its volume.
+    A mount that silently does not apply means the data is on the machine's
+    ephemeral disk again - exactly the state persistent storage exists to end,
+    and the next redeploy would erase it."""
+    machines = list_machines(app)
+    if not machines:
+        raise SystemExit(f"{app}: no machine after deploy - cannot confirm volume {volume} is mounted")
+    if not all(machine_has_mount(m, volume) for m in machines):
+        raise SystemExit(
+            f"{app}: machine came up WITHOUT the volume mount ({volume}). Its data would be ephemeral "
+            f"again and lost on the next deploy. Check the generated {app.split('-')[-1]}.fly.toml has a "
+            f"[mounts] block and `flyctl machine list -a {app} --json` shows config.mounts.")
+    print(f"{app}: volume {volume} mounted")
 
 
 def destroy_machines_without_mount(app: str):

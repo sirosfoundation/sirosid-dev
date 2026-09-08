@@ -48,6 +48,27 @@ class FlyToml(unittest.TestCase):
         self.assertLess(names.index("env-admin"), names.index("wallet-frontend"))
 
 
+class MountGuard(unittest.TestCase):
+    def test_machine_has_mount_by_name_or_id(self):
+        self.assertTrue(fly_common.machine_has_mount({"config": {"mounts": [{"name": "mongodb_data", "path": "/data/db"}]}}, "mongodb_data"))
+        self.assertTrue(fly_common.machine_has_mount({"config": {"mounts": [{"volume": "vol_123", "path": "/data/db"}]}}, "mongodb_data"))
+        self.assertFalse(fly_common.machine_has_mount({"config": {"mounts": []}}, "mongodb_data"))
+        self.assertFalse(fly_common.machine_has_mount({"config": {}}, "mongodb_data"))
+
+    def test_deploy_component_passes_the_mount_and_asserts_it(self):
+        # Regression: the first release generated the storage apps' fly.toml
+        # without the mount because deploy_component never passed it on. The
+        # deploy sequence itself needs flyctl, so pin the two call sites here.
+        src = (ROOT / "scripts" / "fly-up.py").read_text()
+        self.assertIn('mount=comp.get("mount")', src)
+        self.assertIn('assert_volume_mounted(app, comp["mount"]["volume"])', src)
+
+    def test_ensure_running_only_starts_machines_at_rest(self):
+        import inspect
+        src = inspect.getsource(fly_common.ensure_running)
+        self.assertIn('in ("stopped", "suspended")', src)
+
+
 class GeneratedConfigs(unittest.TestCase):
     def test_nginx_has_env_admin_proxy_and_card(self):
         conf = fly_common.wallet_frontend_conf("t", conformance=False)
