@@ -10,6 +10,17 @@
 # Usage:
 #   ./create-pki.sh
 #   PKI_DIR_OVERRIDE=/path/to/env-pki ./create-pki.sh   # e.g. per Fly environment
+#   SIGNING_CERT_ISSUER_URL=https://issuer.example ./create-pki.sh
+#
+# SIGNING_CERT_ISSUER_URL adds a URI SAN naming the credential issuer to the
+# signing certificate. mdoc verifiers derive an mDL's issuer identity from its
+# DS certificate (vc's extractMDocIssuerID: URI SAN first, then DNS SAN), and
+# trust decisions key on that identity - on Fly the PDP's mdociaca allowlist
+# holds the environment's public vc-apigw URL. Without it, the first DNS SAN
+# (localhost) wins and every mDL this PKI signs is "issued by
+# https://localhost": the wallet warns at issuance and the environment's own
+# vc-verifier rejects the presentation with "issuer not trusted". Unset for
+# the docker-compose stack, where localhost IS the identity.
 #
 # Each artifact group is independently guarded by its own file-existence
 # check, so re-running after adding a new artifact group only generates what's
@@ -65,6 +76,30 @@ else
     # within the local fixtures dir.
     chmod a+r "${PKI_DIR}/signing_ec_private.pem"
     rm -f /tmp/signing_ec_raw.pem
+fi
+
+# Re-issued (from the existing key) whenever the cert is missing or does not
+# carry the requested issuer URI SAN - the key is what everything deployed
+# depends on (Fly secrets, thumbprints); the certificate is a public file
+# rewritten on every deploy, so changing it is safe.
+SIGNING_CERT_URI_SAN_LINE=""
+if [ -n "${SIGNING_CERT_ISSUER_URL:-}" ]; then
+    SIGNING_CERT_URI_SAN_LINE="URI.1 = ${SIGNING_CERT_ISSUER_URL}"
+fi
+signing_cert_current() {
+    [ -f "${PKI_DIR}/signing_ec.crt" ] || return 1
+    [ -z "${SIGNING_CERT_ISSUER_URL:-}" ] && return 0
+    openssl x509 -in "${PKI_DIR}/signing_ec.crt" -noout -ext subjectAltName 2>/dev/null \
+        | grep -qF "URI:${SIGNING_CERT_ISSUER_URL}"
+}
+if signing_cert_current; then
+    echo "EC signing certificate already current, skipping."
+else
+    if [ -f "${PKI_DIR}/signing_ec.crt" ]; then
+        echo "Re-issuing EC signing certificate (issuer URI SAN ${SIGNING_CERT_ISSUER_URL}) from the existing key..."
+    else
+        echo "Issuing EC signing certificate..."
+    fi
 
     # Create CSR config for signing certificate
     cat > /tmp/signing_ec.conf <<EOF
@@ -94,6 +129,7 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 DNS.2 = vc-issuer
 DNS.3 = vc-verifier
+${SIGNING_CERT_URI_SAN_LINE}
 EOF
 
     # Generate CSR and sign with rootCA
