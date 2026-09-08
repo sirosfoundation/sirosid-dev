@@ -602,7 +602,8 @@ and every sirosid-<env>-* deployment found on Fly. Select a row; the right side 
   [b]u[/b] make up (local)        [b]d[/b] make down (local)      [b]o[/b] options editor / plan
   [b]U[/b] make fly-up ENV=       [b]D[/b] make fly-down ENV=     [b]s[/b] / [b]S[/b] storage (local / fly)
   [b]l[/b] / [b]L[/b] logs (local / fly)  [b]e[/b] edit environments/<name>.yaml in $EDITOR
-  [b]h[/b] health checks          [b]v[/b] versions / build info  [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
+  [b]h[/b] toggle plan / live health in the panel (health re-probes on every refresh)
+  [b]v[/b] versions / build info  [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
   [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] quit
 
 Everything runs as a `make` command shown at the top of the output screen, so it is reproducible from the shell.
@@ -634,6 +635,12 @@ class EnvironmentsScreen(AutoRefresh, Screen):
         super().__init__()
         self.envs: list[Environment] = []
         self.selected: Environment | None = None
+        # What the right-hand panel shows for the selected environment: its
+        # plan, or live health. A mode rather than a one-shot, so a refresh
+        # re-renders the same thing instead of painting over it.
+        self.detail_mode = "plan"
+        self.health_rows: dict[str, list[tuple[str, bool]]] = {}
+        self._rendering = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -660,7 +667,8 @@ class EnvironmentsScreen(AutoRefresh, Screen):
         self.query_one("#hint", Static).update(self.hint_text())
 
     def hint_text(self) -> str:
-        return ("? for help   " + self.auto_refresh_label()
+        mode = "showing health (h for plan)" if self.detail_mode == "health" else "showing plan (h for health)"
+        return ("? for help   " + mode + "   " + self.auto_refresh_label()
                 + ("" if harness.fly_available() else "   (flyctl not found - Fly columns unavailable)"))
 
     @work(thread=True, exclusive=True, group="refresh")
@@ -675,25 +683,52 @@ class EnvironmentsScreen(AutoRefresh, Screen):
             for e in envs:
                 e.fly_deployed = e.name in deployed
         local = harness.local_state()
-        self.app.call_from_thread(self.render_envs, envs, local)
+        health = None
+        if self.detail_mode == "health" and self.selected:
+            # Probed inside the worker (parallel, short timeouts), so the
+            # health view is as fresh as the rest of the refresh.
+            e = self.selected
+            rows = harness.local_health()
+            if e.env_arg and e.fly_deployed:
+                rows += [(f"fly {n}", ok) for n, ok in harness.fly_health(e.name)]
+            health = (e.name, rows)
+        self.app.call_from_thread(self.render_envs, envs, local, health)
 
-    def render_envs(self, envs: list[Environment], local_state: str) -> None:
+    def render_envs(self, envs: list[Environment], local_state: str,
+                    health: tuple[str, list] | None = None) -> None:
+        if health:
+            self.health_rows[health[0]] = health[1]
+            self.health_probed_at = time.strftime("%H:%M:%S")
+        keep = self.selected.name if self.selected else (envs[0].name if envs else None)
         self.envs = envs
         t = self.query_one("#envs", DataTable)
-        t.clear()
-        for e in envs:
-            t.add_row(e.name, "yes" if e.has_file else ("-" if e.name == "local" else "no"),
-                      local_state if e.name == "local" else ("(make up ENV=%s)" % e.name if e.has_file else "-"),
-                      "deployed" if e.fly_deployed else "-", e.region or "", key=e.name)
+        # Rebuilding the rows moves the cursor to the first row, and the
+        # RowHighlighted that follows would then select it. Suppress that and
+        # put the cursor back where the user had it.
+        self._rendering = True
+        try:
+            t.clear()
+            for e in envs:
+                t.add_row(e.name, "yes" if e.has_file else ("-" if e.name == "local" else "no"),
+                          local_state if e.name == "local" else ("(make up ENV=%s)" % e.name if e.has_file else "-"),
+                          "deployed" if e.fly_deployed else "-", e.region or "", key=e.name)
+            names = [e.name for e in envs]
+            if keep in names:
+                t.move_cursor(row=names.index(keep), animate=False)
+        finally:
+            self._rendering = False
         self.query_one("#hint", Static).update(self.hint_text())
         if envs:
-            self.select(self.selected.name if self.selected else envs[0].name)
+            self.select(keep if keep in names else envs[0].name)
 
     def select(self, name: str) -> None:
         self.selected = next((e for e in self.envs if e.name == name), self.envs[0] if self.envs else None)
         if not self.selected:
             return
         e = self.selected
+        if self.detail_mode == "health":
+            self.render_health(e)
+            return
         lines = [Text(e.name, style="bold underline")]
         plan = harness.plan_for(e)
         if e.has_file:
@@ -729,10 +764,29 @@ class EnvironmentsScreen(AutoRefresh, Screen):
             lines.append(Text("warning: " + w, style="yellow"))
         self.query_one("#detail", Static).update(Text("\n").join(lines))
 
+    def render_health(self, e: Environment) -> None:
+        rows = self.health_rows.get(e.name)
+        lines = [Text(f"{e.name} - health", style="bold underline")]
+        if rows is None:
+            lines.append(Text("probing…", style="dim"))
+        else:
+            up = sum(1 for _n, ok in rows if ok)
+            lines.append(Text(f"{up}/{len(rows)} up   probed {getattr(self, 'health_probed_at', '?')}   "
+                              f"({self.auto_refresh_label()})", style="dim"))
+            lines += [Text(f"  {'up  ' if ok else 'down'} {n}", style="green" if ok else "red") for n, ok in rows]
+            if not e.fly_deployed and e.env_arg:
+                lines.append(Text("  (not deployed on Fly - local probes only)", style="dim"))
+        self.query_one("#detail", Static).update(Text("\n").join(lines))
+
     @on(DataTable.RowHighlighted)
     def row_changed(self, event: DataTable.RowHighlighted) -> None:
+        if self._rendering:
+            return
         if event.row_key is not None and event.row_key.value:
-            self.select(str(event.row_key.value))
+            name = str(event.row_key.value)
+            self.select(name)
+            if self.detail_mode == "health" and name not in self.health_rows:
+                self.action_refresh(include_fly=False)
 
     # -- actions ---------------------------------------------------------
 
@@ -816,18 +870,16 @@ class EnvironmentsScreen(AutoRefresh, Screen):
         self.app.reload_environments()
 
     def action_health(self) -> None:
+        """Toggle the detail panel between plan and live health. Health is a
+        mode: every refresh (manual or automatic) re-probes and re-renders it."""
         e = self._need()
         if not e:
             return
-        self.run_health(e)
-
-    @work(thread=True, exclusive=True, group="health")
-    def run_health(self, e: Environment) -> None:
-        rows = [(n, harness.health(u)) for n, u in harness.LOCAL_HEALTH]
-        if e.env_arg and e.fly_deployed:
-            rows += [(f"fly {n}", ok) for n, ok in harness.fly_health(e.name)]
-        text = Text("\n").join(Text(f"{'up  ' if ok else 'down'} {n}", style="green" if ok else "red") for n, ok in rows)
-        self.app.call_from_thread(self.query_one("#detail", Static).update, text)
+        self.detail_mode = "health" if self.detail_mode == "plan" else "plan"
+        self.query_one("#hint", Static).update(self.hint_text())
+        self.select(e.name)
+        if self.detail_mode == "health":
+            self.action_refresh(include_fly=False)
 
     def action_doctor(self) -> None:
         self.app.push_screen(DoctorScreen(self.selected))

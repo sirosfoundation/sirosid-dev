@@ -192,12 +192,26 @@ LOCAL_HEALTH = [
 ]
 
 
+def check_all(named_urls: list[tuple[str, str]], timeout: float = 1.5) -> list[tuple[str, bool]]:
+    """Probe every URL in parallel. Sequential probes with a 2 s timeout took up
+    to half a minute against a stack that is down, which is what made the
+    health view look like it never updated."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=12) as pool:
+        results = list(pool.map(lambda nu: health(nu[1], timeout), named_urls))
+    return [(name, ok) for (name, _url), ok in zip(named_urls, results)]
+
+
+def local_health() -> list[tuple[str, bool]]:
+    return check_all(LOCAL_HEALTH)
+
+
 def fly_health(env: str) -> list[tuple[str, bool]]:
     from fly_common import app_url
     base = app_url(env, "wallet-frontend")
     checks = ["backend", "admin", "engine", "registry", "pdp", "mini-oidc", "vc-registry", "vc-issuer",
               "vc-verifier", "vc-apigw", "env-admin"]
-    return [("wallet-frontend", health(base + "/"))] + [(c, health(f"{base}/_health/{c}")) for c in checks]
+    return check_all([("wallet-frontend", base + "/")] + [(c, f"{base}/_health/{c}") for c in checks], timeout=4)
 
 
 # ---------------------------------------------------------------------------
