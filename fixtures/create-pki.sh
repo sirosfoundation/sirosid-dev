@@ -38,15 +38,40 @@ echo "Creating PKI directory: ${PKI_DIR}"
 mkdir -p "${PKI_DIR}"
 
 if [ -f "${PKI_DIR}/rootCA.key" ]; then
-    echo "Root CA already exists, skipping."
+    echo "Root CA key already exists, skipping."
 else
-    echo "Generating Root CA..."
+    echo "Generating Root CA key..."
+    openssl genrsa -out "${PKI_DIR}/rootCA.key" 2048
+fi
+
+# The root certificate is re-issued from the existing key whenever it lacks
+# basicConstraints CA:TRUE. Earlier versions of this script self-signed a v3
+# certificate with no extensions at all, and Go's x509 (go-trust's mdociaca
+# registry, go-wallet-backend) refuses such a parent outright - "parent
+# certificate cannot sign this kind of certificate" - so nothing chaining to
+# it ever validated there, however the leaves were shaped. Same key, same
+# subject, so the key-id-based AuthorityKeyIdentifier on every leaf already
+# issued keeps chaining to the new certificate; only the certificate file
+# (public, rewritten on every deploy) changes.
+root_ca_current() {
+    [ -f "${PKI_DIR}/rootCA.crt" ] || return 1
+    openssl x509 -in "${PKI_DIR}/rootCA.crt" -noout -ext basicConstraints 2>/dev/null | grep -q "CA:TRUE"
+}
+if root_ca_current; then
+    echo "Root CA certificate already current, skipping."
+else
+    if [ -f "${PKI_DIR}/rootCA.crt" ]; then
+        echo "Re-issuing Root CA certificate (basicConstraints CA:TRUE) from the existing key..."
+    else
+        echo "Issuing Root CA certificate..."
+    fi
     cat > /tmp/ca.conf <<EOF
 [req]
 default_bits       = 2048
 prompt             = no
 default_md         = sha256
 distinguished_name = dn
+x509_extensions    = v3_ca
 
 [dn]
 C  = SE
@@ -55,11 +80,20 @@ L  = E2E Testing
 O  = Wallet E2E Test
 OU = Test PKI
 CN = E2E Test Root CA
+
+[v3_ca]
+basicConstraints       = critical, CA:TRUE
+keyUsage               = critical, keyCertSign, cRLSign
+subjectKeyIdentifier   = hash
 EOF
 
-    openssl genrsa -out "${PKI_DIR}/rootCA.key" 2048
     openssl req -x509 -new -nodes -key "${PKI_DIR}/rootCA.key" -sha256 -days 3650 -out "${PKI_DIR}/rootCA.crt" -config /tmp/ca.conf
     rm -f /tmp/ca.conf
+    # Chain files embed the root; rebuild the ones that exist so they carry
+    # the certificate that was just issued rather than the one it replaced.
+    if [ -f "${PKI_DIR}/signing_ec.crt" ]; then
+        cat "${PKI_DIR}/signing_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/signing_ec_chain.pem"
+    fi
 fi
 
 if [ -f "${PKI_DIR}/signing_ec_private.pem" ]; then
