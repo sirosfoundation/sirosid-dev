@@ -226,7 +226,7 @@ class OptionsScreen(Screen):
 
     BINDINGS = [Binding("escape", "back", "Back"), Binding("ctrl+s", "save", "Save"), Binding("b", "boot", "Boot with these")]
     DEFAULT_CSS = """
-    OptionsScreen VerticalScroll { padding: 0 2; }
+    OptionsScreen #form { padding: 0 2; height: 1fr; overflow-y: auto; }
     OptionsScreen .opt { height: auto; margin-bottom: 1; }
     OptionsScreen .opt-label { width: 32; padding-top: 1; text-style: bold; }
     OptionsScreen .opt-ctl { width: 30; }
@@ -243,7 +243,11 @@ class OptionsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
-        with VerticalScroll():
+        # A plain container with overflow, not VerticalScroll: that container
+        # binds the arrow keys for scrolling and, being an ancestor of the
+        # focused switch, would take them before the app's focus-movement
+        # bindings. Focus changes scroll the focused field into view anyway.
+        with Vertical(id="form"):
             for opt in stack.OPTIONS:
                 if opt.get("transient"):
                     continue
@@ -606,6 +610,7 @@ and every sirosid-<env>-* deployment found on Fly. Select a row; the right side 
   [b]v[/b] versions / build info  [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
   [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] quit
 
+Move between widgets with Tab/Shift+Tab or the arrow keys (a table or input keeps its own arrow handling).
 Everything runs as a `make` command shown at the top of the output screen, so it is reproducible from the shell.
 """
 
@@ -895,6 +900,15 @@ class EnvironmentsScreen(AutoRefresh, Screen):
 class BootManager(App):
     TITLE = "sirosid-dev"
     CSS = "Screen { layout: vertical; }"
+    # Arrow keys move focus between widgets, in addition to Tab/Shift+Tab.
+    # App bindings are consulted only after the focused widget, so a table,
+    # input or select keeps its own arrow handling (row movement, cursor,
+    # opening the list) and the arrows only travel between widgets - buttons,
+    # switches - that have no use for them.
+    BINDINGS = [
+        Binding("down,right", "focus_next", show=False),
+        Binding("up,left", "focus_previous", show=False),
+    ]
     # Seconds between automatic refreshes on the screens that poll (A changes it; 0 = off).
     auto_refresh_seconds = 3
 
