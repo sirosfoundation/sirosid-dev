@@ -173,7 +173,20 @@ def check_pki_consistency(env: str, pki_dir: Path):
 def generate_pki(env: str) -> Path:
     pki_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{env}" / "vc-pki"
     check_pki_consistency(env, pki_dir)
-    env_vars = {**os.environ, "PKI_DIR_OVERRIDE": str(pki_dir)}
+    # The signing cert's URI SAN is the identity mdoc verifiers derive for an
+    # mDL's issuer (vc's extractMDocIssuerID), and it has to be the same
+    # string build_fly_values_overlay() puts in the PDP's mdociaca allowlist
+    # and that credentials carry as `iss`: vc-apigw's public URL. Without it
+    # the cert's first DNS SAN (localhost) is the identity, the allowlist
+    # never matches, and this environment's own vc-verifier rejects every
+    # mDL it issued with "issuer not trusted". create-pki.sh re-issues the
+    # cert from the existing key when the SAN is missing, so this is safe to
+    # apply to an environment that already has a deployed signing key.
+    env_vars = {
+        **os.environ,
+        "PKI_DIR_OVERRIDE": str(pki_dir),
+        "SIGNING_CERT_ISSUER_URL": app_url(env, "vc-apigw"),
+    }
     run(["bash", "./create-pki.sh"], cwd=SIROSID_DEV_ROOT / "fixtures", env=env_vars)
     return pki_dir
 
