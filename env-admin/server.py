@@ -60,7 +60,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bootstrap  # noqa: E402  (scripts/bootstrap.py, copied next to this file by the Dockerfile)
 
-VERSION = "0.1.0"
+VERSION = "0.1.1"
 SYSTEM_DATABASES = {"admin", "local", "config"}
 
 
@@ -590,14 +590,42 @@ def make_handler(state: State):
     return Handler
 
 
+class DualStackHTTPServer(ThreadingHTTPServer):
+    """Listens on IPv6 AND IPv4. Fly's private 6PN network is IPv6-only, so a
+    server bound the default way (AF_INET, "") is unreachable from the sibling
+    apps that proxy to it - wallet-frontend's /_admin/ answered 502 while the
+    machine's own health check (local, IPv4) passed. Same trap CLAUDE.md
+    records for mongod's --ipv6. Linux dual-stack: binding "::" with
+    IPV6_V6ONLY off (the default) also accepts IPv4, so localhost checks and
+    the docker-compose stack keep working unchanged."""
+    address_family = socket.AF_INET6
+
+    def server_bind(self):
+        try:
+            self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+        except (OSError, AttributeError):
+            pass
+        super().server_bind()
+
+
+def make_server(cfg: Config, state: "State"):
+    try:
+        server = DualStackHTTPServer(("::", cfg.port), make_handler(state))
+    except OSError:
+        # No IPv6 at all on this host - fall back to plain IPv4.
+        server = ThreadingHTTPServer(("", cfg.port), make_handler(state))
+    server.daemon_threads = True
+    return server
+
+
 def main():
     cfg = Config().resolve_files()
     if not cfg.token:
         print("WARNING: no ENV_ADMIN_TOKEN set - every reset request will be rejected", file=sys.stderr)
     state = State(cfg)
-    server = ThreadingHTTPServer(("", cfg.port), make_handler(state))
-    server.daemon_threads = True
+    server = make_server(cfg, state)
     print(f"env-admin {VERSION}: env={cfg.env_name} platform={cfg.platform} port={cfg.port} "
+          f"listening on {server.server_address[0]} "
           f"mongo={cfg.mongo_uri.split('@')[-1]} databases={cfg.databases}", flush=True)
     try:
         server.serve_forever()

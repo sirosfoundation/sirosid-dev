@@ -353,4 +353,4 @@ images:
   # Until the tag has been pushed - or when testing an env-admin change -
   # fly-up notices the pin is not pullable and builds env-admin/Dockerfile
   # locally into the app's registry.fly.io namespace instead.
-  envAdmin: "ghcr.io/sirosfoundation/sirosid-env-admin:0.1.0"
+  envAdmin: "ghcr.io/sirosfoundation/sirosid-env-admin:0.1.1"

@@ -102,6 +102,25 @@ class ResetSequence(unittest.TestCase):
         self.assertEqual(self.dropped, [])
 
 
+class DualStack(unittest.TestCase):
+    def test_server_answers_on_ipv6_and_ipv4(self):
+        import socket
+        if not socket.has_ipv6:
+            self.skipTest("no IPv6 on this host")
+        cfg = server.Config(token="t", env_name="unit", consumers=[], databases=[], port=0)
+        state = server.State(cfg)
+        state.platform = FakePlatform(set())
+        httpd = server.make_server(cfg, state)
+        port = httpd.server_address[1]
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            for host in ("[::1]", "127.0.0.1"):
+                with urllib.request.urlopen(f"http://{host}:{port}/health", timeout=3) as r:
+                    self.assertEqual(r.status, 200, host)
+        finally:
+            httpd.shutdown()
+
+
 class HttpContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

@@ -415,7 +415,12 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
 **Fly networking, in general:**
 - 6PN (Fly's internal network) is **IPv6-only** — a component binding only
   IPv4 (`mongod`'s default) is unreachable from sibling apps over
-  `.internal` unless it's explicitly told to bind `--ipv6` too.
+  `.internal` unless it's explicitly told to bind `--ipv6` too. Bit
+  env-admin 0.1.0 the same way (Python's `HTTPServer(("", port))` is
+  IPv4-only): wallet-frontend's `/_admin/` proxy 502'd while the machine's
+  own health check passed, since that check is local. Any new component
+  must listen on `::` (dual-stack) — see `DualStackHTTPServer` in
+  `env-admin/server.py`.
 - **Autostart only fires on the public edge**, never for internal 6PN calls
   between sibling apps — an internal-only component left on
   `auto_stop_machines='stop'` goes idle and *stays* stopped forever once a
