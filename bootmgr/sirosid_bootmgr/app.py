@@ -476,63 +476,82 @@ class StorageScreen(AutoRefresh, Screen):
 # ---------------------------------------------------------------------------
 
 class VersionsScreen(AutoRefresh, Screen):
-    """Build information for a running environment. Local: the same two
-    tables the dashboard's Build Info card shows (source repos' git state;
-    each running container's image and whether it was built here or pulled).
-    Fly: the image every app of the environment actually runs, from the
-    machine config - not the pin in values-fly.yaml, which can differ after
-    an IMAGES= override."""
+    """Build information for the selected environment - one stack at a time.
+
+    The unnamed local row shows the local stack: the same two tables the
+    dashboard's Build Info card shows (each running container's image and
+    whether it was built here or pulled; the source repos' git state). A
+    named environment shows its Fly deployment: the image every app actually
+    runs, from the machine config - not the pin in values-fly.yaml, which can
+    differ after an IMAGES= override. A named environment that is only
+    running locally is the local stack, so its versions are on the local row.
+    """
 
     BINDINGS = [Binding("escape", "back", "Back"), Binding("r", "refresh", "Refresh"),
                 Binding("A", "auto_refresh", "auto-refresh")]
     DEFAULT_CSS = """
     VersionsScreen VerticalScroll { padding: 0 2; }
     VersionsScreen .section { text-style: bold; margin-top: 1; }
-    VersionsScreen DataTable { height: auto; max-height: 18; }
+    VersionsScreen DataTable { height: auto; max-height: 22; }
     VersionsScreen #note { color: $text-muted; height: auto; }
     """
 
     def __init__(self, env: Environment):
         super().__init__()
         self.env = env
+        self.fly_view = bool(env.env_arg)
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with VerticalScroll():
             yield Static("loading…", id="note")
-            yield Static("Local stack - running images (what each container came from)", classes="section")
-            yield DataTable(id="services")
-            yield Static("Local stack - source repositories (git state on disk)", classes="section")
-            yield DataTable(id="components")
-            yield Static(f"Fly - sirosid-{self.env.name}-* deployed images", classes="section", id="fly-title")
-            yield DataTable(id="fly")
+            if self.fly_view:
+                yield Static(f"Fly environment {self.env.name} - what sirosid-{self.env.name}-* actually runs",
+                             classes="section")
+                yield DataTable(id="fly")
+            else:
+                yield Static("Local stack - running images (what each container came from)", classes="section")
+                yield DataTable(id="services")
+                yield Static("Local stack - source repositories (git state on disk)", classes="section")
+                yield DataTable(id="components")
         yield Footer()
 
     def on_mount(self) -> None:
         self.sub_title = f"versions - {self.env.name}"
-        self.query_one("#services", DataTable).add_columns("service", "origin", "image", "image id", "started")
-        self.query_one("#components", DataTable).add_columns("repo", "branch", "commit", "last commit", "")
-        self.query_one("#fly", DataTable).add_columns("component", "image", "digest", "state", "region", "updated")
-        if not (self.env.env_arg and self.env.fly_deployed):
-            self.query_one("#fly-title", Static).update(
-                "Fly - " + ("not deployed" if self.env.env_arg else "the unnamed local stack has no Fly side"))
+        if self.fly_view:
+            self.query_one("#fly", DataTable).add_columns("component", "image", "digest", "state", "region", "updated")
+            if not self.env.fly_deployed:
+                self.query_one("#note", Static).update(
+                    f"{self.env.name} is not deployed on Fly. If it is running locally (make up ENV={self.env.name}), "
+                    "its versions are the local stack's - see the 'local' row.")
+                return
+            if not harness.fly_available():
+                self.query_one("#note", Static).update("flyctl not found - cannot query the deployment")
+                return
+        else:
+            self.query_one("#services", DataTable).add_columns("service", "origin", "image", "image id", "started")
+            self.query_one("#components", DataTable).add_columns("repo", "branch", "commit", "last commit", "")
         self.action_refresh()
-        self.start_auto_refresh()
+        if not self.fly_view:
+            # Local state is cheap to re-read; a Fly query is eleven flyctl
+            # calls, so that view refreshes on r only.
+            self.start_auto_refresh()
 
     def auto_tick(self) -> None:
-        self.action_refresh(include_fly=False)
+        if not self.fly_view:
+            self.action_refresh()
 
     @work(thread=True, exclusive=True, group="versions")
-    def action_refresh(self, include_fly: bool = True) -> None:
-        local = harness.local_versions()
-        self.app.call_from_thread(self.render_local, local)
-        if include_fly and self.env.env_arg and self.env.fly_deployed and harness.fly_available():
+    def action_refresh(self) -> None:
+        if self.fly_view:
+            if not (self.env.fly_deployed and harness.fly_available()):
+                return
             self.app.call_from_thread(self.query_one("#note", Static).update, "querying Fly machines…")
             rows = harness.fly_versions(self.env.name)
             self.app.call_from_thread(self.render_fly, rows)
         else:
-            self.app.call_from_thread(self.query_one("#note", Static).update, self.auto_refresh_label()
-                                      + "   (r re-queries Fly)")
+            local = harness.local_versions()
+            self.app.call_from_thread(self.render_local, local)
 
     def render_local(self, info: dict) -> None:
         t = self.query_one("#services", DataTable)
@@ -547,6 +566,7 @@ class VersionsScreen(AutoRefresh, Screen):
         for comp in info["components"]:
             c.add_row(comp["name"], comp["branch"], comp["commit"][:10], comp["built"],
                       Text("dirty", style="yellow") if comp["dirty"] else "")
+        self.query_one("#note", Static).update(self.auto_refresh_label())
 
     def render_fly(self, rows: list[dict]) -> None:
         t = self.query_one("#fly", DataTable)
@@ -554,7 +574,7 @@ class VersionsScreen(AutoRefresh, Screen):
         for r in rows:
             state = Text(r["state"], style="green" if r["state"] == "started" else "yellow")
             t.add_row(r["component"], r["image"], r["digest"], state, r["region"], r["updated"])
-        self.query_one("#note", Static).update(self.auto_refresh_label() + "   (r re-queries Fly)")
+        self.query_one("#note", Static).update(f"queried {time.strftime('%H:%M:%S')} - r re-queries Fly")
 
     def action_back(self) -> None:
         self.app.pop_screen()
