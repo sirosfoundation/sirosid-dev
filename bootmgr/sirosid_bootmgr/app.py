@@ -152,6 +152,37 @@ class AutoRefresh:
         pass
 
 
+class RemoteLoad:
+    """For worker threads: while a REMOTE call runs (Fly API, a deployed
+    environment's dashboard or env-admin), show Textual's loading overlay on
+    the widgets about to be filled and say what is being contacted in the
+    screen's status line. Local re-reads (docker, files) are fast and stay
+    silent; the point is that a stall is visibly a network wait, not a hang.
+
+        with RemoteLoad(self, ["#fly"], "#note", "querying Fly machines of sirosid-gdc-*"):
+            rows = harness.fly_versions(env)
+    """
+
+    def __init__(self, screen, widget_ids: list[str], status_id: str, message: str):
+        self.screen, self.widget_ids, self.status_id, self.message = screen, widget_ids, status_id, message
+
+    def _set(self, loading: bool) -> None:
+        for wid in self.widget_ids:
+            for w in self.screen.query(wid):
+                w.loading = loading
+        if loading:
+            for w in self.screen.query(self.status_id):
+                w.update(Text(f"⟳ remote: {self.message}…", style="yellow"))
+
+    def __enter__(self):
+        self.screen.app.call_from_thread(self._set, True)
+        return self
+
+    def __exit__(self, *exc):
+        self.screen.app.call_from_thread(self._set, False)
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Command runner: streams a subprocess into a log
 # ---------------------------------------------------------------------------
@@ -376,7 +407,12 @@ class StorageScreen(AutoRefresh, Screen):
 
     @work(thread=True, exclusive=True, group="load")
     def load(self) -> None:
-        st = harness.storage_status(self.env, self.fly)
+        if self.fly:
+            with RemoteLoad(self, ["#dbs"], "#info",
+                            f"env-admin and volumes of sirosid-{self.env.name}-* on Fly"):
+                st = harness.storage_status(self.env, self.fly)
+        else:
+            st = harness.storage_status(self.env, self.fly)
         self.app.call_from_thread(self.render_status, st)
 
     def render_status(self, st: dict) -> None:
@@ -546,8 +582,8 @@ class VersionsScreen(AutoRefresh, Screen):
         if self.fly_view:
             if not (self.env.fly_deployed and harness.fly_available()):
                 return
-            self.app.call_from_thread(self.query_one("#note", Static).update, "querying Fly machines…")
-            rows = harness.fly_versions(self.env.name)
+            with RemoteLoad(self, ["#fly"], "#note", f"Fly machines of sirosid-{self.env.name}-*"):
+                rows = harness.fly_versions(self.env.name)
             self.app.call_from_thread(self.render_fly, rows)
         else:
             local = harness.local_versions()
@@ -581,12 +617,124 @@ class VersionsScreen(AutoRefresh, Screen):
 
 
 # ---------------------------------------------------------------------------
+# Components: one environment's services, restart or tail one of them
+# ---------------------------------------------------------------------------
+
+class ComponentsScreen(AutoRefresh, Screen):
+    """The selected environment's components with their live state. Enter or
+    r restarts the highlighted one (after a confirmation), l tails its log.
+    Local row: the stack's compose containers (`docker restart <container>`);
+    named environment: its Fly apps (`flyctl machine restart <id> -a <app>`).
+    Both commands are shown before they run, like everything else here."""
+
+    BINDINGS = [Binding("escape", "back", "Back"), Binding("enter,r", "restart", "restart"),
+                Binding("l", "logs", "logs"), Binding("R", "refresh", "refresh list"),
+                Binding("A", "auto_refresh", "auto-refresh")]
+    DEFAULT_CSS = """
+    ComponentsScreen #note { height: auto; padding: 0 2; color: $text-muted; }
+    ComponentsScreen DataTable { height: 1fr; margin: 0 2; }
+    """
+
+    def __init__(self, env: Environment):
+        super().__init__()
+        self.env = env
+        self.fly_view = bool(env.env_arg)
+        self.rows: list[dict] = []
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=True)
+        yield Static("loading…", id="note")
+        yield DataTable(id="components", cursor_type="row")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.sub_title = f"components - {self.env.name}"
+        t = self.query_one("#components", DataTable)
+        if self.fly_view:
+            t.add_columns("component", "state", "image", "region", "updated", "app")
+        else:
+            t.add_columns("service", "state", "status", "image", "container")
+        if self.fly_view and not self.env.fly_deployed:
+            self.query_one("#note", Static).update(
+                f"{self.env.name} is not deployed on Fly - nothing to restart. A local make up ENV={self.env.name} "
+                "instance is the local stack: see the 'local' row.")
+            return
+        self.action_refresh()
+        if not self.fly_view:
+            self.start_auto_refresh()
+
+    def auto_tick(self) -> None:
+        if not self.fly_view:
+            self.action_refresh()
+
+    @work(thread=True, exclusive=True, group="components")
+    def action_refresh(self) -> None:
+        if self.fly_view:
+            if not harness.fly_available():
+                self.app.call_from_thread(self.query_one("#note", Static).update, "flyctl not found")
+                return
+            with RemoteLoad(self, ["#components"], "#note", f"Fly machines of sirosid-{self.env.name}-*"):
+                rows = harness.fly_versions(self.env.name)
+        else:
+            rows = harness.local_components()
+        self.app.call_from_thread(self.render_rows, rows)
+
+    def render_rows(self, rows: list[dict]) -> None:
+        t = self.query_one("#components", DataTable)
+        keep = t.cursor_row
+        self.rows = rows
+        t.clear()
+        for r in rows:
+            state = Text(r["state"], style="green" if r["state"] in ("running", "started") else "yellow")
+            if self.fly_view:
+                t.add_row(r["component"], state, r["image"], r["region"], r["updated"], r["app"])
+            else:
+                t.add_row(r["service"], state, r["status"], r["image"], r["container"])
+        if rows and keep is not None and 0 <= keep < len(rows):
+            t.move_cursor(row=keep, animate=False)
+        hint = "Enter/r restart the highlighted component, l its logs" if rows else \
+            ("no containers of the stack are running (make up starts it)" if not self.fly_view else "no machines")
+        self.query_one("#note", Static).update(f"{hint}   ({self.auto_refresh_label() if not self.fly_view else 'R re-queries Fly'})")
+
+    def _current(self) -> dict | None:
+        t = self.query_one("#components", DataTable)
+        if not self.rows or t.cursor_row is None or t.cursor_row >= len(self.rows):
+            self.notify("select a component first", severity="warning")
+            return None
+        return self.rows[t.cursor_row]
+
+    def action_restart(self) -> None:
+        row = self._current()
+        if not row:
+            return
+        name = row.get("component") or row.get("service")
+        if self.fly_view and not row.get("machine_id"):
+            self.notify(f"{name} has no machine to restart", severity="warning")
+            return
+        cmd = harness.restart_cmd(self.env, row, self.fly_view)
+        self.app.push_screen(
+            Confirm(f"Restart {name}", f"Runs: {shlex.join(cmd)}\n\nOpen sessions against it will drop while it comes back.",
+                    danger=self.fly_view),
+            lambda ok: ok and self.app.push_screen(RunScreen(cmd, f"restart {name}"), lambda _r=None: self.action_refresh()))
+
+    def action_logs(self) -> None:
+        row = self._current()
+        if not row:
+            return
+        name = row.get("component") or row.get("service")
+        self.app.push_screen(RunScreen(harness.logs_cmd(self.env, fly=self.fly_view, component=name), f"logs {name}"))
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+# ---------------------------------------------------------------------------
 # Doctor
 # ---------------------------------------------------------------------------
 
 class DoctorScreen(Screen):
     BINDINGS = [Binding("escape", "back", "Back"), Binding("r", "refresh", "Re-run")]
-    DEFAULT_CSS = "DoctorScreen DataTable { height: 1fr; margin: 1 2; }"
+    DEFAULT_CSS = "DoctorScreen DataTable { height: 1fr; margin: 1 2; } DoctorScreen #doctor-note { height: auto; padding: 0 2; }"
 
     def __init__(self, env: Environment | None):
         super().__init__()
@@ -594,6 +742,7 @@ class DoctorScreen(Screen):
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
+        yield Static("", id="doctor-note")
         yield DataTable(id="checks")
         yield Footer()
 
@@ -604,8 +753,13 @@ class DoctorScreen(Screen):
 
     @work(thread=True, exclusive=True)
     def action_refresh(self) -> None:
-        checks = harness.doctor(self.env)
         table = self.query_one(DataTable)
+        if self.env and self.env.env_arg and harness.fly_available():
+            with RemoteLoad(self, ["#checks"], "#doctor-note", f"Fly volumes of sirosid-{self.env.name}-mongodb"):
+                checks = harness.doctor(self.env)
+        else:
+            checks = harness.doctor(self.env)
+        self.app.call_from_thread(self.query_one("#doctor-note", Static).update, "")
         self.app.call_from_thread(table.clear)
         for c in checks:
             mark = Text("skip", style="dim") if c["skipped"] else (Text("ok", style="green") if c["ok"] else Text("FAIL", style="bold red"))
@@ -624,10 +778,11 @@ HELP = """\
 and every sirosid-<env>-* deployment found on Fly. Select a row; the right side shows what booting it means.
 
   [b]u[/b] make up (local)        [b]d[/b] make down (local)      [b]o[/b] options editor / plan
-  [b]U[/b] make fly-up ENV=       [b]D[/b] make fly-down ENV=     [b]s[/b] / [b]S[/b] storage (local / fly)
+  [b]U[/b] make fly-up ENV=       [b]D[/b] make fly-down ENV=     [b]s[/b] storage of the selected environment
   [b]l[/b] / [b]L[/b] logs (local / fly)  [b]e[/b] edit environments/<name>.yaml in $EDITOR
-  [b]h[/b] toggle plan / live health in the panel (health re-probes on every refresh)
-  [b]v[/b] versions / build info  [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
+  [b]h[/b] toggle plan / live health in the panel - the local row probes the local stack, a named
+      environment probes only its Fly apps (health re-probes on every refresh)
+  [b]v[/b] versions / build info  [b]c[/b] components: restart or tail one   [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
   [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] / [b]Esc[/b] quit
 
 Move between widgets with Tab/Shift+Tab or the arrow keys (a table or input keeps its own arrow handling).
@@ -639,9 +794,10 @@ class EnvironmentsScreen(AutoRefresh, Screen):
     BINDINGS = [
         Binding("u", "up", "up"), Binding("d", "down", "down"), Binding("o", "options", "options"),
         Binding("U", "fly_up", "fly-up"), Binding("D", "fly_down", "fly-down"),
-        Binding("s", "storage", "storage"), Binding("S", "fly_storage", "fly storage"),
+        Binding("s", "storage", "storage"),
         Binding("l", "logs", "logs"), Binding("L", "fly_logs", "fly logs"), Binding("e", "edit", "edit yaml"),
-        Binding("h", "health", "health"), Binding("v", "versions", "versions"), Binding("x", "doctor", "doctor"),
+        Binding("h", "health", "health"), Binding("v", "versions", "versions"), Binding("c", "components", "components"),
+        Binding("x", "doctor", "doctor"),
         Binding("r", "refresh", "refresh"),
         Binding("question_mark", "help", "help"), Binding("A", "auto_refresh", "auto-refresh"),
         # "app.quit", not "quit": a screen binding's action is looked up on the
@@ -702,8 +858,11 @@ class EnvironmentsScreen(AutoRefresh, Screen):
     @work(thread=True, exclusive=True, group="refresh")
     def action_refresh(self, include_fly: bool = True) -> None:
         if include_fly:
-            self.app.call_from_thread(self.query_one("#hint", Static).update, "refreshing…")
-            envs = harness.load_environments(include_fly=harness.fly_available())
+            if harness.fly_available():
+                with RemoteLoad(self, ["#envs"], "#hint", "Fly apps list (which sirosid-* environments exist)"):
+                    envs = harness.load_environments(include_fly=True)
+            else:
+                envs = harness.load_environments(include_fly=False)
         else:
             # Keep the Fly column from the last full refresh.
             deployed = {e.name for e in self.envs if e.fly_deployed}
@@ -716,9 +875,13 @@ class EnvironmentsScreen(AutoRefresh, Screen):
             # Probed inside the worker (parallel, short timeouts), so the
             # health view is as fresh as the rest of the refresh.
             e = self.selected
-            rows = harness.local_health()
-            if e.env_arg and e.fly_deployed:
-                rows += [(f"fly {n}", ok) for n, ok in harness.fly_health(e.name)]
+            if not e.env_arg:
+                rows = harness.local_health()
+            elif e.fly_deployed:
+                with RemoteLoad(self, ["#detail"], "#hint", f"health of sirosid-{e.name}-* over fly.dev"):
+                    rows = harness.fly_health(e.name, e.fly_apps or None)
+            else:
+                rows = []   # not deployed: nothing of its own to probe (see render_health)
             health = (e.name, rows)
         self.app.call_from_thread(self.render_envs, envs, local, health)
 
@@ -794,16 +957,21 @@ class EnvironmentsScreen(AutoRefresh, Screen):
 
     def render_health(self, e: Environment) -> None:
         rows = self.health_rows.get(e.name)
-        lines = [Text(f"{e.name} - health", style="bold underline")]
+        where = "local stack" if not e.env_arg else f"Fly deployment sirosid-{e.name}-*"
+        lines = [Text(f"{e.name} - health of the {where}", style="bold underline")]
         if rows is None:
             lines.append(Text("probing…", style="dim"))
+        elif e.env_arg and not e.fly_deployed:
+            lines.append(Text(f"{e.name} is not deployed on Fly, so it has no components of its own to probe. "
+                              f"If it is running locally (make up ENV={e.name}), that is the local stack - "
+                              "see the 'local' row.", style="dim"))
+        elif not rows:
+            lines.append(Text("no containers of the stack are running (make up starts it)", style="dim"))
         else:
             up = sum(1 for _n, ok in rows if ok)
             lines.append(Text(f"{up}/{len(rows)} up   probed {getattr(self, 'health_probed_at', '?')}   "
                               f"({self.auto_refresh_label()})", style="dim"))
             lines += [Text(f"  {'up  ' if ok else 'down'} {n}", style="green" if ok else "red") for n, ok in rows]
-            if not e.fly_deployed and e.env_arg:
-                lines.append(Text("  (not deployed on Fly - local probes only)", style="dim"))
         self.query_one("#detail", Static).update(Text("\n").join(lines))
 
     @on(DataTable.RowHighlighted)
@@ -866,12 +1034,11 @@ class EnvironmentsScreen(AutoRefresh, Screen):
         ), lambda ok: ok and self._run(harness.make_cmd("fly-down", e, ["KEEP_DATA=yes"]), f"make fly-down ENV={e.name} KEEP_DATA=yes"))
 
     def action_storage(self) -> None:
+        """Storage of the selected environment: the local row is the local
+        stack, a named environment is its Fly deployment (same rule as
+        health and versions)."""
         if e := self._need():
-            self.app.push_screen(StorageScreen(e, fly=False))
-
-    def action_fly_storage(self) -> None:
-        if (e := self._need()) and e.env_arg:
-            self.app.push_screen(StorageScreen(e, fly=True))
+            self.app.push_screen(StorageScreen(e, fly=bool(e.env_arg)))
 
     def action_logs(self) -> None:
         if e := self._need():
@@ -915,6 +1082,10 @@ class EnvironmentsScreen(AutoRefresh, Screen):
     def action_versions(self) -> None:
         if e := self._need():
             self.app.push_screen(VersionsScreen(e))
+
+    def action_components(self) -> None:
+        if e := self._need():
+            self.app.push_screen(ComponentsScreen(e))
 
     def action_help(self) -> None:
         self.query_one("#detail", Static).update(HELP)

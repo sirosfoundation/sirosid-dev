@@ -54,6 +54,7 @@ class Environment:
     region: str = ""
     local_options: dict = field(default_factory=dict)
     fly_summary: dict = field(default_factory=dict)   # images/trusted_* counts for the detail panel
+    fly_apps: list = field(default_factory=list)      # the sirosid-<env>-* apps that actually exist
 
     @property
     def file(self) -> Path:
@@ -115,8 +116,10 @@ def load_environments(include_fly: bool = True) -> list[Environment]:
         }
         envs[name] = e
     if include_fly:
-        for name in fly_environments():
-            envs.setdefault(name, Environment(name)).fly_deployed = True
+        for name, apps in fly_environments().items():
+            e = envs.setdefault(name, Environment(name))
+            e.fly_deployed = True
+            e.fly_apps = apps
     return list(envs.values())
 
 
@@ -131,20 +134,46 @@ def docker_ok() -> bool:
         return False
 
 
-def local_containers() -> dict[str, str]:
-    """{container name: state} for the stack's compose containers."""
+PRIMARY_COMPOSE = "docker-compose.test.yml"
+
+
+def local_components() -> list[dict]:
+    """The stack's containers, one row per compose service: name, state,
+    docker's status text, image. Membership is decided by the compose
+    project's config files including docker-compose.test.yml - the stack's
+    primary file - rather than by container-name suffix, so another compose
+    project on the same machine (with its own *-e2e-test containers) is not
+    mistaken for part of this stack."""
+    fmt = ('{{.Names}}\t{{.State}}\t{{.Label "com.docker.compose.service"}}\t'
+           '{{.Label "com.docker.compose.project.config_files"}}\t{{.Status}}\t{{.Image}}')
     try:
         out = subprocess.run(["docker", "ps", "-a", "--filter", "label=com.docker.compose.project",
-                              "--format", "{{.Names}}\t{{.State}}"], capture_output=True, text=True, timeout=15)
+                              "--format", fmt], capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
-        return {}
-    result = {}
+        return []
+    rows = []
     for line in out.stdout.splitlines():
-        if "\t" in line:
-            name, state = line.split("\t", 1)
-            if name.endswith("-e2e-test") or name.endswith("-e2e") or name.startswith("conformance"):
-                result[name] = state
-    return result
+        parts = line.split("\t")
+        if len(parts) < 6:
+            continue
+        name, state, service, config_files, status, image = parts[:6]
+        if PRIMARY_COMPOSE not in config_files:
+            continue
+        rows.append({"service": service or name, "container": name, "state": state, "status": status, "image": image})
+    rows.sort(key=lambda r: r["service"])
+    return rows
+
+
+def local_containers() -> dict[str, str]:
+    """{container name: state} for the stack's compose containers."""
+    return {r["container"]: r["state"] for r in local_components()}
+
+
+def restart_cmd(env: Environment, row: dict, fly: bool) -> list[str]:
+    """The command that restarts one component - shown before it runs."""
+    if fly:
+        return ["flyctl", "machine", "restart", row["machine_id"], "-a", row["app"]]
+    return ["docker", "restart", row["container"]]
 
 
 def local_state() -> str:
@@ -176,19 +205,35 @@ def health(url: str, timeout: float = 2.0) -> bool:
         return False
 
 
+# (probe name, URL, the compose container that must exist for the probe to
+# belong to the running stack). Only what is actually part of the stack gets
+# probed - a VC-less `make up` does not report the vc services as down.
 LOCAL_HEALTH = [
-    ("wallet-frontend", "http://localhost:3000/"),
-    ("wallet-backend", "http://localhost:8080/health"),
-    ("wallet-admin", "http://localhost:8081/admin/status"),
-    ("wallet-engine", "http://localhost:8082/health"),
-    ("env-admin", "http://localhost:3002/health"),
-    ("go-trust", "http://localhost:9095/healthz"),
-    ("go-trust (helm)", "http://localhost:9098/healthz"),
-    ("vc-issuer", "http://localhost:9000/health"),
-    ("vc-verifier", "http://localhost:9001/health"),
-    ("vc-apigw", "http://localhost:9003/health"),
-    ("vc-registry", "http://localhost:9004/health"),
-    ("mini-oidc", "http://localhost:9005/.well-known/openid-configuration"),
+    ("wallet-frontend", "http://localhost:3000/", "wallet-frontend-e2e-test"),
+    ("wallet-backend", "http://localhost:8080/health", "wallet-backend-e2e-test"),
+    ("wallet-admin", "http://localhost:8081/admin/status", "wallet-backend-e2e-test"),
+    ("wallet-engine", "http://localhost:8082/health", "wallet-backend-e2e-test"),
+    ("env-admin", "http://localhost:3002/health", "env-admin-e2e"),
+    ("go-trust (allow)", "http://localhost:9095/healthz", "go-trust-allow-e2e-test"),
+    ("go-trust (whitelist)", "http://localhost:9096/healthz", "go-trust-whitelist-e2e-test"),
+    ("go-trust (deny)", "http://localhost:9097/healthz", "go-trust-deny-e2e-test"),
+    ("go-trust (helm)", "http://localhost:9098/healthz", "go-trust-config-e2e-test"),
+    ("mock-trust-pdp", "http://localhost:9081/health", "mock-trust-pdp-e2e-test"),
+    ("mock-verifier", "http://localhost:9011/health", "mock-verifier-e2e-test"),
+    ("vc-issuer", "http://localhost:9000/health", "vc-issuer-e2e"),
+    ("vc-verifier", "http://localhost:9001/health", "vc-verifier-e2e"),
+    ("vc-apigw", "http://localhost:9003/health", "vc-apigw-e2e"),
+    ("vc-registry", "http://localhost:9004/health", "vc-registry-e2e"),
+    ("mini-oidc", "http://localhost:9005/.well-known/openid-configuration", "mini-oidc-e2e"),
+    ("r2ps", "http://localhost:8443/healthz", "r2ps-server-e2e-test"),
+]
+
+# Fly component -> the wallet-frontend health proxy path (fly_common.wallet_frontend_conf).
+FLY_HEALTH = [
+    ("wallet-frontend", None), ("wallet-backend", "backend"), ("wallet-backend admin", "admin"),
+    ("wallet-backend engine", "engine"), ("vctm registry", "registry"), ("pdp", "pdp"),
+    ("mini-oidc", "mini-oidc"), ("vc-registry", "vc-registry"), ("vc-issuer", "vc-issuer"),
+    ("vc-verifier", "vc-verifier"), ("vc-apigw", "vc-apigw"), ("env-admin", "env-admin"),
 ]
 
 
@@ -203,15 +248,24 @@ def check_all(named_urls: list[tuple[str, str]], timeout: float = 1.5) -> list[t
 
 
 def local_health() -> list[tuple[str, bool]]:
-    return check_all(LOCAL_HEALTH)
+    """Probe the local stack - only the services whose container exists."""
+    present = set(local_containers())
+    return check_all([(name, url) for name, url, container in LOCAL_HEALTH if container in present])
 
 
-def fly_health(env: str) -> list[tuple[str, bool]]:
-    from fly_common import app_url
+def fly_health(env: str, apps: list[str] | None = None) -> list[tuple[str, bool]]:
+    """Probe a Fly environment through its dashboard's health proxies - only
+    the components whose app actually exists (`apps`, from the Fly app list;
+    None = all)."""
+    from fly_common import app_name, app_url
     base = app_url(env, "wallet-frontend")
-    checks = ["backend", "admin", "engine", "registry", "pdp", "mini-oidc", "vc-registry", "vc-issuer",
-              "vc-verifier", "vc-apigw", "env-admin"]
-    return check_all([("wallet-frontend", base + "/")] + [(c, f"{base}/_health/{c}") for c in checks], timeout=4)
+    probes = []
+    for label, proxy in FLY_HEALTH:
+        component = label.split()[0]
+        if apps is not None and app_name(env, component) not in apps:
+            continue
+        probes.append((label, base + "/" if proxy is None else f"{base}/_health/{proxy}"))
+    return check_all(probes, timeout=4)
 
 
 # ---------------------------------------------------------------------------
@@ -405,12 +459,13 @@ def fly_versions(env: str) -> list[dict]:
         except ValueError:
             return None
         if not machines:
-            return {"component": comp["name"], "app": app, "image": "(no machine)", "digest": "", "state": "-",
-                    "region": "", "updated": ""}
+            return {"component": comp["name"], "app": app, "machine_id": "", "image": "(no machine)", "digest": "",
+                    "state": "-", "region": "", "updated": ""}
         m = machines[0]
         ref = m.get("image_ref") or {}
         digest = (ref.get("digest") or "").replace("sha256:", "")[:12]
-        return {"component": comp["name"], "app": app, "image": (m.get("config") or {}).get("image", ""),
+        return {"component": comp["name"], "app": app, "machine_id": m.get("id", ""),
+                "image": (m.get("config") or {}).get("image", ""),
                 "digest": digest, "state": m.get("state", ""), "region": m.get("region", ""),
                 "updated": (m.get("updated_at") or "")[:19].replace("T", " ")}
 
