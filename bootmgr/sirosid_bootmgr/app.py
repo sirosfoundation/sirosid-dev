@@ -628,7 +628,7 @@ and every sirosid-<env>-* deployment found on Fly. Select a row; the right side 
   [b]l[/b] / [b]L[/b] logs (local / fly)  [b]e[/b] edit environments/<name>.yaml in $EDITOR
   [b]h[/b] toggle plan / live health in the panel (health re-probes on every refresh)
   [b]v[/b] versions / build info  [b]x[/b] doctor   [b]r[/b] full refresh (incl. Fly)
-  [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] quit
+  [b]A[/b] auto-refresh interval  (default 3 s, local state only; 0 turns it off)   [b]q[/b] / [b]Esc[/b] quit
 
 Move between widgets with Tab/Shift+Tab or the arrow keys (a table or input keeps its own arrow handling).
 Everything runs as a `make` command shown at the top of the output screen, so it is reproducible from the shell.
@@ -648,6 +648,9 @@ class EnvironmentsScreen(AutoRefresh, Screen):
         # screen first and this screen has no action_quit, so a bare "quit"
         # never reached the app.
         Binding("q", "app.quit", "quit"),
+        # Escape backs out of every other screen; on the main screen there is
+        # nothing to back out to, so it quits as well.
+        Binding("escape", "app.quit", show=False),
     ]
     DEFAULT_CSS = """
     EnvironmentsScreen #body { height: 1fr; }
