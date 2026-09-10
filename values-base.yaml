@@ -82,6 +82,38 @@ features:
         source: datastore
         authOptions:
           claims: [given_name, family_name]
+    # EU Business Wallet attestations (WE BUILD rulebooks ds001/ds004/ds007;
+    # VCTMs published in registry.siros.org under webuild-consortium/). Same
+    # mechanism as ehic: assertion-sourced, and mini-oidc releases the claims
+    # under a scope named exactly like the type key here - its users.yaml
+    # carries the synthetic company data (`attestations:` per user, see
+    # sirosfoundation/mini-oidc). Log in as a company user (erik-010,
+    # maria-011, jan-012, sophie-013) to get them; the natural persons have
+    # no attestations and issuance fails for lack of data.
+    ebw_oid:
+      # Owner Identification Data - who the business wallet belongs to.
+      vct: "uri:eu.ebw.oid.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_ebw_oid.json}
+      issuance:
+        authProvider: oidc
+        source: assertion
+    eucc:
+      # EU Company Certificate - the legal person's register extract.
+      vct: "urn:eudi:eucc:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_eucc.json}
+      issuance:
+        authProvider: oidc
+        source: assertion
+    eu_poa:
+      # EU Power of Attorney - principal grants an attorney representation powers.
+      vct: "uri:eu.eudi.eu-poa.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_eu_poa.json}
+      issuance:
+        authProvider: oidc
+        source: assertion
     # ISO 18013-5 mdoc types. These carry an MDDL schema rather than a VCTM;
     # `vct` is unused for mdoc DCQL matching (the doctype comes from the
     # schema) but SupportedCredentialConfig.VCT is required, so it holds the
@@ -232,11 +264,11 @@ issuer:
                 redirect_uri:
                   - "siros-sample://callback"
                   - "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, ebw_oid, eucc, eu_poa]
               e2e-test-client-2:
                 type: public
                 redirect_uri: "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, ebw_oid, eucc, eu_poa]
         data_sources:
           assertion:
             scopes:

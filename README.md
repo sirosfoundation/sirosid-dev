@@ -361,7 +361,36 @@ services built from the `../vc` source repository. On startup, the issuer
 and verifier are automatically registered with the wallet backend via the
 admin API — no manual registration needed.
 
-Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma.
+Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma, mDL and PID as
+mdoc, and the EU Business Wallet attestations below.
+
+### EU Business Wallet attestations
+
+Three WE BUILD rulebook types for testing an EU Business Wallet, declared in
+`values-base.yaml` and served from VCTMs copied out of
+[registry.siros.org](https://registry.siros.org) (`webuild-consortium/`):
+
+| scope | vct | what |
+|---|---|---|
+| `ebw_oid` | `uri:eu.ebw.oid.1` | Owner Identification Data (ds001) - which legal person owns the wallet |
+| `eucc` | `urn:eudi:eucc:1` | EU Company Certificate (ds004) - the business-register extract |
+| `eu_poa` | `uri:eu.eudi.eu-poa.1` | EU Power of Attorney (ds007) - principal grants an attorney powers |
+
+They are assertion-sourced like EHIC: vc-apigw requests the scope from
+mini-oidc and the claims come back verbatim as the credential. The synthetic
+company data lives in mini-oidc's `users.yaml` (`attestations:` per user,
+mini-oidc 0.0.5+), so log in as a **company user** - the natural persons
+(alice, bob, carol) have none and issuance fails for lack of data:
+
+| mini-oidc user | company | EBW-OID | EUCC | EU PoA |
+|---|---|---|---|---|
+| erik-010 | Nordic Tech Solutions AB (SE), sole representative | yes | yes | |
+| maria-011 | Grünberg Consulting GmbH (DE), joint representative | yes | yes | |
+| jan-012 | Grünberg Consulting GmbH employee | | yes | attorney, principal Maria |
+| sophie-013 | Transport Dubois SARL (FR), sole manager | yes | yes | attorney, principal co-founder |
+
+The verifier has matching presentation-request templates in
+`fixtures/vc-presentation-requests/eu_business_wallet.yaml`.
 
 ### Service Architecture
 

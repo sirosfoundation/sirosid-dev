@@ -631,7 +631,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                             f"{frontend_url}/id/default/cb",
                         ],
                         "scopes": ["pid", "pid_1_5", "pid_1_8", "diploma", "ehic",
-                                   "mdl", "mdl_zk4", "pid_mdoc"],
+                                   "mdl", "mdl_zk4", "pid_mdoc", "ebw_oid", "eucc", "eu_poa"],
                     },
                 }},
                 "credential_offers": {"wallets": {

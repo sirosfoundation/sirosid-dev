@@ -1,0 +1,103 @@
+{
+  "vct": "uri:eu.ebw.oid.1",
+  "name": "ds001 - European Business Wallet – Owner Identification Data (EBW-OID) – SD-JWT VC payload",
+  "description": "Schema for the SD-JWT VC payload of an EBW-OID as defined in the ds001 EBW-OID Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing.",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "European Business Wallet – Owner Identification Data (EBW-OID)",
+      "description": "Schema for the SD-JWT VC payload of an EBW-OID as defined in the ds001 EBW-OID Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing."
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "id"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Id"
+        }
+      ],
+      "description": "EUID where available, otherwise a similar constructed, unique per issuer identifier.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation Legal Category"
+        }
+      ],
+      "description": "The legal category of the attestation.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuing_authority"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Authority"
+        }
+      ],
+      "description": "Name of the administrative authority, Commission (for Union entities), or QTSP issuing the EAA/QEAA; or ISO 3166-1 alpha-2 where applicable.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Name"
+        }
+      ],
+      "description": "Official name of the EBW owner (economic operator or public sector body).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "date_of_expiry"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Date Of Expiry"
+        }
+      ],
+      "description": "Administrative expiry date following ISO 8601."
+    },
+    {
+      "path": [
+        "issuing_country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Country"
+        }
+      ],
+      "description": "ISO 3166-1 alpha-2 code of the provider’s country/territory.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "trust_anchor"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Trust Anchor"
+        }
+      ],
+      "description": "URL at which a machine-readable version of the trust anchor to be used for verifying the EBW-OID can be found or looked up."
+    }
+  ]
+}

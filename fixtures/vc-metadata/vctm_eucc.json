@@ -1,0 +1,489 @@
+{
+  "vct": "urn:eudi:eucc:1",
+  "name": "EWC - EU Company Certificate",
+  "description": "Schema for EU Company Certificate - EWC WP3",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "EU Company Certificate",
+      "description": "Schema for EU Company Certificate - EWC WP3"
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "registered_address",
+        "locator_designator"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Locator Designator"
+        }
+      ],
+      "description": "A number or a sequence of characters that uniquely identifies the locator within the relevant scope."
+    },
+    {
+      "path": [
+        "registered_address",
+        "post_code"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Post Code"
+        }
+      ],
+      "description": "The code created and maintained for postal purposes to identify a subdivision of addresses and postal delivery points."
+    },
+    {
+      "path": [
+        "registered_address",
+        "post_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Post Name"
+        }
+      ],
+      "description": "A name created and maintained for postal purposes to identify a subdivision of addresses and postal delivery points."
+    },
+    {
+      "path": [
+        "registered_address",
+        "locator_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Locator Name"
+        }
+      ],
+      "description": "Proper noun(s) applied to the real world entity identified by the locator. The locator name could be the name of the property or complex, of the building or part of the building, or it could be the name of a room inside a building."
+    },
+    {
+      "path": [
+        "registered_address",
+        "thorough_fare"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Thorough Fare"
+        }
+      ],
+      "description": "The name of a passage or way through from one location to another."
+    },
+    {
+      "path": [
+        "registered_address",
+        "post_office_box"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Post Office Box"
+        }
+      ],
+      "description": "A location designator for a postal delivery point at a post office, usually a number."
+    },
+    {
+      "path": [
+        "registered_address",
+        "admin_unit_level_1"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Admin Unit Level 1"
+        }
+      ],
+      "description": "The uppermost administrative unit for the address, almost always a country."
+    },
+    {
+      "path": [
+        "registered_address",
+        "admin_unit_level_2"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Admin Unit Level 2"
+        }
+      ],
+      "description": "The name of a secondary level/region of the address, usually a county, state or other such area that typically encompasses several localities."
+    },
+    {
+      "path": [
+        "registered_address",
+        "care_of"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Care Of"
+        }
+      ],
+      "description": "Used when an address is at the address of another person or legal entity."
+    },
+    {
+      "path": [
+        "registered_address",
+        "full_address"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Full Address"
+        }
+      ],
+      "description": "The complete address written as a string, separated with \";\"."
+    },
+    {
+      "path": [
+        "registered_address"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Registered Address"
+        }
+      ],
+      "description": "Registered office of the company (full address or part of it)",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "legal_person_duration"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Duration"
+        }
+      ],
+      "description": "Duration of the company, where its duration is limited"
+    },
+    {
+      "path": [
+        "issuing_authority"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Authority"
+        }
+      ],
+      "description": "Name of issuer from the MS that issued the ODI instance",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "authentic_source_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Authentic Source Name"
+        }
+      ],
+      "description": "Name of issuer from the MS that issued the ODI instance",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation Legal Category"
+        }
+      ],
+      "description": "Legal category of the attestation."
+    },
+    {
+      "path": [
+        "legal_form_type"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Form Type"
+        }
+      ],
+      "description": "Legal form of the company",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "share_capital",
+        "amount"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Amount"
+        }
+      ],
+      "description": "Amount of the capital subscribed"
+    },
+    {
+      "path": [
+        "share_capital",
+        "currency"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Currency"
+        }
+      ],
+      "description": "Currency code used of the capital subscribed, as defined in ISO 4217:2015"
+    },
+    {
+      "path": [
+        "share_capital"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Share Capital"
+        }
+      ],
+      "description": "Amount of the capital subscribed with currency"
+    },
+    {
+      "path": [
+        "registration_member_state"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Registration Member State"
+        }
+      ],
+      "description": "Member State where the company is registered, Alpha-2 country code, as defined in ISO 3166-1",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "legal_person_status"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Status"
+        }
+      ],
+      "description": "Status of the company as defined in national law and where recorded in the national register",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "legal_representative"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Representative"
+        }
+      ],
+      "description": "Information about any person authorized by the company to represent it alone or jointly",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuance_date"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuance Date"
+        }
+      ],
+      "description": "Date and possibly time of issuance",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "registration_date"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Registration Date"
+        }
+      ],
+      "description": "Date of registration of the company",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "legal_person_activity",
+        "code"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Code"
+        }
+      ],
+      "description": "Legal person activity NACE code"
+    },
+    {
+      "path": [
+        "legal_person_activity",
+        "description"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Description"
+        }
+      ],
+      "description": "Short description of the legal person activity"
+    },
+    {
+      "path": [
+        "legal_person_activity"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Activity"
+        }
+      ],
+      "description": "Object of the company describing its main activity or activities, which must be expressed using the Statistical Classification of Economic Activities in the European Community (NACE)",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "digital_contact_point",
+        "email"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Email"
+        }
+      ],
+      "description": "Details of the company email"
+    },
+    {
+      "path": [
+        "digital_contact_point",
+        "website"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Website"
+        }
+      ],
+      "description": "Details of the company website"
+    },
+    {
+      "path": [
+        "digital_contact_point"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Digital Contact Point"
+        }
+      ],
+      "description": "Correspondence address of the company, such as electronic mail or website"
+    },
+    {
+      "path": [
+        "authentic_source_id"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Authentic Source Id"
+        }
+      ],
+      "description": "ODI Id of the issuing authority. (Business register identifier for BRIS)",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "legal_person_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Name"
+        }
+      ],
+      "description": "Official current legal person name as registered in the business register.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "legal_person_id"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Id"
+        }
+      ],
+      "description": "Unique id for organisations in EUID structure",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuing_authority_id"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Authority Id"
+        }
+      ],
+      "description": "ODI Id of the issuing authority. (Business register identifier for BRIS)",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuing_country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Country"
+        }
+      ],
+      "description": "Alpha-2 country code, as defined in ISO 3166-1, of the issuing country or territory.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuing_jurisdiction"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Jurisdiction"
+        }
+      ],
+      "description": "As defined in ISO 3166-2:2020, of the issuing country or territory."
+    },
+    {
+      "path": [
+        "trust_anchor"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Trust Anchor"
+        }
+      ],
+      "description": "URL of machine‑readable trust anchor as per Annex V/VII point h)."
+    }
+  ]
+}

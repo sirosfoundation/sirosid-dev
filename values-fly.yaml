@@ -343,7 +343,14 @@ images:
   # no birthdate, nationality, place of birth or issuing authority, i.e. not
   # enough to build a PID from. Dormant while apigw asks for "openid profile",
   # live the moment it asks for the credential type as the scope.
-  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.4"
+  #
+  # 0.0.4 -> 0.0.5: data-driven attestation scopes (mini-oidc#27) - any
+  # `attestations:` block in users.yaml is released verbatim under the scope
+  # named by its key - shipping EU Business Wallet data (EBW-OID, EUCC, EU
+  # PoA) for the company users. values-base.yaml's ebw_oid/eucc/eu_poa
+  # credential types are assertion-sourced against exactly those scopes, so
+  # an older mini-oidc has nothing to release for them and issuance fails.
+  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.5"
 
   # env-admin is sirosid-dev's OWN code (env-admin/), the privileged actor
   # behind the dashboard's "Clear all data" / `make fly-storage-clear`.
