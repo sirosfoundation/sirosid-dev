@@ -52,12 +52,21 @@ class EnvAdmin:
             raw = resp.read()
             return resp.status, (json.loads(raw) if raw else None)
 
-    def status(self):
-        try:
-            code, body = self._req("GET", "/api/storage", timeout=5)
-            return body if code == 200 else None
-        except (urllib.error.URLError, TimeoutError, OSError, ValueError):
-            return None
+    def status(self, attempts: int = 1, timeout: float = 5):
+        """None when env-admin cannot be reached. A Fly environment right after
+        a redeploy can take a few seconds to answer through the dashboard
+        proxy, so callers there pass attempts > 1 - the down-path fallback that
+        follows a None is destructive and must not fire on a slow first byte."""
+        for i in range(attempts):
+            try:
+                code, body = self._req("GET", "/api/storage", timeout=timeout)
+                if code == 200:
+                    return body
+            except (urllib.error.URLError, TimeoutError, OSError, ValueError):
+                pass
+            if i + 1 < attempts:
+                time.sleep(3)
+        return None
 
     def reset(self, env_name: str) -> str:
         try:
@@ -141,8 +150,8 @@ def confirm(prompt: str, yes: bool):
         raise SystemExit("aborted")
 
 
-def clear_via_env_admin(admin: EnvAdmin, env_name: str, yes: bool) -> bool:
-    st = admin.status()
+def clear_via_env_admin(admin: EnvAdmin, env_name: str, yes: bool, attempts: int = 1, timeout: float = 5) -> bool:
+    st = admin.status(attempts=attempts, timeout=timeout)
     if not st:
         return False
     confirm(f"env-admin for '{st['env']}' is up. Wipe every database and restart its services?", yes)
@@ -156,7 +165,7 @@ def clear_via_env_admin(admin: EnvAdmin, env_name: str, yes: bool) -> bool:
 
 
 def local_clear(env_name: str, yes: bool):
-    if clear_via_env_admin(EnvAdmin(LOCAL_ENV_ADMIN, local_token()), env_name, yes):
+    if clear_via_env_admin(EnvAdmin(LOCAL_ENV_ADMIN, local_token()), env_name, yes, attempts=2, timeout=5):
         return
     vols = local_volumes()
     if not vols:
@@ -222,6 +231,20 @@ def fly_status(env_name: str):
         print(f"  {v['app']:<40} {v['name']:<28} {v['region']}  {v['size_gb']} GB  {'attached' if v['attached'] else 'detached'}")
 
 
+def fly_consumers_running(env_name: str) -> list:
+    """Fly apps of this environment whose machine is started and that use
+    Mongo - if any is, the environment is UP and only env-admin may clear the
+    data (it stops them first). Destroying the volume underneath running
+    consumers is never the right fallback."""
+    from fly_common import app_name, list_machines
+    running = []
+    for comp in ("wallet-backend", "vc-registry", "vc-issuer", "vc-verifier", "vc-apigw"):
+        app = app_name(env_name, comp)
+        if any(m.get("state") == "started" for m in list_machines(app)):
+            running.append(app)
+    return running
+
+
 def fly_clear(env_name: str, yes: bool, token: str = ""):
     admin = fly_env_admin(env_name)
     if token:
@@ -229,13 +252,23 @@ def fly_clear(env_name: str, yes: bool, token: str = ""):
     if not admin.token:
         raise SystemExit(f"no admin token for '{env_name}' - fixtures/rendered/fly-{env_name}/adminToken is missing "
                          "(deployed from another machine?). Pass --token <adminToken>.")
-    if clear_via_env_admin(admin, env_name, yes):
+    # Patient here: a dashboard proxy that is still coming up after a redeploy
+    # once answered too slowly, and the fallback below destroyed a live
+    # environment's Mongo (2026-09-10, gdc).
+    if clear_via_env_admin(admin, env_name, yes, attempts=4, timeout=20):
         return
+    running = fly_consumers_running(env_name)
+    if running:
+        raise SystemExit(
+            f"env-admin for '{env_name}' is not reachable at {admin.base}, but the environment is UP "
+            f"({', '.join(running)} running). Refusing to destroy the volume underneath running services.\n"
+            f"  Check env-admin: flyctl status -a sirosid-{env_name}-env-admin ; flyctl logs -a sirosid-{env_name}-env-admin\n"
+            f"  or use the dashboard's Storage card, or `make fly-down ENV={env_name}` first for a volume-level wipe.")
     vols = fly_volumes(env_name)
     if not vols:
         print(f"environment '{env_name}' has no env-admin reachable and no volumes - nothing to clear")
         return
-    print("env-admin is not reachable - the environment is down (or kept with KEEP_DATA). Volumes:")
+    print("env-admin is not reachable and no consumer is running - the environment is down (or kept with KEEP_DATA). Volumes:")
     for v in vols:
         print(f"  {v['app']}: {v['name']} ({v['region']}, {v['size_gb']} GB)")
     confirm("Destroy these volumes (and the stopped Mongo machines holding them)? "
