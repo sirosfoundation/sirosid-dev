@@ -166,12 +166,18 @@ COMPONENTS = [
     {
         "name": "vc-issuer",
         "image_from_helm_deployment": "issuer-core",
-        "ports": [{"internal": 8080, "public": False}, {"internal": 8090, "public": False}],
+        # issuer-core's HTTP API is on 8081 (the chart renders api_server.addr
+        # :8081; 8080 was never it - docker-compose.vc-services.yml publishes
+        # 9000:8081 for the same reason). gRPC, what apigw actually calls, is
+        # 8090. The check and the dashboard proxy probed 8080 for a long time,
+        # which is why vc-issuer showed as the one unhealthy component and
+        # every fly-up waited out wait_for_checks() on it.
+        "ports": [{"internal": 8081, "public": False}, {"internal": 8090, "public": False}],
         "checks": None,
         # Internal-only (no [http_service]), so nothing previously blocked a
         # deploy on this actually becoming healthy before vc-verifier/vc-apigw
         # (which call it over 6PN) started deploying right after.
-        "internal_check": {"type": "http", "port": 8080, "path": "/health"},
+        "internal_check": {"type": "http", "port": 8081, "path": "/health"},
     },
     {
         "name": "vc-verifier",
@@ -1088,7 +1094,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     location = /_health/pdp        {{ proxy_pass http://{pdp}:8080/healthz; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/mini-oidc  {{ proxy_pass http://{mini_oidc}:9005/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-registry {{ proxy_pass http://{vc_registry}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8081/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/env-admin   {{ proxy_pass http://{env_admin}:3002/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
@@ -1222,7 +1228,7 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         ("pdp (go-trust)", "pdp", 8080),
         ("mini-oidc", "mini-oidc", 9005),
         ("vc-registry", "vc-registry", 8080),
-        ("vc-issuer", "vc-issuer", 8080),
+        ("vc-issuer", "vc-issuer", 8081),
         ("vc-verifier", "vc-verifier", 8080),
         ("vc-apigw", "vc-apigw", 8080),
         ("env-admin", "env-admin", 3002),
