@@ -44,6 +44,9 @@ class FlyClearGuard(unittest.TestCase):
              mock.patch.object(storage, "fly_volumes", lambda env: []):
             storage.fly_clear("t", yes=True)   # nothing to clear, no exception
 
+
+class StatusRetries(unittest.TestCase):
+    # Separate class: FlyClearGuard's setUp stubs EnvAdmin.status itself.
     def test_status_retries_before_giving_up(self):
         calls = []
 
