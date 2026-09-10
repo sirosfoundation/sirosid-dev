@@ -200,6 +200,67 @@ def strip_unrenderable(config: dict) -> dict:
     return config
 
 
+def use_credential_registry(config: dict, credential_types: dict, registries: list) -> dict:
+    """Resolve credential metadata from a TS11 registry instead of a vendored
+    document.
+
+    Each SD-JWT scope stops naming a file and instead names its `vct`, which
+    vc resolves through common.credential_registry. The pay-off is that vc
+    then ADVERTISES that vct in credential_configurations_supported (for a
+    vendored VCTM it advertises its own /type-metadata/<scope> URL instead,
+    while the issued credential carries the VCTM's vct) - and the wallets
+    refuse a credential whose vct differs from the advertised one. mdoc
+    scopes are left vendored, see below.
+
+    The identifiers come from features.credentialTypes, the same values the
+    chart renders supported_credentials and the VCTM mounts from, so the
+    vendored and registry-resolved paths cannot disagree about what a scope
+    issues while both are supported.
+
+    The file paths have to be REMOVED, not overridden - vc's
+    CredentialMetadata requires exactly one of vctm_file_path/vctm_url/
+    mddl_file_path/mddl_url/vct+doctype - and mergeOverwrite has no delete, so
+    this is a post-render step rather than an extraConfig block.
+    """
+    metadata = (config.get("common") or {}).get("credential_metadata") or {}
+    for scope, meta in metadata.items():
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("format") == "mso_mdoc":
+            # mdoc types stay vendored even in external mode. Two reasons: the
+            # wallet-side type check that motivated external mode compares
+            # `vct`, which mdocs do not have (their doctype already matches
+            # what is advertised), and a local mdoc variant can share its
+            # doctype with a registry entry that describes a different
+            # schema - mdl_zk4 (the 4-claim Vega ZK credential) is
+            # org.iso.18013.5.1.mDL like the full mDL, and resolving it from
+            # the registry would silently turn it back into the full one.
+            continue
+        declared = credential_types.get(scope) or {}
+        # Key off the declared format, not the scope name: using vct where a
+        # doctype is wanted resolves nothing, silently.
+        identifier = ("doctype", declared.get("doctype")) if meta.get("format") == "mso_mdoc" \
+            else ("vct", declared.get("vct"))
+        if not identifier[1]:
+            raise SystemExit(
+                f"credential type {scope!r} has no {identifier[0]} in values-base.yaml, so it "
+                f"cannot be resolved from a registry - add one, or leave this environment on "
+                f"REGISTRY=vendored")
+        for key in ("vctm_file_path", "vctm_url", "mddl_file_path", "mddl_url"):
+            meta.pop(key, None)
+        meta[identifier[0]] = identifier[1]
+
+    config.setdefault("common", {})["credential_registry"] = {
+        "enable": True,
+        # One logical registry per URL, not one registry with many mirrors:
+        # mirrors are assumed to hold identical content and are raced, whereas
+        # separate registries are ordered and later ones override earlier ones.
+        "registries": [{"mirrors": [{"base_url": u, "timeout": "10s"}]} for u in registries],
+        "refresh_interval": "1h",
+    }
+    return config
+
+
 def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: str = None) -> dict:
     """Replace the chart's MongoDB Community Operator connection with this
     target's real one.
@@ -311,7 +372,8 @@ def write_as_rules(docs: list, out_dir: Path) -> Path:
 
 def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_secret,
               plain_http_hosts: set = None, secret_overrides: dict = None,
-              env: str = None, mongo_password: str = None) -> None:
+              env: str = None, mongo_password: str = None,
+              credential_types: dict = None, credential_registries: list = None) -> None:
     """Extract every vc service's config plus the directories it mounts."""
     for cm_name, filename in VC_CONFIGMAPS.items():
         config = yaml.safe_load(extract_configmap_data(docs, cm_name)["config.yaml"])
@@ -322,6 +384,8 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
             config = patch_vc_mongo(config, target, env, mongo_password)
         config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides)
         config = strip_unrenderable(config)
+        if credential_registries:
+            config = use_credential_registry(config, credential_types or {}, credential_registries)
         (out_dir / filename).write_text(yaml.dump(config, sort_keys=False))
         print(f"wrote {out_dir / filename}")
 
