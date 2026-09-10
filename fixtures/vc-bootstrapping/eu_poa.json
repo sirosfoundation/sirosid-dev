@@ -1,0 +1,96 @@
+{
+  "jan-012": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "eu_poa",
+      "document_id": "document_id_eu_poa_jan-012",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "jan-012"
+    ],
+    "document_data": {
+      "attestation_legal_category": "QEAA",
+      "issuing_authority": "Notariat Berlin-Mitte",
+      "issuing_country": "DE",
+      "date_of_execution": "2026-02-01",
+      "euid_reference": "DEHRB.B123456",
+      "principal_full_name": "Maria Schneider",
+      "principal_date_of_birth": "1982-09-14",
+      "principal_place_of_birth": "Berlin",
+      "principal_identification_document_kind": "national_id_card",
+      "principal_identification_document_number": "L01X00T47",
+      "principal_full_address": "Kastanienallee 12, 10435 Berlin, Germany",
+      "company_statutory_full_name": "Grünberg Consulting GmbH",
+      "company_business_register_name": "Handelsregister Amtsgericht Charlottenburg",
+      "company_business_register_location": "Berlin",
+      "company_kind_of_legal_entity": "GmbH",
+      "company_jurisdiction": "DE",
+      "company_registered_office": "Friedrichstraße 100, 10117 Berlin, Germany",
+      "attorney_full_name": "Jan Kowalski",
+      "attorney_date_of_birth": "1993-07-08",
+      "attorney_place_of_birth": "Warsaw",
+      "attorney_identification_document_kind": "passport",
+      "attorney_identification_document_number": "ZS0123456",
+      "attorney_full_address": "Prenzlauer Allee 200, 10405 Berlin, Germany",
+      "scope_of_representation_powers": [
+        "Conclusion of purchase and service contracts up to EUR 50,000",
+        "Signing of tender documents and supplier registrations"
+      ],
+      "scope_of_representation_power_of_substitution": "not_allowed",
+      "validity_period_valid_from": "2026-02-01",
+      "validity_period_valid_until": "2027-01-31",
+      "applicable_law_jurisdiction": "DE",
+      "signing_place": "Berlin",
+      "signing_date": "2026-02-01",
+      "trust_anchor": "https://trust.example.org/anchors/de/notariat"
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "eu_poa",
+      "document_id": "document_id_eu_poa_sophie-013",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "attestation_legal_category": "QEAA",
+      "issuing_authority": "Chambre des Notaires du Rhône",
+      "issuing_country": "FR",
+      "date_of_execution": "2026-01-12",
+      "euid_reference": "FRRCS.Lyon.B987654321",
+      "principal_full_name": "Pierre Dubois",
+      "principal_date_of_birth": "1960-04-02",
+      "principal_place_of_birth": "Villeurbanne",
+      "principal_identification_document_kind": "national_id_card",
+      "principal_identification_document_number": "690012345678",
+      "principal_full_address": "8 Quai Saint-Antoine, 69002 Lyon, France",
+      "company_statutory_full_name": "Transport Dubois SARL",
+      "company_business_register_name": "Registre du Commerce et des Sociétés de Lyon",
+      "company_business_register_location": "Lyon",
+      "company_kind_of_legal_entity": "SARL",
+      "company_jurisdiction": "FR",
+      "company_registered_office": "15 Rue de la République, 69002 Lyon, France",
+      "attorney_full_name": "Sophie Dubois",
+      "attorney_date_of_birth": "1988-12-01",
+      "attorney_place_of_birth": "Lyon",
+      "attorney_identification_document_kind": "passport",
+      "attorney_identification_document_number": "21AB45678",
+      "attorney_full_address": "22 Rue Garibaldi, 69006 Lyon, France",
+      "scope_of_representation_powers": [
+        "Opening and operating the company's bank accounts",
+        "Signing loan and leasing agreements for vehicles"
+      ],
+      "scope_of_representation_power_of_substitution": "limited",
+      "validity_period_valid_from": "2026-01-12",
+      "validity_period_valid_until": "2028-01-11",
+      "applicable_law_jurisdiction": "FR",
+      "signing_place": "Lyon",
+      "signing_date": "2026-01-12",
+      "trust_anchor": "https://trust.example.org/anchors/fr/notaires"
+    }
+  }
+}

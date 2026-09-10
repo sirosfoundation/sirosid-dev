@@ -13,18 +13,18 @@
 
 _shared: &shared
   # --- EU Business Wallet attestations (2026-09-10) ----------------------------
-  # Three new assertion-sourced credential types (values-base.yaml ebw_oid/
+  # Three new PID-authenticated credential types (values-base.yaml ebw_oid/
   # eucc/eu_poa, WE BUILD ds001/ds004/ds007). The goldens predate them; the
-  # only footprint in the vc configs is one assertion scope each on apigw.
-  - path: apigw.data_sources.assertion.scopes.ebw_oid
+  # only footprint in the vc configs is one datastore scope each on apigw.
+  - path: apigw.data_sources.datastore.scopes.ebw_oid
     kind: added
-    reason: "EBW-OID (uri:eu.ebw.oid.1) credential type, assertion-sourced via mini-oidc"
+    reason: "EBW-OID (uri:eu.ebw.oid.1) credential type, datastore-sourced behind PID authentication (openid4vp)"
   - path: apigw.data_sources.datastore.scopes.eucc
     kind: added
     reason: "EUCC (urn:eudi:eucc:1) credential type, datastore-sourced behind PID authentication (openid4vp)"
-  - path: apigw.data_sources.assertion.scopes.eu_poa
+  - path: apigw.data_sources.datastore.scopes.eu_poa
     kind: added
-    reason: "EU PoA (uri:eu.eudi.eu-poa.1) credential type, assertion-sourced via mini-oidc"
+    reason: "EU PoA (uri:eu.eudi.eu-poa.1) credential type, datastore-sourced behind PID authentication (openid4vp)"
   # --- mount points moved to the chart's names -------------------------------
   # The chart mounts VCTM/MDDL documents at /vctms, bootstrapping documents at
   # /documents and presentation-request templates at /pres-reqs, where the old
