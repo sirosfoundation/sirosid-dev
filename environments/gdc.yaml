@@ -15,6 +15,18 @@
 # fly.toml disagreeing with where the machines actually are.
 region: arn
 
+# Resolve every SD-JWT credential type from the SIROS registry instead of the
+# VCTMs vendored in fixtures/vc-metadata (REGISTRY=external, PR #33). This is
+# what makes vc ADVERTISE the type's real vct (urn:eudi:pid:arf-1.8:1) in
+# credential_configurations_supported - for a vendored VCTM it advertises its
+# own /type-metadata/<scope> URL while the issued credential carries the urn,
+# and the wallets (siros-sdk-kotlin 0.13, wallet-frontend) refuse that
+# mismatch: "Issuer delivered a 'urn:eudi:pid:arf-1.8:1' credential, but this
+# offer was for https://sirosid-gdc-vc-apigw.fly.dev/type-metadata/pid_1_8".
+# mdoc types stay vendored (mdl_zk4 has no registry entry).
+credential_registries:
+  - https://registry.siros.org
+
 images:
   # Built from a local integration branch combining upstream vc PR #620
   # (native Vega ZK/PPID verification, r12 circuit) and PR #626 (config-
