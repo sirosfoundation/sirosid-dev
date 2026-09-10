@@ -100,12 +100,29 @@ features:
         source: assertion
     eucc:
       # EU Company Certificate - the legal person's register extract.
+      #
+      # Unlike its two siblings, issuance requires PID authentication: the
+      # wallet presents a PID (OpenID4VP during issuance) and the identity in
+      # it - given_name, family_name, birthdate - selects the company's
+      # certificate from the datastore via the identity mappings. Either PID
+      # this stack issues is accepted (pid_1_5 is what a mini-oidc company
+      # user gets; pid_1_8 needs a datastore PID document). The synthetic
+      # certificates live in fixtures/vc-bootstrapping/eucc.json, one per
+      # company user, and the company users are mapped in
+      # identity_mappings.json - a natural person presenting their PID has no
+      # certificate and issuance fails with "no documents".
       vct: "urn:eudi:eucc:1"
       format: dc+sd-jwt
       vctm: {file: fixtures/vc-metadata/vctm_eucc.json}
       issuance:
-        authProvider: oidc
-        source: assertion
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
     eu_poa:
       # EU Power of Attorney - principal grants an attorney representation powers.
       vct: "uri:eu.eudi.eu-poa.1"
@@ -169,10 +186,12 @@ issuer:
       sessionDuration: 300
       scopes: [openid, profile]
 
-  # Imports the mini-oidc test users (alice-001/bob-002/carol-003) so the
+  # Imports the mini-oidc test users (alice-001/bob-002/carol-003 and the
+  # company users erik-010/maria-011/jan-012/sophie-013) so the
   # datastore-backed scopes can resolve a document for whoever actually logs
-  # in - vc's own bootstrapping fixtures cover a disjoint set of synthetic
-  # Skatteverket/SUNET/Ladok identities that match none of them.
+  # in or presents a PID - vc's own bootstrapping fixtures cover a disjoint
+  # set of synthetic Skatteverket/SUNET/Ladok identities that match none of
+  # them.
   identitymappingImport:
     identities:
       identity_mappings: {file: fixtures/vc-bootstrapping/identity_mappings.json}
@@ -183,6 +202,9 @@ issuer:
       mdl: {file: fixtures/vc-bootstrapping/mdl.json}
       mdl_zk4: {file: fixtures/vc-bootstrapping/mdl_zk4.json}
       pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
+      # EU Company Certificates for the mini-oidc company users - PID-authenticated
+      # issuance (see features.credentialTypes.eucc).
+      eucc: {file: fixtures/vc-bootstrapping/eucc.json}
 
   apigw:
     cors:

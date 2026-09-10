@@ -19,9 +19,9 @@ _shared: &shared
   - path: apigw.data_sources.assertion.scopes.ebw_oid
     kind: added
     reason: "EBW-OID (uri:eu.ebw.oid.1) credential type, assertion-sourced via mini-oidc"
-  - path: apigw.data_sources.assertion.scopes.eucc
+  - path: apigw.data_sources.datastore.scopes.eucc
     kind: added
-    reason: "EUCC (urn:eudi:eucc:1) credential type, assertion-sourced via mini-oidc"
+    reason: "EUCC (urn:eudi:eucc:1) credential type, datastore-sourced behind PID authentication (openid4vp)"
   - path: apigw.data_sources.assertion.scopes.eu_poa
     kind: added
     reason: "EU PoA (uri:eu.eudi.eu-poa.1) credential type, assertion-sourced via mini-oidc"

@@ -376,11 +376,20 @@ Three WE BUILD rulebook types for testing an EU Business Wallet, declared in
 | `eucc` | `urn:eudi:eucc:1` | EU Company Certificate (ds004) - the business-register extract |
 | `eu_poa` | `uri:eu.eudi.eu-poa.1` | EU Power of Attorney (ds007) - principal grants an attorney powers |
 
-They are assertion-sourced like EHIC: vc-apigw requests the scope from
-mini-oidc and the claims come back verbatim as the credential. The synthetic
-company data lives in mini-oidc's `users.yaml` (`attestations:` per user,
-mini-oidc 0.0.5+), so log in as a **company user** - the natural persons
-(alice, bob, carol) have none and issuance fails for lack of data:
+EBW-OID and EU PoA are assertion-sourced like EHIC: vc-apigw requests the
+scope from mini-oidc and the claims come back verbatim as the credential.
+Their synthetic data lives in mini-oidc's `users.yaml` (`attestations:` per
+user, mini-oidc 0.0.5+), so log in as a **company user** - the natural
+persons (alice, bob, carol) have none and issuance fails for lack of data.
+
+**EUCC requires PID authentication instead.** The wallet presents a PID
+(OpenID4VP during issuance) and the identity in it selects the company's
+certificate from the datastore (`fixtures/vc-bootstrapping/eucc.json`,
+mapped through `identity_mappings.json`). Get a PID first as the company user
+(pid_1_5 works for every mini-oidc user), then request the EUCC; the wallet
+asks you to present the PID and the certificate for that person's company is
+issued. Natural persons have no certificate, so their PID leads to "no
+documents".
 
 | mini-oidc user | company | EBW-OID | EUCC | EU PoA |
 |---|---|---|---|---|

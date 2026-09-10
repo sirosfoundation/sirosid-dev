@@ -31,5 +31,53 @@
       },
       "created_at": "0001-01-01T00:00:00Z"
     }
+  ],
+  "erik-010": [
+    {
+      "authentic_source_person_id": "erik-010",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Erik",
+        "family_name": "Lindström",
+        "birth_date": "1975-03-22"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "maria-011": [
+    {
+      "authentic_source_person_id": "maria-011",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Maria",
+        "family_name": "Schneider",
+        "birth_date": "1982-09-14"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "jan-012": [
+    {
+      "authentic_source_person_id": "jan-012",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Jan",
+        "family_name": "Kowalski",
+        "birth_date": "1993-07-08"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "sophie-013": [
+    {
+      "authentic_source_person_id": "sophie-013",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Sophie",
+        "family_name": "Dubois",
+        "birth_date": "1988-12-01"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
   ]
 }

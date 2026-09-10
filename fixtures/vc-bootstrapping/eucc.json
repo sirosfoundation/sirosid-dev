@@ -1,0 +1,212 @@
+{
+  "erik-010": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "eucc",
+      "document_id": "document_id_eucc_erik-010",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "erik-010"
+    ],
+    "document_data": {
+      "legal_person_name": "Nordic Tech Solutions AB",
+      "legal_person_id": "SEBOLAG.5591234567",
+      "legal_form_type": "Aktiebolag (AB)",
+      "registration_member_state": "SE",
+      "registered_address": {
+        "full_address": "Sveavägen 42, 111 34 Stockholm, Sweden",
+        "thorough_fare": "Sveavägen",
+        "locator_designator": "42",
+        "post_code": "111 34",
+        "post_name": "Stockholm",
+        "admin_unit_level_1": "SE",
+        "admin_unit_level_2": "Stockholm"
+      },
+      "registration_date": "2015-06-01",
+      "legal_person_status": "active",
+      "legal_person_activity": {
+        "code": "62.01",
+        "description": "Computer programming activities"
+      },
+      "legal_representative": [
+        "Erik Lindström"
+      ],
+      "share_capital": {
+        "amount": "500000",
+        "currency": "SEK"
+      },
+      "digital_contact_point": {
+        "email": "info@nordictech.example.com",
+        "website": "https://nordictech.example.com"
+      },
+      "issuing_authority": "Bolagsverket",
+      "issuing_authority_id": "SE:BOLAGSVERKET",
+      "issuing_country": "SE",
+      "issuing_jurisdiction": "SE",
+      "issuance_date": "2026-01-15T09:00:00Z",
+      "authentic_source_id": "SE:BOLAGSVERKET",
+      "authentic_source_name": "Bolagsverket",
+      "attestation_legal_category": "PUB-EAA",
+      "trust_anchor": "https://trust.example.org/anchors/se/bolagsverket"
+    }
+  },
+  "maria-011": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "eucc",
+      "document_id": "document_id_eucc_maria-011",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "maria-011"
+    ],
+    "document_data": {
+      "legal_person_name": "Grünberg Consulting GmbH",
+      "legal_person_id": "DEHRB.B123456",
+      "legal_form_type": "Gesellschaft mit beschränkter Haftung (GmbH)",
+      "registration_member_state": "DE",
+      "registered_address": {
+        "full_address": "Friedrichstraße 100, 10117 Berlin, Germany",
+        "thorough_fare": "Friedrichstraße",
+        "locator_designator": "100",
+        "post_code": "10117",
+        "post_name": "Berlin",
+        "admin_unit_level_1": "DE",
+        "admin_unit_level_2": "Berlin"
+      },
+      "registration_date": "2010-02-15",
+      "legal_person_status": "active",
+      "legal_person_activity": {
+        "code": "70.22",
+        "description": "Business and other management consultancy"
+      },
+      "legal_representative": [
+        "Maria Schneider",
+        "Thomas Grünberg"
+      ],
+      "share_capital": {
+        "amount": "25000",
+        "currency": "EUR"
+      },
+      "digital_contact_point": {
+        "email": "kontakt@gruenberg-gmbh.example.com",
+        "website": "https://gruenberg-gmbh.example.com"
+      },
+      "issuing_authority": "Amtsgericht Charlottenburg (Handelsregister)",
+      "issuing_authority_id": "DE:AG-CHARLOTTENBURG",
+      "issuing_country": "DE",
+      "issuing_jurisdiction": "DE-BE",
+      "issuance_date": "2026-01-20T10:30:00Z",
+      "authentic_source_id": "DE:HANDELSREGISTER",
+      "authentic_source_name": "Handelsregister",
+      "attestation_legal_category": "PUB-EAA",
+      "trust_anchor": "https://trust.example.org/anchors/de/handelsregister"
+    }
+  },
+  "jan-012": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "eucc",
+      "document_id": "document_id_eucc_jan-012",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "jan-012"
+    ],
+    "document_data": {
+      "legal_person_name": "Grünberg Consulting GmbH",
+      "legal_person_id": "DEHRB.B123456",
+      "legal_form_type": "Gesellschaft mit beschränkter Haftung (GmbH)",
+      "registration_member_state": "DE",
+      "registered_address": {
+        "full_address": "Friedrichstraße 100, 10117 Berlin, Germany",
+        "thorough_fare": "Friedrichstraße",
+        "locator_designator": "100",
+        "post_code": "10117",
+        "post_name": "Berlin",
+        "admin_unit_level_1": "DE",
+        "admin_unit_level_2": "Berlin"
+      },
+      "registration_date": "2010-02-15",
+      "legal_person_status": "active",
+      "legal_person_activity": {
+        "code": "70.22",
+        "description": "Business and other management consultancy"
+      },
+      "legal_representative": [
+        "Maria Schneider",
+        "Thomas Grünberg"
+      ],
+      "share_capital": {
+        "amount": "25000",
+        "currency": "EUR"
+      },
+      "digital_contact_point": {
+        "email": "kontakt@gruenberg-gmbh.example.com",
+        "website": "https://gruenberg-gmbh.example.com"
+      },
+      "issuing_authority": "Amtsgericht Charlottenburg (Handelsregister)",
+      "issuing_authority_id": "DE:AG-CHARLOTTENBURG",
+      "issuing_country": "DE",
+      "issuing_jurisdiction": "DE-BE",
+      "issuance_date": "2026-01-20T10:30:00Z",
+      "authentic_source_id": "DE:HANDELSREGISTER",
+      "authentic_source_name": "Handelsregister",
+      "attestation_legal_category": "PUB-EAA",
+      "trust_anchor": "https://trust.example.org/anchors/de/handelsregister"
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "eucc",
+      "document_id": "document_id_eucc_sophie-013",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "legal_person_name": "Transport Dubois SARL",
+      "legal_person_id": "FRRCS.Lyon.B987654321",
+      "legal_form_type": "Société à responsabilité limitée (SARL)",
+      "registration_member_state": "FR",
+      "registered_address": {
+        "full_address": "15 Rue de la République, 69002 Lyon, France",
+        "thorough_fare": "Rue de la République",
+        "locator_designator": "15",
+        "post_code": "69002",
+        "post_name": "Lyon",
+        "admin_unit_level_1": "FR",
+        "admin_unit_level_2": "Auvergne-Rhône-Alpes"
+      },
+      "registration_date": "2018-11-20",
+      "legal_person_status": "active",
+      "legal_person_activity": {
+        "code": "49.41",
+        "description": "Freight transport by road"
+      },
+      "legal_representative": [
+        "Sophie Dubois"
+      ],
+      "share_capital": {
+        "amount": "10000",
+        "currency": "EUR"
+      },
+      "digital_contact_point": {
+        "email": "contact@transport-dubois.example.com",
+        "website": "https://transport-dubois.example.com"
+      },
+      "issuing_authority": "Greffe du Tribunal de Commerce de Lyon",
+      "issuing_authority_id": "FR:GREFFE-LYON",
+      "issuing_country": "FR",
+      "issuing_jurisdiction": "FR",
+      "issuance_date": "2026-01-10T08:15:00Z",
+      "authentic_source_id": "FR:INFOGREFFE",
+      "authentic_source_name": "Infogreffe",
+      "attestation_legal_category": "PUB-EAA",
+      "trust_anchor": "https://trust.example.org/anchors/fr/infogreffe"
+    }
+  }
+}
