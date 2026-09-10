@@ -54,8 +54,10 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 --target fly's secrets live in Fly's own secret store (see fly_common.py).
 """
 import argparse
+import copy
 import secrets
 import string
+import subprocess
 import sys
 from pathlib import Path
 
@@ -71,6 +73,80 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 # siros-id-stack/config/secret_generator_template.yaml's use of
 # `randAlphaNum 32` for these same keys.
 WALLET_BACKEND_SECRETS = ["jwtSecret", "adminToken"]
+
+
+# Markers that must be present in ../siros-id-stack for values-base.yaml to
+# render at all. A chart older than these fails deep inside `helm template`
+# with an error naming one of the chart's own template lines and no hint that
+# the reader's checkout is simply out of date - which is exactly what happened
+# the first time someone pulled this repo without pulling the chart:
+#
+#   execution error at (siros-id-stack/templates/03-cred-common.yaml:12:24):
+#   Object must contain non-empty .data or .file property
+#
+# (An mdoc credential type declares `mdocSchema` and no `vctm`, so the old
+# template's unconditional dataOrFile on `.vctm` got nil.)
+REQUIRED_CHART_MARKERS = [
+    ("templates/_helpers.tpl", "siros-id.vc.renderConfig",
+     "per-service config rendering with an extraConfig escape hatch"),
+    ("templates/_helpers.tpl", "mdocSchema",
+     "ISO 18013-5 mdoc credential types (features.credentialTypes[].mdocSchema)"),
+]
+
+
+def check_chart_supported(chart_dir: Path):
+    """Fail early and legibly when ../siros-id-stack predates what this repo needs."""
+    missing = [
+        (marker, why) for rel, marker, why in REQUIRED_CHART_MARKERS
+        if marker not in (chart_dir / rel).read_text(errors="ignore")
+    ] if (chart_dir / "templates" / "_helpers.tpl").is_file() else []
+    if not missing:
+        return
+    raise SystemExit(
+        f"\nERROR: the chart at {chart_dir} is too old for this repo's values-base.yaml.\n"
+        + "".join(f"  missing: {m}  ({why})\n" for m, why in missing)
+        + "\n" + _chart_update_hint(chart_dir)
+        + "\n  Without this, `helm template` fails inside the chart's own templates with\n"
+          "  no indication that the checkout is the problem.\n")
+
+
+def _git(chart_dir: Path, *args) -> str:
+    try:
+        r = subprocess.run(["git", "-C", str(chart_dir), *args], capture_output=True, text=True)
+        return r.stdout.strip() if r.returncode == 0 else ""
+    except FileNotFoundError:
+        return ""
+
+
+def _chart_update_hint(chart_dir: Path) -> str:
+    """Say which of `make setup`'s three outcomes applies here.
+
+    `make setup` fast-forwards the chart, but only when it is on main and the
+    pull succeeds; the other two cases print a coloured note and setup carries
+    on, which is easy to miss in its output. Naming the actual case turns
+    "run make setup" into something the reader can act on.
+    """
+    if not (chart_dir / ".git").exists():
+        return (f"  {chart_dir} is not a git checkout, so `make setup` cannot update it.\n"
+                "  Replace it with a clone of sirosfoundation/siros-id-stack, or point\n"
+                "  SIROS_ID_STACK_PATH=<dir> at one.\n")
+    branch = _git(chart_dir, "branch", "--show-current")
+    dirty = bool(_git(chart_dir, "status", "--porcelain"))
+    if branch != "main":
+        return (f"  It is on branch '{branch or 'a detached HEAD'}', not main - `make setup`\n"
+                "  deliberately leaves it alone in that case (so a PR branch someone is\n"
+                "  testing is not yanked out from under them) and only prints a note.\n"
+                "  Either switch it back:\n"
+                f"    git -C {chart_dir} checkout main && git -C {chart_dir} pull\n"
+                "  or point at another checkout with SIROS_ID_STACK_PATH=<dir>.\n")
+    if dirty:
+        return ("  It is on main but has local changes, so `make setup`'s\n"
+                "  `git pull --ff-only` cannot fast-forward it (setup reports this as\n"
+                "  'update failed' and continues). Stash or commit them, then:\n"
+                f"    git -C {chart_dir} pull\n")
+    return ("  It is on main and clean, so it just needs pulling:\n"
+            "    make setup\n"
+            f"  or: git -C {chart_dir} pull\n")
 
 
 def gen_secret(path: Path, length: int = 32) -> str:
@@ -555,7 +631,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                             f"{frontend_url}/id/default/cb",
                         ],
                         "scopes": ["pid", "pid_1_5", "pid_1_8", "diploma", "ehic",
-                                   "mdl", "mdl_zk4", "pid_mdoc"],
+                                   "mdl", "mdl_zk4", "pid_mdoc", "ebw_oid", "eucc", "eu_poa"],
                     },
                 }},
                 "credential_offers": {"wallets": {
@@ -636,6 +712,62 @@ def build_toggles_overlay(zk_circuits_sources: list = None, dc_api_enable: str =
     return {"verifier": verifier} if verifier else {}
 
 
+
+def assert_chart_ref(chart_dir: Path, chart_ref: str) -> None:
+    """Stop if ../siros-id-stack is not on the ref this environment needs.
+
+    Asserted rather than checked out. That repo is consumed read-only and
+    may hold someone else's work in progress, so silently moving it is worse
+    than refusing - and a wrong checkout does not fail loudly on its own: it
+    renders a config that is merely missing whatever the branch adds, which
+    then surfaces as a puzzling runtime error in a service.
+
+    Compared by COMMIT, not by branch name, so a detached HEAD at a tag or
+    at the branch tip (`git checkout <sha>`, a CI checkout) passes when it
+    points where the ref points. The branch name is only used for the
+    message.
+
+    A chart_dir that is not a git checkout (an exported tarball) cannot be
+    checked at all; that is a warning, not a refusal - the point is to catch
+    a stale checkout, and there is no checkout to be stale.
+
+    Only used while an environment depends on unmerged chart work. The
+    environment file's own comment should say what to delete it for.
+    """
+    if not chart_ref:
+        return
+
+    def git(*args: str) -> str:
+        return subprocess.run(["git", "-C", str(chart_dir), *args],
+                              capture_output=True, text=True, check=True).stdout.strip()
+
+    try:
+        head = git("rev-parse", "HEAD")
+        branch = git("rev-parse", "--abbrev-ref", "HEAD")  # "HEAD" when detached
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print(f"warning: {chart_dir} is not a git checkout; cannot verify it is on {chart_ref!r}",
+              file=sys.stderr)
+        return
+    if branch == chart_ref:
+        return
+    # Detached, or on a differently named branch: accept if HEAD is the same
+    # commit as the ref - locally or as fetched from origin.
+    for candidate in (chart_ref, f"origin/{chart_ref}"):
+        try:
+            if git("rev-parse", "--verify", "--quiet", f"{candidate}^{{commit}}") == head:
+                return
+        except subprocess.CalledProcessError:
+            continue
+    actual = branch if branch != "HEAD" else f"detached HEAD at {head[:12]}"
+    raise SystemExit(
+        f"This environment needs siros-id-stack on {chart_ref!r}, but {chart_dir} is on "
+        f"{actual}.\n\n"
+        f"    git -C {chart_dir} fetch origin {chart_ref} && "
+        f"git -C {chart_dir} checkout {chart_ref}\n\n"
+        "Rendering against the wrong ref does not fail here - it quietly produces a config "
+        "missing whatever that branch adds."
+    )
+
 def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes: list = None,
            namespace: str = "sirosid-dev", out_dir: Path = None, secrets_dir: Path = None,
            mongo_password: str = None, conformance: bool = False,
@@ -644,7 +776,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            rical_provider_url: str = None, rical_root_certificate_pem: str = None,
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
-           credential_registries: list = None, env_values: dict = None) -> list:
+           credential_registries: list = None, env_values: dict = None, bbs_secret_key: str = None,
+           chart_ref: str = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -653,6 +786,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     """
     if target == "fly" and not env:
         raise ValueError("target 'fly' requires env")
+
+    assert_chart_ref(chart_dir, chart_ref)
 
     out_dir = Path(out_dir) if out_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered"
     if target == "fly":
@@ -670,6 +805,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # it references VCTM/MDDL/bootstrapping documents by repo-relative path,
     # and helm's Files.Get cannot read outside the chart directory, so those
     # are inlined as `data` first (see vc_render.inline_file_refs).
+    check_chart_supported(Path(chart_dir))
+
     base = yaml.safe_load((SIROSID_DEV_ROOT / "values-base.yaml").read_text())
     vc_render.inline_file_refs(base)
     vc_render.expand_presentation_request_templates(base)
@@ -713,6 +850,16 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # anything above it - see scripts/env_config.py. Applies to both targets:
     # `make up ENV=<name>` and `make fly-up ENV=<name>` layer the same file.
     if env_values:
+        # Preprocessed exactly like values-base.yaml above, and for the same
+        # reason: an environment may declare its own credential type, and
+        # `vctm: {file: ...}` is a path relative to THIS repo. Helm's
+        # Files.Get resolves inside the chart, finds nothing, and returns an
+        # empty string - so the document renders as a zero-byte file with no
+        # error anywhere, and the first sign of trouble is a service
+        # panicking at startup with "unexpected end of JSON input".
+        env_values = copy.deepcopy(env_values)
+        vc_render.inline_file_refs(env_values)
+        vc_render.expand_presentation_request_templates(env_values)
         env_values_path = out_dir / "values.environment.yaml"
         env_values_path.write_text(yaml.dump(env_values, sort_keys=False))
         values_files.append(env_values_path)
@@ -793,6 +940,15 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                             # fly-up.py sets from these same constants and
                             # docker-compose.vc-services.yml defaults to.
                             "OIDC_PROVIDER_CLIENT_SECRET": fly_common.MINI_OIDC_APIGW_CLIENT_SECRET,
+                            # Also not ours to generate, and for a sharper
+                            # reason: a random 32 bytes IS a well-formed
+                            # BLS12-381 scalar, just not the one matching the
+                            # configured public key. The issuer would start,
+                            # sign, and produce credentials nothing can
+                            # verify. Empty unless an environment supplies it,
+                            # and the chart only references ${BBS_SECRET_KEY}
+                            # when issuer.core.bbs is enabled.
+                            **({"BBS_SECRET_KEY": bbs_secret_key} if bbs_secret_key else {}),
                         },
                         env=env, mongo_password=mongo_password,
                         credential_types=(base.get("features") or {}).get("credentialTypes") or {},

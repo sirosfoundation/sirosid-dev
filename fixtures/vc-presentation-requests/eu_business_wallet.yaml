@@ -1,0 +1,104 @@
+# EU Business Wallet presentation requests - the three WE BUILD attestations
+# this stack issues (values-base.yaml credentialTypes ebw_oid/eucc/eu_poa).
+#
+# As with eudi_pid.yaml, every vct and claim path here must match what is
+# actually issued: the VCTMs in fixtures/vc-metadata/vctm_{ebw_oid,eucc,eu_poa}.json
+# (copies of registry.siros.org's webuild-consortium entries), and the claim
+# names mini-oidc releases from its users.yaml `attestations:` blocks.
+templates:
+  - id: "ebw_oid_owner"
+    name: "EU Business Wallet - Owner Identification (EBW-OID)"
+    description: "Which legal person owns this business wallet"
+    version: "1.0"
+    oidc_scopes:
+      - "ebw_oid"
+    dcql:
+      credentials:
+        - id: "ebw_oid"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "uri:eu.ebw.oid.1"
+          claims:
+            - path: ["id"]
+            - path: ["name"]
+            - path: ["issuing_authority"]
+            - path: ["issuing_country"]
+            - path: ["date_of_expiry"]
+    claim_mappings:
+      id: "legal_person_id"
+      name: "legal_person_name"
+      issuing_authority: "issuing_authority"
+      issuing_country: "issuing_country"
+      date_of_expiry: "date_of_expiry"
+    enabled: true
+
+  - id: "eucc_company_extract"
+    name: "EU Company Certificate - Register Extract"
+    description: "Company identity, status, activity and legal representatives from the business register"
+    version: "1.0"
+    oidc_scopes:
+      - "eucc"
+    dcql:
+      credentials:
+        - id: "eucc"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "urn:eudi:eucc:1"
+          claims:
+            - path: ["legal_person_name"]
+            - path: ["legal_person_id"]
+            - path: ["legal_form_type"]
+            - path: ["registration_member_state"]
+            - path: ["legal_person_status"]
+            - path: ["legal_person_activity", "code"]
+            - path: ["legal_representative"]
+            - path: ["registered_address", "full_address"]
+            - path: ["issuing_authority"]
+    claim_mappings:
+      legal_person_name: "legal_person_name"
+      legal_person_id: "legal_person_id"
+      legal_form_type: "legal_form_type"
+      registration_member_state: "registration_member_state"
+      legal_person_status: "legal_person_status"
+      legal_person_activity: "legal_person_activity"
+      legal_representative: "legal_representative"
+      registered_address: "registered_address"
+      issuing_authority: "issuing_authority"
+    enabled: true
+
+  - id: "eu_poa_representation"
+    name: "EU Power of Attorney - Representation Check"
+    description: "Who may represent which company, with which powers and until when"
+    version: "1.0"
+    oidc_scopes:
+      - "eu_poa"
+    dcql:
+      credentials:
+        - id: "eu_poa"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "uri:eu.eudi.eu-poa.1"
+          claims:
+            - path: ["attorney_full_name"]
+            - path: ["principal_full_name"]
+            - path: ["company_statutory_full_name"]
+            - path: ["euid_reference"]
+            - path: ["scope_of_representation_powers"]
+            - path: ["scope_of_representation_power_of_substitution"]
+            - path: ["validity_period_valid_from"]
+            - path: ["validity_period_valid_until"]
+            - path: ["issuing_authority"]
+    claim_mappings:
+      attorney_full_name: "attorney_full_name"
+      principal_full_name: "principal_full_name"
+      company_statutory_full_name: "company_name"
+      euid_reference: "euid"
+      scope_of_representation_powers: "powers"
+      scope_of_representation_power_of_substitution: "substitution"
+      validity_period_valid_from: "valid_from"
+      validity_period_valid_until: "valid_until"
+      issuing_authority: "issuing_authority"
+    enabled: true

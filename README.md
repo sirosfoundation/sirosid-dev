@@ -32,12 +32,71 @@ Or if you already have the repos cloned:
 make up            # Start default stack (go-trust allow-all)
 make up VC=yes     # … with production-like VC services
 make up GOLDEN=yes # … using pre-built golden release images
+make plan VC=yes   # Show what `make up` would do, without starting anything
 make status        # Check all service health
 make logs          # View Docker logs
-make down          # Stop everything
+make down          # Stop everything (Mongo data is kept - see "Storage")
 make update        # Force-update all repos to upstream
 make help          # Full option reference
 ```
+
+## Boot manager
+
+The option matrix behind `make up`/`make fly-up` has grown large. The boot
+manager is a terminal UI over it, for finding your way rather than
+remembering flags:
+
+```bash
+make setup         # clones the sibling repos, installs the boot manager into .venv, launches it
+make boot        # afterwards
+```
+
+It lists every environment in one place (the unnamed local stack, every
+`environments/<name>.yaml`, every `sirosid-<env>-*` deployment found on
+Fly), shows what booting one means before you do it (compose files,
+storage, pre-flight checks), edits an environment's options as a form with
+the help text next to each field, boots/stops/redeploys, tails logs, runs a
+doctor over the known gotchas, and has a Storage panel with the same
+"Clear all data" the dashboard has. Every action is a `make` command it
+shows before running, so nothing it does is out of reach of the shell.
+
+`scripts/stack.py` is what makes this possible: the option matrix as data
+(`make plan` prints it), with `tests/test_stack_parity.py` asserting it
+agrees with the Makefile's own `COMPOSE_FILES` logic.
+
+## Storage
+
+Mongo data lives on named volumes that survive `make down`:
+
+| volume | holds |
+|---|---|
+| `sirosid-mongodb-data` | wallet-backend (`PDP=helm` only - every other mode is an in-memory store) and the VC services |
+| `sirosid-conformance-mongodb-data` | the OpenID conformance suite's own database |
+| `sirosid-r2ps-softhsm-tokens`, `sirosid-attest-softhsm-tokens` | SoftHSM2 tokens (`R2PS=yes`) |
+
+```bash
+make storage-status            # every store: mode, size, whether it persists
+make storage-clear             # wipe + re-register issuer/verifier (YES=yes skips the prompt)
+make clean                     # the old way: containers, volumes and build cache, all gone
+```
+
+Clearing goes through **env-admin** (`env-admin/`, a small service every
+`make up` starts; also `sirosid-<env>-env-admin` on Fly): it stops the
+Mongo consumers, drops the application databases, starts them again so
+they recreate their indexes and seed data, and re-registers the issuer and
+verifier with wallet-backend (`scripts/bootstrap.py`, the same code `make
+up` and `make fly-up` run). The dashboard's **Storage** card is the same
+action with a button, on both targets. When the stack is down there is no
+env-admin, so `make storage-clear` removes the volumes instead.
+
+The button needs the environment's admin token plus the environment name
+typed as confirmation. A loopback-only local stack embeds the token in the
+gitignored `build-info.json` so the prompt is skipped; under `TUNNELS=yes`
+or `DOMAIN=` the dashboard is reachable from other machines, so the token is
+not embedded and the card prompts for it, as it always does on Fly.
+
+On Fly the same data sits on a Fly volume per Mongo app - see "Fly.io
+Deployment" for `KEEP_DATA=yes` and `make fly-storage-clear`.
 
 ## Prerequisites
 
@@ -247,6 +306,42 @@ adb shell am compat enable DEVELOPMENT_PASSKEY_REGISTRATION org.siros.sdk.sample
 | `PDP=mock` | Legacy mock-trust-pdp (no go-trust) |
 | `PDP=helm` | go-trust whitelist + wallet-backend, both configured from config files rendered off the [siros-id-stack](https://github.com/sirosfoundation/siros-id-stack) chart (see `scripts/render-helm-config.py`) instead of hand-maintained env vars/flags. Requires a sibling `../siros-id-stack` checkout. This is the transitional step towards aligning sirosid-dev's config with the production Helm chart — over time the other PDP modes' hand-maintained env vars are meant to be replaced by this path, not kept alongside it indefinitely. |
 
+### WRPAC/WRPRC registration (CIR (EU) 2025/848)
+
+Under CIR (EU) 2025/848 issuers and verifiers alike are **registered
+wallet-relying parties**: each holds an access certificate (**WRPAC**) saying
+who it is and a registration certificate (**WRPRC**) saying what it registered
+for. The wallet checks the WRPRC before requesting issuance (ARF v3.0.0
+§6.6.2.3) or releasing attributes.
+
+`create-pki.sh` cannot produce these — a WRPRC is a signed JWT against a
+register, not something openssl can mint — so the material comes from
+[siros-wrpac-tool](https://github.com/sirosfoundation/siros-wrpac-tool):
+
+```sh
+# v0.2.0 or later: the tsl command arrived there
+git clone git@github.com:sirosfoundation/siros-wrpac-tool.git ../siros-wrpac-tool
+make -C ../siros-wrpac-tool build
+
+make wrpac-pki
+docker compose -f docker-compose.test.yml -f docker-compose.wrpac.yml up -d
+```
+
+This mints a WRPAC and WRPRC for the local `vc-issuer` and `vc-verifier` from
+the specs in `fixtures/wrpac-clients/`, and publishes the deployment's trust
+anchors in **both** list formats — an ETSI TS 119 602 LoTE and an ETSI TS 119
+612 TSL — because go-trust reads either and a real deployment has to support
+both. `go-trust-wrpac` on port 9099 is configured with both registries.
+
+| File | Description |
+|------|-------------|
+| `fixtures/wrpac-clients/*.yaml` | Per-party registration specs; the filename stem is the client id |
+| `fixtures/wrpac-pki/` | The deployment: CA key, register, CRL number, status list indices. Gitignored and **must persist** — reusing a status index would transfer a previous holder's revocation to a new certificate |
+| `fixtures/go-trust-wrpac.yaml` | go-trust with both the `lote` and `etsi` registries pointed at the published anchors |
+
+Each client keeps its own key: only a CSR reaches the deployment, which
+certifies the public key and never holds the private half.
+
 ### AS (Authorization Server) Rules
 
 `AS_RULES=` selects the SPOCP policy wallet-backend's built-in Authorization
@@ -266,7 +361,41 @@ services built from the `../vc` source repository. On startup, the issuer
 and verifier are automatically registered with the wallet backend via the
 admin API — no manual registration needed.
 
-Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma.
+Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma, mDL and PID as
+mdoc, and the EU Business Wallet attestations below.
+
+### EU Business Wallet attestations
+
+Three WE BUILD rulebook types for testing an EU Business Wallet, declared in
+`values-base.yaml` and served from VCTMs copied out of
+[registry.siros.org](https://registry.siros.org) (`webuild-consortium/`):
+
+| scope | vct | what |
+|---|---|---|
+| `ebw_oid` | `uri:eu.ebw.oid.1` | Owner Identification Data (ds001) - which legal person owns the wallet |
+| `eucc` | `urn:eudi:eucc:1` | EU Company Certificate (ds004) - the business-register extract |
+| `eu_poa` | `uri:eu.eudi.eu-poa.1` | EU Power of Attorney (ds007) - principal grants an attorney powers |
+
+All three require **PID authentication**, as they would in a live setting.
+The wallet presents a PID (OpenID4VP during issuance) and the identity in it
+selects the person's documents from the datastore
+(`fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa}.json`, mapped through
+`identity_mappings.json`). Get a PID first as a **company user** (pid_1_5
+works for every mini-oidc user), then request the attestation; the wallet asks
+you to present the PID and the document for that person is issued. The
+natural persons (alice, bob, carol) have no such documents, so their PID leads
+to "no documents". The same synthetic data also ships in mini-oidc 0.0.5's
+`users.yaml` (`attestations:`), for stacks that prefer OIDC-asserted issuance.
+
+| mini-oidc user | company | EBW-OID | EUCC | EU PoA |
+|---|---|---|---|---|
+| erik-010 | Nordic Tech Solutions AB (SE), sole representative | yes | yes | |
+| maria-011 | Grünberg Consulting GmbH (DE), joint representative | yes | yes | |
+| jan-012 | Grünberg Consulting GmbH employee | | yes | attorney, principal Maria |
+| sophie-013 | Transport Dubois SARL (FR), sole manager | yes | yes | attorney, principal co-founder |
+
+The verifier has matching presentation-request templates in
+`fixtures/vc-presentation-requests/eu_business_wallet.yaml`.
 
 ### Service Architecture
 
@@ -431,9 +560,22 @@ chart's `values.yaml` - no local Docker build.
 
 ```bash
 make fly-up ENV=alice              # deploy a new environment
-make fly-status ENV=alice          # check all 10 apps
-make fly-down ENV=alice            # tear it down
+make fly-status ENV=alice          # check all 11 apps
+make fly-down ENV=alice            # tear it down (deletes the Mongo data too)
+make fly-down ENV=alice KEEP_DATA=yes   # tear down but keep the Mongo apps + volumes, machines stopped
+make fly-storage-clear ENV=alice   # wipe the data through env-admin (or the volumes, if down)
 ```
+
+Mongo data persists on a Fly volume (one per Mongo app, created by `fly-up`
+if missing), so a redeploy, an image bump or a Fly host restart no longer
+empties the environment. Two consequences: the Mongo root password is now
+cached per environment in `fixtures/rendered/fly-<env>/` and recovered from
+the running machine over `fly ssh console` when that cache is missing
+(another developer redeploying), and a volume pins its app to a region -
+`fly-up` refuses to move an environment with data rather than silently
+orphaning it. The dashboard's Storage card and `make fly-storage-clear` go
+through the environment's `env-admin` app, which restarts the Mongo
+consumers with one app-scoped Fly deploy token per consumer app.
 
 Requires `flyctl` installed and authenticated, and a sibling `../siros-id-stack`
 checkout (`make setup` clones it).
@@ -546,8 +688,13 @@ sirosid-dev/
 │                                  # images, transports, FaceTec, helm-config)
 │                                  # -- run `make help` for which flag adds
 │                                  # which overlay; there are ~30 of these
-├── nginx-e2e.conf                 # Frontend nginx config (dashboard + health proxies)
+├── nginx-e2e.conf                 # Frontend nginx config (dashboard + health + env-admin proxies)
+├── startup.html, dashboard/       # The local dashboard, and the Storage card both dashboards share
 ├── values-dev.yaml / values-fly.yaml   # Helm values overlays for render-helm-config.py
+├── environments/                  # Persisted per-environment config (Fly + local: block)
+├── env-admin/                     # The in-environment storage-reset service (local + Fly)
+├── bootmgr/                       # The boot manager TUI (installed by make setup, run by make boot)
+├── tests/                         # unittest suites: stack parity, env-admin, Fly storage
 ├── fixtures/                      # VC/PDP config templates, PKI, presentation requests
 ├── mocks/                         # mock-verifier (OpenID4VP) + trust-pdp (legacy AuthZEN) mocks
 └── scripts/                       # All Makefile-invoked automation (Fly deploy, Android/USB

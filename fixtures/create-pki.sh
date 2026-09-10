@@ -10,6 +10,17 @@
 # Usage:
 #   ./create-pki.sh
 #   PKI_DIR_OVERRIDE=/path/to/env-pki ./create-pki.sh   # e.g. per Fly environment
+#   SIGNING_CERT_ISSUER_URL=https://issuer.example ./create-pki.sh
+#
+# SIGNING_CERT_ISSUER_URL adds a URI SAN naming the credential issuer to the
+# signing certificate. mdoc verifiers derive an mDL's issuer identity from its
+# DS certificate (vc's extractMDocIssuerID: URI SAN first, then DNS SAN), and
+# trust decisions key on that identity - on Fly the PDP's mdociaca allowlist
+# holds the environment's public vc-apigw URL. Without it, the first DNS SAN
+# (localhost) wins and every mDL this PKI signs is "issued by
+# https://localhost": the wallet warns at issuance and the environment's own
+# vc-verifier rejects the presentation with "issuer not trusted". Unset for
+# the docker-compose stack, where localhost IS the identity.
 #
 # Each artifact group is independently guarded by its own file-existence
 # check, so re-running after adding a new artifact group only generates what's
@@ -27,15 +38,40 @@ echo "Creating PKI directory: ${PKI_DIR}"
 mkdir -p "${PKI_DIR}"
 
 if [ -f "${PKI_DIR}/rootCA.key" ]; then
-    echo "Root CA already exists, skipping."
+    echo "Root CA key already exists, skipping."
 else
-    echo "Generating Root CA..."
+    echo "Generating Root CA key..."
+    openssl genrsa -out "${PKI_DIR}/rootCA.key" 2048
+fi
+
+# The root certificate is re-issued from the existing key whenever it lacks
+# basicConstraints CA:TRUE. Earlier versions of this script self-signed a v3
+# certificate with no extensions at all, and Go's x509 (go-trust's mdociaca
+# registry, go-wallet-backend) refuses such a parent outright - "parent
+# certificate cannot sign this kind of certificate" - so nothing chaining to
+# it ever validated there, however the leaves were shaped. Same key, same
+# subject, so the key-id-based AuthorityKeyIdentifier on every leaf already
+# issued keeps chaining to the new certificate; only the certificate file
+# (public, rewritten on every deploy) changes.
+root_ca_current() {
+    [ -f "${PKI_DIR}/rootCA.crt" ] || return 1
+    openssl x509 -in "${PKI_DIR}/rootCA.crt" -noout -ext basicConstraints 2>/dev/null | grep -q "CA:TRUE"
+}
+if root_ca_current; then
+    echo "Root CA certificate already current, skipping."
+else
+    if [ -f "${PKI_DIR}/rootCA.crt" ]; then
+        echo "Re-issuing Root CA certificate (basicConstraints CA:TRUE) from the existing key..."
+    else
+        echo "Issuing Root CA certificate..."
+    fi
     cat > /tmp/ca.conf <<EOF
 [req]
 default_bits       = 2048
 prompt             = no
 default_md         = sha256
 distinguished_name = dn
+x509_extensions    = v3_ca
 
 [dn]
 C  = SE
@@ -44,11 +80,20 @@ L  = E2E Testing
 O  = Wallet E2E Test
 OU = Test PKI
 CN = E2E Test Root CA
+
+[v3_ca]
+basicConstraints       = critical, CA:TRUE
+keyUsage               = critical, keyCertSign, cRLSign
+subjectKeyIdentifier   = hash
 EOF
 
-    openssl genrsa -out "${PKI_DIR}/rootCA.key" 2048
     openssl req -x509 -new -nodes -key "${PKI_DIR}/rootCA.key" -sha256 -days 3650 -out "${PKI_DIR}/rootCA.crt" -config /tmp/ca.conf
     rm -f /tmp/ca.conf
+    # Chain files embed the root; rebuild the ones that exist so they carry
+    # the certificate that was just issued rather than the one it replaced.
+    if [ -f "${PKI_DIR}/signing_ec.crt" ]; then
+        cat "${PKI_DIR}/signing_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/signing_ec_chain.pem"
+    fi
 fi
 
 if [ -f "${PKI_DIR}/signing_ec_private.pem" ]; then
@@ -65,6 +110,30 @@ else
     # within the local fixtures dir.
     chmod a+r "${PKI_DIR}/signing_ec_private.pem"
     rm -f /tmp/signing_ec_raw.pem
+fi
+
+# Re-issued (from the existing key) whenever the cert is missing or does not
+# carry the requested issuer URI SAN - the key is what everything deployed
+# depends on (Fly secrets, thumbprints); the certificate is a public file
+# rewritten on every deploy, so changing it is safe.
+SIGNING_CERT_URI_SAN_LINE=""
+if [ -n "${SIGNING_CERT_ISSUER_URL:-}" ]; then
+    SIGNING_CERT_URI_SAN_LINE="URI.1 = ${SIGNING_CERT_ISSUER_URL}"
+fi
+signing_cert_current() {
+    [ -f "${PKI_DIR}/signing_ec.crt" ] || return 1
+    [ -z "${SIGNING_CERT_ISSUER_URL:-}" ] && return 0
+    openssl x509 -in "${PKI_DIR}/signing_ec.crt" -noout -ext subjectAltName 2>/dev/null \
+        | grep -qF "URI:${SIGNING_CERT_ISSUER_URL}"
+}
+if signing_cert_current; then
+    echo "EC signing certificate already current, skipping."
+else
+    if [ -f "${PKI_DIR}/signing_ec.crt" ]; then
+        echo "Re-issuing EC signing certificate (issuer URI SAN ${SIGNING_CERT_ISSUER_URL}) from the existing key..."
+    else
+        echo "Issuing EC signing certificate..."
+    fi
 
     # Create CSR config for signing certificate
     cat > /tmp/signing_ec.conf <<EOF
@@ -94,6 +163,7 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 DNS.2 = vc-issuer
 DNS.3 = vc-verifier
+${SIGNING_CERT_URI_SAN_LINE}
 EOF
 
     # Generate CSR and sign with rootCA

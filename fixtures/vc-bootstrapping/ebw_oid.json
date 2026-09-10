@@ -1,0 +1,62 @@
+{
+  "erik-010": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ebw_oid",
+      "document_id": "document_id_ebw_oid_erik-010",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "erik-010"
+    ],
+    "document_data": {
+      "id": "SEBOLAG.5591234567",
+      "name": "Nordic Tech Solutions AB",
+      "attestation_legal_category": "PUB-EAA",
+      "issuing_authority": "Bolagsverket",
+      "issuing_country": "SE",
+      "date_of_expiry": "2027-12-31",
+      "trust_anchor": "https://trust.example.org/anchors/se/bolagsverket"
+    }
+  },
+  "maria-011": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ebw_oid",
+      "document_id": "document_id_ebw_oid_maria-011",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "maria-011"
+    ],
+    "document_data": {
+      "id": "DEHRB.B123456",
+      "name": "Grünberg Consulting GmbH",
+      "attestation_legal_category": "PUB-EAA",
+      "issuing_authority": "Amtsgericht Charlottenburg (Handelsregister)",
+      "issuing_country": "DE",
+      "date_of_expiry": "2027-06-30",
+      "trust_anchor": "https://trust.example.org/anchors/de/handelsregister"
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ebw_oid",
+      "document_id": "document_id_ebw_oid_sophie-013",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "id": "FRRCS.Lyon.B987654321",
+      "name": "Transport Dubois SARL",
+      "attestation_legal_category": "PUB-EAA",
+      "issuing_authority": "Greffe du Tribunal de Commerce de Lyon",
+      "issuing_country": "FR",
+      "date_of_expiry": "2027-11-20",
+      "trust_anchor": "https://trust.example.org/anchors/fr/infogreffe"
+    }
+  }
+}

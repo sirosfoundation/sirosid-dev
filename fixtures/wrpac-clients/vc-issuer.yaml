@@ -1,0 +1,37 @@
+# The local vc-issuer as a registered wallet-relying party.
+#
+# Under CIR (EU) 2025/848 an attestation provider is a relying party in its own
+# right, so it holds a WRPAC and a WRPRC exactly as a verifier does. The wallet
+# checks the WRPRC before requesting issuance (ARF v3.0.0 section 6.6.2.3).
+name: SIROS Test Credential Issuer
+organization: SIROS Foundation
+
+# ETSI EN 319 412-1 semantic identifier. VATSE- prefixes a Swedish VAT number;
+# the digits are not a real registration - this is a local test deployment.
+identifier: VATSE-556677889901
+country: SE
+
+support_uri: http://vc-issuer.localhost:9003/support
+email: support@vc-issuer.localhost
+
+subject_kind: legal
+assurance: normalised
+
+csr: vc-issuer.csr
+
+# Non-qualified EAA: what a test issuer in a development stack actually is.
+# Claiming QEAA_Provider or PUB_EAA_Provider would assert a supervised status
+# this deployment does not have.
+entitlements:
+  - https://uri.etsi.org/19475/Entitlement/Non_Q_EAA_Provider
+
+# What this issuer may issue. The wallet refuses an offer of anything absent
+# from this list when the entitlement check is in fail mode, so it has to match
+# what the stack actually issues.
+provides:
+  - vct: urn:eudi:pid:1
+  - doctype: eu.europa.ec.eudi.pid.1
+  - vct: urn:credential:diploma
+  - doctype: org.iso.18013.5.1.mDL
+
+validity: 8760h

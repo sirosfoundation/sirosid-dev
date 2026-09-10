@@ -1,0 +1,403 @@
+{
+  "vct": "uri:eu.eudi.eu-poa.1",
+  "name": "ds007 - EU Power of Attorney (EU PoA) – SD-JWT VC payload",
+  "description": "Schema for the SD-JWT VC payload of an EU PoA as defined in the EU PoA Rulebook (rb-eu-poa, Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing. The attestation is a single flat object; selective disclosure per claim is specified in the rulebook, not here.",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "EU Power of Attorney (EU PoA)",
+      "description": "Schema for the SD-JWT VC payload of an EU PoA as defined in the EU PoA Rulebook (rb-eu-poa, Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing. The attestation is a single flat object; selective disclosure per claim is specified in the rulebook, not here."
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "attorney_full_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attorney Full Name"
+        }
+      ],
+      "description": "Legal full name of the attorney (delegate).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "attorney_identification_document_kind"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attorney Identification Document Kind"
+        }
+      ],
+      "description": "Type of identification document presented by the attorney. See code list in rulebook section 2.8."
+    },
+    {
+      "path": [
+        "attorney_identification_document_number"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attorney Identification Document Number"
+        }
+      ],
+      "description": "Identification document number of the attorney."
+    },
+    {
+      "path": [
+        "attorney_full_address"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attorney Full Address"
+        }
+      ],
+      "description": "Residential address of the attorney, as one string."
+    },
+    {
+      "path": [
+        "validity_period_valid_until"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Validity Period Valid Until"
+        }
+      ],
+      "description": "End date of validity of the PoA (ISO 8601, YYYY-MM-DD). Later than validity_period_valid_from (IR-01).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation Legal Category"
+        }
+      ],
+      "description": "Legal category of the attestation as defined by eIDAS 2.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "company_registered_office"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Company Registered Office"
+        }
+      ],
+      "description": "Registered office address of the company, as one string."
+    },
+    {
+      "path": [
+        "date_of_execution"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Date Of Execution"
+        }
+      ],
+      "description": "Date the PoA was executed (ISO 8601, YYYY-MM-DD). Equal to or earlier than validity_period_valid_from (IR-02).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "euid_reference"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Euid Reference"
+        }
+      ],
+      "description": "EUID reference of the company on whose behalf the PoA is granted.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "company_business_register_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Company Business Register Name"
+        }
+      ],
+      "description": "Name of the business register in which the company is registered.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuing_authority"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Authority"
+        }
+      ],
+      "description": "Name of the administrative authority that issued the EU PoA, or the ISO 3166-1 alpha-2 country code of the Member State if there is no separate authority entitled to issue the EU PoA.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "principal_date_of_birth"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Principal Date Of Birth"
+        }
+      ],
+      "description": "Date of birth of the principal (ISO 8601, YYYY-MM-DD).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "principal_identification_document_kind"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Principal Identification Document Kind"
+        }
+      ],
+      "description": "Type of identification document presented by the principal. See code list in rulebook section 2.8."
+    },
+    {
+      "path": [
+        "company_business_register_location"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Company Business Register Location"
+        }
+      ],
+      "description": "Location of the business register."
+    },
+    {
+      "path": [
+        "attorney_date_of_birth"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attorney Date Of Birth"
+        }
+      ],
+      "description": "Date of birth of the attorney (ISO 8601, YYYY-MM-DD)."
+    },
+    {
+      "path": [
+        "scope_of_representation_power_of_substitution"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Scope Of Representation Power Of Substitution"
+        }
+      ],
+      "description": "Whether the attorney may delegate the granted powers to a third party. If 'limited', the limitation details are included in scope_of_representation_powers (IR-04)."
+    },
+    {
+      "path": [
+        "principal_place_of_birth"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Principal Place Of Birth"
+        }
+      ],
+      "description": "Place of birth of the principal."
+    },
+    {
+      "path": [
+        "company_statutory_full_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Company Statutory Full Name"
+        }
+      ],
+      "description": "Registered legal name of the company.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "company_jurisdiction"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Company Jurisdiction"
+        }
+      ],
+      "description": "Country of incorporation, alpha-2 country code as specified in ISO 3166-1.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "signing_date"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Signing Date"
+        }
+      ],
+      "description": "Date the PoA was signed (ISO 8601, YYYY-MM-DD).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "issuing_country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuing Country"
+        }
+      ],
+      "description": "Alpha-2 country code, as specified in ISO 3166-1, of the country or territory of the provider of the attestation.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "principal_identification_document_number"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Principal Identification Document Number"
+        }
+      ],
+      "description": "Identification document number of the principal."
+    },
+    {
+      "path": [
+        "principal_full_address"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Principal Full Address"
+        }
+      ],
+      "description": "Residential address of the principal, as one string."
+    },
+    {
+      "path": [
+        "company_kind_of_legal_entity"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Company Kind Of Legal Entity"
+        }
+      ],
+      "description": "Legal form of the company (e.g. B.V., GmbH, SARL, SA)."
+    },
+    {
+      "path": [
+        "applicable_law_jurisdiction"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Applicable Law Jurisdiction"
+        }
+      ],
+      "description": "Governing Member State law, alpha-2 country code as specified in ISO 3166-1.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "principal_full_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Principal Full Name"
+        }
+      ],
+      "description": "Legal full name of the principal, the natural person who grants the PoA on behalf of the company.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "attorney_place_of_birth"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attorney Place Of Birth"
+        }
+      ],
+      "description": "Place of birth of the attorney."
+    },
+    {
+      "path": [
+        "scope_of_representation_powers"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Scope Of Representation Powers"
+        }
+      ],
+      "description": "The powers granted to the attorney, taken from the six powers listed in rulebook section 2.8. If scope_of_representation_power_of_substitution is 'limited', the limitation details are added to this array as well (IR-04); otherwise only the six listed powers are allowed.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "validity_period_valid_from"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Validity Period Valid From"
+        }
+      ],
+      "description": "Start date of validity of the PoA (ISO 8601, YYYY-MM-DD).",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "signing_place"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Signing Place"
+        }
+      ],
+      "description": "Place where the PoA was signed.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "trust_anchor"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Trust Anchor"
+        }
+      ],
+      "description": "URL at which a machine-readable version of the trust anchor to be used for verifying the EU PoA can be found or looked up."
+    }
+  ]
+}

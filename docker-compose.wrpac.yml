@@ -1,0 +1,73 @@
+# Docker Compose override adding the WRPAC/WRPRC trust anchors that
+# siros-wrpac-tool generates, and a go-trust that reads them.
+#
+# Under CIR (EU) 2025/848 issuers and verifiers alike are registered
+# wallet-relying parties, each holding an access certificate (WRPAC) and a
+# registration certificate (WRPRC). This serves a deployment's published trust
+# anchors and points a go-trust PDP at them, so the local stack exercises the
+# real registration path rather than a whitelist.
+#
+# Generate the material first - the served directory does not exist until then:
+#
+#   make wrpac-pki
+#   docker compose -f docker-compose.test.yml -f docker-compose.wrpac.yml up -d
+#
+# Both list formats are served and both are configured in go-trust; see
+# fixtures/go-trust-wrpac.yaml for why.
+
+services:
+  # Serves the deployment's public/ directory: the LoTE, the TSL, the register,
+  # the CRL and the status list. Static files only - `siros-wrpac-tool serve`
+  # exists for the registrar API, which nothing in this stack calls yet.
+  wrpac-registrar:
+    image: nginx:alpine
+    container_name: wrpac-registrar-e2e-test
+    ports:
+      - "9098:8080"
+    volumes:
+      - ./fixtures/wrpac-pki/public:/usr/share/nginx/html:ro
+      - ./fixtures/wrpac-registrar.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      # 127.0.0.1, not localhost: nginx listens on IPv4 only, and localhost
+      # resolves to ::1 first inside the container, so the check would never
+      # pass while the server was serving perfectly.
+      #
+      # The LoTE specifically, not just the server: an empty published
+      # directory would otherwise look healthy and fail go-trust silently.
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:8080/lote.json"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+  go-trust-wrpac:
+    # The released image rather than a local build, unlike the other go-trust
+    # services here: this config needs 0.20.6+ for tsl_urls to be honoured
+    # (go-trust#159), and building from a sibling checkout would silently pick
+    # up whatever that checkout happens to be on - reproducing the very bug
+    # this overlay is meant to exercise past.
+    image: ghcr.io/sirosfoundation/go-trust:0.20.6
+    container_name: go-trust-wrpac-e2e-test
+    ports:
+      - "9099:6001"
+    command: ["--config", "/app/go-trust-wrpac.yaml", "--log-level", "debug"]
+    environment:
+      - GO_TRUST_EXTERNAL_URL=http://localhost:9099
+    volumes:
+      - ./fixtures/go-trust-wrpac.yaml:/app/go-trust-wrpac.yaml:ro
+    depends_on:
+      wrpac-registrar:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:6001/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true

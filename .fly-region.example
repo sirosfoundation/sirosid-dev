@@ -1,0 +1,22 @@
+# Pin YOUR scratch environments to a specific Fly region.
+#
+# You usually do NOT need this. With no pin anywhere, `make fly-up` asks Fly
+# where to run and takes its answer - the anycast edge nearest you, the same
+# thing `fly launch` would pick. Contributors are in different places, so that
+# is the right default; this file is for when you want to override it.
+#
+# Copy to `.fly-region` - that name is gitignored, this one is not.
+# `flyctl platform regions` lists them all. Common:
+#   arn  Stockholm      fra  Frankfurt     lhr  London
+#   iad  Virginia       sjc  San Jose      ord  Chicago
+#   nrt  Tokyo          syd  Sydney        gru  Sao Paulo
+#
+# Overridden, most specific first, by:
+#   make fly-up ENV=x REGION=fra     just this run
+#   environments/<x>.yaml `region:`  a shared, named environment pins its own,
+#                                    so it does not drift with whoever deploys
+#   $FLY_REGION                      an ad-hoc shell default
+#
+# Only affects where NEW machines are placed - it does not move an environment
+# that already exists.
+fra

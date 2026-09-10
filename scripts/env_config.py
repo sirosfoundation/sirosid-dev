@@ -44,10 +44,41 @@ Schema (all keys optional):
     android_apps: ["package=fingerprint", ...]
     conformance: bool
     wallet_attestation: bool
+    region: str                    # Fly region for this environment's machines
+                                   # (arn, fra, iad, ...). A named, shared
+                                   # environment pins its own so everyone
+                                   # redeploying it lands in the same place;
+                                   # without one, $FLY_REGION then the built-in
+                                   # default apply. Only affects NEW machines.
     rical_provider_url: url        # RICAL (ISO 18013-5 2nd ed. Annex F) reader-trust list
     rical_root_cert: path          # relative to sirosid-dev root - PEM signer of the RICAL above
+    chart_ref: str                 # the siros-id-stack branch/tag this environment's config
+                                   # needs. ASSERTED, never checked out: that repo is consumed
+                                   # read-only and may have someone's own work in it. A
+                                   # mismatch stops the run and prints the checkout command.
+                                   # Only needed while an environment depends on unmerged
+                                   # chart work - delete it once that lands on main.
+    bbs_public_key_file: path      # relative to sirosid-dev root - the issuer's blind BBS PUBLIC
+                                   # key, base64url. Inlined into the chart's
+                                   # issuer.core.bbs.publicKey at render time. A file, like the
+                                   # secret below, so `make bbs-keys` is the only step: nothing
+                                   # has to be pasted into this file by hand, and what is
+                                   # committed stays developer-agnostic.
+    bbs_secret_key_file: path      # relative to sirosid-dev root - the issuer's blind BBS secret
+                                   # key, base64url, as written by zk-cred-bbs's `bbs-keygen`.
+                                   # A path and not an inline value on purpose: this is the whole
+                                   # of the issuer's BBS signing capability, and environments/*.yaml
+                                   # is committed. Generate with `make bbs-keys` into the gitignored
+                                   # fixtures/vc-pki/. The matching PUBLIC key belongs in the
+                                   # `values:` block, where it can be committed and shared.
     dc_api_enable: "true" | "false"   # verifier.digital_credentials.enable override; "" (default) leaves
                                       # fixtures/vc-config.yaml's own value (true) untouched
+    local: {...}                   # the LOCAL stack's options for this environment - the same
+                                   # knobs `make up` takes on the command line (pdp, vc,
+                                   # transport, conformance, r2ps, ...), so one file describes an
+                                   # environment for both targets. Validated by scripts/stack.py,
+                                   # which is the single home of the option matrix; `make up
+                                   # ENV=<name>` reads it as defaults and CLI flags win.
 
 For the scalar fields (the two RICAL ones plus dc_api_enable), a CLI value
 overrides the file's (last-one-wins, same as `images`) rather than merging -
@@ -86,8 +117,8 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
               "credential_registries", "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
-_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable")
-_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values"))
+_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file", "chart_ref")
+_KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values", "local"))
 
 
 def config_path(env_name: str, root: Path = None) -> Path:
@@ -100,7 +131,7 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     every known key) whether or not environments/<env_name>.yaml exists -
     callers never need to guess which keys are present."""
     root = root or SIROSID_DEV_ROOT
-    result = {"images": {}, "values": {}, **{k: [] for k in _LIST_KEYS},
+    result = {"images": {}, "values": {}, "local": {}, **{k: [] for k in _LIST_KEYS},
               **{k: False for k in _BOOL_KEYS}, **{k: "" for k in _STR_KEYS}}
 
     path = config_path(env_name, root)
@@ -140,6 +171,11 @@ def load_environment_config(env_name: str, root: Path = None) -> dict:
     if not isinstance(values, dict):
         raise SystemExit(f"{path}: 'values' must be a mapping (a Helm values tree)")
     result["values"] = values
+
+    local = raw.get("local") or {}
+    if not isinstance(local, dict):
+        raise SystemExit(f"{path}: 'local' must be a mapping of stack option: value (see scripts/stack.py)")
+    result["local"] = local
 
     return result
 

@@ -19,12 +19,14 @@ WALLET_NAME ?= SIROS ID (dev)
 .PHONY: help setup up down logs status status-vc \
         ensure-conformance-hosts ensure-local-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
+        bbs-keys \
         render-helm-config fly-up fly-down fly-status \
+        plan _print-compose-files storage-status storage-clear fly-storage-clear boot \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
 	usb-android-conformance publish-conformance-results \
-	install tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
+	tunnel tunnel-stop tunnel-status restart-with-tunnels ensure-tunnels
 
 # =============================================================================
 # Configuration
@@ -51,6 +53,7 @@ GO_TRUST_DENY_COMPOSE := docker-compose.go-trust-deny.yml
 HELM_CONFIG_COMPOSE := docker-compose.helm-config.yml
 AS_RULES_BASELINE_COMPOSE := docker-compose.as-rules-baseline.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
+MONGODB_COMPOSE := docker-compose.mongodb.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
@@ -111,6 +114,23 @@ FACETEC ?=
 # that's a dead end reached before the QR/redirect path is offered, so it
 # only makes sense to opt in.
 DC_API ?= no
+
+# environments/<name>.yaml may carry a `local:` block with defaults for the
+# options above (see scripts/stack.py). Applied here as plain assignments,
+# which is exactly the precedence wanted: a make variable given on the
+# command line can never be overridden by a makefile assignment, so
+# `make up ENV=alice PDP=deny` still wins over the file's pdp: helm.
+ifneq ($(ENV),)
+  # stack.py is silent for a missing file or one without a local: block, and
+  # prints a one-line diagnostic + exits 1 for an invalid key - so stderr is
+  # left alone (a redirect would turn "your defaults were ignored" into a
+  # silent no-op) and a rejected file stops the build here.
+  _ENV_LOCAL_DEFAULTS := $(shell python3 scripts/stack.py make-args --env "$(ENV)" --file-only)
+  ifneq ($(.SHELLSTATUS),0)
+    $(error environments/$(ENV).yaml has an invalid local: block (see above))
+  endif
+  $(foreach kv,$(_ENV_LOCAL_DEFAULTS),$(eval $(kv)))
+endif
 
 # Golden release configuration
 GOLDEN_RELEASES_URL := https://raw.githubusercontent.com/sirosfoundation/siros-conformance/main/golden-releases.yaml
@@ -229,6 +249,31 @@ export GO_TRUST_WHITELIST_URL ?= http://$(_HOST):9096
 export GO_TRUST_DENY_URL ?= http://$(_HOST):9097
 
 export ADMIN_TOKEN ?= e2e-test-admin-token-for-testing-purposes-only
+# PDP=helm mounts a generated secret (fixtures/rendered-secrets/adminToken,
+# render-helm-config.py's gen_secret) into wallet-backend instead of the fixed
+# value above - so anything talking to the admin API on the developer's
+# behalf (register-vc-services, env-admin) has to use that one in helm mode.
+ifeq ($(PDP),helm)
+  _EFFECTIVE_ADMIN_TOKEN = $(shell cat fixtures/rendered-secrets/adminToken 2>/dev/null || echo "$(ADMIN_TOKEN)")
+else
+  _EFFECTIVE_ADMIN_TOKEN = $(ADMIN_TOKEN)
+endif
+export ENV_ADMIN_TOKEN = $(_EFFECTIVE_ADMIN_TOKEN)
+export ENV_ADMIN_ENV_NAME = $(if $(ENV),$(ENV),local)
+# generate-build-info.py embeds this in build-info.json so the dashboard's
+# "Clear all data" button can skip the token prompt. build-info.json is served
+# by the frontend's nginx, which under TUNNELS=yes or DOMAIN=... is reachable
+# from outside this machine - and /_admin/ is proxied right next to it, so
+# the embedded token would let anyone holding the URL wipe the environment.
+# Only hand the token over when the stack is loopback-only.
+ifeq ($(call _truthy,$(TUNNELS))$(DOMAIN),)
+  export BUILD_INFO_ADMIN_TOKEN = $(_EFFECTIVE_ADMIN_TOKEN)
+endif
+# What env-admin re-registers with wallet-backend after a storage reset -
+# the same identities register-vc-services uses (TUNNELS=yes swaps in the
+# tunnel URLs inside `up`, where .env.tunnel is sourced).
+export ENV_ADMIN_ISSUER_URL ?= $(VC_APIGW_PUBLIC_URL)
+export ENV_ADMIN_VERIFIER_URL ?= $(VC_VERIFIER_PUBLIC_URL)
 
 # Colors for output
 GREEN := \033[0;32m
@@ -395,6 +440,27 @@ else
   _GOLDEN_LABEL :=
 endif
 
+# mongodb rides along whenever something needs it: the VC services always,
+# and wallet-backend under PDP=helm (its chart-rendered config points at
+# mongodb://mongodb - before this overlay existed, `make up PDP=helm` without
+# VC=yes pointed it at a host that was never started). Its data lives on the
+# named volume sirosid-mongodb-data, which `make down` keeps and `make clean`
+# / `make storage-clear` remove. scripts/stack.py mirrors this rule and
+# tests/test_stack_parity.py keeps the two in step.
+ifneq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES))$(filter helm,$(PDP)),)
+  COMPOSE_FILES += -f $(MONGODB_COMPOSE)
+endif
+
+# Used by tests/test_stack_parity.py to compare the list above with
+# scripts/stack.py's - the first step towards the Makefile calling the
+# resolver instead of duplicating it.
+_print-compose-files:
+	@echo "$(COMPOSE_FILES)"
+
+plan: ## Show what `make up` would do with these options (compose files, storage, pre-flight) - takes the same flags as `make up`, plus ENV=<name>
+	@python3 scripts/stack.py plan $(if $(ENV),--env "$(ENV)") \
+		$(foreach v,PDP AS_RULES VC TRANSPORT CONFORMANCE R2PS FACETEC DOMAIN TUNNELS GOLDEN DC_API REBUILD,$(if $($(v)),--set $(v)="$($(v))"))
+
 # =============================================================================
 # Help
 # =============================================================================
@@ -403,13 +469,20 @@ help: ## Show this help
 	@echo "$(GREEN)sirosid-dev$(NC) — Local Development Environment"
 	@echo ""
 	@echo "$(GREEN)Primary Targets:$(NC)"
-	@echo "  make setup                           Clone sibling repos"
-	@echo "  make install                         Show dependency/install notes"
+	@echo "  make setup                           Bootstrap: clone sibling repos, install + launch the boot manager"
+	@echo "  make boot                          Launch the boot manager (after make setup)"
+	@echo "  make plan [STACK OPTIONS]            Show what 'make up' would do: compose files, storage, pre-flight"
 	@echo "  make up [STACK OPTIONS]              Start the stack with selected overlays"
 	@echo "  make down                            Stop stack containers"
 	@echo "  make status                          Check core service health"
 	@echo "  make logs                            View Docker logs"
 	@echo "  make clean                           Remove containers, volumes, build cache"
+	@echo ""
+	@echo "$(GREEN)Storage Targets:$(NC)  (Mongo data survives 'make down' on the named volume sirosid-mongodb-data)"
+	@echo "  make storage-status [ENV=<name>]     Show every store: mode, size, whether it persists"
+	@echo "  make storage-clear [ENV=<name>]      Wipe the local stack's data (via env-admin if up, else the volumes) and re-register issuer/verifier"
+	@echo "  make fly-storage-clear ENV=<name>    Same for a Fly environment (via its env-admin app)"
+	@echo "  make fly-down ENV=<name> KEEP_DATA=yes  Tear down but keep the Mongo apps + volumes for the next fly-up"
 	@echo ""
 	@echo "$(GREEN)Fly.io Targets:$(NC)  (named, shareable environments - see Fly.io Options below)"
 	@echo "  make fly-up ENV=<name> [OPTIONS]     Deploy a named Fly.io environment"
@@ -452,9 +525,15 @@ help: ## Show this help
 	@echo ""
 	@echo "$(GREEN)Stack Options:$(NC)  (pass on the make command line to 'make up')"
 	@echo ""
+	@echo "  $(YELLOW)ENV=$(NC)<name>          Layer environments/<name>.yaml: its 'local:' block supplies"
+	@echo "                     defaults for every option below (flags on the command line win),"
+	@echo "                     its trust/values config reaches the rendered chart config."
+	@echo ""
 	@echo "  $(YELLOW)PDP=$(NC)<allow|whitelist|deny|mock|helm>"
 	@echo "                     Select trust policy provider"
 	@echo "                     default: $(GREEN)allow$(NC)"
+	@echo "                     helm is also the only mode where wallet-backend gets the persistent"
+	@echo "                     Mongo volume; every other mode is an in-memory store."
 	@echo "                     helm: wallet-backend + PDP config rendered from the"
 	@echo "                     siros-id-stack chart instead of hand-maintained"
 	@echo "                     env vars/flags - requires SIROS_ID_STACK_PATH (../siros-id-stack)"
@@ -801,6 +880,8 @@ ifneq ($(GOLDEN),)
 	set -a && . ./.env.golden && set +a && \
 		{ [ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; } && \
 		{ [ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; } && \
+		{ [ -n "$${TUNNEL_VC_APIGW_URL:-}" ] && export ENV_ADMIN_ISSUER_URL="$$TUNNEL_VC_APIGW_URL" || true; } && \
+		{ [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ] && export ENV_ADMIN_VERIFIER_URL="$$TUNNEL_VC_VERIFIER_URL" || true; } && \
 		{ _ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
 		  [ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; } && \
 	WALLET_NAME="$(WALLET_NAME)" \
@@ -817,6 +898,8 @@ endif
 	@_LOG=$$(mktemp /tmp/compose.XXXXXX); \
 	[ -f .env.tunnel ] && . ./.env.tunnel && export TUNNEL_FRONTEND_URL TUNNEL_BACKEND_URL TUNNEL_ENGINE_URL TUNNEL_RPID TUNNEL_VC_VERIFIER_URL TUNNEL_VC_APIGW_URL || true; \
 	[ -f .env.android ] && . ./.env.android && export APK_KEY_HASH || true; \
+	[ -n "$${TUNNEL_VC_APIGW_URL:-}" ] && export ENV_ADMIN_ISSUER_URL="$$TUNNEL_VC_APIGW_URL" || true; \
+	[ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ] && export ENV_ADMIN_VERIFIER_URL="$$TUNNEL_VC_VERIFIER_URL" || true; \
 	_ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
 	[ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) FACETEC_PATH=$(FACETEC_PATH) \
@@ -965,6 +1048,11 @@ status: ## Check core service health
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vctm-registry" "✓ running" || true
 	@curl -sf $(FACETEC_API_URL)/livez >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "facetec-api" "✓ running" || true
+	@# env-admin is published on loopback only (docker-compose.test.yml), so
+	@# probe localhost even under DOMAIN=... where _HOST is the domain.
+	@curl -sf http://localhost:3002/health >/dev/null 2>&1 && \
+		printf "  %-20s $(GREEN)%s$(NC)\n" "env-admin" "✓ running" || \
+		printf "  %-20s $(RED)%s$(NC)\n" "env-admin" "✗ not running"
 	@echo ""
 
 status-vc: ## Check VC service health
@@ -1044,26 +1132,12 @@ register-mocks: ## Register mock verifier with backend
 # client fixtures/vc-config.yaml's redirect_uri list is kept in sync with
 # (see its own comment) - matches fly-up.py's register_vc_services() (Fly
 # environments hit and fixed the identical bug independently).
-register-vc-services: ## Register VC issuer and verifier with backend
+register-vc-services: ## Register VC issuer and verifier with backend (scripts/bootstrap.py - shared with fly-up and env-admin's storage reset)
 	@echo "$(GREEN)Registering VC services with wallet backend...$(NC)"
-	@for i in $$(seq 1 30); do \
-		curl -sf $(ADMIN_URL)/admin/tenants/$(TENANT_ID) \
-			-H "Authorization: Bearer $(ADMIN_TOKEN)" >/dev/null 2>&1 && break; \
-		sleep 2; \
-	done
-	@# Drops any previously-registered issuer whose identifier is no longer the
-	@# one apigw advertises, before registering the current one. The identifier
-	@# changes whenever the addressing scheme does (local <-> TUNNELS, or a
-	@# scheme change like the move off the bridge-gateway URL), and
-	@# wallet-backend keys issuers by identifier - so without the cleanup the
-	@# stale entry just accumulates next to the new one and the wallet's Add
-	@# Credentials page iterates BOTH, 502-ing on the dead URL every page load.
 	@# The issuer must be registered under the SAME identity vc-apigw puts in
 	@# its own metadata's "credential_issuer" (OpenID4VCI requires the two to
-	@# match), which for the plain VC=yes path is VC_APIGW_PUBLIC_URL - see its
-	@# definition above for why that's the bridge-gateway URL and not
-	@# vc-apigw:8080. The .env.tunnel branch below still wins under TUNNELS=yes,
-	@# where the rendered config has the tunnel URL as PublicURL.
+	@# match): VC_APIGW_PUBLIC_URL for the plain VC=yes path (see its
+	@# definition above), the tunnel URL under TUNNELS=yes.
 	@_VC_APIGW_REG_URL="$(VC_APIGW_PUBLIC_URL)"; \
 	_VC_VERIFIER_REG_URL="$(VC_VERIFIER_PUBLIC_URL)"; \
 	if [ -f .env.tunnel ]; then \
@@ -1071,38 +1145,9 @@ register-vc-services: ## Register VC issuer and verifier with backend
 		if [ -n "$${TUNNEL_VC_APIGW_URL:-}" ]; then _VC_APIGW_REG_URL="$$TUNNEL_VC_APIGW_URL"; fi; \
 		if [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ]; then _VC_VERIFIER_REG_URL="$$TUNNEL_VC_VERIFIER_URL"; fi; \
 	fi; \
-	_EXISTING=$$(curl -sf $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
-		-H "Authorization: Bearer $(ADMIN_TOKEN)" 2>/dev/null); \
-	if [ -n "$$_EXISTING" ]; then \
-		echo "$$_EXISTING" | python3 -c "import json,sys; \
-[print(i['id']) for i in json.load(sys.stdin).get('issuers',[]) \
- if i.get('credential_issuer_identifier') != '$$_VC_APIGW_REG_URL']" 2>/dev/null | \
-		while read -r _ID; do \
-			[ -z "$$_ID" ] && continue; \
-			curl -sf -o /dev/null -X DELETE \
-				$(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers/$$_ID \
-				-H "Authorization: Bearer $(ADMIN_TOKEN)" && \
-				echo "  $(YELLOW)removed stale issuer registration (id $$_ID)$(NC)"; \
-		done; \
-	fi; \
-	_STATUS=$$(curl -s -o /dev/null -w '%{http_code}' -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/issuers \
-		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
-		-H "Content-Type: application/json" \
-		-d "{\"credential_issuer_identifier\":\"$$_VC_APIGW_REG_URL\",\"visible\":true,\"client_id\":\"e2e-test-client\"}"); \
-	case "$$_STATUS" in \
-		2*) echo "  $(GREEN)✓ VC issuer registered ($$_VC_APIGW_REG_URL)$(NC)";; \
-		409) echo "  $(GREEN)✓ VC issuer already registered ($$_VC_APIGW_REG_URL)$(NC)";; \
-		*)  echo "  $(YELLOW)Warning: Could not register VC issuer (HTTP $$_STATUS)$(NC)";; \
-	esac; \
-	_STATUS=$$(curl -s -o /dev/null -w '%{http_code}' -X POST $(ADMIN_URL)/admin/tenants/$(TENANT_ID)/verifiers \
-		-H "Authorization: Bearer $(ADMIN_TOKEN)" \
-		-H "Content-Type: application/json" \
-		-d "{\"name\":\"VC Verifier\",\"url\":\"$$_VC_VERIFIER_REG_URL\"}"); \
-	case "$$_STATUS" in \
-		2*) echo "  $(GREEN)✓ VC verifier registered ($$_VC_VERIFIER_REG_URL)$(NC)";; \
-		409) echo "  $(GREEN)✓ VC verifier already registered ($$_VC_VERIFIER_REG_URL)$(NC)";; \
-		*)  echo "  $(YELLOW)Warning: Could not register VC verifier (HTTP $$_STATUS)$(NC)";; \
-	esac
+	python3 scripts/bootstrap.py --admin-url "$(ADMIN_URL)" --admin-token "$(_EFFECTIVE_ADMIN_TOKEN)" \
+		--issuer-url "$$_VC_APIGW_REG_URL" --verifier-url "$$_VC_VERIFIER_REG_URL" --tenant "$(TENANT_ID)" || \
+		echo "  $(YELLOW)Warning: VC service registration failed - the wallet has no issuer/verifier until it succeeds$(NC)"
 
 # =============================================================================
 # Golden Release Resolution
@@ -1177,6 +1222,31 @@ pki: ## Generate fresh PKI (signing keys and certificates)
 	@echo "$(GREEN)Generating PKI...$(NC)"
 	cd fixtures && ./create-pki.sh
 
+# WRPAC/WRPRC material comes from siros-wrpac-tool, a separate repo: under CIR
+# (EU) 2025/848 issuers and verifiers alike are registered wallet-relying
+# parties, each holding an access certificate and a registration certificate.
+# create-pki.sh cannot produce these - a WRPRC is a signed JWT against a
+# register, not something openssl can mint.
+#
+# Publishes the anchors as both a TS 119 602 LoTE and a TS 119 612 TSL, because
+# go-trust reads either and a real deployment has to support both.
+wrpac-pki: ## Generate WRPAC/WRPRC trust anchors and client certificates (needs ../siros-wrpac-tool)
+	@echo "$(GREEN)Generating WRPAC/WRPRC material...$(NC)"
+	cd fixtures && ./create-wrpac-pki.sh
+
+# Blind BBS needs its own key pair, and it cannot come from create-pki.sh:
+# a BBS secret is a BLS12-381 scalar consumed inside the signing algebra,
+# not an ECDSA key that signs a digest, so openssl cannot make one and no
+# PKCS#11 HSM can hold one. zk-cred-bbs ships the generator.
+#
+# Both halves land in the gitignored fixtures/vc-pki/, like every other
+# private key here, and an environment picks them up from there via its
+# bbs_public_key_file / bbs_secret_key_file keys (see environments/bbs.yaml)
+# - nothing has to be pasted anywhere afterwards.
+bbs-keys: ## Generate the issuer's blind BBS key pair into fixtures/vc-pki/
+	@echo "$(GREEN)Generating blind BBS issuer key pair...$(NC)"
+	cd fixtures && ./create-bbs-keys.sh
+
 # =============================================================================
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
 # =============================================================================
@@ -1215,7 +1285,7 @@ render-helm-config: ## Render wallet-backend/PDP/vc-services config from the sir
 
 WALLET_ATTESTATION ?= yes
 
-fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [RICAL_PROVIDER_URL=url] [RICAL_ROOT_CERT=path] [WALLET_ATTESTATION=no, default: yes] [DC_API_ENABLE=true|false]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
+fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [REGION=<code>] [IMAGES=comp=ref,...] [ANDROID_APPS=pkg=fingerprint,...] [CONFORMANCE=yes] [TRUSTED_ISSUERS=url,...] [TRUSTED_VERIFIERS=identity,...] [TRUSTED_VERIFIER_ROOTS=path,...] [ZK_CIRCUITS_SOURCES=url,...] [RICAL_PROVIDER_URL=url] [RICAL_ROOT_CERT=path] [WALLET_ATTESTATION=no, default: yes] [DC_API_ENABLE=true|false]) - if environments/<name>.yaml exists, its persisted defaults are merged in first (see `make env-show ENV=<name>`); CLI flags here add to/override it for this run only
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
@@ -1239,13 +1309,21 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [IMAGES=com
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation) \
 		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)") \
 		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)")
+		$(if $(REGION),--region "$(REGION)")
 
-fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name>)
+fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name> [KEEP_DATA=yes] - KEEP_DATA leaves the Mongo apps and their volumes, machines stopped, so the next fly-up finds the data again)
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-down ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	python3 scripts/fly-down.py --env "$(ENV)"
+	python3 scripts/fly-down.py --env "$(ENV)" $(if $(call _truthy,$(KEEP_DATA)),--keep-data)
+
+fly-storage-clear: ## Wipe a Fly environment's data through its env-admin app and re-register issuer/verifier (make fly-storage-clear ENV=<name>)
+	@if [ -z "$(ENV)" ]; then \
+		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-storage-clear ENV=demo1$(NC)"; \
+		exit 1; \
+	fi
+	python3 scripts/storage.py clear --target fly --env "$(ENV)" $(if $(call _truthy,$(YES)),--yes)
 
 fly-status: ## Show Fly app status for a named environment (make fly-status ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \
@@ -1281,7 +1359,7 @@ SETUP_REPOS := \
 	vc:main \
 	facetec-api:main
 
-setup: ## Clone sibling repos needed for local development
+setup: ## Bootstrap a checkout: clone the sibling repos, install the boot manager into .venv and launch it (NO_LAUNCH=yes to skip the launch)
 	@echo "$(GREEN)Setting up sibling repositories...$(NC)"
 	@for entry in $(SETUP_REPOS); do \
 		repo=$${entry%%:*}; \
@@ -1318,16 +1396,38 @@ setup: ## Clone sibling repos needed for local development
 			printf "  %-24s $(GREEN)cloned$(NC) (main)\n" "siros-id-stack" || \
 			printf "  %-24s $(RED)failed$(NC)\n" "siros-id-stack"; \
 	fi
+	@$(MAKE) --no-print-directory _install-bootmgr
 	@echo ""
-	@echo "$(GREEN)Done.$(NC) Run 'make install' to install dependencies, then 'make up' to start the stack."
+	@echo "$(GREEN)Done.$(NC) Launch the boot manager any time with 'make boot', or 'make up' to start the stack directly."
+	@if [ -t 0 ] && [ -z "$(NO_LAUNCH)" ]; then "$(VENV)/bin/sirosid-dev"; fi
 
-# =============================================================================
-# Dependency Installation
-# =============================================================================
+# The boot manager (bootmgr/, a Textual TUI over everything in this Makefile)
+# is part of `make setup` - one bootstrap target, not two. Kept as its own
+# hidden step so setup's clone loop and the venv install stay readable.
+VENV ?= .venv
 
-install: ## Install all project dependencies
-	@echo "$(GREEN)No npm dependencies required.$(NC)"
-	@echo "$(GREEN)run-android-conformance.mjs uses only built-in Node.js modules.$(NC)"
+_install-bootmgr:
+	@command -v python3 >/dev/null 2>&1 || { echo "$(RED)Error: python3 not found$(NC)"; exit 1; }
+	@if [ ! -x "$(VENV)/bin/python" ]; then \
+		echo "$(GREEN)Creating $(VENV)...$(NC)"; \
+		python3 -m venv "$(VENV)" || { echo "$(RED)python3 -m venv failed - on Debian/Ubuntu: sudo apt install python3-venv$(NC)"; exit 1; }; \
+	fi
+	@echo "$(GREEN)Installing the boot manager into $(VENV)...$(NC)"
+	@"$(VENV)/bin/pip" install --quiet --upgrade pip
+	@"$(VENV)/bin/pip" install --quiet -e ./bootmgr
+	@echo "$(GREEN)Boot manager installed$(NC) ($(VENV)/bin/sirosid-dev)"
+
+boot: ## Launch the boot manager (run `make setup` first)
+	@if [ ! -x "$(VENV)/bin/sirosid-dev" ]; then \
+		echo "$(RED)Boot manager not installed - run: make setup$(NC)"; exit 1; \
+	fi
+	@"$(VENV)/bin/sirosid-dev"
+
+storage-status: ## Show every store the local stack has: mode (volume/memory), size, whether it persists (ENV=<name> to use that environment's options)
+	@python3 scripts/storage.py status --target local $(if $(ENV),--env "$(ENV)")
+
+storage-clear: ## Wipe the local stack's data and re-register issuer/verifier - via env-admin while the stack is up (no restart of the stack needed), via the volumes when it is down (YES=yes skips the prompt)
+	@python3 scripts/storage.py clear --target local $(if $(ENV),--env "$(ENV)") $(if $(call _truthy,$(YES)),--yes)
 
 # =============================================================================
 # R2PS Service
@@ -1375,6 +1475,7 @@ android-up: android-config ## Start Android overlay services (SDK_REBUILD=yes to
 	$(if $(call _truthy,$(SDK_REBUILD)),@./scripts/android-test.sh rebuild)
 	@docker compose -f docker-compose.test.yml \
 		-f docker-compose.vc-services.yml \
+		-f docker-compose.mongodb.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
 		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
@@ -1384,6 +1485,7 @@ android-up: android-config ## Start Android overlay services (SDK_REBUILD=yes to
 android-down: ## Stop Android overlay services
 	@docker compose -f docker-compose.test.yml \
 		-f docker-compose.vc-services.yml \
+		-f docker-compose.mongodb.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
 		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
@@ -1422,6 +1524,7 @@ usb-android-up: usb-android-config ## Start USB Android overlay services (SDK_RE
 	$(if $(call _truthy,$(SDK_REBUILD)),@./scripts/usb-android-test.sh rebuild)
 	@docker compose -f docker-compose.test.yml \
 		-f docker-compose.vc-services.yml \
+		-f docker-compose.mongodb.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
 		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \
@@ -1432,6 +1535,7 @@ usb-android-up: usb-android-config ## Start USB Android overlay services (SDK_RE
 usb-android-down: ## Stop USB Android overlay services
 	@docker compose -f docker-compose.test.yml \
 		-f docker-compose.vc-services.yml \
+		-f docker-compose.mongodb.yml \
 		-f docker-compose.go-trust.yml \
 		-f docker-compose.go-trust-allow.yml \
 		$(if $(call _truthy,$(R2PS)),-f docker-compose.r2ps.yml) \

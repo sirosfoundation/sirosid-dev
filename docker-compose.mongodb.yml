@@ -1,0 +1,46 @@
+# The stack's one Mongo instance, on a named volume that survives `make down`.
+#
+# Pulled out of docker-compose.vc-services.yml so that wallet-backend can use
+# it without the VC services: PDP=helm renders wallet-backend's config from
+# the chart, and the chart gives it storage.type mongodb at mongodb://mongodb.
+# Before this overlay existed, `make up PDP=helm` without VC=yes pointed
+# wallet-backend at a host that was never started.
+#
+# Included by the Makefile whenever VC services are on OR PDP=helm - see
+# scripts/stack.py for the rule in one place.
+#
+# Persistence: the volume has an explicit, project-independent name, so
+# `make storage-status` / `make storage-clear` and the boot manager find it
+# regardless of which directory the checkout lives in (compose would
+# otherwise prefix it with the directory name). `make down` keeps it, `make
+# clean` and `make storage-clear` remove it. Clearing from the dashboard goes
+# through env-admin (docker-compose.test.yml), which drops the databases and
+# restarts the consumers rather than touching the volume.
+#
+# Version pinned to match siros-id-stack's images.mongoCommunityVersion, so
+# local testing uses the same Mongo production runs.
+
+services:
+  mongodb:
+    image: mongo:7.0.24
+    container_name: vc-mongodb-e2e
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - e2e-test-network
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true
+
+volumes:
+  mongodb-data:
+    name: sirosid-mongodb-data

@@ -82,6 +82,63 @@ features:
         source: datastore
         authOptions:
           claims: [given_name, family_name]
+    # EU Business Wallet attestations (WE BUILD rulebooks ds001/ds004/ds007;
+    # VCTMs published in registry.siros.org under webuild-consortium/).
+    #
+    # All three require PID authentication, as they would in a live setting:
+    # the wallet presents a PID (OpenID4VP during issuance) and the identity in
+    # it - given_name, family_name, birthdate - selects the person's documents
+    # from the datastore via the identity mappings. Either PID this stack
+    # issues is accepted (pid_1_5 is what a mini-oidc company user gets;
+    # pid_1_8 needs a datastore PID document). The synthetic documents live in
+    # fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa}.json, one per company
+    # user (erik-010, maria-011, jan-012, sophie-013 - the same data mini-oidc
+    # 0.0.5 ships as `attestations:`), mapped in identity_mappings.json. A
+    # natural person presenting their PID has no such documents and issuance
+    # fails with "no documents". Note vc imports bootstrap documents only into
+    # an EMPTY datastore - an existing environment needs its storage cleared.
+    ebw_oid:
+      # Owner Identification Data - who the business wallet belongs to.
+      vct: "uri:eu.ebw.oid.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_ebw_oid.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
+    eucc:
+      # EU Company Certificate - the legal person's register extract.
+      vct: "urn:eudi:eucc:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_eucc.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
+    eu_poa:
+      # EU Power of Attorney - principal grants an attorney representation powers.
+      vct: "uri:eu.eudi.eu-poa.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_eu_poa.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
     # ISO 18013-5 mdoc types. These carry an MDDL schema rather than a VCTM;
     # `vct` is unused for mdoc DCQL matching (the doctype comes from the
     # schema) but SupportedCredentialConfig.VCT is required, so it holds the
@@ -137,10 +194,12 @@ issuer:
       sessionDuration: 300
       scopes: [openid, profile]
 
-  # Imports the mini-oidc test users (alice-001/bob-002/carol-003) so the
+  # Imports the mini-oidc test users (alice-001/bob-002/carol-003 and the
+  # company users erik-010/maria-011/jan-012/sophie-013) so the
   # datastore-backed scopes can resolve a document for whoever actually logs
-  # in - vc's own bootstrapping fixtures cover a disjoint set of synthetic
-  # Skatteverket/SUNET/Ladok identities that match none of them.
+  # in or presents a PID - vc's own bootstrapping fixtures cover a disjoint
+  # set of synthetic Skatteverket/SUNET/Ladok identities that match none of
+  # them.
   identitymappingImport:
     identities:
       identity_mappings: {file: fixtures/vc-bootstrapping/identity_mappings.json}
@@ -151,6 +210,11 @@ issuer:
       mdl: {file: fixtures/vc-bootstrapping/mdl.json}
       mdl_zk4: {file: fixtures/vc-bootstrapping/mdl_zk4.json}
       pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
+      # EU Business Wallet documents for the mini-oidc company users -
+      # PID-authenticated issuance (see features.credentialTypes.ebw_oid/eucc/eu_poa).
+      ebw_oid: {file: fixtures/vc-bootstrapping/ebw_oid.json}
+      eucc: {file: fixtures/vc-bootstrapping/eucc.json}
+      eu_poa: {file: fixtures/vc-bootstrapping/eu_poa.json}
 
   apigw:
     cors:
@@ -232,11 +296,11 @@ issuer:
                 redirect_uri:
                   - "siros-sample://callback"
                   - "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, ebw_oid, eucc, eu_poa]
               e2e-test-client-2:
                 type: public
                 redirect_uri: "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, ebw_oid, eucc, eu_poa]
         data_sources:
           assertion:
             scopes:

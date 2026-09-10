@@ -204,9 +204,13 @@ def use_credential_registry(config: dict, credential_types: dict, registries: li
     """Resolve credential metadata from a TS11 registry instead of a vendored
     document.
 
-    Each scope stops naming a file and instead names the identifier a wallet
-    actually matches on - `vct` for dc+sd-jwt, `doctype` for mso_mdoc - which
-    vc resolves through common.credential_registry.
+    Each SD-JWT scope stops naming a file and instead names its `vct`, which
+    vc resolves through common.credential_registry. The pay-off is that vc
+    then ADVERTISES that vct in credential_configurations_supported (for a
+    vendored VCTM it advertises its own /type-metadata/<scope> URL instead,
+    while the issued credential carries the VCTM's vct) - and the wallets
+    refuse a credential whose vct differs from the advertised one. mdoc
+    scopes are left vendored, see below.
 
     The identifiers come from features.credentialTypes, the same values the
     chart renders supported_credentials and the VCTM mounts from, so the
@@ -221,6 +225,16 @@ def use_credential_registry(config: dict, credential_types: dict, registries: li
     metadata = (config.get("common") or {}).get("credential_metadata") or {}
     for scope, meta in metadata.items():
         if not isinstance(meta, dict):
+            continue
+        if meta.get("format") == "mso_mdoc":
+            # mdoc types stay vendored even in external mode. Two reasons: the
+            # wallet-side type check that motivated external mode compares
+            # `vct`, which mdocs do not have (their doctype already matches
+            # what is advertised), and a local mdoc variant can share its
+            # doctype with a registry entry that describes a different
+            # schema - mdl_zk4 (the 4-claim Vega ZK credential) is
+            # org.iso.18013.5.1.mDL like the full mDL, and resolving it from
+            # the registry would silently turn it back into the full one.
             continue
         declared = credential_types.get(scope) or {}
         # Key off the declared format, not the scope name: using vct where a
@@ -301,17 +315,23 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
     if template:
         resolved = yaml.safe_load(
             re.sub(r"\$\{(\w+)\}", lambda m: values.get(m.group(1), ""), template)) or {}
-        config = _deep_merge(config, resolved)
+        config = deep_merge(config, resolved)
     # Nothing reads a secrets file here, and vc errors on a path it cannot
     # read - so make sure the chart's default never survives into the config.
     (config.get("common") or {}).pop("secret_file_path", None)
     return config
 
 
-def _deep_merge(base: dict, overlay: dict) -> dict:
+def deep_merge(base: dict, overlay: dict) -> dict:
+    """Recursively merge overlay into base IN PLACE and return base.
+
+    Public: fly-up.py layers per-environment values with it too, so the two
+    scripts agree on what "merge" means for nested dicts (overlay wins at the
+    leaves, dicts are merged rather than replaced).
+    """
     for key, value in overlay.items():
         if isinstance(value, dict) and isinstance(base.get(key), dict):
-            _deep_merge(base[key], value)
+            deep_merge(base[key], value)
         else:
             base[key] = value
     return base
