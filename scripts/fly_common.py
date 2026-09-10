@@ -827,10 +827,14 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
 
 def mini_oidc_config(env: str) -> str:
     """mini-oidc's configs/config.production.yaml, baked into its image at
-    /etc/mini-oidc/configs/config.production.yaml, with `ehic` added to
-    scopes_supported (missing upstream - apigw's data_sources.assertion maps
-    ehic to auth_provider: oidc, same as pid/pid_1_5/pid_1_8, but mini-oidc's
-    own default scope list omits it). ${VAR} placeholders are expanded by
+    /etc/mini-oidc/configs/config.production.yaml, re-stated here so the Fly
+    deployment can pin the client ids/redirects. Because it REPLACES the
+    image's file, every scope the image knows has to be repeated in
+    scopes_supported - `ehic` (once missing upstream) and, since mini-oidc
+    0.0.5, the EU Business Wallet attestation scopes eucc/eu_poa/ebw_oid
+    (values-base.yaml's assertion-sourced types of the same names). mini-oidc
+    does not refuse an unadvertised scope, so a stale list here only makes the
+    discovery document lie. ${VAR} placeholders are expanded by
     mini-oidc's own binary from its container env at startup (see fly-up.py's
     env vars for this component) - this is the file's real content verbatim,
     not a Python-side template.
@@ -850,6 +854,9 @@ server:
     - pid_1_5
     - pid_1_8
     - ehic
+    - eucc
+    - eu_poa
+    - ebw_oid
 
 clients:
   - client_id: "${CLIENT_ID:-mini-oidc-rp}"
