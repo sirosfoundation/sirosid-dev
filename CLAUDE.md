@@ -318,6 +318,18 @@ reach. For any single-field config tweak, just re-run `make fly-up ENV=<name>`
 — idempotent, redeploys every component with mutually-consistent config and
 secrets.
 
+**A new datastore-sourced credential type (or new bootstrapping document)
+issues fine on a fresh `make up` but fails with "no documents" on an
+existing environment after a redeploy:** vc-apigw's importer only loads
+`datastoreImport.documents` and the identity mappings into an **empty**
+datastore - its log says `Datastore already contains data, skipping import`.
+Redeploying does not add the new documents. Clear the environment's data
+(dashboard Storage card, `make storage-clear`, `make fly-storage-clear
+ENV=<name>`), which restarts apigw into an empty datastore so the import
+runs with every document, or upload them through the datastore API. Bit the
+EU Business Wallet types (`ebw_oid`/`eucc`/`eu_poa`, all PID-authenticated
+datastore types) on gdc, 2026-09-10.
+
 **PDP boot appears stuck / "Issuer not trusted" right after `fly-up` with
 `TRUSTED_ISSUERS=` set (or any PDP redeploy with it already set):**
 `go-trust`'s `WhitelistRegistry.StartRefreshLoop` does a *synchronous*,
