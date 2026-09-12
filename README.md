@@ -375,11 +375,12 @@ Three WE BUILD rulebook types for testing an EU Business Wallet, declared in
 | `ebw_oid` | `uri:eu.ebw.oid.1` | Owner Identification Data (ds001) - which legal person owns the wallet |
 | `eucc` | `urn:eudi:eucc:1` | EU Company Certificate (ds004) - the business-register extract |
 | `eu_poa` | `uri:eu.eudi.eu-poa.1` | EU Power of Attorney (ds007) - principal grants an attorney powers |
+| `iban_ov` | `eu.we-build.iban-ov.1` | IBAN Ownership Verification (rb-iban-ov) - the company's bank account |
 
 All three require **PID authentication**, as they would in a live setting.
 The wallet presents a PID (OpenID4VP during issuance) and the identity in it
 selects the person's documents from the datastore
-(`fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa}.json`, mapped through
+(`fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa,iban_ov}.json`, mapped through
 `identity_mappings.json`). Get a PID first as a **company user** (pid_1_5
 works for every mini-oidc user), then request the attestation; the wallet asks
 you to present the PID and the document for that person is issued. The
@@ -387,12 +388,12 @@ natural persons (alice, bob, carol) have no such documents, so their PID leads
 to "no documents". The same synthetic data also ships in mini-oidc 0.0.5's
 `users.yaml` (`attestations:`), for stacks that prefer OIDC-asserted issuance.
 
-| mini-oidc user | company | EBW-OID | EUCC | EU PoA |
-|---|---|---|---|---|
-| erik-010 | Nordic Tech Solutions AB (SE), sole representative | yes | yes | |
-| maria-011 | Grünberg Consulting GmbH (DE), joint representative | yes | yes | |
-| jan-012 | Grünberg Consulting GmbH employee | | yes | attorney, principal Maria |
-| sophie-013 | Transport Dubois SARL (FR), sole manager | yes | yes | attorney, principal co-founder |
+| mini-oidc user | company | EBW-OID | EUCC | EU PoA | IBAN-OV |
+|---|---|---|---|---|---|
+| erik-010 | Nordic Tech Solutions AB (SE), sole representative | yes | yes | | SEB account |
+| maria-011 | Grünberg Consulting GmbH (DE), joint representative | yes | yes | | Deutsche Bank account |
+| jan-012 | Grünberg Consulting GmbH employee | | yes | attorney, principal Maria | Deutsche Bank account |
+| sophie-013 | Transport Dubois SARL (FR), sole manager | yes | yes | attorney, principal co-founder | BNP Paribas account |
 
 The verifier has matching presentation-request templates in
 `fixtures/vc-presentation-requests/eu_business_wallet.yaml`.

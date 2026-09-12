@@ -91,7 +91,7 @@ features:
     # from the datastore via the identity mappings. Either PID this stack
     # issues is accepted (pid_1_5 is what a mini-oidc company user gets;
     # pid_1_8 needs a datastore PID document). The synthetic documents live in
-    # fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa}.json, one per company
+    # fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa,iban_ov}.json, one per company
     # user (erik-010, maria-011, jan-012, sophie-013 - the same data mini-oidc
     # 0.0.5 ships as `attestations:`), mapped in identity_mappings.json. A
     # natural person presenting their PID has no such documents and issuance
@@ -130,6 +130,23 @@ features:
       vct: "uri:eu.eudi.eu-poa.1"
       format: dc+sd-jwt
       vctm: {file: fixtures/vc-metadata/vctm_eu_poa.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
+    iban_ov:
+      # IBAN Ownership Verification (WE BUILD rb-iban-ov) - the company's bank
+      # account, attested to the representative who holds the wallet. Same
+      # PID-authenticated datastore pattern as the three above; one account
+      # per company in fixtures/vc-bootstrapping/iban_ov.json.
+      vct: "eu.we-build.iban-ov.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_iban_ov.json}
       issuance:
         authProvider: openid4vp
         source: datastore
@@ -215,6 +232,7 @@ issuer:
       ebw_oid: {file: fixtures/vc-bootstrapping/ebw_oid.json}
       eucc: {file: fixtures/vc-bootstrapping/eucc.json}
       eu_poa: {file: fixtures/vc-bootstrapping/eu_poa.json}
+      iban_ov: {file: fixtures/vc-bootstrapping/iban_ov.json}
 
   apigw:
     cors:
@@ -296,11 +314,11 @@ issuer:
                 redirect_uri:
                   - "siros-sample://callback"
                   - "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, ebw_oid, eucc, eu_poa]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, ebw_oid, eucc, eu_poa, iban_ov]
               e2e-test-client-2:
                 type: public
                 redirect_uri: "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, ebw_oid, eucc, eu_poa]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, ebw_oid, eucc, eu_poa, iban_ov]
         data_sources:
           assertion:
             scopes:

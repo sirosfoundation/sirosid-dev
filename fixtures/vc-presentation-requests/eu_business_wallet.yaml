@@ -1,10 +1,10 @@
-# EU Business Wallet presentation requests - the three WE BUILD attestations
-# this stack issues (values-base.yaml credentialTypes ebw_oid/eucc/eu_poa).
+# EU Business Wallet presentation requests - the WE BUILD attestations this
+# stack issues (values-base.yaml credentialTypes ebw_oid/eucc/eu_poa/iban_ov).
 #
 # As with eudi_pid.yaml, every vct and claim path here must match what is
-# actually issued: the VCTMs in fixtures/vc-metadata/vctm_{ebw_oid,eucc,eu_poa}.json
+# actually issued: the VCTMs in fixtures/vc-metadata/vctm_{ebw_oid,eucc,eu_poa,iban_ov}.json
 # (copies of registry.siros.org's webuild-consortium entries), and the claim
-# names mini-oidc releases from its users.yaml `attestations:` blocks.
+# names in fixtures/vc-bootstrapping/*.json.
 templates:
   - id: "ebw_oid_owner"
     name: "EU Business Wallet - Owner Identification (EBW-OID)"
@@ -101,4 +101,32 @@ templates:
       validity_period_valid_from: "valid_from"
       validity_period_valid_until: "valid_until"
       issuing_authority: "issuing_authority"
+    enabled: true
+
+  - id: "iban_ov_account"
+    name: "IBAN Ownership Verification - Company Account"
+    description: "Which bank account belongs to the company, and through whom"
+    version: "1.0"
+    oidc_scopes:
+      - "iban_ov"
+    dcql:
+      credentials:
+        - id: "iban_ov"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "eu.we-build.iban-ov.1"
+          claims:
+            - path: ["bank_account", "iban"]
+            - path: ["bank_account", "account_name"]
+            - path: ["bank_account", "account_currency"]
+            - path: ["account_ownership", "owner_name"]
+            - path: ["account_ownership", "owner_type"]
+            - path: ["account_ownership", "legal_person_identifiers"]
+            - path: ["account_provider", "provider_name"]
+            - path: ["account_provider", "bic_swift"]
+    claim_mappings:
+      bank_account: "bank_account"
+      account_ownership: "account_ownership"
+      account_provider: "account_provider"
     enabled: true

@@ -25,6 +25,9 @@ _shared: &shared
   - path: apigw.data_sources.datastore.scopes.eu_poa
     kind: added
     reason: "EU PoA (uri:eu.eudi.eu-poa.1) credential type, datastore-sourced behind PID authentication (openid4vp)"
+  - path: apigw.data_sources.datastore.scopes.iban_ov
+    kind: added
+    reason: "IBAN-OV (eu.we-build.iban-ov.1) credential type, datastore-sourced behind PID authentication (openid4vp)"
   # --- mount points moved to the chart's names -------------------------------
   # The chart mounts VCTM/MDDL documents at /vctms, bootstrapping documents at
   # /documents and presentation-request templates at /pres-reqs, where the old

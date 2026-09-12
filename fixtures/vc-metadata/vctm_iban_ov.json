@@ -1,0 +1,301 @@
+{
+  "vct": "eu.we-build.iban-ov.1",
+  "name": "WeBuild – IBAN Ownership Verification (IBAN-OV) – SD-JWT VC payload",
+  "description": "Schema for the SD-JWT VC payload of an IBAN-OV attestation as defined in the IBAN-OV Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing.",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "WeBuild – IBAN Ownership Verification (IBAN-OV)",
+      "description": "Schema for the SD-JWT VC payload of an IBAN-OV attestation as defined in the IBAN-OV Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing."
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "trust_anchor_url"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Trust Anchor Url"
+        }
+      ],
+      "description": "URL at which a machine-readable version of the trust anchor used for verifying the IBAN-OV attestation can be found or looked up."
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation Legal Category"
+        }
+      ],
+      "description": "The legal category of the attestation as defined by eIDAS 2. For the IBAN-OV attestation issued by the bank (ASPSP) acting as an authorized issuer, this is 'EAA'.",
+      "mandatory": true
+    },
+    {
+      "path": [
+        "account_ownership",
+        "surname"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Surname"
+        }
+      ],
+      "description": "Surname / family name of the natural person owning the account. Mandatory if owner_type = 'person'. SHALL NOT be present if owner_type = 'entity'."
+    },
+    {
+      "path": [
+        "account_ownership",
+        "owner_type"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Owner Type"
+        }
+      ],
+      "description": "Discriminator identifying whether the account owner is a legal person or a natural person. SHALL be present in all cases."
+    },
+    {
+      "path": [
+        "account_ownership",
+        "legal_person_identifiers"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Identifiers"
+        }
+      ],
+      "description": "Array of objects containing unique identification strings of the legal entity owning the account."
+    },
+    {
+      "path": [
+        "account_ownership",
+        "owner_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Owner Name"
+        }
+      ],
+      "description": "Legal name of the legal entity owning the account. Mandatory if owner_type = 'entity'. SHALL NOT be present if owner_type = 'person'."
+    },
+    {
+      "path": [
+        "account_ownership",
+        "given_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Given Name"
+        }
+      ],
+      "description": "Given name(s) of the natural person owning the account. Mandatory if owner_type = 'person'. SHALL NOT be present if owner_type = 'entity'."
+    },
+    {
+      "path": [
+        "account_ownership"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Account Ownership"
+        }
+      ],
+      "description": "Identifies the legal owner of the account (the 'who'). The owner is either a legal person or a natural person. Required name attributes depend on owner_type. SHALL be individually selectively disclosable as a top-level claim.",
+      "mandatory": true,
+      "sd": "always"
+    },
+    {
+      "path": [
+        "account_provider",
+        "legal_person_identifiers"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Legal Person Identifiers"
+        }
+      ],
+      "description": "Array of objects containing unique identification strings of the issuing financial institution."
+    },
+    {
+      "path": [
+        "account_provider",
+        "provider_country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Provider Country"
+        }
+      ],
+      "description": "Alpha-3 country code, as defined in ISO 3166-1, of the provider country or territory. SHALL be a valid ISO 3166-1 alpha-3 country code."
+    },
+    {
+      "path": [
+        "account_provider",
+        "bic_swift"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Bic Swift"
+        }
+      ],
+      "description": "International code (BIC or SWIFT code), as defined in ISO 9362, of the financial institution. SHALL conform to the ISO 9362:2022 format [A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?."
+    },
+    {
+      "path": [
+        "account_provider",
+        "national_bank_code"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "National Bank Code"
+        }
+      ],
+      "description": "Country-specific code for internal routing within a specific country's clearing system. Optional attribute."
+    },
+    {
+      "path": [
+        "account_provider",
+        "nace_code"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Nace Code"
+        }
+      ],
+      "description": "NACE code for activity specification (e.g. 64.19). Optional attribute."
+    },
+    {
+      "path": [
+        "account_provider",
+        "clearing_number"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Clearing Number"
+        }
+      ],
+      "description": "Clearing number for identification of the financial institution, used only in some countries. Optional attribute."
+    },
+    {
+      "path": [
+        "account_provider",
+        "provider_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Provider Name"
+        }
+      ],
+      "description": "Name of the financial institution providing the account."
+    },
+    {
+      "path": [
+        "account_provider"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Account Provider"
+        }
+      ],
+      "description": "Describes the financial institution that issued the account and related metadata (the 'where & how'). SHALL be individually selectively disclosable as a top-level claim.",
+      "mandatory": true,
+      "sd": "always"
+    },
+    {
+      "path": [
+        "schema_version"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Schema Version"
+        }
+      ],
+      "description": "Version of the IBAN-OV attestation schema used."
+    },
+    {
+      "path": [
+        "bank_account",
+        "account_name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Account Name"
+        }
+      ],
+      "description": "Name of the account, generated by the bank or customized by the owner."
+    },
+    {
+      "path": [
+        "bank_account",
+        "iban"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Iban"
+        }
+      ],
+      "description": "International Bank Account Number, as defined in ISO 13616:2020. SHALL conform to the format [A-Z]{2}[0-9A-Z]{13,30}."
+    },
+    {
+      "path": [
+        "bank_account",
+        "account_type"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Account Type"
+        }
+      ],
+      "description": "Nature of the bank account. SHOULD use one of the standardized values defined in Section 2.8.2 (e.g. CURRENT, SAVINGS, BASIC, LOAN, OTHER)."
+    },
+    {
+      "path": [
+        "bank_account",
+        "account_currency"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Account Currency"
+        }
+      ],
+      "description": "Currency code(s) used for the account, as defined in ISO 4217:2015. SHALL contain at least one valid ISO 4217:2015 currency code."
+    },
+    {
+      "path": [
+        "bank_account"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Bank Account"
+        }
+      ],
+      "description": "Core details of the bank account itself (the 'what'). SHALL be individually selectively disclosable as a top-level claim.",
+      "mandatory": true,
+      "sd": "always"
+    }
+  ]
+}

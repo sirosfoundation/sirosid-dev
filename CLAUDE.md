@@ -361,9 +361,23 @@ datastore - its log says `Datastore already contains data, skipping import`.
 Redeploying does not add the new documents. Clear the environment's data
 (dashboard Storage card, `make storage-clear`, `make fly-storage-clear
 ENV=<name>`), which restarts apigw into an empty datastore so the import
-runs with every document, or upload them through the datastore API. Bit the
-EU Business Wallet types (`ebw_oid`/`eucc`/`eu_poa`, all PID-authenticated
-datastore types) on gdc, 2026-09-10.
+runs with every document - or, when the environment holds data worth
+keeping, add just the new documents without a wipe: a bootstrapping file is
+already in the bulk-upload request shape, so
+
+```bash
+curl -X POST -H 'Content-Type: application/json' \
+  --data-binary "{\"documents\": $(cat fixtures/vc-bootstrapping/<scope>.json)}" \
+  https://sirosid-<env>-vc-apigw.fly.dev/api/v1/datastore/bulk
+```
+
+then `GET .../api/v1/datastore/search?scope=<scope>` to confirm. (No
+credentials: the chart renders no `api_server.api_auth` block, so apigw logs
+`api_auth_mode: none` and the whole `/api/v1` datastore API - read, write and
+delete - is open on the public URL of every environment. Synthetic data only,
+but know it before pointing anyone at an environment.) Bit the EU Business
+Wallet types (`ebw_oid`/`eucc`/`eu_poa`, all PID-authenticated datastore
+types) on gdc, 2026-09-10; `iban_ov` was added to gdc this way on 2026-09-12.
 
 **PDP boot appears stuck / "Issuer not trusted" right after `fly-up` with
 `TRUSTED_ISSUERS=` set (or any PDP redeploy with it already set):**

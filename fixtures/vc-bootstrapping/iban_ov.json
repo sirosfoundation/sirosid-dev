@@ -1,0 +1,242 @@
+{
+  "erik-010": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "iban_ov",
+      "document_id": "document_id_iban_ov_erik-010",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "erik-010"
+    ],
+    "document_data": {
+      "attestation_legal_category": "EAA",
+      "schema_version": "1.0",
+      "bank_account": {
+        "account_name": "Nordic Tech Solutions AB - Main Account",
+        "iban": "SE4550000000058398257466",
+        "account_type": "CURRENT",
+        "account_currency": [
+          "SEK"
+        ]
+      },
+      "account_ownership": {
+        "owner_type": "entity",
+        "owner_name": "Nordic Tech Solutions AB",
+        "legal_person_identifiers": [
+          {
+            "type": "EUID",
+            "value": "SEBOLAG.5591234567"
+          },
+          {
+            "type": "TAX",
+            "value": "SE559123456701"
+          }
+        ],
+        "given_name": "Erik",
+        "surname": "Lindström"
+      },
+      "account_provider": {
+        "provider_name": "Skandinaviska Enskilda Banken AB",
+        "provider_country": "SWE",
+        "bic_swift": "ESSESESS",
+        "national_bank_code": "5000",
+        "clearing_number": "5000",
+        "nace_code": "64.19",
+        "legal_person_identifiers": [
+          {
+            "type": "LEI",
+            "value": "F3JS33DEI6XQ4ZBPTN86"
+          },
+          {
+            "type": "BIC",
+            "value": "ESSESESS"
+          }
+        ]
+      },
+      "trust_anchor_url": "https://trust.example.org/anchors/qtsp/eidas-tl"
+    }
+  },
+  "maria-011": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "iban_ov",
+      "document_id": "document_id_iban_ov_maria-011",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "maria-011"
+    ],
+    "document_data": {
+      "attestation_legal_category": "EAA",
+      "schema_version": "1.0",
+      "bank_account": {
+        "account_name": "Grünberg Consulting GmbH - Geschäftskonto",
+        "iban": "DE89370400440532013000",
+        "account_type": "CURRENT",
+        "account_currency": [
+          "EUR"
+        ]
+      },
+      "account_ownership": {
+        "owner_type": "entity",
+        "owner_name": "Grünberg Consulting GmbH",
+        "legal_person_identifiers": [
+          {
+            "type": "EUID",
+            "value": "DEHRB.B123456"
+          },
+          {
+            "type": "LEI",
+            "value": "529900T8BM49AURSDO55"
+          },
+          {
+            "type": "TAX",
+            "value": "DE312345678"
+          }
+        ],
+        "given_name": "Maria",
+        "surname": "Schneider"
+      },
+      "account_provider": {
+        "provider_name": "Deutsche Bank AG",
+        "provider_country": "DEU",
+        "bic_swift": "DEUTDEDB",
+        "national_bank_code": "37070024",
+        "clearing_number": "37070024",
+        "nace_code": "64.19",
+        "legal_person_identifiers": [
+          {
+            "type": "LEI",
+            "value": "7LTWFZYICNSX8D621K86"
+          },
+          {
+            "type": "BIC",
+            "value": "DEUTDEDB"
+          }
+        ]
+      },
+      "trust_anchor_url": "https://trust.example.org/anchors/qtsp/eidas-tl"
+    }
+  },
+  "jan-012": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "iban_ov",
+      "document_id": "document_id_iban_ov_jan-012",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "jan-012"
+    ],
+    "document_data": {
+      "attestation_legal_category": "EAA",
+      "schema_version": "1.0",
+      "bank_account": {
+        "account_name": "Grünberg Consulting GmbH - Geschäftskonto",
+        "iban": "DE89370400440532013000",
+        "account_type": "CURRENT",
+        "account_currency": [
+          "EUR"
+        ]
+      },
+      "account_ownership": {
+        "owner_type": "entity",
+        "owner_name": "Grünberg Consulting GmbH",
+        "legal_person_identifiers": [
+          {
+            "type": "EUID",
+            "value": "DEHRB.B123456"
+          },
+          {
+            "type": "LEI",
+            "value": "529900T8BM49AURSDO55"
+          },
+          {
+            "type": "TAX",
+            "value": "DE312345678"
+          }
+        ],
+        "given_name": "Jan",
+        "surname": "Kowalski"
+      },
+      "account_provider": {
+        "provider_name": "Deutsche Bank AG",
+        "provider_country": "DEU",
+        "bic_swift": "DEUTDEDB",
+        "national_bank_code": "37070024",
+        "clearing_number": "37070024",
+        "nace_code": "64.19",
+        "legal_person_identifiers": [
+          {
+            "type": "LEI",
+            "value": "7LTWFZYICNSX8D621K86"
+          },
+          {
+            "type": "BIC",
+            "value": "DEUTDEDB"
+          }
+        ]
+      },
+      "trust_anchor_url": "https://trust.example.org/anchors/qtsp/eidas-tl"
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "iban_ov",
+      "document_id": "document_id_iban_ov_sophie-013",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "attestation_legal_category": "EAA",
+      "schema_version": "1.0",
+      "bank_account": {
+        "account_name": "Transport Dubois SARL - Compte courant",
+        "iban": "FR7630004000031234567890143",
+        "account_type": "CURRENT",
+        "account_currency": [
+          "EUR"
+        ]
+      },
+      "account_ownership": {
+        "owner_type": "entity",
+        "owner_name": "Transport Dubois SARL",
+        "legal_person_identifiers": [
+          {
+            "type": "EUID",
+            "value": "FRRCS.Lyon.B987654321"
+          },
+          {
+            "type": "TAX",
+            "value": "FR82987654321"
+          }
+        ],
+        "given_name": "Sophie",
+        "surname": "Dubois"
+      },
+      "account_provider": {
+        "provider_name": "BNP Paribas SA",
+        "provider_country": "FRA",
+        "bic_swift": "BNPAFRPP",
+        "national_bank_code": "30004",
+        "clearing_number": "30004",
+        "nace_code": "64.19",
+        "legal_person_identifiers": [
+          {
+            "type": "LEI",
+            "value": "R0MUWSFPU8MPRO8K5P83"
+          },
+          {
+            "type": "BIC",
+            "value": "BNPAFRPP"
+          }
+        ]
+      },
+      "trust_anchor_url": "https://trust.example.org/anchors/qtsp/eidas-tl"
+    }
+  }
+}
