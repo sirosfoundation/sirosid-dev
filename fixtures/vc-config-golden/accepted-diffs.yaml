@@ -45,10 +45,10 @@ _shared: &shared
   # --- inert additions the chart makes ---------------------------------------
   - path: apigw.api_server.api_auth
     reason: >-
-      Rendered with jwks.enable false (values-base.yaml turns it back off), so
-      the admin API is open exactly as it was before. The chart insists on
-      rendering the block; only the SPOCP rules list comes with it, and rules
-      alone enforce nothing when no auth method is enabled.
+      The goldens predate any admin-API auth (fixtures/vc-config.yaml had
+      /api/v1 open). Since 2026-09-15 the chart's block is kept: JWKS Bearer
+      auth against /main-config/api_auth_jwks.json (key generated per target
+      by scripts/api_auth.py) plus the admin@<tenant> SPOCP rule.
   - path: apigw.issuer_metadata
     reason: >-
       Added upstream (siros-id-stack main, 2026-08-30): issuer display

@@ -22,6 +22,7 @@ WALLET_NAME ?= SIROS ID (dev)
         bbs-keys \
         render-helm-config fly-up fly-down fly-status \
         plan _print-compose-files storage-status storage-clear fly-storage-clear boot \
+        datastore-token datastore-search datastore-upload \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
 	usb-android-setup usb-android-config usb-android-up usb-android-down usb-android-full usb-android-restart usb-android-launch usb-android-logs usb-android-status usb-android-test \
 	usb-android-test-wsca \
@@ -483,6 +484,9 @@ help: ## Show this help
 	@echo "  make storage-clear [ENV=<name>]      Wipe the local stack's data (via env-admin if up, else the volumes) and re-register issuer/verifier"
 	@echo "  make fly-storage-clear ENV=<name>    Same for a Fly environment (via its env-admin app)"
 	@echo "  make fly-down ENV=<name> KEEP_DATA=yes  Tear down but keep the Mongo apps + volumes for the next fly-up"
+	@echo "  make datastore-search [SCOPE=<scope>] [ENV=<name>]  List vc-apigw's datastore documents (authenticated admin API)"
+	@echo "  make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]  Add documents to a live environment without a wipe"
+	@echo "  make datastore-token [ENV=<name>]    Print a short-lived Bearer token for vc-apigw's /api/v1"
 	@echo ""
 	@echo "$(GREEN)Fly.io Targets:$(NC)  (named, shareable environments - see Fly.io Options below)"
 	@echo "  make fly-up ENV=<name> [OPTIONS]     Deploy a named Fly.io environment"
@@ -1428,6 +1432,20 @@ storage-status: ## Show every store the local stack has: mode (volume/memory), s
 
 storage-clear: ## Wipe the local stack's data and re-register issuer/verifier - via env-admin while the stack is up (no restart of the stack needed), via the volumes when it is down (YES=yes skips the prompt)
 	@python3 scripts/storage.py clear --target local $(if $(ENV),--env "$(ENV)") $(if $(call _truthy,$(YES)),--yes)
+
+# vc-apigw's datastore API (/api/v1/datastore/*) takes a Bearer JWT signed
+# with the per-target key scripts/api_auth.py generates at render time;
+# these mint it from the rendered config. ENV=<name> targets that Fly
+# environment, otherwise the local stack.
+datastore-token: ## Print a short-lived admin token for vc-apigw's /api/v1 (ENV=<name> for a Fly environment)
+	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") token
+
+datastore-search: ## List vc-apigw datastore documents (SCOPE=<scope> to filter, ENV=<name> for a Fly environment)
+	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") search $(if $(SCOPE),--scope "$(SCOPE)")
+
+datastore-upload: ## Add bootstrapping documents to a running environment without a wipe: FILE=fixtures/vc-bootstrapping/<scope>.json (ENV=<name> for a Fly environment)
+	@test -n "$(FILE)" || { echo "usage: make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]"; exit 2; }
+	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") upload "$(FILE)"
 
 # =============================================================================
 # R2PS Service

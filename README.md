@@ -366,7 +366,7 @@ mdoc, and the EU Business Wallet attestations below.
 
 ### EU Business Wallet attestations
 
-Three WE BUILD rulebook types for testing an EU Business Wallet, declared in
+Four WE BUILD rulebook types for testing an EU Business Wallet, declared in
 `values-base.yaml` and served from VCTMs copied out of
 [registry.siros.org](https://registry.siros.org) (`webuild-consortium/`):
 
@@ -377,7 +377,7 @@ Three WE BUILD rulebook types for testing an EU Business Wallet, declared in
 | `eu_poa` | `uri:eu.eudi.eu-poa.1` | EU Power of Attorney (ds007) - principal grants an attorney powers |
 | `iban_ov` | `eu.we-build.iban-ov.1` | IBAN Ownership Verification (rb-iban-ov) - the company's bank account |
 
-All three require **PID authentication**, as they would in a live setting.
+All four require **PID authentication**, as they would in a live setting.
 The wallet presents a PID (OpenID4VP during issuance) and the identity in it
 selects the person's documents from the datastore
 (`fixtures/vc-bootstrapping/{ebw_oid,eucc,eu_poa,iban_ov}.json`, mapped through
@@ -387,6 +387,14 @@ you to present the PID and the document for that person is issued. The
 natural persons (alice, bob, carol) have no such documents, so their PID leads
 to "no documents". The same synthetic data also ships in mini-oidc 0.0.5's
 `users.yaml` (`attestations:`), for stacks that prefer OIDC-asserted issuance.
+
+vc-apigw imports these documents only into an **empty** datastore, so an
+environment that already holds data does not pick up a new type on redeploy.
+Add the documents to it without a wipe with
+`make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]`
+(`make datastore-search SCOPE=<scope>` to check). The admin API behind those
+targets takes a Bearer token signed with a per-environment key the render step
+generates; see `scripts/api_auth.py`.
 
 | mini-oidc user | company | EBW-OID | EUCC | EU PoA | IBAN-OV |
 |---|---|---|---|---|---|

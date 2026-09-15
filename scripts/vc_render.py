@@ -175,28 +175,24 @@ def patch_vc_compose(config: dict, plain_http_hosts: set) -> dict:
 
 
 def strip_unrenderable(config: dict) -> dict:
-    """Drop the two blocks the chart renders for a Kubernetes deployment that
-    vc then refuses to start without the rest of that deployment.
+    """Drop the block the chart renders for a Kubernetes deployment that vc
+    then refuses to start without the rest of that deployment.
 
-    Both had to be REMOVED rather than overridden, which extraConfig cannot do
-    (mergeOverwrite has no delete). Both were found by booting the images:
+    It had to be REMOVED rather than overridden, which extraConfig cannot do
+    (mergeOverwrite has no delete). Found by booting the images:
 
     - common.branding points at PNGs a branding initContainer decodes into an
       emptyDir. vc validates a branding path with `image_png`, and that runs
       even for an empty string, so there is no value that means "no branding":
         panic: validation:image_png field:logo_path
-    - apigw.api_server.api_auth carries SPOCP rules, and vc's
-      api_auth_rules_require_auth validator rejects rules with no auth method
-      enabled. Neither target has anything to issue an admin JWT, and the
-      chart insists on rendering the block (it refuses to ship an
-      unauthenticated admin API), so it comes out here instead:
-        panic: validation:api_auth_rules_require_auth
-      That leaves the admin API open, exactly as fixtures/vc-config.yaml
-      always had it - fine for a local or ephemeral private stack, and not
-      something to copy anywhere long-lived.
+
+    apigw.api_server.api_auth used to be stripped here as well, on the
+    grounds that nothing could mint an admin JWT - which left the datastore
+    API (upload, search, delete) open on every environment's public URL.
+    scripts/api_auth.py now provides the key and the token, so the chart's
+    block (JWKS bearer auth + the `admin@<tenant>` SPOCP rule) stays.
     """
     (config.get("common") or {}).pop("branding", None)
-    ((config.get("apigw") or {}).get("api_server") or {}).pop("api_auth", None)
     return config
 
 
@@ -388,6 +384,12 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
             config = use_credential_registry(config, credential_types or {}, credential_registries)
         (out_dir / filename).write_text(yaml.dump(config, sort_keys=False))
         print(f"wrote {out_dir / filename}")
+        # The admin API's JWKS rides in apigw's ConfigMap next to config.yaml
+        # (issuer.apiAuth.jwks.jwksData, generated per target by
+        # render-helm-config.py); the config points at /main-config/<file>.
+        jwks_data = extract_configmap_data(docs, cm_name).get("api_auth_jwks.json")
+        if jwks_data:
+            (out_dir / "api_auth_jwks.json").write_text(jwks_data)
 
     # /vctms in the chart, but vc's credential_metadata paths are written by
     # siros-id.vc.credentialMetadata as /vctms/<scope>.json too, so the mount

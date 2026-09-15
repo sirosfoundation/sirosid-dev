@@ -196,12 +196,17 @@ features:
           claims: [given_name, family_name]
 
 issuer:
-  # 04-issuer.yaml fails the whole render unless one of apiAuth.jwks/oidc is
-  # enabled. Nothing in either deployment target calls the admin API with a
-  # JWT, so this is a render guard, not a live auth configuration.
+  # Bearer-JWT auth for apigw's admin/datastore API (/api/v1/*). The chart
+  # renders the SPOCP rule (subject admin@<tenant.id>) and points at
+  # /main-config/api_auth_jwks.json; jwksData is generated per deployment
+  # target by scripts/render-helm-config.py from the key scripts/api_auth.py
+  # keeps (fixtures/rendered-secrets/ locally, fixtures/rendered/fly-<env>/
+  # on Fly). `issuer` must equal api_auth.ISSUER, the `iss` those tokens
+  # carry. `make datastore-upload`/`datastore-search` mint them.
   apiAuth:
     jwks:
       enabled: true
+      issuer: sirosid-dev
 
   authProviders:
     oidc:
@@ -265,19 +270,6 @@ issuer:
           logo_path: ""
           favicon_path: ""
       apigw:
-        api_server:
-          # The chart requires one of apiAuth.jwks/oidc to be enabled and
-          # renders an api_auth block accordingly - a deliberate refusal to
-          # ship an unauthenticated admin API. Neither deployment target has
-          # anything to issue an admin JWT, and an enabled jwks block without
-          # an `issuer` fails vc's own required_if validation at startup, so
-          # the rendered config turns it back off. That leaves the admin API
-          # open, exactly as fixtures/vc-config.yaml always had it: these are
-          # local and ephemeral stacks on private networks. Do not copy this
-          # into anything long-lived.
-          api_auth:
-            jwks:
-              enable: false
         # create-pki.sh generates one EC key/chain per environment; the chart's
         # cert-manager paths (/sign-cert, /sign-cert-chain) have nothing behind
         # them in either docker-compose or Fly.

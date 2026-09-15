@@ -55,6 +55,7 @@ the chart's own `lookup`-based generator) - only used for --target compose;
 """
 import argparse
 import copy
+import json
 import secrets
 import string
 import subprocess
@@ -63,6 +64,7 @@ from pathlib import Path
 
 import yaml
 
+import api_auth
 import fly_common
 import vc_render
 from helm_render_lib import extract_configmap_data, helm_template, load_manifest_docs
@@ -845,6 +847,21 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         toggles_path = out_dir / "values.toggles.yaml"
         toggles_path.write_text(yaml.dump(toggles, sort_keys=False))
         values_files.append(toggles_path)
+
+    # The admin API's verification key (scripts/api_auth.py). Per target, next
+    # to that target's other generated secrets: compose shares one across
+    # runs, a Fly environment keeps its own in fixtures/rendered/fly-<env>/
+    # alongside its Mongo root password - so a local key never opens a shared
+    # environment. The chart puts the JWKS in apigw's ConfigMap as
+    # api_auth_jwks.json; vc_render.render_vc writes that file out for the
+    # mount at /main-config.
+    secrets_dir = Path(secrets_dir) if secrets_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered-secrets"
+    api_auth_key = api_auth.ensure_key((out_dir if target == "fly" else secrets_dir) / api_auth.KEY_FILENAME)
+    api_auth_path = out_dir / "values.api-auth.yaml"
+    api_auth_path.write_text(yaml.dump({"issuer": {"apiAuth": {"jwks": {
+        "enabled": True, "issuer": api_auth.ISSUER,
+        "jwksData": json.dumps(api_auth.jwks(api_auth_key), separators=(",", ":"))}}}}, sort_keys=False))
+    values_files.append(api_auth_path)
 
     # A named environment's own `values:` block goes last, so it can override
     # anything above it - see scripts/env_config.py. Applies to both targets:

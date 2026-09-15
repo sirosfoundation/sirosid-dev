@@ -362,22 +362,36 @@ Redeploying does not add the new documents. Clear the environment's data
 (dashboard Storage card, `make storage-clear`, `make fly-storage-clear
 ENV=<name>`), which restarts apigw into an empty datastore so the import
 runs with every document - or, when the environment holds data worth
-keeping, add just the new documents without a wipe: a bootstrapping file is
-already in the bulk-upload request shape, so
+keeping, add just the new documents without a wipe:
 
 ```bash
-curl -X POST -H 'Content-Type: application/json' \
-  --data-binary "{\"documents\": $(cat fixtures/vc-bootstrapping/<scope>.json)}" \
-  https://sirosid-<env>-vc-apigw.fly.dev/api/v1/datastore/bulk
+make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]
+make datastore-search SCOPE=<scope> [ENV=<name>]
 ```
 
-then `GET .../api/v1/datastore/search?scope=<scope>` to confirm. (No
-credentials: the chart renders no `api_server.api_auth` block, so apigw logs
-`api_auth_mode: none` and the whole `/api/v1` datastore API - read, write and
-delete - is open on the public URL of every environment. Synthetic data only,
-but know it before pointing anyone at an environment.) Bit the EU Business
-Wallet types (`ebw_oid`/`eucc`/`eu_poa`, all PID-authenticated datastore
-types) on gdc, 2026-09-10; `iban_ov` was added to gdc this way on 2026-09-12.
+(`scripts/datastore.py`; a bootstrapping file is already in the bulk
+endpoint's request shape.) Bit the EU Business Wallet types
+(`ebw_oid`/`eucc`/`eu_poa`, all PID-authenticated datastore types) on gdc,
+2026-09-10; `iban_ov` was added to gdc this way on 2026-09-12.
+
+**vc-apigw's `/api/v1/*` (datastore, identity mappings) answers 401 to a
+plain request - or, before 2026-09-15, answered anything to anyone:** the
+admin API takes a Bearer JWT. The chart renders `api_server.api_auth` (JWKS
+at `/main-config/api_auth_jwks.json` plus the SPOCP rule granting
+`/api/v1/*` to `admin@<tenant.id>`); `scripts/render-helm-config.py`
+generates the EC key behind it per target (`fixtures/rendered-secrets/
+apiAuthKey.pem` for compose, `fixtures/rendered/fly-<env>/apiAuthKey.pem`
+for Fly, reused across renders like every other generated secret) and
+`scripts/api_auth.py` mints 5-minute tokens from it - `make datastore-token`
+for a raw one. Until 2026-09-15 `vc_render.strip_unrenderable` deleted the
+block instead, on the grounds that nothing could mint the token, which left
+the datastore API open on every environment's public URL (found on gdc
+2026-09-12; nothing indicates it was used). Two consequences worth knowing:
+a Fly environment deployed by someone else has its key in *their*
+`fly-<env>/` directory, so your `make datastore-*` against it fails with 401
+until you have that file (same story as `mongoRootPassword`); and the JWKS
+is baked into the running config, so a key you regenerate only takes effect
+after the next render + deploy.
 
 **PDP boot appears stuck / "Issuer not trusted" right after `fly-up` with
 `TRUSTED_ISSUERS=` set (or any PDP redeploy with it already set):**

@@ -617,6 +617,9 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, service: str, meta
     if bootstrapping:
         for f in sorted((out_dir / "documents").glob("*")):
             args += ["--file-local", f"/documents/{f.name}={f}"]
+        # apigw is also the one service with an admin API: its Bearer-JWT
+        # verification key (public, so --file-local) - scripts/api_auth.py.
+        args += ["--file-local", f"/main-config/api_auth_jwks.json={out_dir / 'api_auth_jwks.json'}"]
     return args
 
 
