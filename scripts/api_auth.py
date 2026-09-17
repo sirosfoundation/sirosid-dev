@@ -39,6 +39,8 @@ ISSUER = "sirosid-dev"
 KEY_FILENAME = "apiAuthKey.pem"
 JWKS_FILENAME = "api_auth_jwks.json"
 DEFAULT_TTL = 300
+# Seconds of clock skew tolerated between this machine and the issuer.
+IAT_LEEWAY = 30
 
 
 def _b64url(data: bytes) -> str:
@@ -109,7 +111,10 @@ def mint(path: Path, issuer: str, audience: str, subject: str, ttl: int = DEFAUL
     subject (`extractSPOCPSubject`: eppn, then email); `sub` is set to the
     same value for anything else that looks."""
     path = Path(path)
-    now = int(time.time())
+    # Backdate iat a little: jwx validates iat <= now with no leeway, and a
+    # caller whose clock runs a second or two ahead of the server would
+    # otherwise be rejected with "iat not satisfied".
+    now = int(time.time()) - IAT_LEEWAY
     header = {"alg": ALG, "typ": "JWT", "kid": jwk(path)["kid"]}
     claims = {"iss": issuer, "aud": audience, "sub": subject, "eppn": subject,
               "iat": now, "exp": now + ttl, "jti": secrets.token_urlsafe(16)}

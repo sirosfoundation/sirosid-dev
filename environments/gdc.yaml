@@ -28,18 +28,32 @@ credential_registries:
   - https://registry.siros.org
 
 images:
-  # Built from a local integration branch combining upstream vc PR #620
-  # (native Vega ZK/PPID verification, r12 circuit) and PR #626 (config-
-  # driven/progressive preset buttons) - both still open as of this pin.
-  # All four vc-services MUST be bumped together: they share one config
-  # file (fixtures/vc-config.yaml) unmarshaled into the same model.Cfg, so
-  # leaving one on an older binary while another expects a newer config
-  # shape (e.g. the nested `presets.*.credentials` shape PR #626 adds)
-  # crash-loops it on startup.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:integration-1788040215
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:integration-1788040215
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:integration-1788040215
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:integration-1788040215
+  # Built locally from SUNET/vc upstream main plus PR #667 (keep the VCTM raw
+  # bytes whatever their source), which is what makes SD-JWT issuance work at
+  # all here: gdc resolves every SD-JWT type from registry.siros.org, and
+  # without that fix apigw sends the issuer an empty vctm and every
+  # POST /credential fails validation. Replace these with a published tag once
+  # #667 is merged and released.
+  #
+  # These replaced an integration branch carrying upstream PRs #620 (native
+  # Vega ZK/PPID verification) and #626 (config-driven preset buttons). Both
+  # merged upstream on 2026-09-09, so that branch is obsolete - upstream main
+  # carries the Vega verifier, the worker Dockerfile builds its native library,
+  # and the preset category/order/featured fields are in the chart-facing
+  # config. Do not resurrect it.
+  #
+  # Built with GOBUILD_IMAGE=golang:1.27.1-bookworm. The Dockerfile's default
+  # builder tag now resolves to Debian 13 (glibc 2.41) while its runtime stage
+  # is distroless cc-debian12 (glibc 2.36), so a default build produces
+  # binaries that die with "GLIBC_2.39 not found" at startup.
+  #
+  # All four vc-services MUST be bumped together: they share one config shape
+  # unmarshaled into the same model.Cfg, so leaving one on an older binary
+  # while another expects a newer shape crash-loops it on startup.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1789643976
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1789644020
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1789643927
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1789643856
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
