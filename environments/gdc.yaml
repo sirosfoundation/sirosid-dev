@@ -28,12 +28,19 @@ credential_registries:
   - https://registry.siros.org
 
 images:
-  # Built locally from SUNET/vc upstream main plus PR #667 (keep the VCTM raw
-  # bytes whatever their source), which is what makes SD-JWT issuance work at
-  # all here: gdc resolves every SD-JWT type from registry.siros.org, and
-  # without that fix apigw sends the issuer an empty vctm and every
-  # POST /credential fails validation. Replace these with a published tag once
-  # #667 is merged and released.
+  # Built locally from SUNET/vc upstream main plus the three fixes this
+  # environment needed, all of them found here:
+  #   #667 (MERGED) keep the VCTM raw bytes whatever their source - without it
+  #        apigw sends the issuer an empty vctm and every POST /credential
+  #        fails validation, since gdc resolves its types from registry.siros.org
+  #   #668 raise the metadata signing limit (and the gRPC limit under it) -
+  #        this issuer publishes 2.19 MiB of metadata and could not sign it,
+  #        so it served it unsigned
+  #   #669 serve type metadata for registry-resolved scopes - the wallet
+  #        checks vct#integrity against the document it resolves, and with
+  #        /type-metadata/<scope> answering 500 it had nothing matching to
+  #        check against and refused to store the credential
+  # Replace these with a published tag once all three are merged and released.
   #
   # These replaced an integration branch carrying upstream PRs #620 (native
   # Vega ZK/PPID verification) and #626 (config-driven preset buttons). Both
@@ -50,10 +57,10 @@ images:
   # All four vc-services MUST be bumped together: they share one config shape
   # unmarshaled into the same model.Cfg, so leaving one on an older binary
   # while another expects a newer shape crash-loops it on startup.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1789643976
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1789644020
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1789643927
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1789643856
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1789651774
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1789651816
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1789651730
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1789651694
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
