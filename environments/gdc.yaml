@@ -99,6 +99,13 @@ trusted_verifiers:
   # Hash-pinning is itself the trust decision for this scheme, so go-trust
   # skips chain validation and no reader-CA root is required.
   - x509_hash:f1drGLOIT4kDBlJVsD-_33igSf5uwRnq3yO2NvcXEW0
+  # Accredify's ACRA UAT verifier, added 2026-09-17 for interop testing.
+  # Plain origin, which is what an unsigned DC API request and an
+  # x509_san_dns:-signed request both reduce to. If its signed requests turn
+  # out to use the x509_hash scheme instead, the PDP's denial will quote the
+  # exact string to add here alongside this one; if they use x509_san_dns:
+  # with a self-signed reader CA, that root needs adding below as well.
+  - https://acra.uat.accredify.io
 trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
   - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
