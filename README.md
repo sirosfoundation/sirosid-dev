@@ -403,6 +403,11 @@ generates; see `scripts/api_auth.py`.
 | jan-012 | Grünberg Consulting GmbH employee | | yes | attorney, principal Maria | Deutsche Bank account |
 | sophie-013 | Transport Dubois SARL (FR), sole manager | yes | yes | attorney, principal co-founder | BNP Paribas account |
 
+Every company user also has a PID (`pid_1_8`), which they need before any of
+these can be issued: the attestations above are PID-authenticated, so a user
+without one cannot start the flow at all.
+
+
 The verifier has matching presentation-request templates in
 `fixtures/vc-presentation-requests/eu_business_wallet.yaml`.
 
