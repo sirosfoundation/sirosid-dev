@@ -148,11 +148,21 @@ images:
   # tsl_files worked. Needed here for the WRPAC/WRPRC trust anchors, which are
   # published as both a LoTE and a TSL.
   #
-  # DELETE this override once siros-id-stack bumps images.pdp past v0.20.6 -
+  # Bumped from 0.20.6 to 0.20.7: 0.20.6 cannot trust a verifier that
+  # identifies itself the way OpenID4VP 1.0 says to. The specification carries
+  # the DID client_id scheme as a prefix - decentralized_identifier:did:web:...
+  # - and NormalizeSubjectID did not strip it, so the did:web registry refused
+  # the identifier as not a DID and the whitelist denied it for want of cached
+  # keys a DID has no JWKS endpoint to supply. Confirmed live against
+  # Accredify's ACRA verifier: presentation fails on 0.20.6 and works on
+  # 0.20.7 (go-trust#165). 0.20.7 also carries grpc 1.83.2 for GO-2026-6348
+  # and GHSA-2v4p-qf9q-27wj.
+  #
+  # DELETE this override once siros-id-stack bumps images.pdp past v0.20.7 -
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here. (Chart's own pin is still 0.9.0 as of this
   # commit, so it has not caught up.)
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.6"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.7"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
