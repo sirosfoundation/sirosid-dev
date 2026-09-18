@@ -225,6 +225,13 @@ issuer:
   identitymappingImport:
     identities:
       identity_mappings: {file: fixtures/vc-bootstrapping/identity_mappings.json}
+  # One file per datastore-sourced scope, keyed by holder. Each scope has at
+  # least one document covering only that type's mandatory claims and exactly
+  # one whose `meta.document_id` ends in `-full`, covering mandatory AND every
+  # optional claim the type declares - so both the thin and the fat shape of
+  # every credential can be issued without editing fixtures. One holder owns
+  # the `-full` document per scope; giving a holder two documents of the same
+  # scope would make issuance ambiguous. See README.md, "Synthetic test data".
   datastoreImport:
     documents:
       diploma: {file: fixtures/vc-bootstrapping/diploma.json}
@@ -232,6 +239,7 @@ issuer:
       mdl: {file: fixtures/vc-bootstrapping/mdl.json}
       mdl_zk4: {file: fixtures/vc-bootstrapping/mdl_zk4.json}
       pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
+      siros_id: {file: fixtures/vc-bootstrapping/siros_id.json}
       # EU Business Wallet documents for the mini-oidc company users -
       # PID-authenticated issuance (see features.credentialTypes.ebw_oid/eucc/eu_poa).
       ebw_oid: {file: fixtures/vc-bootstrapping/ebw_oid.json}

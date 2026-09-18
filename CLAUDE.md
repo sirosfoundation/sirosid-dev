@@ -239,6 +239,38 @@ in the legacy index — so switching would silently drop every type not migrated
 yet. That is the obvious "modernisation" to reach for; don't, until the two
 agree.
 
+### Synthetic documents: what `fixtures/vc-bootstrapping` guarantees
+
+Every datastore-sourced type is issued from a document in
+`fixtures/vc-bootstrapping/<scope>.json`, keyed by mini-oidc user id. Three
+invariants hold, and `tests/test_fixture_integrity.py` is what holds them —
+run it after touching anything under `fixtures/vc-bootstrapping` or
+`fixtures/vc-metadata`. Each one guards a failure that is **silent**: the
+stack issues the wrong credential, or refuses with a message that points at
+the wrong thing.
+
+- **The document's identity is the login identity.** PID-authenticated
+  issuance resolves the holder by matching the presented PID's
+  `given_name`/`family_name`/`birth_date` against `identity_mappings.json`.
+  A document whose person drifted from mini-oidc's `users.yaml` fails with
+  "no documents", which reads like a missing fixture rather than a
+  mismatched one — it hid three broken natural persons until 2026-09-18.
+  A mapping with no `birth_date` fails the same way for any type whose
+  `authOptions.scopes` matches on `birthdate`.
+- **Every claim is declared** by that type's VCTM/MDDL. Nothing errors on an
+  undeclared claim; the issuer drops or rejects it depending on version.
+- **Minimal + exactly one `-full`.** Each scope has documents covering only
+  the mandatory claims, and exactly one whose `meta.document_id` ends in
+  `-full`, covering mandatory *and* every optional claim, so both shapes of
+  a credential are testable without editing fixtures. One holder owns the
+  `-full` document per scope; two documents of one scope for one holder make
+  issuance ambiguous. README.md has the per-scope table.
+
+Derived age claims are recomputed from the birth date at test time, so they
+fail the suite rather than rot. Adding or changing a document needs a
+storage clear or a `make datastore-upload` on an existing environment — see
+the datastore-import gotcha below.
+
 ## Why `values-fly.yaml` overrides exist (don't remove without checking)
 
 `siros-id-stack/values.yaml`'s own image pins lag behind what this

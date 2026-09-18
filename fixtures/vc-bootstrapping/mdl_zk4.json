@@ -10,9 +10,26 @@
       "alice-001"
     ],
     "document_data": {
-      "family_name": "Mirren",
-      "given_name": "Helen",
+      "family_name": "Wonderland",
+      "given_name": "Alice",
       "age_over_18": true
+    }
+  },
+  "bob-002": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "mdl_zk4",
+      "document_id": "document_id_mdl_zk4_bob-002-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "bob-002"
+    ],
+    "document_data": {
+      "family_name": "Builder",
+      "given_name": "Bob",
+      "age_over_18": true,
+      "pseudonym_seed": "Ym9iLTAwMi1wc2V1ZG9ueW0tc2VlZC0wMDAwMDAwMA=="
     }
   }
 }

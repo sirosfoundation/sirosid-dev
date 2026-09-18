@@ -361,8 +361,58 @@ services built from the `../vc` source repository. On startup, the issuer
 and verifier are automatically registered with the wallet backend via the
 admin API — no manual registration needed.
 
-Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma, mDL and PID as
-mdoc, and the EU Business Wallet attestations below.
+Available credentials: PID (ARF 1.5 + 1.8), EHIC, Diploma, SIROS ID, mDL and
+PID as mdoc, and the EU Business Wallet attestations below.
+
+### Synthetic test data
+
+Most types are **datastore-sourced**: the credential is built from a document
+in `fixtures/vc-bootstrapping/<scope>.json`, one file per scope, keyed by
+mini-oidc user id. (`pid_1_5` and `ehic` are the exceptions - they are
+assertion-sourced, built from the mini-oidc claims at issuance time, and have
+no file.) Three rules hold across that directory, each with a test in
+`tests/test_fixture_integrity.py` behind it:
+
+**The person in the document is the person who logs in.** `identity_mappings.
+json` is the bridge: PID-authenticated issuance resolves the holder by
+matching the presented PID's `given_name`/`family_name`/`birth_date` against
+it, so a document whose name or birth date drifts from mini-oidc's
+`users.yaml` cannot be issued at all - and the error is "no documents", which
+reads like a missing fixture rather than a mismatched one.
+
+**Every claim a document carries is declared** by that type's VCTM
+(`fixtures/vc-metadata/vctm_<scope>.json`) or MDDL schema
+(`<scope>.mdoc.json`). Issuing an undeclared claim is silently dropped or
+rejected depending on the issuer.
+
+**Each scope has a minimal document and exactly one maximal one.** The maximal
+document's `meta.document_id` ends in **`-full`** (e.g.
+`document_id_pid_1_8_carol-003-full`) and covers the type's mandatory *and*
+every optional claim; the others cover the mandatory claims only, and are the
+typical case. One holder owns the `-full` document per scope - a holder with
+two documents of the same scope would make issuance ambiguous, since nothing
+picks between them.
+
+| scope | minimal | `-full` |
+|---|---|---|
+| `pid_1_8` | alice-001, bob-002, erik-010, maria-011, jan-012, sophie-013 | carol-003 |
+| `mdl` | alice-001, bob-002 | carol-003 |
+| `siros_id` | alice-001, bob-002 | carol-003 |
+| `diploma` | alice-001, bob-002 | carol-003 |
+| `pid_mdoc` | alice-001 | bob-002 |
+| `mdl_zk4` | alice-001 | bob-002 |
+| `ebw_oid` | erik-010, maria-011 | sophie-013 |
+| `eucc` | erik-010, maria-011, jan-012 | sophie-013 |
+| `eu_poa` | jan-012 | sophie-013 |
+| `iban_ov` | erik-010, maria-011, jan-012 | sophie-013 |
+
+Derived claims (`age_in_years`, `age_birth_year`, `age_over_18/21/65`,
+`age_equal_or_over.*`) are recomputed from the birth date **at test time**, so
+a value that has fallen behind fails the suite instead of issuing a wrong
+credential. When one does, update the fixture - that is the test working.
+
+`mdl_zk4`'s `-full` document is also the one to use for Vega ZK testing: it is
+the only one that fills all four of the circuit's fixed attribute slots.
 
 ### EU Business Wallet attestations
 

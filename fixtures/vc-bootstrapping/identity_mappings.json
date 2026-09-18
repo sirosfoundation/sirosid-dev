@@ -5,7 +5,8 @@
       "authentic_source": "mini-oidc",
       "attributes": {
         "given_name": "Alice",
-        "family_name": "Wonderland"
+        "family_name": "Wonderland",
+        "birth_date": "1990-01-15"
       },
       "created_at": "0001-01-01T00:00:00Z"
     }
@@ -16,7 +17,8 @@
       "authentic_source": "mini-oidc",
       "attributes": {
         "given_name": "Bob",
-        "family_name": "Builder"
+        "family_name": "Builder",
+        "birth_date": "1985-06-20"
       },
       "created_at": "0001-01-01T00:00:00Z"
     }
@@ -27,7 +29,8 @@
       "authentic_source": "mini-oidc",
       "attributes": {
         "given_name": "Carol",
-        "family_name": "Danvers"
+        "family_name": "Danvers",
+        "birth_date": "1978-11-03"
       },
       "created_at": "0001-01-01T00:00:00Z"
     }

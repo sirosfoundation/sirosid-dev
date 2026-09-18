@@ -185,7 +185,7 @@
     "meta": {
       "authentic_source": "mini-oidc",
       "scope": "iban_ov",
-      "document_id": "document_id_iban_ov_sophie-013",
+      "document_id": "document_id_iban_ov_sophie-013-full",
       "created_at": "0001-01-01T00:00:00Z"
     },
     "identity_mapping_ids": [
@@ -208,7 +208,7 @@
         "legal_person_identifiers": [
           {
             "type": "EUID",
-            "value": "FRRCS.Lyon.B987654321"
+            "value": "FRRCS.B987654321"
           },
           {
             "type": "TAX",

@@ -161,7 +161,7 @@
     "meta": {
       "authentic_source": "mini-oidc",
       "scope": "eucc",
-      "document_id": "document_id_eucc_sophie-013",
+      "document_id": "document_id_eucc_sophie-013-full",
       "created_at": "0001-01-01T00:00:00Z"
     },
     "identity_mapping_ids": [
@@ -169,7 +169,7 @@
     ],
     "document_data": {
       "legal_person_name": "Transport Dubois SARL",
-      "legal_person_id": "FRRCS.Lyon.B987654321",
+      "legal_person_id": "FRRCS.B987654321",
       "legal_form_type": "Société à responsabilité limitée (SARL)",
       "registration_member_state": "FR",
       "registered_address": {
@@ -179,7 +179,10 @@
         "post_code": "69002",
         "post_name": "Lyon",
         "admin_unit_level_1": "FR",
-        "admin_unit_level_2": "Auvergne-Rhône-Alpes"
+        "admin_unit_level_2": "Auvergne-Rhône-Alpes",
+        "locator_name": "Immeuble Le Rhône",
+        "post_office_box": "BP 1042",
+        "care_of": "Service Juridique"
       },
       "registration_date": "2018-11-20",
       "legal_person_status": "active",
@@ -206,7 +209,8 @@
       "authentic_source_id": "FR:INFOGREFFE",
       "authentic_source_name": "Infogreffe",
       "attestation_legal_category": "PUB-EAA",
-      "trust_anchor": "https://trust.example.org/anchors/fr/infogreffe"
+      "trust_anchor": "https://trust.example.org/anchors/fr/infogreffe",
+      "legal_person_duration": "2117-11-20"
     }
   }
 }
