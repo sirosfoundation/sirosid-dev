@@ -71,10 +71,16 @@ images:
   # whitelist change picked up values-fly.yaml's 0.18.0 as a side effect;
   # nobody chose 0.18.0 for this environment. 0.15.2 -> 0.18.0 -> 0.19.0.
   # Locally built from go-wallet-backend PR #336
-  # (fix/no-matching-credential-fast-fail), for testing the engine half of the
-  # no-matching-credential fast fail against the two SDKs that now send it
-  # (siros-sdk-kotlin #192, siros-sdk-swift #149, both merged). Back to a
-  # published tag once #336 merges and releases.
+  # (fix/no-matching-credential-fast-fail) plus PR #343, for testing two
+  # engine fixes neither of which has been released yet:
+  #   #336 the no-matching-credential fast fail, against the two SDKs that now
+  #        send it (siros-sdk-kotlin #192, siros-sdk-swift #149, both merged)
+  #   #343 accept OpenID4VP 1.0's "decentralized_identifier" name for the DID
+  #        client_id scheme. Without it a verifier built against the final
+  #        specification is refused before its request is read - which is
+  #        exactly where a presentation from Accredify's ACRA verifier stopped,
+  #        after its request object had been fetched successfully.
+  # Back to a published tag once both merge and release.
   wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1789722487
 
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
