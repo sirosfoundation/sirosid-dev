@@ -70,7 +70,12 @@ images:
   # gdc ran 0.15.2 until 2026-09-07, when a redeploy for an unrelated
   # whitelist change picked up values-fly.yaml's 0.18.0 as a side effect;
   # nobody chose 0.18.0 for this environment. 0.15.2 -> 0.18.0 -> 0.19.0.
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.19.0
+  # Locally built from go-wallet-backend PR #336
+  # (fix/no-matching-credential-fast-fail), for testing the engine half of the
+  # no-matching-credential fast fail against the two SDKs that now send it
+  # (siros-sdk-kotlin #192, siros-sdk-swift #149, both merged). Back to a
+  # published tag once #336 merges and releases.
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1789710029
 
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
 # mdoc issuer - trusted here so a wallet can receive a credential from it
@@ -174,6 +179,23 @@ rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
 # environments/README.md. Anything the chart can express is reachable here
 # without a code change anywhere else.
 values:
+  pdp:
+    # Resolve entities identified by did:web, so a presentation from a wallet
+    # to - or an issuer identified by - a did:web subject can be evaluated at
+    # all. Additive: it registers one more resolver alongside the whitelist and
+    # the mdoc registries, and changes nothing about how this environment's own
+    # issuer and verifier identify themselves (still x509_san_dns, derived from
+    # their public URLs).
+    #
+    # Turning gdc's OWN verifier into a did:web identity is a different switch
+    # (verifier.clientIdScheme: "did" plus verifier.did), and it would need
+    # every whitelist entry naming the current x509_san_dns identity revisited.
+    extraRegistries:
+      didweb:
+        enabled: true
+        name: "did:web"
+        description: "did:web DID document resolution"
+        timeout: 10s
   verifier:
     # Selectable options in the verifier's own presentation-definition UI.
     # NOT the same thing as presentation-request templates, which are only
