@@ -28,6 +28,7 @@ credential at all and no reason:
 """
 import datetime
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -170,6 +171,34 @@ def mdoc_paths(doc):
     return all_paths, mandatory
 
 
+def claim_descriptions(spec):
+    """{path: description} for every claim whose metadata describes it.
+
+    The descriptions are where a type says what a value has to *look* like -
+    which country-code standard, which identifier scheme - and nothing else
+    in the stack reads them.
+    """
+    described = {}
+    if "mdocSchema" in spec:
+        doc = load_json(ROOT / spec["mdocSchema"]["file"])
+
+        def walk(elements, prefix):
+            for name, sub in elements.items():
+                path = prefix + (name,)
+                if sub.get("description"):
+                    described[path] = sub["description"]
+                if sub.get("elements"):
+                    walk(sub["elements"], path + (ANY,))
+
+        for elements in doc.get("claims", {}).values():
+            walk(elements, ())
+        return described
+    for claim in load_json(ROOT / spec["vctm"]["file"]).get("claims", []):
+        if claim.get("description"):
+            described[tuple(ANY if seg is None else seg for seg in claim["path"])] = claim["description"]
+    return described
+
+
 def declared_paths(spec):
     """(all, mandatory) claim paths a credential type declares."""
     if "mdocSchema" in spec:
@@ -276,6 +305,53 @@ class ClaimsAreDeclared(FixtureCase):
                         is_declared(path, declared),
                         f"{scope}.json[{holder}] issues {'.'.join(path)}, which "
                         f"{scope}'s type metadata does not declare")
+
+
+class CodedValuesMatchTheirStandard(FixtureCase):
+    """A claim's description names the code list its value comes from, and a
+    value from the neighbouring list is the kind of wrong nothing catches: an
+    ISO 3166-1 country where ISO 3166-2 asks for a subdivision is still two
+    plausible letters, and the credential issues, renders and presents. Found
+    in eucc.json, where two of four documents said `SE`/`FR` for
+    `issuing_jurisdiction`; the same claim was corrected in pid_1_8 and mdl.
+    """
+
+    # Only values that already look like a code are judged. Several
+    # descriptions offer a name *or* a code ("Name of the administrative
+    # authority ... or ISO 3166-1 alpha-2 where applicable"), and a name is
+    # then right; what no reader catches is one code list used where another
+    # was asked for, and that is what this compares.
+    CODE_SHAPED = re.compile(r"^[A-Za-z0-9-]{2,6}$")
+
+    STANDARDS = (
+        # (every term the description must contain, pattern, what it is)
+        (("3166-2",), re.compile(r"^[A-Z]{2}-[A-Z0-9]{1,3}$"),
+         "an ISO 3166-2 subdivision code, e.g. SE-AB - not a bare country"),
+        (("3166-1", "alpha-2"), re.compile(r"^[A-Z]{2}$"),
+         "an ISO 3166-1 alpha-2 country code"),
+    )
+
+    def test_values_match_the_standard_their_description_names(self):
+        for scope, docs in self.documents.items():
+            if scope in EMBEDDED_VC_SCOPES:
+                continue
+            described = claim_descriptions(self.types[scope])
+            for path, description in described.items():
+                lowered = description.lower()
+                for terms, pattern, what in self.STANDARDS:
+                    if not all(term in lowered for term in terms):
+                        continue
+                    for holder, doc in docs.items():
+                        if not has(doc["document_data"], path):
+                            continue
+                        value = dig(doc["document_data"], path)
+                        if not isinstance(value, str) or not self.CODE_SHAPED.match(value):
+                            continue
+                        self.assertRegex(
+                            value, pattern,
+                            f"{scope}.json[{holder}].{'.'.join(str(p) for p in path)} "
+                            f"is {value!r}; its type metadata asks for {what}")
+                    break
 
 
 class MinimalAndFullDocuments(FixtureCase):
