@@ -4,6 +4,7 @@
     python3 scripts/datastore.py token  [--env NAME]
     python3 scripts/datastore.py search --scope iban_ov [--env NAME]
     python3 scripts/datastore.py upload fixtures/vc-bootstrapping/iban_ov.json [--env NAME]
+    python3 scripts/datastore.py sync [--dry-run] [--scope NAME] [--env NAME]
 
 Without --env the target is the local compose stack (fixtures/rendered/
 vc-apigw.yaml, key in fixtures/rendered-secrets/); with it, the named Fly
@@ -16,6 +17,12 @@ change cannot silently desynchronise the caller from the server.
 into an EMPTY datastore: a new datastore-sourced credential type reaches an
 environment that already holds data either through a wipe or through this.
 A bootstrapping file is already in the bulk endpoint's request shape.
+
+`sync` is the same idea taken to the whole fixture set: it makes the
+datastore and the identity mappings say exactly what the repository says,
+adding, replacing and removing, so an environment that has been running for
+weeks can be brought back in step without the wipe that would also take the
+wallet-backend databases with it.
 """
 import argparse
 import json
@@ -96,6 +103,106 @@ def spocp_subject(rules: list) -> str:
     sys.exit("no SPOCP rule with a concrete subject for /api/v1/* in the rendered api_auth block")
 
 
+def sync_identity_mappings(target: "Target", path: Path, dry_run: bool = False) -> None:
+    """PID-authenticated issuance resolves the holder through these, so a
+    mapping that lags the fixtures fails with "no documents" - pointing at the
+    documents, which are fine. Imported only into an empty datastore, like
+    them."""
+    wanted = {m["authentic_source_person_id"]: m
+              for entries in json.loads(path.read_text()).values() for m in entries}
+    have = {m["authentic_source_person_id"]: m for m in
+            target.request("GET", "/api/v1/identity/mapping/search", query={"limit": 1000})["data"]}
+
+    add = [k for k in wanted if k not in have]
+    changed = [k for k in wanted
+               if k in have and have[k].get("attributes") != wanted[k]["attributes"]]
+    for person_id in add:
+        print(f"  + mapping   {person_id}")
+    for person_id in changed:
+        print(f"  ~ mapping   {person_id}")
+    if dry_run or not (add or changed):
+        return
+    for person_id in changed:
+        m = wanted[person_id]
+        target.request("PUT", "/api/v1/identity/mapping", body={
+            "authentic_source": m["authentic_source"],
+            "authentic_source_person_id": person_id,
+            "attributes": m["attributes"]})
+    for person_id in add:
+        m = wanted[person_id]
+        target.request("POST", "/api/v1/identity/mapping", body={
+            "authentic_source": m["authentic_source"],
+            "authentic_source_person_id": person_id,
+            "attributes": m["attributes"]})
+    print(f"mappings: {len(add)} added, {len(changed)} updated")
+
+
+def sync(target: "Target", fixtures: Path, scopes: list = None, dry_run: bool = False) -> None:
+    """Make the datastore hold exactly what the fixtures say.
+
+    vc-apigw imports bootstrapping documents only into an EMPTY datastore, so
+    a redeploy never updates an environment that already holds data - the
+    documents drift from the repository and nothing says so. This closes that
+    gap without clearing the environment, which would take the wallet-backend
+    databases (real users, real credentials) with it.
+    """
+    mappings = fixtures / "identity_mappings.json"
+    # Narrowing to some scopes leaves the mappings alone: they are shared by
+    # every scope, so a partial view is not something to reconcile against.
+    if not scopes and mappings.exists():
+        sync_identity_mappings(target, mappings, dry_run)
+
+    wanted = {}
+    for path in sorted(fixtures.glob("*.json")):
+        if path.stem == "identity_mappings":
+            continue
+        if scopes and path.stem not in scopes:
+            continue
+        for holder, doc in json.loads(path.read_text()).items():
+            wanted[(doc["meta"]["scope"], doc["meta"]["document_id"])] = (holder, doc)
+
+    have = {}
+    for d in target.request("GET", "/api/v1/datastore/search", query={"limit": 1000})["data"]:
+        meta = d["meta"]
+        if scopes and meta["scope"] not in scopes:
+            continue
+        have[(meta["scope"], meta["document_id"])] = d
+
+    add = [k for k in wanted if k not in have]
+    gone = [k for k in have if k not in wanted]
+    same = [k for k in wanted if k in have]
+    changed = [k for k in same
+               if have[k].get("document_data") != wanted[k][1]["document_data"]
+               or have[k].get("identity_mapping_ids") != wanted[k][1]["identity_mapping_ids"]]
+
+    print(f"{len(add)} to add, {len(changed)} to replace, {len(gone)} to remove, "
+          f"{len(same) - len(changed)} already current")
+    for scope, doc_id in add:
+        print(f"  + {scope:10} {doc_id}")
+    for scope, doc_id in changed:
+        print(f"  ~ {scope:10} {doc_id}")
+    for scope, doc_id in gone:
+        print(f"  - {scope:10} {doc_id}")
+    if dry_run:
+        print("(dry run, nothing sent)")
+        return
+
+    for key in changed:
+        _, doc = wanted[key]
+        target.request("PUT", "/api/v1/datastore", body=doc)
+    # The bulk body is a map keyed by holder, so it can only carry one
+    # document per holder - which a bootstrapping file, one scope per file,
+    # always satisfies. Send one call per scope for the same reason.
+    for scope in dict.fromkeys(scope for scope, _ in add):
+        batch = {wanted[k][0]: wanted[k][1] for k in add if k[0] == scope}
+        target.request("POST", "/api/v1/datastore/bulk", body={"documents": batch})
+    for scope, doc_id in gone:
+        meta = have[(scope, doc_id)]["meta"]
+        target.request("DELETE", "/api/v1/datastore",
+                       body={"authentic_source": meta["authentic_source"], "scope": scope, "document_id": doc_id})
+    print(f"done: {len(add)} added, {len(changed)} replaced, {len(gone)} removed")
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--env", help="named Fly environment (default: the local compose stack)")
@@ -107,6 +214,10 @@ def main(argv=None) -> int:
     p.add_argument("--limit", type=int, default=200)
     p = sub.add_parser("upload", help="bulk-upload a fixtures/vc-bootstrapping/<scope>.json file")
     p.add_argument("file", type=Path)
+    p = sub.add_parser("sync", help="make the datastore match fixtures/vc-bootstrapping (add, replace, remove)")
+    p.add_argument("--dir", type=Path, default=Path("fixtures/vc-bootstrapping"))
+    p.add_argument("--scope", action="append", help="limit to these scopes (repeatable)")
+    p.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
 
     target = Target(args.env, args.url)
@@ -117,6 +228,8 @@ def main(argv=None) -> int:
         for d in docs:
             print(f"{d['meta']['scope']:12} {d['meta']['document_id']:45} {','.join(d.get('identity_mapping_ids', []))}")
         print(f"{len(docs)} document(s)", file=sys.stderr)
+    elif args.cmd == "sync":
+        sync(target, args.dir, args.scope, args.dry_run)
     elif args.cmd == "upload":
         documents = json.loads(args.file.read_text())
         reply = target.request("POST", "/api/v1/datastore/bulk", body={"documents": documents})

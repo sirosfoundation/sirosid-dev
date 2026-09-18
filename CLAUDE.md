@@ -397,14 +397,29 @@ runs with every document - or, when the environment holds data worth
 keeping, add just the new documents without a wipe:
 
 ```bash
-make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]
+make datastore-sync DRY_RUN=yes [ENV=<name>]     # what would change
+make datastore-sync [ENV=<name>]                 # make it match the fixtures
 make datastore-search SCOPE=<scope> [ENV=<name>]
 ```
 
-(`scripts/datastore.py`; a bootstrapping file is already in the bulk
-endpoint's request shape.) Bit the EU Business Wallet types
-(`ebw_oid`/`eucc`/`eu_poa`, all PID-authenticated datastore types) on gdc,
-2026-09-10; `iban_ov` was added to gdc this way on 2026-09-12.
+`datastore-sync` reconciles the whole of `fixtures/vc-bootstrapping` -
+documents added, replaced and removed, plus `identity_mappings.json`, which
+the same importer skips and whose drift fails issuance with "no documents",
+pointing at the documents rather than at the mapping. `SCOPE=` narrows it to
+one type (and then leaves the shared mappings alone). `make datastore-upload
+FILE=...` still adds a single file's documents, and is the right thing when
+the environment holds documents you deliberately don't want reconciled away.
+
+One trap if calling the API directly: the bulk endpoint's body is a map keyed
+by holder, so one call can only carry one document per holder - fine for a
+bootstrapping file, one scope per file, and the reason `datastore-sync` sends
+one call per scope.
+
+The import gap bit the EU Business Wallet types (`ebw_oid`/`eucc`/`eu_poa`,
+all PID-authenticated datastore types) on gdc, 2026-09-10; `iban_ov` was
+added to gdc this way on 2026-09-12, and on 2026-09-18 a `datastore-sync`
+brought gdc up to the reworked fixtures (12 documents added, 10 replaced, 7
+renamed away, 3 identity mappings given the birth dates the PID match needs).
 
 **vc-apigw's `/api/v1/*` (datastore, identity mappings) answers 401 to a
 plain request - or, before 2026-09-15, answered anything to anyone:** the

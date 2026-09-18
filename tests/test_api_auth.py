@@ -91,5 +91,104 @@ class SPOCPSubject(unittest.TestCase):
             datastore.spocp_subject(["(vc (service *)(method *)(path /api/v1/*)(subject *)(authentic_source *)(scope *))"])
 
 
+class FakeTarget:
+    """Records what `sync` would send, and answers searches from a fixed state."""
+
+    def __init__(self, documents=(), mappings=()):
+        self.documents = list(documents)
+        self.mappings = list(mappings)
+        self.sent = []
+
+    def request(self, method, path, body=None, query=None):
+        self.sent.append((method, path, body))
+        if path == "/api/v1/datastore/search":
+            return {"data": self.documents}
+        if path == "/api/v1/identity/mapping/search":
+            return {"data": self.mappings}
+        return None
+
+
+def document(scope, doc_id, data=None, mappings=("alice-001",)):
+    return {"meta": {"scope": scope, "document_id": doc_id, "authentic_source": "mini-oidc"},
+            "identity_mapping_ids": list(mappings), "document_data": data or {"given_name": "Alice"}}
+
+
+class DatastoreSync(unittest.TestCase):
+    """`sync` closes the gap left by vc-apigw importing only into an EMPTY
+    datastore: an environment that already holds data never picks up a fixture
+    change, and nothing says so."""
+
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp())
+
+    def write(self, scope, docs):
+        (self.tmp / f"{scope}.json").write_text(json.dumps(docs))
+
+    def test_one_bulk_call_per_scope(self):
+        # The bulk body is a map keyed by holder, so a single call spanning two
+        # scopes silently drops one of a holder's documents.
+        self.write("mdl", {"alice-001": document("mdl", "mdl-alice")})
+        self.write("pid_1_8", {"alice-001": document("pid_1_8", "pid-alice")})
+        target = FakeTarget()
+        datastore.sync(target, self.tmp)
+        bulks = [b for m, p, b in target.sent if p == "/api/v1/datastore/bulk"]
+        self.assertEqual(len(bulks), 2, "one bulk call per scope, or a holder loses a document")
+        uploaded = {d["meta"]["document_id"] for b in bulks for d in b["documents"].values()}
+        self.assertEqual(uploaded, {"mdl-alice", "pid-alice"})
+
+    def test_replaces_changed_and_removes_unwanted(self):
+        self.write("mdl", {"alice-001": document("mdl", "mdl-alice", {"given_name": "Alice"})})
+        target = FakeTarget(documents=[
+            document("mdl", "mdl-alice", {"given_name": "Helen"}),   # drifted
+            document("mdl", "mdl-gone"),                             # renamed away
+        ])
+        datastore.sync(target, self.tmp)
+        self.assertIn(("PUT", "/api/v1/datastore", document("mdl", "mdl-alice")), target.sent)
+        self.assertIn(("DELETE", "/api/v1/datastore",
+                       {"authentic_source": "mini-oidc", "scope": "mdl", "document_id": "mdl-gone"}),
+                      target.sent)
+
+    def test_current_datastore_is_left_alone(self):
+        self.write("mdl", {"alice-001": document("mdl", "mdl-alice")})
+        target = FakeTarget(documents=[document("mdl", "mdl-alice")])
+        datastore.sync(target, self.tmp)
+        self.assertEqual([p for _, p, _ in target.sent], ["/api/v1/datastore/search"])
+
+    def test_dry_run_sends_nothing(self):
+        self.write("mdl", {"alice-001": document("mdl", "mdl-alice")})
+        target = FakeTarget()
+        datastore.sync(target, self.tmp, dry_run=True)
+        self.assertEqual([m for m, _, _ in target.sent], ["GET"])
+
+    def test_identity_mappings_are_reconciled_too(self):
+        # A mapping that lags the fixtures fails issuance with "no documents",
+        # which points at the documents rather than at the mapping.
+        (self.tmp / "identity_mappings.json").write_text(json.dumps({
+            "alice-001": [{"authentic_source_person_id": "alice-001", "authentic_source": "mini-oidc",
+                           "attributes": {"given_name": "Alice", "birth_date": "1990-01-15"}}],
+            "bob-002": [{"authentic_source_person_id": "bob-002", "authentic_source": "mini-oidc",
+                         "attributes": {"given_name": "Bob"}}],
+        }))
+        target = FakeTarget(mappings=[{"authentic_source_person_id": "alice-001",
+                                       "authentic_source": "mini-oidc",
+                                       "attributes": {"given_name": "Alice"}}])
+        datastore.sync(target, self.tmp)
+        writes = [(m, b) for m, p, b in target.sent if p == "/api/v1/identity/mapping"]
+        self.assertEqual([m for m, _ in writes], ["PUT", "POST"], "update alice, create bob")
+        self.assertEqual(writes[0][1]["attributes"]["birth_date"], "1990-01-15")
+        self.assertEqual(writes[1][1]["authentic_source_person_id"], "bob-002")
+
+    def test_scope_filter_skips_identity_mappings(self):
+        # --scope narrows to one type; the mappings are shared by all of them,
+        # so a narrowed run must not judge them against a partial view.
+        self.write("mdl", {"alice-001": document("mdl", "mdl-alice")})
+        self.write("pid_1_8", {"alice-001": document("pid_1_8", "pid-alice")})
+        target = FakeTarget(documents=[document("pid_1_8", "pid-other")])
+        datastore.sync(target, self.tmp, scopes=["mdl"])
+        self.assertNotIn("/api/v1/identity/mapping/search", [p for _, p, _ in target.sent])
+        self.assertNotIn("DELETE", [m for m, _, _ in target.sent],
+                         "a document outside the named scopes must not be removed")
+
+
 if __name__ == "__main__":
     unittest.main()

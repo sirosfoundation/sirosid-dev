@@ -1447,6 +1447,9 @@ datastore-upload: ## Add bootstrapping documents to a running environment withou
 	@test -n "$(FILE)" || { echo "usage: make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]"; exit 2; }
 	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") upload "$(FILE)"
 
+datastore-sync: ## Make a running environment's datastore and identity mappings match fixtures/vc-bootstrapping (DRY_RUN=yes to preview, SCOPE=<scope> to narrow, ENV=<name> for a Fly environment)
+	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") sync $(if $(SCOPE),--scope "$(SCOPE)") $(if $(DRY_RUN),--dry-run)
+
 # =============================================================================
 # R2PS Service
 # =============================================================================
