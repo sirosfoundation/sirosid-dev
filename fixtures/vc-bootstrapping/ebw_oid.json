@@ -43,14 +43,14 @@
     "meta": {
       "authentic_source": "mini-oidc",
       "scope": "ebw_oid",
-      "document_id": "document_id_ebw_oid_sophie-013",
+      "document_id": "document_id_ebw_oid_sophie-013-full",
       "created_at": "0001-01-01T00:00:00Z"
     },
     "identity_mapping_ids": [
       "sophie-013"
     ],
     "document_data": {
-      "id": "FRRCS.Lyon.B987654321",
+      "id": "FRRCS.B987654321",
       "name": "Transport Dubois SARL",
       "attestation_legal_category": "PUB-EAA",
       "issuing_authority": "Greffe du Tribunal de Commerce de Lyon",

@@ -10,23 +10,23 @@
       "alice-001"
     ],
     "document_data": {
-      "age_birth_year": 1996,
-      "age_in_years": 30,
+      "age_birth_year": 1990,
+      "age_in_years": 36,
       "age_over_18": true,
       "age_over_21": true,
       "age_over_65": false,
-      "birth_place": "Tulegatan 11",
-      "document_number": "doc-mdl-mirren-authentic_source_person_id_100",
+      "birth_place": "Stockholm",
+      "document_number": "doc-mdl-wonderland-authentic_source_person_id_100",
       "expiry_date": "2033-01-01",
-      "family_name": "Mirren",
-      "given_name": "Helen",
+      "family_name": "Wonderland",
+      "given_name": "Alice",
       "issuing_authority": "SUNET",
       "issuing_country": "SE",
-      "issuing_jurisdiction": "Stockholm",
-      "resident_address": "Tulegatan 11, Stockholm",
+      "issuing_jurisdiction": "SE-AB",
+      "resident_address": "Tulegatan 11, 113 53 Stockholm",
       "resident_city": "Stockholm",
       "resident_country": "SE",
-      "resident_postal_code": "11353",
+      "resident_postal_code": "113 53",
       "resident_state": "Stockholm",
       "sex": 0,
       "driving_privileges": [
@@ -37,7 +37,7 @@
         }
       ],
       "un_distinguishing_sign": "S",
-      "birth_date": "1996-01-30",
+      "birth_date": "1990-01-15",
       "portrait": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDqqKKK0EFFFFABRRRQAUUUUAf/2Q==",
       "administrative_number": "pan-authentic_source_person_id_100",
       "nationalities": [
@@ -57,27 +57,27 @@
       "bob-002"
     ],
     "document_data": {
-      "age_birth_year": 1983,
-      "age_in_years": 42,
+      "age_birth_year": 1985,
+      "age_in_years": 41,
       "age_over_18": true,
       "age_over_21": true,
       "age_over_65": false,
-      "birth_place": "Tulegatan 11",
-      "document_number": "doc-mdl-momoa-authentic_source_person_id_101",
+      "birth_place": "Göteborg",
+      "document_number": "doc-mdl-builder-authentic_source_person_id_101",
       "expiry_date": "2033-01-01",
-      "family_name": "Momoa",
-      "given_name": "Jason",
+      "family_name": "Builder",
+      "given_name": "Bob",
       "issuing_authority": "SUNET",
       "issuing_country": "SE",
-      "issuing_jurisdiction": "Stockholm",
+      "issuing_jurisdiction": "SE-O",
       "nationalities": [
         "SE"
       ],
-      "resident_address": "Tulegatan 11, Stockholm",
-      "resident_city": "Stockholm",
+      "resident_address": "Kungsportsavenyn 22, 411 36 Göteborg",
+      "resident_city": "Göteborg",
       "resident_country": "SE",
-      "resident_postal_code": "11353",
-      "resident_state": "Stockholm",
+      "resident_postal_code": "411 36",
+      "resident_state": "Västra Götaland",
       "sex": 0,
       "driving_privileges": [
         {
@@ -87,7 +87,7 @@
         }
       ],
       "un_distinguishing_sign": "S",
-      "birth_date": "1983-08-20",
+      "birth_date": "1985-06-20",
       "portrait": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDqqKKK0EFFFFABRRRQAUUUUAf/2Q==",
       "administrative_number": "pan-authentic_source_person_id_101",
       "issue_date": "2024-01-01"
@@ -97,47 +97,64 @@
     "meta": {
       "authentic_source": "mini-oidc",
       "scope": "mdl",
-      "document_id": "document_id_mdl_carol-003",
+      "document_id": "document_id_mdl_carol-003-full",
       "created_at": "0001-01-01T00:00:00Z"
     },
     "identity_mapping_ids": [
       "carol-003"
     ],
     "document_data": {
-      "age_birth_year": 1988,
-      "age_in_years": 37,
+      "age_birth_year": 1978,
+      "age_in_years": 47,
       "age_over_18": true,
       "age_over_21": true,
       "age_over_65": false,
-      "birth_place": "Tulegatan 11",
-      "document_number": "doc-mdl-oldman-authentic_source_person_id_102",
+      "birth_place": "Malmö",
+      "document_number": "doc-mdl-danvers-authentic_source_person_id_102",
       "expiry_date": "2033-01-01",
-      "family_name": "Oldman",
-      "given_name": "Gary",
+      "family_name": "Danvers",
+      "given_name": "Carol",
       "issuing_authority": "SUNET",
       "issuing_country": "SE",
-      "issuing_jurisdiction": "Stockholm",
-      "resident_address": "Tulegatan 11, Stockholm",
-      "resident_city": "Stockholm",
+      "issuing_jurisdiction": "SE-M",
+      "resident_address": "Stortorget 7, 211 34 Malmö",
+      "resident_city": "Malmö",
       "resident_country": "SE",
-      "resident_postal_code": "11353",
-      "resident_state": "Stockholm",
+      "resident_postal_code": "211 34",
+      "resident_state": "Skåne",
       "sex": 0,
       "driving_privileges": [
         {
           "vehicle_category_code": "B",
           "issue_date": "2024-01-01",
-          "expiry_date": "2033-01-01"
+          "expiry_date": "2033-01-01",
+          "codes": [
+            {
+              "code": "01",
+              "sign": "=",
+              "value": "corrective lenses"
+            }
+          ]
         }
       ],
       "un_distinguishing_sign": "S",
-      "birth_date": "1988-09-09",
+      "birth_date": "1978-11-03",
       "portrait": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDqqKKK0EFFFFABRRRQAUUUUAf/2Q==",
       "administrative_number": "pan-authentic_source_person_id_102",
       "nationalities": [
-        "SE"
+        "SE",
+        "US"
       ],
-      "issue_date": "2024-01-01"
+      "issue_date": "2024-01-01",
+      "height": 168,
+      "weight": 62,
+      "eye_colour": "blue",
+      "hair_colour": "blond",
+      "portrait_capture_date": "2024-01-01T09:15:00Z",
+      "family_name_national_character": "Danvers",
+      "given_name_national_character": "Carol",
+      "signature_usual_mark": "/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==",
+      "pseudonym_seed": "Y2Fyb2wtMDAzLXBzZXVkb255bS1zZWVkLTAwMDAwMA=="
     }
   }
 }

@@ -36,7 +36,10 @@ _shared: &shared
   - path: common.credential_metadata
     reason: "vctm_file_path/mddl_file_path now /vctms/<scope>.json (chart mount point); doctype is newly carried through"
   - path: apigw.data_sources.datastore.import.file_paths
-    reason: "bootstrapping documents mount at /documents, not /bootstrapping"
+    reason: >-
+      bootstrapping documents mount at /documents, not /bootstrapping - and
+      the list is one entry longer since 2026-09-18: siros_id.json, without
+      which the declared siros_id type had no documents at all.
   - path: apigw.identity_mapping_import.file_paths
     reason: "as above"
   - path: verifier.inbound.openid4vp.presentation_requests_dir
@@ -71,9 +74,11 @@ _shared: &shared
   - path: apigw.data_sources.datastore.scopes.siros_id
     reason: >-
       features.credentialTypes is 1:1 scope-to-type, so every declared type
-      gets a data source. siros_id is issued through the facetec flow's API
-      rather than a data source, so this scope resolves nothing - additive,
-      not breaking.
+      gets a data source. The goldens predate siros_id. It really is
+      datastore-sourced (an earlier note here claimed the facetec flow
+      supplied it instead, which was wrong: nothing in this repo fed the
+      scope, so every request for it failed with "no document found") - since
+      2026-09-18 fixtures/vc-bootstrapping/siros_id.json backs it.
 
   # --- api_server.tls / grpc tls --------------------------------------------
   - path: apigw.api_server.tls

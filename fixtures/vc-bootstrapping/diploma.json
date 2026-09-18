@@ -787,7 +787,7 @@
     "meta": {
       "authentic_source": "mini-oidc",
       "scope": "diploma",
-      "document_id": "document_id_diploma_carol-003",
+      "document_id": "document_id_diploma_carol-003-full",
       "created_at": "0001-01-01T00:00:00Z"
     },
     "identity_mapping_ids": [

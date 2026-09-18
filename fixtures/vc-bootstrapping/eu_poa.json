@@ -50,7 +50,7 @@
     "meta": {
       "authentic_source": "mini-oidc",
       "scope": "eu_poa",
-      "document_id": "document_id_eu_poa_sophie-013",
+      "document_id": "document_id_eu_poa_sophie-013-full",
       "created_at": "0001-01-01T00:00:00Z"
     },
     "identity_mapping_ids": [
@@ -61,7 +61,7 @@
       "issuing_authority": "Chambre des Notaires du Rhône",
       "issuing_country": "FR",
       "date_of_execution": "2026-01-12",
-      "euid_reference": "FRRCS.Lyon.B987654321",
+      "euid_reference": "FRRCS.B987654321",
       "principal_full_name": "Pierre Dubois",
       "principal_date_of_birth": "1960-04-02",
       "principal_place_of_birth": "Villeurbanne",

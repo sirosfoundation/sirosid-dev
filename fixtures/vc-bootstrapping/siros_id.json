@@ -1,0 +1,62 @@
+{
+  "alice-001": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "siros_id",
+      "document_id": "document_id_siros_id_alice-001",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "alice-001"
+    ],
+    "document_data": {
+      "given_name": "Alice",
+      "family_name": "Wonderland",
+      "birth_date": "1990-01-15",
+      "document_number": "SIROS-ID-0000000001",
+      "issuing_country": "SE",
+      "expiry_date": "2031-01-15"
+    }
+  },
+  "bob-002": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "siros_id",
+      "document_id": "document_id_siros_id_bob-002",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "bob-002"
+    ],
+    "document_data": {
+      "given_name": "Bob",
+      "family_name": "Builder",
+      "birth_date": "1985-06-20",
+      "document_number": "SIROS-ID-0000000002",
+      "issuing_country": "SE",
+      "expiry_date": "2031-06-20"
+    }
+  },
+  "carol-003": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "siros_id",
+      "document_id": "document_id_siros_id_carol-003-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "carol-003"
+    ],
+    "document_data": {
+      "given_name": "Carol",
+      "family_name": "Danvers",
+      "birth_date": "1978-11-03",
+      "document_number": "SIROS-ID-0000000003",
+      "issuing_country": "SE",
+      "expiry_date": "2031-11-03",
+      "nationality": "SE",
+      "sex": "0",
+      "portrait": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDqqKKK0EFFFFABRRRQAUUUUAf/2Q=="
+    }
+  }
+}

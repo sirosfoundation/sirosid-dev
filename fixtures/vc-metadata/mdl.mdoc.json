@@ -52,6 +52,8 @@
       "age_in_years": { "value_type": "uint" },
       "age_birth_year": { "value_type": "uint" },
       "age_over_18": { "value_type": "bool" },
+      "age_over_21": { "value_type": "bool" },
+      "age_over_65": { "value_type": "bool" },
       "issuing_jurisdiction": { "value_type": "tstr" },
       "nationalities": { "value_type": "array" },
       "resident_city": { "value_type": "tstr" },
