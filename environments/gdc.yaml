@@ -75,7 +75,7 @@ images:
   # no-matching-credential fast fail against the two SDKs that now send it
   # (siros-sdk-kotlin #192, siros-sdk-swift #149, both merged). Back to a
   # published tag once #336 merges and releases.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1789710029
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1789722487
 
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
 # mdoc issuer - trusted here so a wallet can receive a credential from it
@@ -126,11 +126,29 @@ trusted_verifiers:
   # skips chain validation and no reader-CA root is required.
   - x509_hash:f1drGLOIT4kDBlJVsD-_33igSf5uwRnq3yO2NvcXEW0
   # Accredify's ACRA UAT verifier, added 2026-09-17 for interop testing.
-  # Plain origin, which is what an unsigned DC API request and an
-  # x509_san_dns:-signed request both reduce to. If its signed requests turn
-  # out to use the x509_hash scheme instead, the PDP's denial will quote the
-  # exact string to add here alongside this one; if they use x509_san_dns:
-  # with a self-signed reader CA, that root needs adding below as well.
+  #
+  # It identifies itself with did:web, confirmed from its own DID document at
+  # https://acra.uat.accredify.io/.well-known/did.json (id
+  # "did:web:acra.uat.accredify.io", one JsonWebKey2020 verification method
+  # "#jwk-1"). That is the string the whitelist has to carry: NormalizeSubjectID
+  # rewrites only x509_san_dns:/x509_san_uri: subjects, and leaves a did: one
+  # exactly as it arrives. The key behind it is resolved by the did:web
+  # registry enabled under `values.pdp.extraRegistries` below - the whitelist
+  # authorizes the identity, the registry supplies its keys, and neither
+  # substitutes for the other.
+  - did:web:acra.uat.accredify.io
+  # And the same identity in the form their requests actually carry. OpenID4VP
+  # 1.0 prefixes the client_id with its scheme, and go-wallet-backend passes
+  # that string to the PDP verbatim (SubjectID: authReq.ClientID), while
+  # go-trust's NormalizeSubjectID rewrites only x509_san_dns:/x509_san_uri:
+  # and leaves this one untouched - so the bare DID above never matches a real
+  # request. Confirmed against the deployed PDP: the bare form is ALLOW, the
+  # prefixed form was DENY until this entry existed. The tidier fix is for
+  # NormalizeSubjectID to strip decentralized_identifier: too; until it does,
+  # both forms belong here.
+  - decentralized_identifier:did:web:acra.uat.accredify.io
+  # The plain origin as well, which is what an unsigned DC API request reduces
+  # to - that path carries no signing certificate and so no DID.
   - https://acra.uat.accredify.io
 trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
