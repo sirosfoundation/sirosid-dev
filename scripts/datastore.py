@@ -103,6 +103,50 @@ def spocp_subject(rules: list) -> str:
     sys.exit("no SPOCP rule with a concrete subject for /api/v1/* in the rendered api_auth block")
 
 
+def offer(target: "Target", scope: str, document_id: str = None, authentic_source: str = None,
+          qr: bool = False) -> None:
+    """A pre-authorized credential offer for one datastore document.
+
+    This is what cross-device issuance is made of: the offer carries its own
+    pre-authorized code, so the wallet that scans it needs no browser session
+    and no OIDC login on the device holding it. It works for the
+    PID-authenticated types too - the document is chosen here rather than
+    resolved from a presented PID.
+    """
+    docs = target.request("GET", "/api/v1/datastore/search",
+                          query={"scope": scope, "limit": 200})["data"]
+    if not docs:
+        sys.exit(f"no documents in scope {scope} - `search` to see what is there")
+    if document_id:
+        match = [d for d in docs if d["meta"]["document_id"] == document_id]
+        if not match:
+            sys.exit(f"{document_id} is not in scope {scope}; it has: "
+                     + ", ".join(d["meta"]["document_id"] for d in docs))
+    elif len(docs) == 1:
+        match = docs
+    else:
+        match = [d for d in docs if d["meta"]["document_id"].endswith("-full")]
+        if not match:
+            sys.exit(f"scope {scope} has {len(docs)} documents and none marked -full; "
+                     f"name one with --document-id")
+    doc = match[0]
+    meta = doc["meta"]
+
+    reply = target.request("POST", "/api/v1/datastore/preauth_offer", body={
+        "authentic_source": authentic_source or meta["authentic_source"],
+        "scope": scope,
+        "document_id": meta["document_id"]})
+    url = reply["credential_offer_url"]
+    print(f"{scope} / {meta['document_id']} ({meta['authentic_source']})", file=sys.stderr)
+    print(url)
+    if qr:
+        import subprocess
+        try:
+            subprocess.run(["qrencode", "-t", "UTF8", url], check=True)
+        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+            print(f"(no QR: {e})", file=sys.stderr)
+
+
 def sync_identity_mappings(target: "Target", path: Path, dry_run: bool = False) -> None:
     """PID-authenticated issuance resolves the holder through these, so a
     mapping that lags the fixtures fails with "no documents" - pointing at the
@@ -214,6 +258,11 @@ def main(argv=None) -> int:
     p.add_argument("--limit", type=int, default=200)
     p = sub.add_parser("upload", help="bulk-upload a fixtures/vc-bootstrapping/<scope>.json file")
     p.add_argument("file", type=Path)
+    p = sub.add_parser("offer", help="mint a pre-authorized credential offer for one document (cross-device issuance)")
+    p.add_argument("--scope", required=True)
+    p.add_argument("--document-id", help="default: the scope's only document, or its -full one")
+    p.add_argument("--authentic-source", help="default: read from the document")
+    p.add_argument("--qr", action="store_true", help="also print the offer as a QR code (needs qrencode)")
     p = sub.add_parser("sync", help="make the datastore match fixtures/vc-bootstrapping (add, replace, remove)")
     p.add_argument("--dir", type=Path, default=Path("fixtures/vc-bootstrapping"))
     p.add_argument("--scope", action="append", help="limit to these scopes (repeatable)")
@@ -228,6 +277,8 @@ def main(argv=None) -> int:
         for d in docs:
             print(f"{d['meta']['scope']:12} {d['meta']['document_id']:45} {','.join(d.get('identity_mapping_ids', []))}")
         print(f"{len(docs)} document(s)", file=sys.stderr)
+    elif args.cmd == "offer":
+        offer(target, args.scope, args.document_id, args.authentic_source, args.qr)
     elif args.cmd == "sync":
         sync(target, args.dir, args.scope, args.dry_run)
     elif args.cmd == "upload":

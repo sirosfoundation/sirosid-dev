@@ -421,6 +421,23 @@ added to gdc this way on 2026-09-12, and on 2026-09-18 a `datastore-sync`
 brought gdc up to the reworked fixtures (12 documents added, 10 replaced, 7
 renamed away, 3 identity mappings given the birth dates the PID match needs).
 
+**Issuing to a wallet on another device (no browser on the phone, no OIDC
+login there):** vc-apigw mints a pre-authorized credential offer for any
+datastore document, and the offer carries its own code, so the wallet that
+scans it needs no session of its own:
+
+```bash
+make datastore-offer SCOPE=pid_1_8 QR=yes [DOCUMENT_ID=<id>] [ENV=<name>]
+```
+
+It prints an `openid-credential-offer://` URL and, with `QR=yes`, the QR the
+SDK sample app's scanner reads (it registers that scheme). With no
+`DOCUMENT_ID` it takes the scope's only document, or its `-full` one. This
+works for the PID-authenticated types too: the document is named here rather
+than resolved from a presented PID, which is the whole point of the
+pre-authorized grant. The code expires 5 minutes after minting, so generate
+it when the phone is in your hand.
+
 **vc-apigw's `/api/v1/*` (datastore, identity mappings) answers 401 to a
 plain request - or, before 2026-09-15, answered anything to anyone:** the
 admin API takes a Bearer JWT. The chart renders `api_server.api_auth` (JWKS

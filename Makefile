@@ -486,6 +486,8 @@ help: ## Show this help
 	@echo "  make fly-down ENV=<name> KEEP_DATA=yes  Tear down but keep the Mongo apps + volumes for the next fly-up"
 	@echo "  make datastore-search [SCOPE=<scope>] [ENV=<name>]  List vc-apigw's datastore documents (authenticated admin API)"
 	@echo "  make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]  Add documents to a live environment without a wipe"
+	@echo "  make datastore-sync [DRY_RUN=yes] [SCOPE=<scope>] [ENV=<name>]  Make a live environment's documents and identity mappings match the fixtures"
+	@echo "  make datastore-offer SCOPE=<scope> [DOCUMENT_ID=<id>] [QR=yes] [ENV=<name>]  Pre-authorized credential offer for issuing to a wallet on another device"
 	@echo "  make datastore-token [ENV=<name>]    Print a short-lived Bearer token for vc-apigw's /api/v1"
 	@echo ""
 	@echo "$(GREEN)Fly.io Targets:$(NC)  (named, shareable environments - see Fly.io Options below)"
@@ -1446,6 +1448,10 @@ datastore-search: ## List vc-apigw datastore documents (SCOPE=<scope> to filter,
 datastore-upload: ## Add bootstrapping documents to a running environment without a wipe: FILE=fixtures/vc-bootstrapping/<scope>.json (ENV=<name> for a Fly environment)
 	@test -n "$(FILE)" || { echo "usage: make datastore-upload FILE=fixtures/vc-bootstrapping/<scope>.json [ENV=<name>]"; exit 2; }
 	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") upload "$(FILE)"
+
+datastore-offer: ## Mint a pre-authorized credential offer for cross-device issuance: SCOPE=<scope> [DOCUMENT_ID=<id>] [QR=yes] [ENV=<name>]
+	@test -n "$(SCOPE)" || { echo "usage: make datastore-offer SCOPE=<scope> [DOCUMENT_ID=<id>] [QR=yes] [ENV=<name>]"; exit 2; }
+	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") offer --scope "$(SCOPE)" $(if $(DOCUMENT_ID),--document-id "$(DOCUMENT_ID)") $(if $(QR),--qr)
 
 datastore-sync: ## Make a running environment's datastore and identity mappings match fixtures/vc-bootstrapping (DRY_RUN=yes to preview, SCOPE=<scope> to narrow, ENV=<name> for a Fly environment)
 	@python3 scripts/datastore.py $(if $(ENV),--env "$(ENV)") sync $(if $(SCOPE),--scope "$(SCOPE)") $(if $(DRY_RUN),--dry-run)
