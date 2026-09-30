@@ -12,7 +12,7 @@
 # e.g. a debug build and a Play Store upload key for the same app.
 #
 # Entries here are added ON TOP of:
-#   - the production fingerprints helm-charts/siros-id-stack already carries
+#   - the production fingerprints chart/values.yaml already carries
 #     (walletBackend.extraRpOrigins) - always included, Fly only.
 #   - .env.android (from `make android-setup`) - your own local debug build,
 #     still honored alongside this file, not replaced by it.

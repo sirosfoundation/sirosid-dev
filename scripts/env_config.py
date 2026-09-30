@@ -81,7 +81,7 @@ overrides the file's (last-one-wins, same as `images`) rather than merging -
 there's exactly one value per environment, unlike the list-typed fields
 above.
 
-`values:` is an arbitrary siros-id-stack values tree, deep-merged LAST by
+`values:` is an arbitrary chart/values.yaml-shaped values tree, deep-merged LAST by
 render-helm-config.py - after values-base.yaml, the target's own
 values-dev/values-fly.yaml, and the generated per-run overlay. It is not
 validated here; `helm template` is the validator. Everything the chart can

@@ -10,7 +10,7 @@ load one config struct via a YAML file (`--config`); Helm just renders that
 YAML into a ConfigMap instead of a hand-written file.
 
 This script renders the real chart with `helm template` (no cluster contact -
-this only needs the chart on disk, see SIROS_ID_STACK_PATH) and extracts the
+this only needs the chart on disk, see CHART_PATH) and extracts the
 ConfigMap `data` blocks for wallet-backend and pdp verbatim, so any change to
 the chart's templates/values flows into sirosid-dev automatically. The only
 hand-written logic here is the small set of rewrites that are genuinely
@@ -47,7 +47,7 @@ patch_wallet_backend() per --target.
     point values-dev.yaml uses for compose.
 
 Output goes to fixtures/rendered/ (gitignored - regenerate with
-`make render-helm-config` whenever siros-id-stack or values-dev.yaml change, or
+`make render-helm-config` whenever chart/ or values-dev.yaml change, or
 via fly-up.py for a named environment). Secrets are generated once into
 fixtures/rendered-secrets/ and reused on subsequent runs (idempotent, like
 the chart's own `lookup`-based generator) - only used for --target compose;

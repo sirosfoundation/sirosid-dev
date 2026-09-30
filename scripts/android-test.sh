@@ -167,7 +167,7 @@ do_register_issuer() {
 }
 
 do_generate_config() {
-    info "Rendering Android VC config from the siros-id-stack chart (gateway=${WAYDROID_GATEWAY})..."
+    info "Rendering Android VC config from the in-repo chart (gateway=${WAYDROID_GATEWAY})..."
     if ! command -v python3 >/dev/null 2>&1; then
         fail "python3 is required to render the vc services' config"
         exit 1
