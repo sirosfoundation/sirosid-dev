@@ -1,0 +1,336 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $hostnameVerifier := include "siros-id.hostname.verifier" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+
+{{/*
+The verifier's config.yaml body (vc's model.Cfg: common + verifier).
+
+Kept as a named template rather than inline in the ConfigMap so that
+siros-id.vc.renderConfig can parse it, deep-merge .Values.verifier.extraConfig
+over it, and re-emit it - see that helper for the merge semantics.
+
+Note that verifier.public_url is not merely an address: vc derives the
+OpenID4VP client_id from it (VerifierClientID() returns
+"x509_san_dns:<host>"), so changing it changes this verifier's identity to
+every relying party and to the PDP whitelist.
+*/}}
+{{- define "siros-id.verifier.config" -}}
+{{- $hostnameVerifier := include "siros-id.hostname.verifier" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+common:
+  {{- include "siros-id.vc.config.mongo" (list . "verifier") | nindent 2 }}
+  secret_file_path: /secrets-rendered/secrets.yaml
+  production: {{ .Values.features.production }}
+  ha:
+    enable: true
+    cache_database_name: verifier_cache
+  {{- include "siros-id.vc.config.tracing" . | nindent 2 }}
+  branding:
+    favicon_path: /branding-assets/favicon.png
+    logo_path: /branding-assets/logo.png
+  credential_metadata: {{- include "siros-id.vc.credentialMetadata" . | nindent 4 }}
+verifier:
+  public_url: https://{{ $hostnameVerifier }}
+  api_server:
+    addr: ":8080"
+  key_config:
+    private_key_path: /sign-cert/tls.key
+    chain_path: /sign-cert-chain/tls.crt
+  trust:
+    pdp_url: {{ .Values.pdp.externalUrl | quote }}
+    {{- if .Values.verifier.walletAttestation.enabled }}
+    wallet_attestation: {{- include "siros-id.vc.config.walletAttestation" .Values.verifier.walletAttestation | nindent 6 }}
+    {{- end }}
+  {{- with .Values.verifier.clientIdScheme }}
+  client_id_scheme: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.verifier.did }}
+  did: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.verifier.preferredVpFormats }}
+  preferred_vp_formats: {{- toYamlPretty . | nindent 4 }}
+  {{- end }}
+  supported_wallets:
+    {{ include "siros-id.displayName" . }}: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/cb
+    {{- range .Values.features.extraWallets }}
+    {{ .displayName | quote }}: {{ .url }}/cb
+    {{- end }}
+  inbound:
+    openid4vp:
+      token_endpoint: https://{{ $hostnameVerifier }}/token
+      {{- with .Values.verifier.presentationTimeout }}
+      presentation_timeout: {{ . }}
+      {{- end }}
+      clients:
+        "https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/":
+          type: public
+          redirect_uri: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/cb
+          scopes: {{- include "siros-id.vc.credentialScopes" . | nindent 12 }}
+        {{- range .Values.features.extraWallets }}
+        {{ .url | urlquery | quote }}:
+          type: public
+          redirect_uri: {{ .url }}/cb
+          scopes: {{- include "siros-id.vc.credentialScopes" $ | nindent 12 }}
+        {{- end }}
+      presentation_requests_dir: /pres-reqs
+      {{- with .Values.features.credentialTypes }}
+      supported_credentials:
+        {{- range $id, $data := . }}
+        - vct: {{ $data.vct | quote }}
+          scopes:
+            - {{ $id | quote }}
+        {{- end }}
+      {{- end }}
+  {{- if .Values.verifier.digitalCredentials.enabled }}
+  digital_credentials:
+    enable: true
+    use_jar: {{ .Values.verifier.digitalCredentials.useJar }}
+    {{- with .Values.verifier.digitalCredentials.preferredFormats }}
+    preferred_formats: {{- toYamlPretty . | nindent 6 }}
+    {{- end }}
+    {{- with .Values.verifier.digitalCredentials.responseMode }}
+    response_mode: {{ . | quote }}
+    {{- end }}
+    {{- if not (kindIs "invalid" .Values.verifier.digitalCredentials.allowQrFallback) }}
+    allow_qr_fallback: {{ .Values.verifier.digitalCredentials.allowQrFallback }}
+    {{- end }}
+    {{- with .Values.verifier.digitalCredentials.deepLinkScheme }}
+    deep_link_scheme: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+  {{- with .Values.verifier.zkCircuits.sources }}
+  zk_circuits:
+    sources: {{- toYamlPretty . | nindent 6 }}
+  {{- end }}
+  {{- with .Values.verifier.presets }}
+  presets: {{ toYamlPretty . | nindent 4 }}
+  {{- end }}
+  {{- if .Values.verifier.oidc_provider.enabled }}
+  outbound:
+    oidc_provider:
+      issuer: https://{{ $hostnameVerifier }}
+      subject_type: {{ .Values.verifier.oidc_provider.subjectType | default "pairwise" }}
+      enable_userinfo: {{ .Values.verifier.oidc_provider.enableUserinfo | default true }}
+      {{- range $key, $field := dict "sessionDuration" "session_duration" "codeDuration" "code_duration" "accessTokenDuration" "access_token_duration" "idTokenDuration" "id_token_duration" "refreshTokenDuration" "refresh_token_duration" }}
+      {{- with index $.Values.verifier.oidc_provider $key }}
+      {{ $field }}: {{ . }}
+      {{- end }}
+      {{- end }}
+      {{- with .Values.verifier.oidc_provider.staticClients }}
+      static_clients: {{- toYamlPretty . | nindent 8 }}
+      {{- end }}
+  {{- end }}
+{{- end -}}
+---
+{{ include "siros-id.certificate" (list . (dict "name" "verifier-client" "ou" "clients" "usages" (list "digital signature" "client auth"))) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict "name" "verifier-sign" "ou" "signers"
+  "rotationPolicy" "Never" "usages" (list "digital signature")
+  "privateKeyAlgorithm" .Values.global.certManager.credentialSigning.privateKeyAlgorithm
+  "privateKeySize" .Values.global.certManager.credentialSigning.privateKeySize "duration" "8760h")) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: verifier-pres-reqs
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  .empty: "I am here so that the configmap won't ever be empty"
+  {{- if .Values.verifier.presentationRequestTemplates }}
+  pres-reqs.yaml: |
+    templates:
+      {{- range $id, $data := .Values.verifier.presentationRequestTemplates }}
+      - id: {{ $id | quote }}
+        {{- toYamlPretty $data | nindent 8 }}
+      {{- end }}
+  {{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: verifier-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  config.yaml: | {{- include "siros-id.vc.renderConfig" (list . "siros-id.verifier.config" .Values.verifier.extraConfig) | nindent 4 }}
+  secrets.yaml.template: |
+    verifier:
+      outbound:
+        oidc_provider:
+          subject_salt: ${OIDC_PROVIDER_SUBJECT_SALT}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: verifier
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.verifier }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: verifier
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict "app.kubernetes.io/name" "verifier"
+          "otlp-collector-access" "true"
+          "mongodb-access" "true")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "verifier") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{ include "siros-id.podSecurityContext" (dict "runAsUser" 10000) | nindent 6 }}
+      resources:
+        {{- toYamlPretty .Values.resources.verifier | nindent 8 }}
+      volumes:
+        - name: main-config
+          configMap:
+            name: verifier-main
+        - name: main-secrets
+          secret:
+            secretName: verifier-main
+        - name: vctms
+          configMap:
+            name: vctms
+        - name: pres-reqs
+          configMap:
+            name: verifier-pres-reqs
+        - name: client-cert
+          secret:
+            secretName: verifier-client-cert
+        - name: sign-cert
+          secret:
+            secretName: verifier-sign-cert
+        - name: sign-cert-chain
+          emptyDir: {}
+        - name: branding
+          configMap:
+            name: branding
+        - name: branding-assets
+          emptyDir: {}
+        - name: secrets-rendered
+          emptyDir:
+            medium: Memory
+      initContainers:
+        {{- include "siros-id.certChainGenInitContainer" . | nindent 8 }}
+        - name: branding-gen
+          image: {{ .Values.images.alpine | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          volumeMounts:
+            - name: branding
+              mountPath: /branding
+            - name: branding-assets
+              mountPath: /branding-assets
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              for IMAGE in favicon logo; do
+                cat /branding/${IMAGE}DataUrl | cut -d , -f 2 \
+                | base64 -d > /branding-assets/${IMAGE}.png
+              done
+        {{- include "siros-id.secretsRendererInitContainer" (list . (dict
+          "secretName" "verifier-main"
+          "envs" (dict "OIDC_PROVIDER_SUBJECT_SALT" "oidcProviderSubjectSalt"))) | nindent 8 }}
+      containers:
+        - name: main
+          image: {{ .Values.images.verifier | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          ports:
+            - name: http-main
+              containerPort: 8080
+          {{- include "siros-id.httpProbes" (dict "path" "/health" "port" "http-main") | nindent 10 }}
+          env:
+            - name: VC_CONFIG_YAML
+              value: /main-config/config.yaml
+          volumeMounts:
+            - name: main-config
+              mountPath: /main-config
+              readOnly: true
+            - name: secrets-rendered
+              mountPath: /secrets-rendered
+              readOnly: true
+            - name: vctms
+              mountPath: /vctms
+              readOnly: true
+            - name: pres-reqs
+              mountPath: /pres-reqs
+              readOnly: true
+            - name: sign-cert
+              mountPath: /sign-cert
+              readOnly: true
+            - name: sign-cert-chain
+              mountPath: /sign-cert-chain
+              readOnly: true
+            - name: branding-assets
+              mountPath: /branding-assets
+              readOnly: true
+            - name: client-cert
+              mountPath: /client-cert
+              readOnly: true
+
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "verifier" "minAvailable" .Values.podDisruptionBudget.verifier.minAvailable)) }}
+
+---
+{{ include "siros-id.service" (list . (dict "name" "verifier" "ports" (list
+  (dict "name" "http-main" "port" 80 "targetPort" 8080)))) }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: verifier
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: verifier
+  ingress:
+    - ports:
+        - port: http-main
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otlp-collector
+      ports:
+        - port: grpc-otlp
+        - port: http-otlp
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongodb-svc
+      ports:
+        - port: 27017
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pdp
+      ports:
+        - port: http-main
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{- include "siros-id.reservedNetworks.v4" . | nindent 14 }}
+        - ipBlock:
+            cidr: "::/0"
+            except: {{- include "siros-id.reservedNetworks.v6" . | nindent 14 }}
+
+---
+{{ include "siros-id.hostnameHttpRoute" (list . (dict "name" "verifier" "hostname" $hostnameVerifier)) }}

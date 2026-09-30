@@ -1,0 +1,195 @@
+{{- if .Values.r2ps.enabled -}}
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $storeUri := .Values.r2ps.store.uri | default (printf "mongodb+srv://mongodb-svc.%s.svc.%s/%s?replicaSet=mongodb&ssl=true&authMechanism=MONGODB-X509" $ns .Values.global.clusterDomain .Values.r2ps.store.database) -}}
+---
+{{ include "siros-id.certificate" (list . (dict
+  "name" "r2ps-client" "ou" "clients" "usages" (list "digital signature" "client auth"))) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: r2ps
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  # go-r2ps-service is env-var configured; this ConfigMap carries the
+  # non-secret environment variables so they are version-controlled.
+  R2PS_LISTEN: ":8443"
+  R2PS_MODE: {{ .Values.r2ps.mode | quote }}
+  R2PS_LOG_LEVEL: {{ .Values.r2ps.logLevel | quote }}
+  R2PS_LOG_FORMAT: "json"
+  R2PS_HSM_MODULE: {{ .Values.r2ps.pkcs11.modulePath | quote }}
+  {{- with .Values.r2ps.pkcs11.tokenLabel }}
+  R2PS_HSM_TOKEN_LABEL: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.r2ps.pkcs11.slotID }}
+  R2PS_HSM_SLOT: {{ . | quote }}
+  {{- end }}
+  R2PS_HSM_POOL_SIZE: {{ .Values.r2ps.pkcs11.poolSize | quote }}
+  R2PS_HSM_TIMEOUT: {{ .Values.r2ps.hsmTimeout | quote }}
+  R2PS_MAX_ATTEMPTS: {{ .Values.r2ps.maxAttempts | quote }}
+  R2PS_LOCKOUT_DURATION: {{ .Values.r2ps.lockoutDuration | quote }}
+  R2PS_SESSION_TTL: {{ .Values.r2ps.sessionTTL | quote }}
+  R2PS_STORE_URI: {{ $storeUri | quote }}
+  R2PS_STORE_DATABASE: {{ .Values.r2ps.store.database | quote }}
+  R2PS_STORE_TLS_ENABLED: {{ .Values.r2ps.store.tlsEnabled | quote }}
+  R2PS_STORE_TLS_CA: "/client-cert/ca.crt"
+  R2PS_STORE_TLS_CERT: "/client-cert/tls.crt"
+  R2PS_STORE_TLS_KEY: "/client-cert/tls.key"
+  {{- if .Values.r2ps.adminListen }}
+  R2PS_ADMIN_LISTEN: {{ .Values.r2ps.adminListen | quote }}
+  {{- end }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: r2ps
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.r2ps }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: r2ps
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict
+          "app.kubernetes.io/name" "r2ps"
+          "mongodb-access" "true")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "r2ps") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 1000) | nindent 6 }}
+      volumes:
+        - name: r2ps-config
+          configMap:
+            name: r2ps
+        - name: r2ps-secrets
+          secret:
+            secretName: r2ps-main
+        - name: client-cert
+          secret:
+            secretName: r2ps-client-cert
+        {{- if .Values.r2ps.pkcs11.hostPath }}
+        - name: pkcs11-module
+          hostPath:
+            path: {{ .Values.r2ps.pkcs11.hostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- if .Values.r2ps.pkcs11.tokenHostPath }}
+        - name: pkcs11-tokens
+          hostPath:
+            path: {{ .Values.r2ps.pkcs11.tokenHostPath }}
+            type: DirectoryOrCreate
+        {{- end }}
+        {{- with .Values.r2ps.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: main
+          image: {{ .Values.images.r2ps | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          resources:
+            {{- toYaml .Values.resources.r2ps | nindent 12 }}
+          ports:
+            - name: http-main
+              containerPort: 8443
+            {{- if .Values.r2ps.adminListen }}
+            - name: http-admin
+              containerPort: {{ .Values.r2ps.adminListen | trimPrefix ":" | int }}
+            {{- end }}
+          {{- include "siros-id.httpProbes" (dict "path" "/healthz" "port" "http-main") | nindent 10 }}
+          envFrom:
+            - configMapRef:
+                name: r2ps
+          env:
+            - name: R2PS_HSM_PIN
+              valueFrom:
+                secretKeyRef:
+                  name: r2ps-main
+                  key: hsmPin
+            {{- with .Values.r2ps.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: r2ps-config
+              mountPath: /config
+              readOnly: true
+            - name: r2ps-secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: client-cert
+              mountPath: /client-cert
+              readOnly: true
+            {{- if .Values.r2ps.pkcs11.hostPath }}
+            - name: pkcs11-module
+              mountPath: {{ dir .Values.r2ps.pkcs11.modulePath }}
+              readOnly: true
+            {{- end }}
+            {{- if .Values.r2ps.pkcs11.tokenHostPath }}
+            - name: pkcs11-tokens
+              mountPath: /var/lib/softhsm/tokens
+            {{- end }}
+            {{- with .Values.r2ps.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "r2ps" "minAvailable" .Values.podDisruptionBudget.r2ps.minAvailable)) }}
+
+---
+{{ include "siros-id.service" (list . (dict
+  "name" "r2ps"
+  "ports" (list
+    (dict "name" "http-main" "port" 8443 "targetPort" 8443)
+  ))) }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: r2ps
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: r2ps
+  ingress:
+    - ports:
+        - port: http-main
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongodb-svc
+      ports:
+        - port: 27017
+
+{{- if .Values.r2ps.metrics.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: r2ps
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: r2ps
+  endpoints:
+    - port: http-main
+      path: /metrics
+      interval: {{ .Values.r2ps.metrics.interval | default "30s" }}
+{{- end }}
+
+{{- end }}

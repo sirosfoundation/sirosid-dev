@@ -927,8 +927,7 @@ class EnvironmentsScreen(AutoRefresh, Screen):
             fs = e.fly_summary
             lines.append(Text(f"fly: {fs['images']} image pins, {fs['trusted_issuers']} trusted issuers, "
                               f"{fs['trusted_verifiers']} trusted verifiers"
-                              + (", conformance" if fs["conformance"] else "")
-                              + (f", chart {fs['chart_ref']}" if fs["chart_ref"] else "")))
+                              + (", conformance" if fs["conformance"] else "")))
             if "_error" in e.local_options:
                 lines.append(Text(e.local_options["_error"], style="bold red"))
         elif e.name == "local":

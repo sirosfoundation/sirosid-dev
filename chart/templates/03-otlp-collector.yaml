@@ -1,0 +1,87 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{ if .Values.features.otlpCollector }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otlp-collector
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.otlpCollector }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otlp-collector
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict "app.kubernetes.io/name" "otlp-collector")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "otlp-collector") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 65530) | nindent 6 }}
+      resources:
+        {{- toYamlPretty .Values.resources.otlpCollector | nindent 8 }}
+      containers:
+        - name: main
+          image: {{ .Values.images.otlpCollector | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          ports:
+            - name: grpc-otlp
+              containerPort: 4317
+            - name: http-otlp
+              containerPort: 4318
+            - name: http-health
+              containerPort: 13133
+            - name: http-ui
+              containerPort: 16686
+          {{- include "siros-id.httpProbes" (dict "path" "/status" "port" "http-health") | nindent 10 }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otlp-collector
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  selector:
+    app.kubernetes.io/name: otlp-collector
+  {{ with .Values.global.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+  {{ end }}
+  ports:
+    - name: grpc-otlp
+      port: 4317
+      targetPort: 4317
+    - name: http-otlp
+      port: 4318
+      targetPort: 4318
+    - name: http-ui
+      port: 16686
+      targetPort: 16686
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otlp-collector
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otlp-collector
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              otlp-collector-access: "true"
+      ports:
+        - port: grpc-otlp
+        - port: http-otlp
+{{ end }}

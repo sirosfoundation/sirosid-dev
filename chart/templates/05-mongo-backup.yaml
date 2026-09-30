@@ -1,0 +1,136 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- if .Values.mongoBackup.enabled -}}
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "mongo-backup-client" "ou" "clients" "usages" (list "digital signature" "client auth"))) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongo-backup-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  backupPrefix: {{ $ns | quote }}
+  mongoUri: {{ include "siros-id.mongoUri" (list . "") | quote }}
+  agePublicKeys: | {{- .Values.mongoBackup.agePublicKeys | nindent 4 }}
+  s3BucketName: {{ .Values.mongoBackup.s3BucketName | quote }}
+  s3AccessKey: {{ .Values.mongoBackup.s3AccessKey | quote }}
+  s3CmdConfig: |
+    [default]
+    host_base = {{ .Values.mongoBackup.s3HostBase }}
+    host_bucket = {{ .Values.mongoBackup.s3HostBucket }}
+
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-backup
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  schedule: "* */12 * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Replace
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          {{- include "siros-id.labels" (list . (dict
+              "app.kubernetes.io/name" "mongo-backup" "mongodb-access" "true")) | nindent 10 }}
+        spec:
+          {{- include "siros-id.imagePullSecrets" . | nindent 10 }}
+          {{- include "siros-id.podSecurityContext" (dict "runAsUser" 1000) | nindent 10 }}
+          resources:
+            {{- toYamlPretty .Values.resources.mongoBackup | nindent 12 }}
+          volumes:
+            - name: main-config
+              configMap:
+                name: mongo-backup-main
+            - name: main-secrets
+              secret:
+                secretName: mongo-backup-main
+            - name: mongo-cert
+              secret:
+                secretName: mongo-backup-client-cert
+            - name: backups
+              emptyDir: {}
+          restartPolicy: OnFailure
+          containers:
+            - name: main
+              image: {{ .Values.images.opsStackUtilities | quote }}
+              {{- include "siros-id.imagePullPolicy" . | nindent 14 }}
+              {{- include "siros-id.containerSecurityContext" (dict) | nindent 14 }}
+              volumeMounts:
+                - name: main-config
+                  mountPath: /main-config
+                  readOnly: true
+                - name: main-secrets
+                  mountPath: /main-secrets
+                  readOnly: true
+                - name: mongo-cert
+                  mountPath: /mongo-cert
+                  readOnly: true
+                - name: backups
+                  mountPath: /backups
+              env:
+                - name: AWS_ACCESS_KEY
+                  valueFrom:
+                    configMapKeyRef:
+                      name: mongo-backup-main
+                      key: s3AccessKey
+                - name: AWS_SECRET_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: mongo-backup-main
+                      key: s3SecretKey
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  set -euo pipefail
+                  sleep "$(shuf -i 1-59 -n 1)m"
+                  OUTPUT_FILE="/backups/$(cat /main-config/backupPrefix)_mongodump_$(date --iso-8601=s).gza.age"
+                  mongodump \
+                    -v --ssl \
+                    --sslCAFile /mongo-cert/ca.crt --sslPEMKeyFile /mongo-cert/tls-combined.pem \
+                    --archive --gzip --oplog \
+                    "$(cat /main-config/mongoUri)" \
+                  | age --recipients-file /main-config/agePublicKeys > "${OUTPUT_FILE}"
+                  s3cmd \
+                    --config /main-config/s3CmdConfig \
+                    --acl-private put "${OUTPUT_FILE}" "s3://$(cat /main-config/s3BucketName)"
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mongo-backup
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mongo-backup
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongodb-svc
+      ports:
+        - port: 27017
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{- include "siros-id.reservedNetworks.v4" . | nindent 14 }}
+        - ipBlock:
+            cidr: "::/0"
+            except: {{- include "siros-id.reservedNetworks.v6" . | nindent 14 }}
+      ports:
+        - port: {{ .Values.mongoBackup.s3Port }}
+{{- end -}}

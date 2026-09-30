@@ -1,0 +1,452 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+
+{{/*
+go-wallet-backend's two config files. Named templates so
+siros-id.vc.renderConfig can deep-merge walletBackend.extraConfig /
+walletBackend.registryExtraConfig over them - go-wallet-backend's
+pkg/config surface (wallet_provider/WIA, AS rules, trust policy, oidc_gate,
+storage backends) is wider than what a tenant normally sets here.
+*/}}
+{{- define "siros-id.walletBackend.config" -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+logging:
+  level: debug
+  format: json
+server:
+  port: 8080
+  engine_port: 8082
+  admin_token_path: /main-secrets/adminToken
+  rp_name: {{ .Values.tenant.id }} Wallet
+  rp_id: {{ $hostnameWalletFrontend }}
+  rp_origins:
+    - {{ include "siros-id.origins.walletFrontend" . }}
+    {{- range .Values.walletBackend.extraRpOrigins }}
+    - {{ . }}
+    {{- end }}
+  base_url: https://{{ include "siros-id.hostname.walletBackend" . }}
+  cors:
+    allowed_origins:
+      - https://{{ $hostnameWalletFrontend }}
+    allow_credentials: true
+as:
+  enabled: true
+  legacy:
+    enabled: false
+  signing_key_path: /as-cert/tls.key
+  rules_dir: /as-rules
+  default_max_tac: rwlid
+  external_url: https://{{ include "siros-id.hostname.walletBackend" . }}
+  issuer: https://{{ include "siros-id.hostname.walletBackend" . }}
+trust:
+  pdp_url: {{ .Values.pdp.externalUrl | quote }}
+  registry_url: https://{{ include "siros-id.hostname.walletBackend" . }}/registry
+storage:
+  type: mongodb
+  mongodb:
+    uri: {{ include "siros-id.mongoUri" (list . "wallet-backend") }}
+    tls_enabled: true
+    ca_path: /client-cert/ca.crt
+    cert_path: /client-cert/tls.crt
+    key_path: /client-cert/tls.key
+    database: wallet-backend
+jwt:
+  secret_path: /main-secrets/jwtSecret
+{{- end -}}
+
+{{- define "siros-id.walletBackend.registryConfig" -}}
+logging:
+  level: debug
+  format: json
+server:
+  port: 8080 
+source:
+  url: https://registry.siros.org/.well-known/vctm-registry.json
+  poll_interval: 3m
+  timeout: 30s
+  local_overrides:
+    - /vctms
+cache:
+  path: /cache/vctm-cache.json
+  max_age: 10m
+filter:
+  include_patterns: []
+  exclude_patterns: []
+image_embed:
+  enabled: true
+  max_image_size: 10485760
+jwt:
+  require_auth: false
+{{- end -}}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "wallet-backend-client" "ou" "clients" "usages" (list "digital signature" "client auth"))) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "wallet-backend-as" "ou" "signers" "usages" (list "digital signature" "content commitment"))) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-as-rules
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  as-rules.rules: |-
+    ; --- Shape A: acr present ---
+    (token (acr (*)) (aud (*)) (sub (*)) (tac r))
+    (token (acr (*)) (aud (*)) (sub (*)) (tac l))
+    (token (acr (*)) (aud (*)) (sub (*)) (tac rl))
+    (token (acr (*)) (aud (*)) (sub (*)) (tac (*)) (tenant_id (*)))
+
+    ; --- Shape B: no acr, sub present ---
+    (token (aud (*)) (sub (*)) (tac r))
+    (token (aud (*)) (sub (*)) (tac l))
+    (token (aud (*)) (sub (*)) (tac rl))
+    (token (aud (*)) (sub (*)) (tac (*)) (tenant_id (*)))
+
+    ; --- Shape C: "anonymous" (acr present, no sub), read-only, restricted audiences ---
+    (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac r) (tenant_id (*)))
+    (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac l) (tenant_id (*)))
+    (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac rl) (tenant_id (*)))
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  backend.yaml: |- {{- include "siros-id.vc.renderConfig" (list . "siros-id.walletBackend.config" .Values.walletBackend.extraConfig) | nindent 4 }}
+  registry.yaml: |- {{- include "siros-id.vc.renderConfig" (list . "siros-id.walletBackend.registryConfig" .Values.walletBackend.registryExtraConfig) | nindent 4 }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-backend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.walletBackend }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wallet-backend
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict
+          "app.kubernetes.io/name" "wallet-backend"
+          "mongodb-access" "true")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "wallet-backend") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 65532) | nindent 6 }}
+      resources:
+        {{- toYamlPretty .Values.resources.walletBackend | nindent 8 }}
+      volumes:
+        - name: main-config
+          configMap:
+            name: wallet-backend-main
+        - name: main-secrets
+          secret:
+            secretName: wallet-backend-main
+        - name: client-cert
+          secret:
+            secretName: wallet-backend-client-cert
+        - name: as-cert
+          secret:
+            secretName: wallet-backend-as-cert
+        - name: as-rules
+          configMap:
+            name: wallet-backend-as-rules
+        - name: cache
+          emptyDir: {}
+        - name: vctms
+          configMap:
+            name: vctms
+      containers:
+        - name: main
+          image: {{ .Values.images.walletBackend | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          ports:
+            - name: http-main
+              containerPort: 8080
+            - name: http-admin
+              containerPort: 8081
+            - name: http-engine
+              containerPort: 8082
+          {{- include "siros-id.httpProbes" (dict "path" "/status" "port" "http-main") | nindent 10 }}
+          volumeMounts:
+            - name: main-config
+              mountPath: /main-config
+              readOnly: true
+            - name: main-secrets
+              mountPath: /main-secrets
+              readOnly: true
+            - name: client-cert
+              mountPath: /client-cert
+              readOnly: true
+            - name: as-cert
+              mountPath: /as-cert
+              readOnly: true
+            - name: as-rules
+              mountPath: /as-rules
+              readOnly: true
+            - name: cache
+              mountPath: /cache
+            - name: vctms
+              mountPath: /vctms
+          args:
+            - -mode
+            - backend,registry,engine,auth
+            - -config
+            - /main-config/backend.yaml
+            - -registry-config
+            - /main-config/registry.yaml
+
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "wallet-backend" "minAvailable" .Values.podDisruptionBudget.walletBackend.minAvailable)) }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallet-backend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  selector:
+    app.kubernetes.io/name: wallet-backend
+  {{- with .Values.global.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+  {{- end }}
+  ports:
+    - name: http-main
+      port: 80
+      targetPort: 8080
+    - name: http-admin
+      port: 8081
+      targetPort: 8081
+    - name: http-engine
+      port: 8082
+      targetPort: 8082
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wallet-backend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: wallet-backend
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: wallet-backend-config
+      ports:
+        - port: http-admin
+    - ports:
+        - port: http-main
+    - ports:
+        - port: http-engine
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: wallet-backend-config
+      ports:
+        - port: http-admin
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongodb-svc
+      ports:
+        - port: 27017
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pdp
+      ports:
+        - port: http-main
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{- include "siros-id.reservedNetworks.v4" . | nindent 14 }}
+        - ipBlock:
+            cidr: "::/0"
+            except: {{- include "siros-id.reservedNetworks.v6" . | nindent 14 }}
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: wallet-backend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
+  hostnames:
+    - {{ include "siros-id.hostname.walletBackend" . }}
+  rules:
+    {{- if .Values.features.singleTenant }}
+    - matches:
+        - method: OPTIONS
+      backendRefs:
+        - name: wallet-backend
+          port: 80
+    {{- end }}
+    - matches:
+        - headers:
+            - type: Exact
+              name: X-Tenant-ID
+              value: {{ .Values.tenant.id | quote }}
+      backendRefs:
+        - name: wallet-backend
+          port: 80
+    - matches:
+        - path:
+            type: Exact
+            value: /api/v2/wallet
+          queryParams:
+            - type: Exact
+              name: tenant_id
+              value: {{ .Values.tenant.id | quote }}
+      backendRefs:
+        - name: wallet-backend
+          port: 8082
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-config-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  tenant.yaml: |-
+    tenants:
+      - id: {{ .Values.tenant.id }}
+        name: {{ .Values.tenant.id }}
+        display_name: {{ include "siros-id.displayName" . }}
+        {{- if .Values.walletBackend.oidcGate }}
+        oidc_gate: {{- toYamlPretty .Values.walletBackend.oidcGate | nindent 10 }}
+        {{- end }}
+        require_invite: {{ .Values.features.requireInvite }}
+        trust_config:
+          pdp_url: {{ .Values.pdp.externalUrl | quote }}
+        issuers:
+          - credential_issuer_identifier: https://{{ include "siros-id.hostname.issuer" . }}
+            client_id: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/
+            visible: true
+          {{- range .Values.features.extraIssuers }}
+          - credential_issuer_identifier: {{ .url }}
+            visible: true
+            {{- if (hasKey . "clientId") }}
+            client_id: {{ .clientId | quote }}
+            {{- else }}
+            client_id: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/
+            {{- end }}
+          {{- end }}
+        verifiers:
+          - name: {{ include "siros-id.displayName" . }}
+            url: https://{{ include "siros-id.hostname.verifier" . }}
+          {{- range .Values.features.extraVerifiers }}
+          - name: {{ .displayName | quote }}
+            url: {{ .url }}
+          {{- end }}
+      {{- with .Values.walletBackend.extraTenants }}
+      {{- toYamlPretty . | nindent 8 }}
+      {{- end }}
+          
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: wallet-backend-config
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  schedule: "*/3 * * * *"
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Replace
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          {{- include "siros-id.labels" (list . (dict "app.kubernetes.io/name" "wallet-backend-config")) | nindent 10 }}
+        spec:
+          {{- include "siros-id.imagePullSecrets" . | nindent 10 }}
+          automountServiceAccountToken: false
+          {{- include "siros-id.podSecurityContext" (dict "runAsUser" 65532) | nindent 10 }}
+          resources:
+            {{- toYamlPretty .Values.resources.walletBackendConfig | nindent 12 }}
+          volumes:
+            - name: main-config
+              configMap:
+                name: wallet-backend-config-main
+          restartPolicy: OnFailure
+          containers:
+            - name: config-gen
+              image: {{ .Values.images.walletAdmin | quote }}
+              {{- include "siros-id.imagePullPolicy" . | nindent 14 }}
+              {{- include "siros-id.containerSecurityContext" (dict) | nindent 14 }}
+              volumeMounts:
+                - name: main-config
+                  mountPath: /main-config
+                  readOnly: true
+              env:
+                - name: WALLET_ADMIN_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: wallet-backend-main
+                      key: adminToken
+              args:
+                - --url
+                - http://wallet-backend:8081
+                - sync
+                - --prune
+                - --config
+                - /main-config/tenant.yaml
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wallet-backend-config
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: wallet-backend-config
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: wallet-backend
+      ports:
+        - port: http-admin

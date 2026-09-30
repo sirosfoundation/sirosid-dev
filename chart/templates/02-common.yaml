@@ -1,0 +1,117 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{ if .Values.global.certManager.createIssuers }}
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: bootstrap
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  selfSigned: {}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca-{{ .Values.global.certManager.clientCertificate.issuerRef }}
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  literalSubject: CN={{ .Values.global.certManager.clientCertificate.issuerRef }},OU=ca,O=siros-id
+  secretName: ca-{{ .Values.global.certManager.clientCertificate.issuerRef }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Never
+  isCA: true
+  duration: 8760h
+  issuerRef:
+    name: bootstrap
+    kind: Issuer
+    group: cert-manager.io
+
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.global.certManager.clientCertificate.issuerRef }}
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  ca:
+    secretName: ca-{{ .Values.global.certManager.clientCertificate.issuerRef }}
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ca-{{ .Values.global.certManager.credentialSigning.issuerRef }}
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  literalSubject: CN={{ .Values.global.certManager.credentialSigning.issuerRef }},OU=ca,O=siros-id
+  secretName: ca-{{ .Values.global.certManager.credentialSigning.issuerRef }}
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Never
+  isCA: true
+  duration: 8760h
+  issuerRef:
+    name: bootstrap
+    kind: Issuer
+    group: cert-manager.io
+
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ .Values.global.certManager.credentialSigning.issuerRef }}
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  ca:
+    secretName: ca-{{ .Values.global.certManager.credentialSigning.issuerRef }}
+{{ end }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: branding
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  faviconDataUrl: {{ include "siros-id.branding.faviconDataUrl" . | quote }}
+  logoDataUrl: {{ include "siros-id.branding.logoDataUrl" . | quote }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector: {}
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

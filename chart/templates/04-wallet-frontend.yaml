@@ -1,0 +1,344 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-frontend-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  basePath: {{ $basePathWalletFrontend }}
+  displayName: {{ include "siros-id.displayName" . }}
+  rpId: {{ $hostnameWalletFrontend }}
+  publicUrl: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}
+  publicRedirectUrl: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/cb
+  publicBackendUrl: https://{{ include "siros-id.hostname.walletBackend" . }}
+  publicRegistryUrl: https://{{ include "siros-id.hostname.walletBackend" . }}/registry/type-metadata
+  faviconDataUrl: {{ .Values.walletFrontend.faviconDataUrl | default "" | quote }}
+  logoLightDataUrl: {{ .Values.walletFrontend.logoLightDataUrl | default "" | quote }}
+  logoDarkDataUrl: {{ .Values.walletFrontend.logoDarkDataUrl | default "" | quote }}
+  theme: {{ .Values.walletFrontend.theme | default "" | quote }}
+  policyLinks: {{ .Values.walletFrontend.policyLinks | default "" | quote }}
+  wellknownAppleAppIds: {{ .Values.walletFrontend.wellknownAppleAppIds | default "" | quote }}
+  wellknownAndroidPackageNamesAndFingerprints: {{ .Values.walletFrontend.wellknownAndroidPackageNamesAndFingerprints | default "" | quote }}
+  {{- if .Values.walletBackend.oidcGate }}
+  oidcGateOpUrl: {{ printf "%s %s" .Values.walletBackend.oidcGate.registration_op.issuer .Values.walletFrontend.extraCspConnectUrls | quote }}
+  {{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-frontend-nginx
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  default.conf: |-
+    server {
+      include /web-config-headers/*.conf;
+      listen 8080;
+      root /usr/share/nginx/html;
+      location /readyz {
+        access_log off;
+        default_type text/plain;
+        return 200 'wallet-frontend';
+      }
+      location {{ $basePathWalletFrontend }} {
+        return 301 https://$host{{ $basePathWalletFrontend }}/;
+      }
+      location {{ $basePathWalletFrontend }}/ {
+        alias /usr/share/nginx/html/;
+        try_files $uri /index.html;
+      }
+    }
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wallet-frontend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.walletFrontend }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wallet-frontend
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict "app.kubernetes.io/name" "wallet-frontend")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "wallet-frontend") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 101) | nindent 6 }}
+      volumes:
+        - name: web-root
+          emptyDir: {}
+        - name: web-config-main
+          configMap:
+            name: wallet-frontend-nginx
+        - name: web-config-headers
+          emptyDir: {}
+      initContainers:
+        - name: config-gen
+          image: {{ .Values.images.walletFrontendConfig | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          resources:
+            {{- toYamlPretty .Values.resources.walletFrontend.configGen | nindent 12 }}
+          volumeMounts:
+            - name: web-root
+              mountPath: /web-root
+            - name: web-config-headers
+              mountPath: /web-config-headers
+          env:
+            - name: BASE_PATH
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: basePath
+            - name: STATIC_PUBLIC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: publicUrl
+            - name: STATIC_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: displayName
+            - name: I18N_WALLET_NAME_OVERRIDE
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: displayName
+            - name: OPENID4VCI_REDIRECT_URI
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: publicRedirectUrl
+            - name: WALLET_BACKEND_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: publicBackendUrl
+            - name: WALLET_ENGINE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: publicBackendUrl
+            - name: LOGIN_WITH_PASSWORD
+              value: "false"
+            - name: DID_KEY_VERSION
+              value: jwk_jcs-pub
+            - name: DISPLAY_CONSOLE
+              value: "true"
+            - name: WEBAUTHN_RPID
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: rpId
+            - name: OPENID4VCI_PROOF_TYPE_PRECEDENCE
+              value: "attestation,jwt"
+            - name: OPENID4VP_SAN_DNS_CHECK
+              value: "false"
+            - name: OPENID4VP_SAN_DNS_CHECK_SSL_CERTS
+              value: "false"
+            - name: VALIDATE_CREDENTIALS_WITH_TRUST_ANCHORS
+              value: "true"
+            - name: MULTI_LANGUAGE_DISPLAY
+              value: "true"
+            - name: FOLD_EVENT_HISTORY_AFTER_SECONDS
+              value: "2592000"
+            - name: DISPLAY_ISSUANCE_WARNINGS
+              value: "false"
+            - name: OPENID4VCI_MAX_ACCEPTED_BATCH_SIZE
+              value: "10"
+            - name: OPENID4VCI_TRANSACTION_ID_POLLING_INTERVAL_IN_SECONDS
+              value: "5"
+            - name: OPENID4VCI_TRANSACTION_ID_LIFETIME_IN_SECONDS
+              value: "2592000"
+            - name: NGINX_SEC_HEADER_FILE
+              value: "/web-config-headers/security.conf"
+            - name: NGINX_CSP_ENFORCE_RESOURCE_HTTPS
+              value: "true"
+            - name: POLICY_LINKS
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: policyLinks
+            - name: VCT_REGISTRY_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: publicRegistryUrl
+            - name: WELLKNOWN_APPLE_APPIDS
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: wellknownAppleAppIds
+            - name: WELLKNOWN_ANDROID_PACKAGE_NAMES_AND_FINGERPRINTS
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: wellknownAndroidPackageNamesAndFingerprints
+            - name: BRANDING_OUTPUT_BASE_PATH
+              value: /usr/share/nginx/branding
+            - name: BRANDING_THEME_JSON
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: theme
+            - name: BRANDING_FAVICON
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: faviconDataUrl
+            - name: BRANDING_LOGO_LIGHT
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: logoLightDataUrl
+            - name: BRANDING_LOGO_DARK
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: logoDarkDataUrl
+            - name: WALLET_COMPANION_INTEGRATION
+              value: "true"
+            {{- if .Values.walletBackend.oidcGate }}
+            - name: OIDC_GATE_OP_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: wallet-frontend-main
+                  key: oidcGateOpUrl
+            {{- end }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -e
+              cp -r html/* /web-root
+              /home/node/app/create_custom_branding_resources.sh
+              tsx ./config/_cli_.ts --dest /web-root
+              /docker-entrypoint.d/nginx-security-headers-config.sh
+      containers:
+        - name: main
+          image: {{ .Values.images.walletFrontendNginx | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          resources:
+            {{- toYamlPretty .Values.resources.walletFrontend.main | nindent 12 }}
+          ports:
+            - name: http-main
+              containerPort: 8080
+          {{- include "siros-id.httpProbes" (dict "path" "/readyz" "port" "http-main") | nindent 10 }}
+          volumeMounts:
+            - name: web-root
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+            - name: web-config-main
+              mountPath: /etc/nginx/conf.d
+              readOnly: true
+            - name: web-config-headers
+              mountPath: /web-config-headers
+              readOnly: true
+
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "wallet-frontend" "minAvailable" .Values.podDisruptionBudget.walletFrontend.minAvailable)) }}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wallet-frontend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  selector:
+    app.kubernetes.io/name: wallet-frontend
+  {{- with .Values.global.service.trafficDistribution }}
+  trafficDistribution: {{ . }}
+  {{- end }}
+  ports:
+    - name: http-main
+      port: 80
+      targetPort: 8080
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: wallet-frontend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: wallet-frontend
+  ingress:
+    - ports:
+        - port: http-main
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: wallet-frontend
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
+  hostnames:
+    - {{ include "siros-id.hostname.walletFrontend" . }}
+  rules:
+    - matches:
+        - path:
+            type: Exact
+            value: {{ $basePathWalletFrontend }}
+      backendRefs:
+        - name: wallet-frontend
+          port: 80
+    - matches:
+        - path:
+            type: PathPrefix
+            value: {{ $basePathWalletFrontend }}/
+      backendRefs:
+        - name: wallet-frontend
+          port: 80
+
+{{ if .Values.features.singleTenant }}
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: wallet-frontend-default-redir
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
+  hostnames:
+    - {{ include "siros-id.hostname.walletFrontend" . }}
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /id/{{ .Values.tenant.id}}
+{{ end }}

@@ -1,0 +1,864 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $hostnameIssuer := include "siros-id.hostname.issuer" . -}}
+{{- $hostnameIssuerRegistry := include "siros-id.hostname.issuerRegistry" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+{{- $assertionCredentials := include "siros-id.vc.credentialTypesBySource" (list . "assertion") | fromYaml -}}
+{{- $datastoreCredentials := include "siros-id.vc.credentialTypesBySource" (list . "datastore") | fromYaml -}}
+
+{{/*
+The three issuance-side services' config.yaml bodies (vc's model.Cfg: common
+plus registry / apigw / issuer respectively). Each is a named template so
+siros-id.vc.renderConfig can deep-merge the matching extraConfig over it - see
+that helper for the merge semantics.
+
+These are three separate services sharing one config schema, not one service:
+issuer-apigw is the public OpenID4VCI face, issuer-core is an internal gRPC
+signing service wallets never reach, and issuer-registry holds the token
+status lists. That is why issuer-core's issuer_url points at the APIGW's
+hostname rather than its own - the apigw's URL is the credential issuer
+identity that ends up in the `iss` claim, and it is what a PDP whitelist must
+name.
+*/}}
+{{- define "siros-id.issuerRegistry.config" -}}
+{{- $hostnameIssuerRegistry := include "siros-id.hostname.issuerRegistry" . -}}
+common:
+  {{- include "siros-id.vc.config.mongo" (list . "vc_registry") | nindent 2 }}
+  secret_file_path: /secrets-rendered/secrets.yaml
+  production: {{ .Values.features.production }}
+  ha:
+    enable: true
+    cache_database_name: issuer-registry_cache
+  {{- include "siros-id.vc.config.tracing" . | nindent 2 }}
+registry:
+  public_url: https://{{ $hostnameIssuerRegistry }}
+  api_server:
+    addr: ":8080"
+  grpc_server:
+    addr: ":8090"
+    tls:
+      enable: true
+      cert_file_path: /server-cert/tls.crt
+      key_file_path: /server-cert/tls.key
+      client_ca_path: /server-cert/ca.crt
+      allowed_client_dns:
+        issuer-apigw: CN=issuer-apigw-client,OU=clients,O=siros-id
+        issuer-core: CN=issuer-core-client,OU=clients,O=siros-id
+  token_status_lists:
+    key_config:
+      private_key_path: /sign-cert/tls.key
+      chain_path: /sign-cert-chain/tls.crt
+    section_size: {{ .Values.issuer.registry.sectionSize }}
+    {{- with .Values.issuer.registry.tokenRefreshInterval }}
+    token_refresh_interval: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.issuer.registry.rateLimitRequestsPerMinute }}
+    rate_limit_requests_per_minute: {{ . }}
+    {{- end }}
+  {{- if .Values.issuer.registry.adminGui.enabled }}
+  admin_gui:
+    enable: true
+    username: {{ .Values.issuer.registry.adminGui.username | quote }}
+  {{- end }}
+{{- end -}}
+
+{{- define "siros-id.issuerApigw.config" -}}
+{{- $hostnameIssuer := include "siros-id.hostname.issuer" . -}}
+{{- $hostnameIssuerRegistry := include "siros-id.hostname.issuerRegistry" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+{{- $assertionCredentials := include "siros-id.vc.credentialTypesBySource" (list . "assertion") | fromYaml -}}
+{{- $datastoreCredentials := include "siros-id.vc.credentialTypesBySource" (list . "datastore") | fromYaml -}}
+common:
+  {{- include "siros-id.vc.config.mongo" (list . "vc") | nindent 2 }}
+  secret_file_path: /secrets-rendered/secrets.yaml
+  production: {{ .Values.features.production }}
+  ha:
+    enable: true
+    cache_database_name: issuer-apigw_cache
+  {{- include "siros-id.vc.config.tracing" . | nindent 2 }}
+  branding:
+    favicon_path: /branding-assets/favicon.png
+    logo_path: /branding-assets/logo.png
+  credential_metadata: {{- include "siros-id.vc.credentialMetadata" . | nindent 4 }}
+apigw:
+  public_url: https://{{ $hostnameIssuer }}
+  api_server:
+    addr: ":8080"
+    cors:
+      {{- $origins := list (printf "https://%s" $hostnameWalletFrontend) }}
+      {{- range .Values.features.extraWallets }}
+      {{- $origins = append $origins (include "siros-id.originFromUrl" .url) }}
+      {{- end }}
+      {{- range .Values.issuer.apigw.cors.extraAllowedOrigins }}
+      {{- $origins = append $origins . }}
+      {{- end }}
+      {{/* uniq: an extraAllowedOrigins entry can legitimately repeat the
+           derived frontend origin - e.g. a local stack whose frontend IS
+           http://localhost:3000 - and a duplicated Access-Control-Allow-Origin
+           entry is just noise. */}}
+      allowed_origins: {{- toYamlPretty (uniq $origins) | nindent 8 }}
+      {{- with .Values.issuer.apigw.cors.allowedMethods }}
+      allowed_methods: {{- toYamlPretty . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.issuer.apigw.cors.allowedHeaders }}
+      allowed_headers: {{- toYamlPretty . | nindent 8 }}
+      {{- end }}
+    trust_proxy_tls: true
+    {{- include "siros-id.vc.config.apiAuth" . | nindent 4 }}
+  key_config:
+    private_key_path: /sign-cert/tls.key
+    chain_path: /sign-cert-chain/tls.crt
+  trust:
+    pdp_url: {{ .Values.pdp.externalUrl | quote }}
+    {{- if .Values.issuer.apigw.walletAttestation.enabled }}
+    wallet_attestation: {{- include "siros-id.vc.config.walletAttestation" .Values.issuer.apigw.walletAttestation | nindent 6 }}
+    {{- end }}
+  registry_public_url: https://{{ $hostnameIssuerRegistry }}
+  issuer_client: {{- include "siros-id.vc.config.grpcClient" "issuer-core" | nindent 4 }}
+  registry_client: {{- include "siros-id.vc.config.grpcClient" "issuer-registry" | nindent 4 }}
+  issuer_metadata:
+    # Where this issuer publishes the IACA certificates its mdoc document
+    # signer chains to. The APIGW always serves them at /iacas (from
+    # issuer-core's mdoc chain); advertising the endpoint is what lets an
+    # mdoc verifier - and go-trust's mdociaca registry behind the PDP, which
+    # the wallet and vc-verifier both consult - discover the trust anchor
+    # for an mDL from its issuer's metadata instead of denying with "issuer
+    # does not publish mdoc_iacas_uri".
+    mdoc_iacas_uri: https://{{ $hostnameIssuer }}/iacas
+    display:
+      - locale: en-US
+        name: {{ include "siros-id.displayName" . }}
+        logo:
+          uri: {{ include "siros-id.branding.logoDataUrl" . | quote }}
+          alt_text: Logotype for issuer
+  {{- if (or .Values.issuer.identitymappingImport.identities .Values.issuer.identitymappingImport.users) }}
+  identity_mapping_import:
+    file_paths:
+      {{- range $key, $value := .Values.issuer.identitymappingImport.identities }}
+      - /documents/{{ $key }}.json
+      {{- end }}
+    {{- with .Values.issuer.identitymappingImport.users }}
+    users: {{- toYamlPretty . | nindent 6 }}
+    {{- end }}
+  {{- end }}
+  data_sources:
+    {{- if $assertionCredentials }}
+    assertion:
+      scopes: {{- range $id, $data := $assertionCredentials }}
+        {{ $id | quote }}:
+          auth_provider: {{ $data.issuance.authProvider | quote }}
+      {{- end }}
+    {{- end }}
+    {{- if (or .Values.issuer.datastoreImport.documents $datastoreCredentials) }}
+    datastore:
+      {{- if .Values.issuer.datastoreImport.documents }}
+      import:
+        file_paths:
+          {{- range $key, $value := .Values.issuer.datastoreImport.documents }}
+          - /documents/{{ $key }}.json
+          {{- end }}
+        {{- with .Values.issuer.datastoreImport.users }}
+        users: {{- toYamlPretty . | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- with $datastoreCredentials }}
+      scopes:
+        {{- range $id, $data := . }}
+        {{ $id | quote }}:
+          auth_provider: {{ $data.issuance.authProvider | quote }}
+          {{- if eq $data.issuance.authProvider "oidc" }}
+          auth_claims: {{- $data.issuance.authOptions.claims | toYamlPretty | nindent 12 }}
+          {{- else if eq $data.issuance.authProvider "openid4vp" }}
+          auth_scopes:
+            {{- range $scopeid, $scope := $data.issuance.authOptions.scopes }}
+            {{ $scopeid | quote }}:
+              auth_claims: {{- $scope.claims | toYamlPretty | nindent 16 }}
+            {{- end }}
+          {{- end }}
+        {{- end -}}
+      {{- end }}
+    {{- end }}
+  {{- if .Values.issuer.authProviders.oidc.enabled }}
+  auth_providers:
+    oidc:
+      {{- with .Values.issuer.authProviders.oidc }}
+      enable: true
+      issuer_url: {{ .issuerUrl | quote }}
+      redirect_uri: https://{{ $hostnameIssuer }}/oidcrp/callback
+      scopes: {{- toYamlPretty .scopes | nindent 8 }}
+      {{- with .sessionDuration }}
+      session_duration: {{ . }}
+      {{- end }}
+      registration:
+        preconfigured:
+          enable: true
+          client_id: {{ .clientId | quote }}
+      {{- end }}
+  {{- end }}
+  delivery:
+    credential_offers:
+      issuer_url: https://{{ $hostnameIssuer }}
+      wallets:
+        local:
+          label: {{ include "siros-id.displayName" . }}
+          redirect_uri: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/cb
+        {{- range .Values.features.extraWallets }}
+        {{ .url | urlquery | quote }}:
+          label: {{ .displayName }}
+          redirect_uri: {{ .url }}/cb
+        {{- end }}
+    openid4vci:
+      token_endpoint: https://{{ $hostnameIssuer }}/token
+      {{- with .Values.issuer.apigw.openid4vci.grantTypes }}
+      grant_types: {{- toYamlPretty . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.issuer.apigw.openid4vci.refreshTokenDuration }}
+      refresh_token_duration: {{ . }}
+      {{- end }}
+      clients:
+        "https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/":
+          type: public
+          redirect_uri: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/cb
+          scopes: {{- include "siros-id.vc.credentialScopes" $ | nindent 12 }}
+        {{- range .Values.features.extraWallets }}
+        {{ .url | quote }}:
+          type: public
+          redirect_uri: {{ .url }}/cb
+          scopes: {{- include "siros-id.vc.credentialScopes" $ | nindent 12 }}
+        {{- end }}
+{{- end -}}
+
+{{- define "siros-id.issuerCore.config" -}}
+{{- $hostnameIssuer := include "siros-id.hostname.issuer" . -}}
+{{- $bbs := .Values.issuer.core.bbs -}}
+{{- /* The secret key comes from the issuer-core-main Secret through the
+       secrets renderer, unless the deployment mounts it as a file itself.
+       Only then does issuer-core need a secrets.yaml at all - every other
+       part of its config is public. */}}
+{{- $bbsRenderedSecret := and $bbs.enabled (not $bbs.secretKeyPath) -}}
+common:
+  {{- if $bbsRenderedSecret }}
+  secret_file_path: /secrets-rendered/secrets.yaml
+  {{- end }}
+  {{- /* ha.enable below makes common.mongo.uri mandatory - vc's
+         mongo_uri_required validator requires it whenever HA caching is on,
+         since HA has no relational backend. Without this the issuer-core
+         config fails validation at startup. */}}
+  {{- include "siros-id.vc.config.mongo" (list . "vc_issuer") | nindent 2 }}
+  production: {{ .Values.features.production }}
+  ha:
+    enable: true
+    cache_database_name: issuer-core_cache
+  {{- include "siros-id.vc.config.tracing" . | nindent 2 }}
+  credential_metadata: {{- include "siros-id.vc.credentialMetadata" . | nindent 4 }}
+issuer:
+  api_server:
+    addr: ":8081"
+  grpc_server:
+    addr: ":8090"
+    tls:
+      enable: true
+      cert_file_path: /server-cert/tls.crt
+      key_file_path: /server-cert/tls.key
+      client_ca_path: /server-cert/ca.crt
+      allowed_client_dns:
+        issuer-apigw: CN=issuer-apigw-client,OU=clients,O=siros-id
+  key_config:
+    private_key_path: /sign-cert/tls.key
+    chain_path: /sign-cert-chain/tls.crt
+  issuer_url: https://{{ $hostnameIssuer }}
+  jwt_attribute:
+    issuer: https://{{ $hostnameIssuer }}
+    verifiable_credential_type: https://{{ $hostnameIssuer }}/credential-type
+    {{- if not (kindIs "invalid" .Values.issuer.core.jwtAttribute.enableNotBefore) }}
+    enable_not_before: {{ .Values.issuer.core.jwtAttribute.enableNotBefore }}
+    {{- end }}
+    {{- with .Values.issuer.core.jwtAttribute.validDuration }}
+    valid_duration: {{ . }}
+    {{- end }}
+  registry_client: {{- include "siros-id.vc.config.grpcClient" "issuer-registry" | nindent 4 }}
+  mdoc:
+    certificate_chain_path: /sign-cert-chain/tls.crt
+    {{- with .Values.issuer.core.mdoc.defaultValidity }}
+    default_validity: {{ . | quote }}
+    {{- end }}
+    {{- with .Values.issuer.core.mdoc.digestAlgorithm }}
+    digest_algorithm: {{ . | quote }}
+    {{- end }}
+  {{- if not (kindIs "invalid" .Values.issuer.core.pseudonymSeed) }}
+  pseudonym_seed: {{ .Values.issuer.core.pseudonymSeed }}
+  {{- end }}
+  {{- if $bbs.enabled }}
+  {{- /* Present at all only when enabled: an issuer image built without
+         `-tags bbsnative` refuses to START when it sees this section, which
+         is deliberate - it is the difference between a deploy that fails
+         visibly and one that serves `format: jwp` requests into a signer
+         that cannot sign. */}}
+  bbs:
+    {{- with $bbs.publicKeyPath }}
+    public_key_path: {{ . | quote }}
+    {{- else }}
+    public_key: {{ required "issuer.core.bbs.publicKey or publicKeyPath is required when bbs is enabled" $bbs.publicKey | quote }}
+    {{- end }}
+    {{- with $bbs.secretKeyPath }}
+    secret_key_path: {{ . | quote }}
+    {{- end }}
+    {{- with $bbs.defaultValidity }}
+    default_validity: {{ . | quote }}
+    {{- end }}
+  {{- end }}
+{{- end -}}
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-registry-client" "ou" "clients" "usages" (list "digital signature" "client auth") "dnsNames" (list "issuer-registry"))) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-registry-server" "ou" "services" "usages" (list "server auth") "dnsNames" (list "issuer-registry"))) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-registry-sign" "ou" "signers" "usages" (list "digital signature" "content commitment")
+  "rotationPolicy" "Never" "issuerRef" .Values.global.certManager.credentialSigning.issuerRef "duration" "8760h")) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: issuer-registry-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  config.yaml: | {{- include "siros-id.vc.renderConfig" (list . "siros-id.issuerRegistry.config" .Values.issuer.registry.extraConfig) | nindent 4 }}
+  secrets.yaml.template: |
+    registry:
+      admin_gui:
+        password: ${ADMIN_GUI_PASSWORD}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: issuer-registry
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.issuerRegistry }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: issuer-registry
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict
+          "app.kubernetes.io/name" "issuer-registry"
+          "otlp-collector-access" "true"
+          "mongodb-access" "true")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "issuer-registry") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 10000) | nindent 6 }}
+      resources:
+        {{- toYamlPretty .Values.resources.issuerRegistry | nindent 8 }}
+      volumes:
+        - name: main-config
+          configMap:
+            name: issuer-registry-main
+        - name: main-secrets
+          secret:
+            secretName: issuer-registry-main
+        - name: sign-cert
+          secret:
+            secretName: issuer-registry-sign-cert
+        - name: sign-cert-chain
+          emptyDir: {}
+        - name: server-cert
+          secret:
+            secretName: issuer-registry-server-cert
+        - name: client-cert
+          secret:
+            secretName: issuer-registry-client-cert
+        - name: secrets-rendered
+          emptyDir:
+            medium: Memory
+      initContainers:
+        {{- include "siros-id.certChainGenInitContainer" . | nindent 8 }}
+        {{- include "siros-id.secretsRendererInitContainer" (list . (dict
+          "secretName" "issuer-registry-main"
+          "envs" (dict "ADMIN_GUI_PASSWORD" "adminGuiPassword"))) | nindent 8 }}
+      containers:
+        - name: main
+          image: {{ .Values.images.issuerRegistry | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          ports:
+            - name: http-main
+              containerPort: 8080
+            - name: grpc-main
+              containerPort: 8090
+          {{- include "siros-id.httpProbes" (dict "path" "/health" "port" "http-main") | nindent 10 }}
+          env:
+            - name: VC_CONFIG_YAML
+              value: /main-config/config.yaml
+          volumeMounts:
+            - name: main-config
+              mountPath: /main-config
+              readOnly: true
+            - name: secrets-rendered
+              mountPath: /secrets-rendered
+              readOnly: true
+            - name: sign-cert
+              mountPath: /sign-cert
+              readOnly: true
+            - name: sign-cert-chain
+              mountPath: /sign-cert-chain
+              readOnly: true
+            - name: server-cert
+              mountPath: /server-cert
+              readOnly: true
+            - name: client-cert
+              mountPath: /client-cert
+              readOnly: true
+
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "issuer-registry" "minAvailable" .Values.podDisruptionBudget.issuerRegistry.minAvailable)) }}
+
+---
+{{ include "siros-id.service" (list . (dict "name" "issuer-registry" "ports" (list
+  (dict "name" "http-main" "port" 80 "targetPort" 8080)
+  (dict "name" "grpc-main" "port" 8090 "targetPort" 8090)))) }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: issuer-registry
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: issuer-registry
+  ingress:
+    - ports:
+        - port: http-main
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: issuer-apigw
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: issuer-core
+      ports:
+        - port: grpc-main
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otlp-collector
+      ports:
+        - port: grpc-otlp
+        - port: http-otlp
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongodb-svc
+      ports:
+        - port: 27017
+
+---
+{{ include "siros-id.hostnameHttpRoute" (list . (dict "name" "issuer-registry" "hostname" $hostnameIssuerRegistry)) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-apigw-client" "ou" "clients" "usages" (list "digital signature" "client auth"))) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-core-sign" "ou" "signers" "usages" (list "digital signature" "content commitment")
+  "rotationPolicy" "Never" "issuerRef" .Values.global.certManager.credentialSigning.issuerRef "duration" "8760h")) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: issuer-documents
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  .empty: "I am here so that the configmap won't ever be empty"
+  {{- range $key, $value := $.Values.issuer.datastoreImport.documents }}
+  {{ $key }}.json: | {{- include "siros-id.dataOrFile" (list $ $value) | nindent 4 }}
+  {{- end }}
+  {{- range $key, $value := $.Values.issuer.identitymappingImport.identities }}
+  {{ $key }}.json: | {{- include "siros-id.dataOrFile" (list $ $value) | nindent 4 }}
+  {{- end }}  
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: issuer-apigw-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  config.yaml: | {{- include "siros-id.vc.renderConfig" (list . "siros-id.issuerApigw.config" .Values.issuer.apigw.extraConfig) | nindent 4 }}
+  {{- with .Values.issuer.apiAuth.jwks.jwksData }}
+  api_auth_jwks.json: {{ . | quote }}
+  {{- end }}
+  secrets.yaml.template: |
+    apigw:
+      api_server:
+        api_auth:
+          oidc:
+            client_secret: ${API_AUTH_OIDC_CLIENT_SECRET}
+      auth_providers:
+        oidc:
+          registration:
+            preconfigured:
+              client_secret: ${OIDC_PROVIDER_CLIENT_SECRET}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: issuer-apigw
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.issuerApigw }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: issuer-apigw
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict "app.kubernetes.io/name" "issuer-apigw"
+          "otlp-collector-access" "true"
+          "mongodb-access" "true")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "issuer-apigw") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 10000) | nindent 6 }}
+      resources:
+        {{- toYamlPretty .Values.resources.issuerApigw | nindent 8 }}
+      volumes:
+        - name: main-config
+          configMap:
+            name: issuer-apigw-main
+        - name: main-secrets
+          secret:
+            secretName: issuer-apigw-main
+        - name: vctms
+          configMap:
+            name: vctms
+        - name: sign-cert
+          secret:
+            secretName: issuer-core-sign-cert
+        - name: sign-cert-chain
+          emptyDir: {}
+        - name: client-cert
+          secret:
+            secretName: issuer-apigw-client-cert
+        - name: branding
+          configMap:
+            name: branding
+        - name: branding-assets
+          emptyDir: {}
+        - name: secrets-rendered
+          emptyDir:
+            medium: Memory
+        - name: documents
+          configMap:
+            name: issuer-documents
+      initContainers:
+        {{- include "siros-id.certChainGenInitContainer" . | nindent 8 }}
+        - name: branding-gen
+          image: {{ .Values.images.alpine | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          volumeMounts:
+            - name: branding
+              mountPath: /branding
+            - name: branding-assets
+              mountPath: /branding-assets
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              for IMAGE in favicon logo; do
+                cat /branding/${IMAGE}DataUrl | cut -d , -f 2 \
+                | base64 -d > /branding-assets/${IMAGE}.png
+              done
+        {{- include "siros-id.secretsRendererInitContainer" (list . (dict
+          "secretName" "issuer-apigw-main"
+          "envs" (dict "OIDC_PROVIDER_CLIENT_SECRET" "oidcProviderClientSecret" "API_AUTH_OIDC_CLIENT_SECRET" "apiAuthOidcClientSecret"))) | nindent 8 }}
+      containers:
+        - name: main
+          image: {{ .Values.images.issuerApigw | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          ports:
+            - name: http-main
+              containerPort: 8080
+            - name: http-admin
+              containerPort: 8081
+          {{- include "siros-id.httpProbes" (dict "path" "/health" "port" "http-main") | nindent 10 }}
+          env:
+            - name: VC_CONFIG_YAML
+              value: /main-config/config.yaml
+          volumeMounts:
+            - name: main-config
+              mountPath: /main-config
+              readOnly: true
+            - name: secrets-rendered
+              mountPath: /secrets-rendered
+              readOnly: true
+            - name: vctms
+              mountPath: /vctms
+              readOnly: true
+            - name: sign-cert
+              mountPath: /sign-cert
+              readOnly: true
+            - name: sign-cert-chain
+              mountPath: /sign-cert-chain
+              readOnly: true
+            - name: client-cert
+              mountPath: /client-cert
+              readOnly: true
+            - name: branding-assets
+              mountPath: /branding-assets
+              readOnly: true
+            - name: documents
+              mountPath: /documents
+              readOnly: true
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "issuer-apigw" "minAvailable" .Values.podDisruptionBudget.issuerApigw.minAvailable)) }}
+
+---
+{{ include "siros-id.service" (list . (dict "name" "issuer-apigw" "ports" (list
+  (dict "name" "http-main" "port" 80 "targetPort" 8080)))) }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: issuer-apigw
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: issuer-apigw
+  ingress:
+    - ports:
+        - port: http-main
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otlp-collector
+      ports:
+        - port: grpc-otlp
+        - port: http-otlp
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mongodb-svc
+      ports:
+        - port: 27017
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: issuer-registry
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: issuer-core
+      ports:
+        - port: grpc-main
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pdp
+      ports:
+        - port: http-main
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: {{- include "siros-id.reservedNetworks.v4" . | nindent 14 }}
+        - ipBlock:
+            cidr: "::/0"
+            except: {{- include "siros-id.reservedNetworks.v6" . | nindent 14 }}
+
+---
+{{ include "siros-id.hostnameHttpRoute" (list . (dict "name" "issuer-apigw" "hostname" $hostnameIssuer)) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-core-server" "ou" "services" "usages" (list "server auth") "dnsNames" (list "issuer-core"))) }}
+
+---
+{{ include "siros-id.certificate" (list . (dict 
+  "name" "issuer-core-client" "ou" "clients" "usages" (list "digital signature" "client auth"))) }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: issuer-core-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  config.yaml: | {{- include "siros-id.vc.renderConfig" (list . "siros-id.issuerCore.config" .Values.issuer.core.extraConfig) | nindent 4 }}
+  {{- if and .Values.issuer.core.bbs.enabled (not .Values.issuer.core.bbs.secretKeyPath) }}
+  {{- /* The one secret issuer-core has. Kept out of config.yaml so the
+         issuer's BBS signing key is never in a ConfigMap. */}}
+  secrets.yaml.template: |
+    issuer:
+      bbs:
+        secret_key: ${BBS_SECRET_KEY}
+  {{- end }}
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: issuer-core
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict "reloader.stakater.com/auto" "true")) | nindent 2 }}
+spec:
+  replicas: {{ .Values.replicas.issuerCore }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: issuer-core
+  template:
+    metadata:
+      {{- include "siros-id.labels" (list . (dict
+          "app.kubernetes.io/name" "issuer-core"
+          "otlp-collector-access" "true")) | nindent 6 }}
+    spec:
+      {{- include "siros-id.topologySpreadConstraints" (list . "issuer-core") | nindent 6 }}
+      {{- include "siros-id.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      {{- include "siros-id.podSecurityContext" (dict "runAsUser" 10000) | nindent 6 }}
+      resources:
+        {{- toYamlPretty .Values.resources.issuerCore | nindent 8 }}
+      volumes:
+        - name: main-config
+          configMap:
+            name: issuer-core-main
+        - name: vctms
+          configMap:
+            name: vctms
+        - name: sign-cert
+          secret:
+            secretName: issuer-core-sign-cert
+        - name: sign-cert-chain
+          emptyDir: {}
+        - name: server-cert
+          secret:
+            secretName: issuer-core-server-cert
+        - name: client-cert
+          secret:
+            secretName: issuer-core-client-cert
+        {{- if and .Values.issuer.core.bbs.enabled (not .Values.issuer.core.bbs.secretKeyPath) }}
+        - name: secrets-rendered
+          emptyDir:
+            medium: Memory
+        {{- end }}
+      initContainers:
+        {{- include "siros-id.certChainGenInitContainer" . | nindent 8 }}
+        {{- if and .Values.issuer.core.bbs.enabled (not .Values.issuer.core.bbs.secretKeyPath) }}
+        {{- include "siros-id.secretsRendererInitContainer" (list . (dict
+          "secretName" .Values.secrets.issuerCoreMain.name
+          "envs" (dict "BBS_SECRET_KEY" "bbsSecretKey"))) | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: main
+          image: {{ .Values.images.issuerCore | quote }}
+          {{- include "siros-id.imagePullPolicy" . | nindent 10 }}
+          {{- include "siros-id.containerSecurityContext" (dict) | nindent 10 }}
+          ports:
+            - name: grpc-main
+              containerPort: 8090
+            - name: http-health
+              containerPort: 8081
+          {{- include "siros-id.httpProbes" (dict "path" "/health" "port" "http-health") | nindent 10 }}
+          env:
+            - name: VC_CONFIG_YAML
+              value: /main-config/config.yaml
+          volumeMounts:
+            - name: main-config
+              mountPath: /main-config
+              readOnly: true
+            {{- if and .Values.issuer.core.bbs.enabled (not .Values.issuer.core.bbs.secretKeyPath) }}
+            - name: secrets-rendered
+              mountPath: /secrets-rendered
+              readOnly: true
+            {{- end }}
+            - name: vctms
+              mountPath: /vctms
+              readOnly: true
+            - name: sign-cert
+              mountPath: /sign-cert
+              readOnly: true
+            - name: sign-cert-chain
+              mountPath: /sign-cert-chain
+              readOnly: true
+            - name: server-cert
+              mountPath: /server-cert
+              readOnly: true
+            - name: client-cert
+              mountPath: /client-cert
+              readOnly: true
+
+---
+{{ include "siros-id.podDisruptionBudget" (list . (dict "name" "issuer-core" "minAvailable" .Values.podDisruptionBudget.issuerCore.minAvailable)) }}
+
+---
+{{ include "siros-id.service" (list . (dict "name" "issuer-core" "ports" (list
+  (dict "name" "grpc-main" "port" 8090 "targetPort" 8090)))) }}
+
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: issuer-core
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: issuer-core
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: issuer-apigw
+      ports:
+        - port: grpc-main
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otlp-collector
+      ports:
+        - port: grpc-otlp
+        - port: http-otlp
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: issuer-registry
+      ports:
+        - port: grpc-main

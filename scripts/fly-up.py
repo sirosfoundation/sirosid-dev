@@ -107,7 +107,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                     extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
                     rical_provider_url: str = None, rical_root_certificate_pem: str = None,
                     dc_api_enable: str = "", credential_registries: list = None,
-                    env_values: dict = None, bbs_secret_key: str = None, chart_ref: str = None) -> list:
+                    env_values: dict = None, bbs_secret_key: str = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -140,8 +140,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    # what a type looks like. One render sets both.
                    credential_registries=credential_registries,
                    env_values=env_values,
-                   bbs_secret_key=bbs_secret_key,
-                   chart_ref=chart_ref)
+                   bbs_secret_key=bbs_secret_key)
     return docs
 
 
@@ -870,7 +869,7 @@ def main():
                          help="Pin this run's Fly region (e.g. 'arn'), overriding "
                               "environments/<name>.yaml's `region:`, $FLY_REGION, .fly-region, and "
                               "Fly's own detected suggestion - see the region-resolution comment below.")
-    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"))
+    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
     parser.add_argument("--android-app", action="append",
                          help="package=fingerprint (SHA-256, colon-separated hex, as printed by "
                               "`keytool -list -v`) for a debug build or Play Store signing key to "
@@ -1129,8 +1128,7 @@ def main():
                            # block, deep-merged over everything else - the
                            # escape hatch for anything the typed keys above
                            # don't cover (see scripts/env_config.py).
-                           env_values, bbs_secret_key,
-                           env_cfg["chart_ref"] or None)
+                           env_values, bbs_secret_key)
     mongo_version = extract_mongo_version(docs)
 
     print(f"=== Generating per-environment PKI ===")

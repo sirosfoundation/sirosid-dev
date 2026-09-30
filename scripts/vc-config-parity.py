@@ -88,7 +88,7 @@ def redact(config):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"))
+    ap.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
     ap.add_argument("--context", action="append", choices=sorted(CONTEXTS),
                     help="only check these (default: all)")
     ap.add_argument("--update", action="store_true",

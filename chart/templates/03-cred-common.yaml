@@ -1,0 +1,21 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vctms
+  namespace: {{ include "siros-id.namespace" . }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  .empty: "I am here so that the configmap won't ever be empty"
+  {{- range $id, $data := .Values.features.credentialTypes }}
+  {{- if $data.mdocSchema }}
+  {{/* An ISO 18013-5 mdoc type carries an MDDL schema instead of a VCTM.
+       The .mdoc.json suffix is what siros-id.vc.credentialMetadata points
+       mddl_file_path at, and is the only thing distinguishing the two on
+       disk - vc validates that an mso_mdoc scope has one and not the other. */}}
+  {{ $id }}.mdoc.json: | {{- include "siros-id.dataOrFile" (list $ $data.mdocSchema) | nindent 4 }}
+  {{- else if $data.vctm }}
+  {{ $id }}.json: | {{- include "siros-id.dataOrFile" (list $ $data.vctm) | nindent 4 }}
+  {{- end }}
+  {{- end }}

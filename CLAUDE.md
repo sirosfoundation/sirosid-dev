@@ -1,7 +1,7 @@
 # sirosid-dev — instructions for Claude Code
 
 This repo is a **harness, not a service**: it orchestrates sibling repos
-(go-wallet-backend, go-trust, vc, wallet-frontend, wallet-common, siros-id-stack)
+(go-wallet-backend, go-trust, vc, wallet-frontend, wallet-common)
 via a large self-documenting `Makefile`, docker-compose files, and Python
 scripts under `scripts/`. The only code of its own that runs inside an
 environment is `env-admin/` (the storage-reset service behind the
@@ -22,7 +22,7 @@ Three entry points share one core and must stay in step:
 
 ## Sibling repo layout
 
-`make setup` clones (or, for `siros-id-stack`, fast-forwards) these into `../`:
+`make setup` clones these into `../`:
 
 | repo | branch | notes |
 |---|---|---|
@@ -32,9 +32,8 @@ Three entry points share one core and must stay in step:
 | `go-trust` | `main` | trust PDP |
 | `vc` | `main` | SUNET/vc issuer/verifier/apigw/registry — only needed for `VC=yes` |
 | `facetec-api` | `main` | only needed for `FACETEC=yes` |
-| `siros-id-stack` | `main` | **read-only, public config-rendering source** — the public [SIROS ID Stack Helm chart](https://github.com/sirosfoundation/siros-id-stack), not branched for feature work. `make setup` auto-`git pull --ff-only`s it if it's on `main`; if checked out to something else (e.g. a PR branch someone's deliberately testing), it's left alone with a warning. |
 
-`make update` force-hard-resets every repo above (except siros-id-stack) to its
+`make update` force-hard-resets every repo above to its
 default branch — destructive, only run it when you actually want to discard
 local changes in the sibling checkouts.
 
@@ -47,8 +46,7 @@ local changes in the sibling checkouts.
 - **Named Fly.io environments (`make fly-up ENV=<name>` / `fly-down` /
   `fly-status`)** — a full, independently-addressable, shareable stack at
   `sirosid-<env>-*.fly.dev` URLs under the `sirosfoundation` Fly org, region
-  `arn`. Images are pulled straight from `siros-id-stack`'s
-  `values.yaml` (layered with `values-fly.yaml`) — **no local Docker build** by
+  `arn`. Images are pulled straight from `chart/values.yaml` (layered with `values-fly.yaml`) — **no local Docker build** by
   default. Use this for: handing a URL to someone else, native
   Android/iOS app testing (real assetlinks/AASA over real TLS), OIDC-backed
   issuance (mini-oidc needs to be reachable from a real browser redirect, not
@@ -60,7 +58,7 @@ local changes in the sibling checkouts.
 Both paths share one underlying mechanism: `scripts/render-helm-config.py`
 renders **every** service's config — wallet-backend, the PDP, and the four vc
 services (issuer-apigw, issuer-core, issuer-registry, verifier) — from the
-same `siros-id-stack` chart, just with different hostname targets (`--target
+same in-repo chart (`chart/`), just with different hostname targets (`--target
 fly` uses `.internal`/`.fly.dev`, compose uses `*.localhost` service
 aliases). Nothing is hand-maintained in parallel any more:
 `fixtures/vc-config.yaml` and the four mechanically-patched copies of it are
@@ -72,17 +70,24 @@ per-run generated overlay → `environments/<name>.yaml`'s `values:` block).
 Every mode that used to need its own pre-patched config file is now just a
 different hostname set: TUNNELS, DOMAIN, Android/Waydroid, CONFORMANCE.
 
-This means a stale or wrong `../siros-id-stack` checkout now silently
-produces wrong config for **anything**, not just the PDP — always check
-`git -C ../siros-id-stack branch --show-current` first when behavior looks
-off, and run `make vc-config-parity` (below) to see exactly what moved.
+**`chart/` is ours.** It began as the SIROS ID Stack Helm chart
+(sirosfoundation/siros-id-stack, at our PR #3 + `mdoc_iacas_uri` + issuer BBS)
+and is now maintained here, deliberately more generic than the production
+chart: it exists to expose every knob sirosid-dev needs, where the production
+chart exposes only what a deployment wants. Helm is used purely as the template
+engine (`helm template`; only the ConfigMaps are consumed), so the k8s-only
+templates in it are dead weight to prune, not something to keep in sync. The
+upstream chart reverted the `extraConfig` design this repo relies on
+(2026-09-29) and silently ignores unknown values keys, so tracking it would
+have produced stacks that boot with the wrong config. Compare against
+upstream by hand when a feature there is worth porting — don't merge it.
 
 **`make vc-config-parity`** renders the chart for both targets and
 semantically diffs the result against checked-in goldens
 (`fixtures/vc-config-golden/`), with every accepted difference justified in
 `accepted-diffs.yaml`. Run it after touching the chart, `values-base.yaml`,
-or the renderer — it is the only thing that would catch an upstream chart
-change quietly dropping a field this repo depends on.
+or the renderer — it is the only thing that catches a template edit quietly
+dropping a field this repo depends on.
 
 ### `make up` — key flags (see `make help` for the full, current list)
 
@@ -130,8 +135,8 @@ change quietly dropping a field this repo depends on.
   Honored identically by `make up` and `make fly-up`; persistable per
   environment as `credential_registries:` in `environments/<name>.yaml`.
 - `VC=yes` — adds production-like issuer/verifier/apigw/registry + mongodb,
-  built from `../vc`. Requires `helm` and `../siros-id-stack`, since their
-  config is rendered from the chart.
+  built from `../vc`. Requires `helm`, since their
+  config is rendered from `chart/`.
 - `TRANSPORT=websocket|wmp|http` — wallet transport; `http` is deprecated.
 - `CONFORMANCE=yes` — layers in VC services + VC↔go-trust wiring
   (`docker-compose.vc-go-trust.yml`) and the OpenID conformance suite overlay,
@@ -273,8 +278,8 @@ the datastore-import gotcha below.
 
 ## Why `values-fly.yaml` overrides exist (don't remove without checking)
 
-`siros-id-stack/values.yaml`'s own image pins lag behind what this
-repo needs; `values-fly.yaml`'s `images:` block patches specific components:
+`chart/values.yaml`'s image pins are a snapshot of what siros-id-stack shipped
+and lag behind what this repo needs; `values-fly.yaml`'s `images:` block patches specific components:
 
 - **`images.pdp`** — pinned to a specific `go-trust` tag ahead of the chart's
   own (pre-release, commit-sha) default, because the chart's default predates
@@ -360,8 +365,8 @@ true`:** v0.10.0 added a hard startup-time validation
 defaults to `"etsi"` (EC TS03 v1.5.2 §2.3.1 made it a mandatory WIA claim,
 with no sensible built-in default per that field's own comment) — `wia.
 enabled: true` with no `wallet_version` alongside it fails config validation
-and the backend never comes up. As things stand, `siros-id-stack`'s `main`
-branch doesn't render a `wallet_provider.wia` block in
+and the backend never comes up. As things stand, `chart/`
+doesn't render a `wallet_provider.wia` block in
 `templates/04-wallet-backend.yaml` at all, so this isn't a live bug today —
 but if a future chart update adds one, always pair `wia.enabled: true` with a
 `wallet_version` (this repo uses go-wallet-backend's own version as the
