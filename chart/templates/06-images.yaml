@@ -1,0 +1,12 @@
+{{- /* The merged `images` values, as data. fly-up reads component image refs
+       and the mongo version from here, so they follow the same layering
+       (chart values -> values-fly.yaml -> environments/<env>.yaml) as
+       everything else without the Python side re-implementing helm's merge. */ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: images
+data:
+  {{- range $key, $image := .Values.images }}
+  {{ $key }}: {{ $image | quote }}
+  {{- end }}

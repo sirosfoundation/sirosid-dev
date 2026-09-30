@@ -80,7 +80,7 @@ from fly_common import (  # noqa: E402
     wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
 )
 from helm_render_lib import (  # noqa: E402
-    extract_configmap_data, extract_deployment_image, extract_init_container_image, extract_mongo_version,
+    extract_configmap_data, extract_image,
 )
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
@@ -229,10 +229,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             # tag`/`docker push`/`flyctl auth docker` from the developer.
             print(f"{name}: {image!r} is a local Docker image - pushing to registry.fly.io/{app}")
             image = push_local_image(app, image)
-    elif "image_from_helm_deployment" in comp:
-        deployment = comp["image_from_helm_deployment"]
-        image = (extract_init_container_image(docs, deployment)
-                 if name == "wallet-frontend" else extract_deployment_image(docs, deployment))
+    elif "image_from_values" in comp:
+        image = extract_image(docs, comp["image_from_values"])
     else:
         image = comp["image"].format(mongo_version=mongo_version)
 
@@ -1129,7 +1127,7 @@ def main():
                            # escape hatch for anything the typed keys above
                            # don't cover (see scripts/env_config.py).
                            env_values, bbs_secret_key)
-    mongo_version = extract_mongo_version(docs)
+    mongo_version = extract_image(docs, "mongoCommunityVersion")
 
     print(f"=== Generating per-environment PKI ===")
     pki_dir = generate_pki(args.env)

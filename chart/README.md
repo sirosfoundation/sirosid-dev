@@ -14,6 +14,8 @@ than upstream: every knob sirosid-dev needs should be a value, not a
 post-render patch. Escape hatch: each service's `extraConfig` (rooted at the
 WHOLE config file; lists replace). Keep `make vc-config-parity` green.
 
+**Pruned.** Only ConfigMap documents and the helpers they use remain (no Deployments, Certificates, HTTPRoutes, NetworkPolicies, ...). `06-images.yaml` exposes the merged `images` values so fly-up reads image refs from it.
+
 **Porting from upstream.** Compare by hand (`git diff` against a fresh clone of
 siros-id-stack) and port what is worth having. Not ported yet: WIA mode toggles,
 per-type display metadata, presentation-request templates, EU Business Wallet
