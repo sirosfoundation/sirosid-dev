@@ -16,6 +16,8 @@ WHOLE config file; lists replace). Keep `make vc-config-parity` green.
 
 **Pruned.** Only ConfigMap documents and the helpers they use remain (no Deployments, Certificates, HTTPRoutes, NetworkPolicies, ...). `06-images.yaml` exposes the merged `images` values so fly-up reads image refs from it.
 
+**Registry layout.** `walletBackend.registryConfigLayout: legacy|integrated` (default legacy) gates the go-wallet-backend#431 layout: `registry:` block inside backend.yaml, no registry.yaml, no `--registry-config`. Fly supports both; compose refuses integrated until its overlay exists. Switch only after bumping `images.walletBackend` to a release containing #431.
+
 **Porting from upstream.** Compare by hand (`git diff` against a fresh clone of
 siros-id-stack) and port what is worth having. Not ported yet: WIA mode toggles,
 per-type display metadata, presentation-request templates, EU Business Wallet

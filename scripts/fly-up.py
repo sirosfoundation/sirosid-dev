@@ -234,13 +234,18 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     else:
         image = comp["image"].format(mongo_version=mongo_version)
 
+    # integrated registry layout (go-wallet-backend#431+): the registry is a
+    # block of config.yaml, so there is no registry.yaml to mount or pass.
+    registry_integrated = not (out_dir / "wallet-backend-registry.yaml").exists()
+
     public_ports = [p["internal"] for p in comp["ports"] if p["public"]]
     primary_public_port = public_ports[0] if public_ports else None
 
     toml_path = out_dir / f"{name}.fly.toml"
     process_cmd = {
         "pdp": "--config /main-config/config.yaml",
-        "wallet-backend": "--mode=all --config=/app/config.yaml --registry-config=/app/registry.yaml",
+        "wallet-backend": ("--mode=all --config=/app/config.yaml"
+                           + ("" if registry_integrated else " --registry-config=/app/registry.yaml")),
         # mongod binds 0.0.0.0 (IPv4) by default even with --bind_ip_all;
         # Fly's 6PN private network (`.internal` DNS) is IPv6-only, so other
         # apps get "connection refused" dialing it unless IPv6 is explicitly
@@ -383,7 +388,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     elif name == "wallet-backend":
         deploy_args += [
             "--file-local", f"/app/config.yaml={out_dir / 'wallet-backend.yaml'}",
-            "--file-local", f"/app/registry.yaml={out_dir / 'wallet-backend-registry.yaml'}",
+            *([] if registry_integrated else
+              ["--file-local", f"/app/registry.yaml={out_dir / 'wallet-backend-registry.yaml'}"]),
             "--file-literal", "/vctms/.keep=ok",
         ]
         # /vctms is created but left empty. The chart's registry.yaml points

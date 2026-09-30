@@ -360,6 +360,21 @@ walletBackend:
   # this chart doesn't model (wallet_provider/WIA, AS rules, storage
   # backends). A list here REPLACES the list it merges over.
   extraConfig: {}
+  # How the VCTM registry role is configured.
+  #   legacy     (default) - a separate registry.yaml, passed with --registry-config.
+  #                          For go-wallet-backend images WITHOUT
+  #                          sirosfoundation/go-wallet-backend#431.
+  #   integrated           - a `registry:` block inside backend.yaml; no registry.yaml, no
+  #                          --registry-config. Needs an image WITH #431 (older binaries
+  #                          ignore the block and start the registry on built-in defaults).
+  # To switch: bump images.walletBackend to a release containing #431 first, then set
+  # "integrated". Roll back by setting "legacy" (before or with reverting the image).
+  registryConfigLayout: legacy
+  # Deep-merged over the registry defaults, in `registry:` block layout (source, sources,
+  # cache, dynamic_cache, image_embed, filter, rate_limit, require_auth). In "legacy" it is
+  # translated to the old file (require_auth -> jwt.require_auth). An old-layout
+  # jwt.require_auth is accepted. server/logging/http_client are rejected: they belong to
+  # the backend (extraConfig).
   registryExtraConfig: {}
   # oidcGate uses the following redirectURI: https://<frontend-url>/id/<tenant-id>/oidc/cb
   # oidcGate:

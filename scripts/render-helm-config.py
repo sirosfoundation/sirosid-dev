@@ -760,9 +760,18 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     else:
         backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password,
                                                 wallet_attestation)
-    (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
 
-    registry_cfg = yaml.safe_load(wb_data["registry.yaml"])
+    # Two layouts (chart: walletBackend.registryConfigLayout). legacy: a
+    # separate registry.yaml. integrated (go-wallet-backend#431+): a
+    # `registry:` block inside backend.yaml, no second file. The patches below
+    # apply to the same settings either way.
+    integrated = "registry.yaml" not in wb_data
+    if integrated and target == "compose":
+        raise SystemExit(
+            "walletBackend.registryConfigLayout=integrated is not supported for the compose target yet: "
+            "docker-compose.helm-config.yml still passes --registry-config and mounts registry.yaml. "
+            "Add the overlay when the local go-wallet-backend build contains #431.")
+    registry_cfg = backend_cfg.setdefault("registry", {}) if integrated else yaml.safe_load(wb_data["registry.yaml"])
     if target == "fly":
         # The chart's /cache mount (templates/04-wallet-backend.yaml) is a
         # real k8s emptyDir, writable via the pod's fsGroup securityContext -
@@ -780,9 +789,16 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         registry_cfg.setdefault("cache", {})["path"] = "/tmp/vctm-cache.json"
     if credential_registries:
         registry_cfg = patch_registry_sources(registry_cfg, credential_registries)
-    (out_dir / "wallet-backend-registry.yaml").write_text(yaml.dump(registry_cfg, sort_keys=False))
+    (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
     print(f"wrote {out_dir / 'wallet-backend.yaml'}")
-    print(f"wrote {out_dir / 'wallet-backend-registry.yaml'}")
+    registry_file = out_dir / "wallet-backend-registry.yaml"
+    if integrated:
+        # A leftover file from a legacy render would be mounted and ignored;
+        # remove it so nothing can mistake it for live config.
+        registry_file.unlink(missing_ok=True)
+    else:
+        registry_file.write_text(yaml.dump(registry_cfg, sort_keys=False))
+        print(f"wrote {registry_file}")
 
     # registry.yaml's local_overrides always points at /vctms - Helm mounts this
     # from a `vctms` ConfigMap (created even when empty), so the directory must
