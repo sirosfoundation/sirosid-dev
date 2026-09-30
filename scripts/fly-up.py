@@ -868,6 +868,10 @@ def main():
                               "environments/<name>.yaml's `region:`, $FLY_REGION, .fly-region, and "
                               "Fly's own detected suggestion - see the region-resolution comment below.")
     parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
+    parser.add_argument("--render-only", action="store_true",
+                        help="Render config into fixtures/rendered/fly-<env>/ and print the image each "
+                             "component would run, then stop before touching Fly. Answers 'what would "
+                             "this deploy change?' - diff the output against the running machines.")
     parser.add_argument("--android-app", action="append",
                          help="package=fingerprint (SHA-256, colon-separated hex, as printed by "
                               "`keytool -list -v`) for a debug build or Play Store signing key to "
@@ -1128,6 +1132,20 @@ def main():
                            # don't cover (see scripts/env_config.py).
                            env_values, bbs_secret_key)
     mongo_version = extract_image(docs, "mongoCommunityVersion")
+
+    if args.render_only:
+        print("=== Images (--render-only: nothing deployed) ===")
+        for comp in COMPONENTS:
+            name = comp["name"]
+            if name in image_overrides:
+                ref = image_overrides[name]
+            elif "image_from_values" in comp:
+                ref = extract_image(docs, comp["image_from_values"])
+            else:
+                ref = comp["image"].format(mongo_version=mongo_version)
+            print(f"  {name:<18} {ref}")
+        print(f"config written to {out_dir}")
+        return
 
     print(f"=== Generating per-environment PKI ===")
     pki_dir = generate_pki(args.env)
