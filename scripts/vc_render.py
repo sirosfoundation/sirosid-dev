@@ -1,4 +1,4 @@
-"""Render the four vc services' config from the siros-id-stack chart.
+"""Render the four vc services' config from chart/.
 
 The chart has always emitted these - templates/04-issuer.yaml produces the
 ConfigMaps issuer-registry-main, issuer-apigw-main and issuer-core-main, and

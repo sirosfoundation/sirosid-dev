@@ -112,7 +112,6 @@ def load_environments(include_fly: bool = True) -> list[Environment]:
             "trusted_issuers": len(cfg.get("trusted_issuers", [])),
             "trusted_verifiers": len(cfg.get("trusted_verifiers", [])),
             "conformance": cfg.get("conformance", False),
-            "chart_ref": cfg.get("chart_ref", ""),
         }
         envs[name] = e
     if include_fly:
@@ -501,7 +500,7 @@ def doctor(env: Environment | None = None) -> list[dict]:
                       ("cloudflared", "TUNNELS=yes"), ("python3", "the harness scripts")):
         add(f"{tool} on PATH", shutil.which(tool), why, f"install {tool}")
 
-    for repo in ("wallet-frontend", "go-wallet-backend", "go-trust", "vc", "siros-id-stack"):
+    for repo in ("wallet-frontend", "go-wallet-backend", "go-trust", "vc"):
         path = ROOT.parent / repo
         if not path.is_dir():
             add(f"../{repo}", False, "missing", "make setup")
@@ -509,16 +508,6 @@ def doctor(env: Environment | None = None) -> list[dict]:
         branch = _git(path, "branch", "--show-current")
         dirty = bool(_git(path, "status", "--porcelain"))
         add(f"../{repo}", True, f"on {branch or 'detached'}{' (dirty)' if dirty else ''}")
-
-    chart = ROOT.parent / "siros-id-stack"
-    if chart.is_dir():
-        branch = _git(chart, "branch", "--show-current")
-        add("siros-id-stack on main", branch == "main",
-            f"on {branch!r} - a stale/wrong chart renders wrong config for everything, not just the PDP",
-            "git -C ../siros-id-stack checkout main && git -C ../siros-id-stack pull")
-        behind = _git(chart, "rev-list", "--count", "HEAD..origin/main")
-        add("siros-id-stack up to date", behind in ("", "0"), f"{behind or 0} commits behind origin/main",
-            "git -C ../siros-id-stack pull --ff-only")
 
     # mini-oidc: the one local image pulled rather than built - check the
     # cached image is the pinned tag, not a stale floating one.

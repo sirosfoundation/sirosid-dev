@@ -1,0 +1,57 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-frontend-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  basePath: {{ $basePathWalletFrontend }}
+  displayName: {{ include "siros-id.displayName" . }}
+  rpId: {{ $hostnameWalletFrontend }}
+  publicUrl: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}
+  publicRedirectUrl: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/cb
+  publicBackendUrl: https://{{ include "siros-id.hostname.walletBackend" . }}
+  publicRegistryUrl: https://{{ include "siros-id.hostname.walletBackend" . }}/registry/type-metadata
+  faviconDataUrl: {{ .Values.walletFrontend.faviconDataUrl | default "" | quote }}
+  logoLightDataUrl: {{ .Values.walletFrontend.logoLightDataUrl | default "" | quote }}
+  logoDarkDataUrl: {{ .Values.walletFrontend.logoDarkDataUrl | default "" | quote }}
+  theme: {{ .Values.walletFrontend.theme | default "" | quote }}
+  policyLinks: {{ .Values.walletFrontend.policyLinks | default "" | quote }}
+  wellknownAppleAppIds: {{ .Values.walletFrontend.wellknownAppleAppIds | default "" | quote }}
+  wellknownAndroidPackageNamesAndFingerprints: {{ .Values.walletFrontend.wellknownAndroidPackageNamesAndFingerprints | default "" | quote }}
+  {{- if .Values.walletBackend.oidcGate }}
+  oidcGateOpUrl: {{ printf "%s %s" .Values.walletBackend.oidcGate.registration_op.issuer .Values.walletFrontend.extraCspConnectUrls | quote }}
+  {{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-frontend-nginx
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  default.conf: |-
+    server {
+      include /web-config-headers/*.conf;
+      listen 8080;
+      root /usr/share/nginx/html;
+      location /readyz {
+        access_log off;
+        default_type text/plain;
+        return 200 'wallet-frontend';
+      }
+      location {{ $basePathWalletFrontend }} {
+        return 301 https://$host{{ $basePathWalletFrontend }}/;
+      }
+      location {{ $basePathWalletFrontend }}/ {
+        alias /usr/share/nginx/html/;
+        try_files $uri /index.html;
+      }
+    }

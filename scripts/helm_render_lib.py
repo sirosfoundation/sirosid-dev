@@ -1,4 +1,4 @@
-"""Shared helpers for rendering config off the siros-id-stack chart.
+"""Shared helpers for rendering config off chart/.
 
 Used by render-helm-config.py (docker-compose / Fly wallet-backend + pdp
 config) and fly-up.py (image refs + mongo version for the Fly deployment) -
@@ -40,33 +40,9 @@ def extract_configmap_data(docs: list, name: str) -> dict:
     )
 
 
-def extract_deployment_image(docs: list, name: str) -> str:
-    for doc in docs:
-        if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("name") == name:
-            return doc["spec"]["template"]["spec"]["containers"][0]["image"]
-    raise ValueError(
-        f"Deployment {name!r} not found in rendered manifest - "
-        "has the chart's Deployment naming changed upstream?"
-    )
-
-
-def extract_init_container_image(docs: list, deployment_name: str, index: int = 0) -> str:
-    """wallet-frontend's Deployment runs two different images: an initContainer
-    (`config-gen`, images.walletFrontendConfig - the full app image, which also
-    has its own nginx and can run standalone) and a main container
-    (images.walletFrontendNginx, a stock nginx image only used to serve the
-    initContainer's output in the Helm split). sirosid-dev's Fly deployment
-    doesn't replicate that split (see render-helm-config.py's module
-    docstring) - it needs the initContainer's image, not the main one.
-    """
-    for doc in docs:
-        if doc.get("kind") == "Deployment" and doc.get("metadata", {}).get("name") == deployment_name:
-            return doc["spec"]["template"]["spec"]["initContainers"][index]["image"]
-    raise ValueError(f"Deployment {deployment_name!r} not found in rendered manifest")
-
-
-def extract_mongo_version(docs: list) -> str:
-    for doc in docs:
-        if doc.get("kind") == "MongoDBCommunity":
-            return doc["spec"]["version"]
-    raise ValueError("MongoDBCommunity resource not found in rendered manifest")
+def extract_image(docs: list, key: str) -> str:
+    """One entry of the merged `images:` values (chart/templates/06-images.yaml)."""
+    images = extract_configmap_data(docs, "images")
+    if key not in images:
+        raise ValueError(f"images.{key} is not defined - see chart/values.yaml")
+    return images[key]

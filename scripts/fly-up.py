@@ -80,7 +80,7 @@ from fly_common import (  # noqa: E402
     wait_for_checks, wallet_frontend_conf, wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml,
 )
 from helm_render_lib import (  # noqa: E402
-    extract_configmap_data, extract_deployment_image, extract_init_container_image, extract_mongo_version,
+    extract_configmap_data, extract_image,
 )
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
@@ -107,7 +107,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                     extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
                     rical_provider_url: str = None, rical_root_certificate_pem: str = None,
                     dc_api_enable: str = "", credential_registries: list = None,
-                    env_values: dict = None, bbs_secret_key: str = None, chart_ref: str = None) -> list:
+                    env_values: dict = None, bbs_secret_key: str = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -140,8 +140,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    # what a type looks like. One render sets both.
                    credential_registries=credential_registries,
                    env_values=env_values,
-                   bbs_secret_key=bbs_secret_key,
-                   chart_ref=chart_ref)
+                   bbs_secret_key=bbs_secret_key)
     return docs
 
 
@@ -230,12 +229,14 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             # tag`/`docker push`/`flyctl auth docker` from the developer.
             print(f"{name}: {image!r} is a local Docker image - pushing to registry.fly.io/{app}")
             image = push_local_image(app, image)
-    elif "image_from_helm_deployment" in comp:
-        deployment = comp["image_from_helm_deployment"]
-        image = (extract_init_container_image(docs, deployment)
-                 if name == "wallet-frontend" else extract_deployment_image(docs, deployment))
+    elif "image_from_values" in comp:
+        image = extract_image(docs, comp["image_from_values"])
     else:
         image = comp["image"].format(mongo_version=mongo_version)
+
+    # integrated registry layout (go-wallet-backend#431+): the registry is a
+    # block of config.yaml, so there is no registry.yaml to mount or pass.
+    registry_integrated = not (out_dir / "wallet-backend-registry.yaml").exists()
 
     public_ports = [p["internal"] for p in comp["ports"] if p["public"]]
     primary_public_port = public_ports[0] if public_ports else None
@@ -243,7 +244,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     toml_path = out_dir / f"{name}.fly.toml"
     process_cmd = {
         "pdp": "--config /main-config/config.yaml",
-        "wallet-backend": "--mode=all --config=/app/config.yaml --registry-config=/app/registry.yaml",
+        "wallet-backend": ("--mode=all --config=/app/config.yaml"
+                           + ("" if registry_integrated else " --registry-config=/app/registry.yaml")),
         # mongod binds 0.0.0.0 (IPv4) by default even with --bind_ip_all;
         # Fly's 6PN private network (`.internal` DNS) is IPv6-only, so other
         # apps get "connection refused" dialing it unless IPv6 is explicitly
@@ -386,7 +388,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
     elif name == "wallet-backend":
         deploy_args += [
             "--file-local", f"/app/config.yaml={out_dir / 'wallet-backend.yaml'}",
-            "--file-local", f"/app/registry.yaml={out_dir / 'wallet-backend-registry.yaml'}",
+            *([] if registry_integrated else
+              ["--file-local", f"/app/registry.yaml={out_dir / 'wallet-backend-registry.yaml'}"]),
             "--file-literal", "/vctms/.keep=ok",
         ]
         # /vctms is created but left empty. The chart's registry.yaml points
@@ -870,7 +873,11 @@ def main():
                          help="Pin this run's Fly region (e.g. 'arn'), overriding "
                               "environments/<name>.yaml's `region:`, $FLY_REGION, .fly-region, and "
                               "Fly's own detected suggestion - see the region-resolution comment below.")
-    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"))
+    parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
+    parser.add_argument("--render-only", action="store_true",
+                        help="Render config into fixtures/rendered/fly-<env>/ and print the image each "
+                             "component would run, then stop before touching Fly. Answers 'what would "
+                             "this deploy change?' - diff the output against the running machines.")
     parser.add_argument("--android-app", action="append",
                          help="package=fingerprint (SHA-256, colon-separated hex, as printed by "
                               "`keytool -list -v`) for a debug build or Play Store signing key to "
@@ -1129,9 +1136,22 @@ def main():
                            # block, deep-merged over everything else - the
                            # escape hatch for anything the typed keys above
                            # don't cover (see scripts/env_config.py).
-                           env_values, bbs_secret_key,
-                           env_cfg["chart_ref"] or None)
-    mongo_version = extract_mongo_version(docs)
+                           env_values, bbs_secret_key)
+    mongo_version = extract_image(docs, "mongoCommunityVersion")
+
+    if args.render_only:
+        print("=== Images (--render-only: nothing deployed) ===")
+        for comp in COMPONENTS:
+            name = comp["name"]
+            if name in image_overrides:
+                ref = image_overrides[name]
+            elif "image_from_values" in comp:
+                ref = extract_image(docs, comp["image_from_values"])
+            else:
+                ref = comp["image"].format(mongo_version=mongo_version)
+            print(f"  {name:<18} {ref}")
+        print(f"config written to {out_dir}")
+        return
 
     print(f"=== Generating per-environment PKI ===")
     pki_dir = generate_pki(args.env)

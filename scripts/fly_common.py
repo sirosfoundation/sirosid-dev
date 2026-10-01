@@ -151,7 +151,7 @@ COMPONENTS = [
         # itself lives in values-fly.yaml's images: block alongside every
         # other component's - mini-oidc isn't in the siros-id-stack chart, so
         # it can't be overlaid via `helm template` like the
-        # image_from_helm_deployment components around it, and is read from
+        # image_from_values components around it, and is read from
         # that file directly instead (see MINI_OIDC_IMAGE above).
         "image": MINI_OIDC_IMAGE,
         "ports": [{"internal": 9005, "public": True}],
@@ -159,13 +159,13 @@ COMPONENTS = [
     },
     {
         "name": "vc-registry",
-        "image_from_helm_deployment": "issuer-registry",
+        "image_from_values": "issuerRegistry",
         "ports": [{"internal": 8080, "public": True}],
         "checks": "/health",
     },
     {
         "name": "vc-issuer",
-        "image_from_helm_deployment": "issuer-core",
+        "image_from_values": "issuerCore",
         # issuer-core's HTTP API is on 8081 (the chart renders api_server.addr
         # :8081; 8080 was never it - docker-compose.vc-services.yml publishes
         # 9000:8081 for the same reason). gRPC, what apigw actually calls, is
@@ -181,19 +181,19 @@ COMPONENTS = [
     },
     {
         "name": "vc-verifier",
-        "image_from_helm_deployment": "verifier",
+        "image_from_values": "verifier",
         "ports": [{"internal": 8080, "public": True}],
         "checks": "/health",
     },
     {
         "name": "vc-apigw",
-        "image_from_helm_deployment": "issuer-apigw",
+        "image_from_values": "issuerApigw",
         "ports": [{"internal": 8080, "public": True}],
         "checks": "/health",
     },
     {
         "name": "pdp",
-        "image_from_helm_deployment": "pdp",
+        "image_from_values": "pdp",
         "ports": [{"internal": 8080, "public": False}],
         "checks": None,
         # Same reasoning as vc-issuer - wallet-backend calls pdp over 6PN
@@ -202,7 +202,7 @@ COMPONENTS = [
     },
     {
         "name": "wallet-backend",
-        "image_from_helm_deployment": "wallet-backend",
+        "image_from_values": "walletBackend",
         "ports": [{"internal": 8080, "public": False}, {"internal": 8081, "public": False}, {"internal": 8082, "public": False}],
         "checks": None,
         # Same reasoning - wallet-proxy (deployed right after) proxies to
@@ -235,7 +235,7 @@ COMPONENTS = [
     },
     {
         "name": "wallet-frontend",
-        "image_from_helm_deployment": "wallet-frontend",
+        "image_from_values": "walletFrontendConfig",
         "ports": [{"internal": 80, "public": True}],
         "checks": "/",
     },

@@ -1,0 +1,246 @@
+{{- $ns := include "siros-id.namespace" . -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+
+{{/*
+go-wallet-backend's two config files. Named templates so
+siros-id.vc.renderConfig can deep-merge walletBackend.extraConfig /
+walletBackend.registryExtraConfig over them (registryExtraConfig is in `registry:` block layout) - go-wallet-backend's
+pkg/config surface (wallet_provider/WIA, AS rules, trust policy, oidc_gate,
+storage backends) is wider than what a tenant normally sets here.
+*/}}
+{{- define "siros-id.walletBackend.config" -}}
+{{- $hostnameWalletFrontend := include "siros-id.hostname.walletFrontend" . -}}
+{{- $basePathWalletFrontend := include "siros-id.hostname.walletFrontendBasePath" . -}}
+logging:
+  level: debug
+  format: json
+server:
+  port: 8080
+  engine_port: 8082
+  admin_token_path: /main-secrets/adminToken
+  rp_name: {{ .Values.tenant.id }} Wallet
+  rp_id: {{ $hostnameWalletFrontend }}
+  rp_origins:
+    - {{ include "siros-id.origins.walletFrontend" . }}
+    {{- range .Values.walletBackend.extraRpOrigins }}
+    - {{ . }}
+    {{- end }}
+  base_url: https://{{ include "siros-id.hostname.walletBackend" . }}
+  cors:
+    allowed_origins:
+      - https://{{ $hostnameWalletFrontend }}
+    allow_credentials: true
+as:
+  enabled: true
+  legacy:
+    enabled: false
+  signing_key_path: /as-cert/tls.key
+  rules_dir: /as-rules
+  default_max_tac: rwlid
+  external_url: https://{{ include "siros-id.hostname.walletBackend" . }}
+  issuer: https://{{ include "siros-id.hostname.walletBackend" . }}
+trust:
+  pdp_url: {{ .Values.pdp.externalUrl | quote }}
+  registry_url: https://{{ include "siros-id.hostname.walletBackend" . }}/registry
+storage:
+  type: mongodb
+  mongodb:
+    uri: {{ include "siros-id.mongoUri" (list . "wallet-backend") }}
+    tls_enabled: true
+    ca_path: /client-cert/ca.crt
+    cert_path: /client-cert/tls.crt
+    key_path: /client-cert/tls.key
+    database: wallet-backend
+jwt:
+  secret_path: /main-secrets/jwtSecret
+{{- if eq (include "siros-id.walletBackend.registryConfigLayout" .) "integrated" }}
+registry:
+  {{- include "siros-id.walletBackend.registryConfig" . | nindent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+Layout of the VCTM registry role's configuration (walletBackend.registryConfigLayout):
+  legacy     - a separate registry.yaml, passed with --registry-config
+               (go-wallet-backend before sirosfoundation/go-wallet-backend#431)
+  integrated - a `registry:` block inside backend.yaml; no registry.yaml, no
+               --registry-config (#431 or later)
+*/}}
+{{- define "siros-id.walletBackend.registryConfigLayout" -}}
+{{- $layout := .Values.walletBackend.registryConfigLayout | default "legacy" -}}
+{{- if not (has $layout (list "legacy" "integrated")) -}}
+{{- fail (printf "walletBackend.registryConfigLayout must be \"legacy\" or \"integrated\", got %q" $layout) -}}
+{{- end -}}
+{{- $layout -}}
+{{- end -}}
+
+{{/*
+The `registry:` block (go-wallet-backend keys: source, sources, cache,
+dynamic_cache, image_embed, filter, rate_limit, require_auth).
+walletBackend.registryExtraConfig is deep-merged over the defaults; an
+old-layout `jwt.require_auth` is accepted and mapped to `require_auth`. server,
+logging and http_client are the backend's own settings now (backend.yaml /
+walletBackend.extraConfig) and are rejected here rather than silently dropped.
+*/}}
+{{- define "siros-id.walletBackend.registryConfig" -}}
+{{- $extra := deepCopy (.Values.walletBackend.registryExtraConfig | default dict) -}}
+{{- $jwt := get $extra "jwt" | default dict -}}
+{{- if hasKey $jwt "require_auth" -}}
+{{- $_ := set $extra "require_auth" (get $jwt "require_auth") -}}
+{{- end -}}
+{{- $_ := unset $extra "jwt" -}}
+{{- range $k := list "server" "logging" "http_client" -}}
+{{- if hasKey $extra $k -}}
+{{- fail (printf "walletBackend.registryExtraConfig.%s is not part of the registry: block any more; set it through walletBackend.extraConfig (backend.yaml)" $k) -}}
+{{- end -}}
+{{- end -}}
+{{- include "siros-id.vc.renderConfig" (list . "siros-id.walletBackend.registryConfigDefaults" $extra) -}}
+{{- end -}}
+
+{{- define "siros-id.walletBackend.registryConfigDefaults" -}}
+source:
+  url: https://registry.siros.org/.well-known/vctm-registry.json
+  poll_interval: 3m
+  timeout: 30s
+  local_overrides:
+    - /vctms
+cache:
+  path: /cache/vctm-cache.json
+  max_age: 10m
+filter:
+  include_patterns: []
+  exclude_patterns: []
+image_embed:
+  enabled: true
+  max_image_size: 10485760
+require_auth: false
+{{- end -}}
+
+{{/* The pre-#431 registry.yaml, kept as it was. */}}
+{{- define "siros-id.walletBackend.registryConfigLegacy" -}}
+logging:
+  level: debug
+  format: json
+server:
+  port: 8080 
+source:
+  url: https://registry.siros.org/.well-known/vctm-registry.json
+  poll_interval: 3m
+  timeout: 30s
+  local_overrides:
+    - /vctms
+cache:
+  path: /cache/vctm-cache.json
+  max_age: 10m
+filter:
+  include_patterns: []
+  exclude_patterns: []
+image_embed:
+  enabled: true
+  max_image_size: 10485760
+jwt:
+  require_auth: false
+{{- end -}}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-as-rules
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  as-rules.rules: |-
+    ; --- Shape A: acr present ---
+    (token (acr (*)) (aud (*)) (sub (*)) (tac r))
+    (token (acr (*)) (aud (*)) (sub (*)) (tac l))
+    (token (acr (*)) (aud (*)) (sub (*)) (tac rl))
+    (token (acr (*)) (aud (*)) (sub (*)) (tac (*)) (tenant_id (*)))
+
+    ; --- Shape B: no acr, sub present ---
+    (token (aud (*)) (sub (*)) (tac r))
+    (token (aud (*)) (sub (*)) (tac l))
+    (token (aud (*)) (sub (*)) (tac rl))
+    (token (aud (*)) (sub (*)) (tac (*)) (tenant_id (*)))
+
+    ; --- Shape C: "anonymous" (acr present, no sub), read-only, restricted audiences ---
+    (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac r) (tenant_id (*)))
+    (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac l) (tenant_id (*)))
+    (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac rl) (tenant_id (*)))
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  {{- /* renderConfig round-trips through fromYaml, which makes every number a
+         float64 - and prints 10485760 as 1.048576e+07. The registry's byte
+         limit is an int in go-wallet-backend, so restore it. */}}
+  {{- $backend := include "siros-id.vc.renderConfig" (list . "siros-id.walletBackend.config" .Values.walletBackend.extraConfig) | fromYaml }}
+  {{- with $backend.registry }}{{ with .image_embed }}{{ if hasKey . "max_image_size" }}{{ $_ := set . "max_image_size" (int64 .max_image_size) }}{{ end }}{{ end }}{{ end }}
+  backend.yaml: |- {{- toYamlPretty $backend | nindent 4 }}
+  {{- if eq (include "siros-id.walletBackend.registryConfigLayout" .) "legacy" }}
+  {{- /* registryExtraConfig is written in registry: block layout; the old file
+         has require_auth under jwt. */}}
+  {{- $legacyExtra := deepCopy (.Values.walletBackend.registryExtraConfig | default dict) }}
+  {{- if hasKey $legacyExtra "require_auth" }}
+  {{- $_ := set $legacyExtra "jwt" (dict "require_auth" (get $legacyExtra "require_auth")) }}
+  {{- $_ := unset $legacyExtra "require_auth" }}
+  {{- end }}
+  {{- $embed := get $legacyExtra "image_embed" | default dict }}
+  {{- if hasKey $embed "max_image_size" }}
+  {{- $_ := set $embed "max_image_size" (int64 (get $embed "max_image_size")) }}
+  {{- end }}
+  registry.yaml: |- {{- include "siros-id.vc.renderConfig" (list . "siros-id.walletBackend.registryConfigLegacy" $legacyExtra) | nindent 4 }}
+  {{- end }}
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-config-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  tenant.yaml: |-
+    tenants:
+      - id: {{ .Values.tenant.id }}
+        name: {{ .Values.tenant.id }}
+        display_name: {{ include "siros-id.displayName" . }}
+        {{- if .Values.walletBackend.oidcGate }}
+        oidc_gate: {{- toYamlPretty .Values.walletBackend.oidcGate | nindent 10 }}
+        {{- end }}
+        require_invite: {{ .Values.features.requireInvite }}
+        trust_config:
+          pdp_url: {{ .Values.pdp.externalUrl | quote }}
+        issuers:
+          - credential_issuer_identifier: https://{{ include "siros-id.hostname.issuer" . }}
+            client_id: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/
+            visible: true
+          {{- range .Values.features.extraIssuers }}
+          - credential_issuer_identifier: {{ .url }}
+            visible: true
+            {{- if (hasKey . "clientId") }}
+            client_id: {{ .clientId | quote }}
+            {{- else }}
+            client_id: https://{{ $hostnameWalletFrontend }}{{ $basePathWalletFrontend }}/
+            {{- end }}
+          {{- end }}
+        verifiers:
+          - name: {{ include "siros-id.displayName" . }}
+            url: https://{{ include "siros-id.hostname.verifier" . }}
+          {{- range .Values.features.extraVerifiers }}
+          - name: {{ .displayName | quote }}
+            url: {{ .url }}
+          {{- end }}
+      {{- with .Values.walletBackend.extraTenants }}
+      {{- toYamlPretty . | nindent 8 }}
+      {{- end }}
+          

@@ -1,0 +1,12 @@
+{{- $ns := include "siros-id.namespace" . -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: branding
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  faviconDataUrl: {{ include "siros-id.branding.faviconDataUrl" . | quote }}
+  logoDataUrl: {{ include "siros-id.branding.logoDataUrl" . | quote }}

@@ -12,9 +12,8 @@ This exists for two jobs, in this order:
    fixed or written down in accepted-diffs.yaml with a reason.
 
 2. Permanently after that, as a regression check on the chart itself.
-   ../siros-id-stack is fast-forwarded by `make setup` and released on its own
-   cadence, so an upstream change can silently drop a field this repo depends
-   on. Nothing else would notice until a credential fails to issue.
+   chart/ is maintained in this repo, so a template edit can silently drop a
+   field this repo depends on. Nothing else would notice until a credential fails to issue.
 
 A finding is a semantic difference between two parsed configs - key ordering
 and formatting are irrelevant. Run with --update to re-seed the goldens after
@@ -88,7 +87,7 @@ def redact(config):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT.parent / "siros-id-stack"))
+    ap.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
     ap.add_argument("--context", action="append", choices=sorted(CONTEXTS),
                     help="only check these (default: all)")
     ap.add_argument("--update", action="store_true",

@@ -1,0 +1,708 @@
+global:
+  # PullPolicy and PullSecrets overrides for all images
+  imagePullSecrets: []
+  imagePullPolicy: ""
+  # Labels and annotations applied to all resources
+  commonLabels: {}
+  commonAnnotations: {}
+  # do not specify labelSelector or matchLabelKeys here, they are set in the templates
+  topologySpreadConstraints: []
+  clusterDomain: "cluster.local"
+  service:
+    trafficDistribution: ""
+  certManager:
+    # Use certManager to create issuers used for client certificates and credential signing
+    createIssuers: true
+    clientCertificate:
+      issuerRef: common
+    credentialSigning:
+      issuerRef: creds
+      privateKeyAlgorithm: ECDSA
+      privateKeySize: 256
+
+tenant:
+  # Logical tenant identifier, used in configs and hostnames
+  id: ""
+  # If empty, .Release.Namespace will be used. But should this even be a thing? Helm can manage the namespace right?
+  namespace: ""
+  displayName: ""
+
+gateway:
+  # Shared Gateway to attach HTTPRoutes to
+  name: ""
+  namespace: ""
+
+domain:
+  # Base domain used for building hostnames; you can override each hostname explicitly if needed.
+  root: ""
+
+# Optional overrides; defaults are built from tenant.id and domain.root in templates
+hostnames:
+  issuerRegistry: ""
+  issuer: ""
+  verifier: ""
+  walletBackend: ""
+  walletFrontend: ""
+
+features:
+  # Set production mode to false for development mode with debug logging
+  production: false
+  singleTenant: true
+  createNamespace: true
+  generateSecrets: true
+  requireInvite: true
+  otlpCollector: false
+  branding:
+    # Only PNG images are supported (used by verifier and issuer-apigw)
+    faviconDataUrl: ""
+    logoDataUrl: ""
+  # Example configuration for extra issuers and verifiers (used by PDP and wallet-backend)
+  # extraIssuers:
+  #   - displayName: "Foobar Inc. - Primary"
+  #     url: https://issuer-1.example.com
+  #   - displayName: "Foobar Inc. - Secondary"
+  #     url: https://issuer-2.example.com
+  #     clientId: "not-the-default-frontend-base-url"
+  # extraVerifiers:
+  #   - displayName: "Foobar Inc."
+  #     url: https://verifier.example.com
+  extraIssuers: []
+  extraVerifiers: []
+  # Example configuration for extra wallets (used by verifier and issuer-apigw)
+  # extraWallets:
+  #   - displayName: "Foobar Inc."
+  #     url: https://wallet.example.com/id/foobar
+  extraWallets: []
+  # Example configuration for extra credential types (used by issuer components, verifier and
+  # registry in wallet-backend)
+  # credentialTypes:
+  #   "demo_2":
+  #     vct: urn:demo:2
+  #     format: dc+sd-jwt
+  #     issuance:
+  #       authProvider: openid4vp
+  #       source: "datastore"
+  #       authOptions:
+  #         scopes:
+  #           pid_1_5:
+  #             claims:
+  #               - given_name
+  #               - birthdate
+  #     vctm:
+  #       data: <JSON STRING DATA>
+  #   "demo_3":
+  #     vct: urn:demo:3
+  #     format: dc+sd-jwt
+  #     issuance:
+  #       authProvider: oidc
+  #       source: "datastore" # or "assertion" if the credential should be built dynamically via oidc claims
+  #       authOptions:
+  #         claims:
+  #           - given_name
+  #           - family_name
+  #           - birthdate 
+  #     vctm:
+  #       file: config/demo/vctm_demo_3.json
+  #   # An ISO 18013-5 mdoc type carries an MDDL schema instead of a VCTM.
+  #   # Set mdocSchema (not vctm) and format: mso_mdoc - vc validates that an
+  #   # mso_mdoc scope has mddl_file_path and rejects vctm_file_path.
+  #   "org.iso.18013.5.1.mDL":
+  #     doctype: org.iso.18013.5.1.mDL
+  #     format: mso_mdoc
+  #     issuance:
+  #       authProvider: oidc
+  #       source: "datastore"
+  #       authOptions:
+  #         claims:
+  #           - given_name
+  #           - family_name
+  #     mdocSchema:
+  #       file: config/demo/mdl.mdoc.json
+  # Either of vctm/mdocSchema may instead be fetched at runtime by setting
+  # vctmUrl/mddlUrl on the type, in which case no file is mounted for it.
+  credentialTypes: {}
+
+pdp:
+  # whitelist_template uses extraIssuers and extraVerifiers to build a URL whitelist
+  # and ignores any other configuration.
+  default_whitelist: true
+  externalUrl: "http://pdp"
+  # See go-trust config for more details.
+  # https://github.com/sirosfoundation/go-trust/
+  extraRegistries: {}
+  # Deep-merged over the rendered PDP config; see siros-id.vc.renderConfig.
+  # Reaches the parts of go-trust's config this chart doesn't model
+  # (policies, always/never-trusted, OIDFed trust anchors, cache TTLs,
+  # additional_trusted_roots) without hand-writing all of extraRegistries.
+  # A list here REPLACES the list it merges over.
+  extraConfig: {}
+
+issuer:
+  # max 1MB in total, use the API if you need more, since the feature is for quick testing.
+  # !!! credentials are only added on initialization of the database !!!
+  identitymappingImport:
+    identities: {}
+    users: []
+  datastoreImport:
+    documents: {}
+    users: []
+  datasourceAssertion: {}
+  apiAuth:
+    jwks:
+      enabled: false
+      jwksData: ""
+      issuer: ""
+    oidc:
+      enabled: false
+      issuerUrl: ""
+      clientId: ""
+      redirectUri: ""
+      scopes: ["openid", "email"]
+  authProviders:
+    oidc:
+      enabled: false
+      #issuerUrl: "https://demo-sso.common.siros.org/realms/demo"
+      #clientId: "demo-issuer-shared"
+      issuerUrl: ""
+      clientId: ""
+      # Seconds an OIDC login session stays valid. Unset uses vc's default.
+      sessionDuration: ~
+
+  # Per-service settings for the three issuance-side deployments. They share
+  # one config schema but are three separate services: apigw is the public
+  # OpenID4VCI face, core is an internal gRPC signing service, registry holds
+  # the token status lists.
+  apigw:
+    cors:
+      # allowed_origins is derived from the wallet frontend plus
+      # features.extraWallets; these are appended to that, for origins that
+      # are not a wallet - a separate admin UI, or a developer's own host.
+      # Appending rather than replacing matters: the derived entry follows
+      # the frontend hostname, so replacing the list silently breaks CORS
+      # for any deployment whose frontend is not where you expected.
+      extraAllowedOrigins: []
+      # Only needed if a client sends methods/headers outside vc's own
+      # defaults.
+      allowedMethods: []
+      allowedHeaders: []
+    openid4vci:
+      # Unset uses vc's default of authorization_code plus
+      # urn:ietf:params:oauth:grant-type:pre-authorized_code. Narrowing this
+      # turns off a whole issuance flow, so set it deliberately.
+      grantTypes: []
+      refreshTokenDuration: ~
+    # See verifier.walletAttestation - same block, issuance side.
+    walletAttestation:
+      enabled: false
+      mode: ""
+      policy: {}
+    extraConfig: {}
+  core:
+    jwtAttribute:
+      # Unset leaves vc's own defaults for both.
+      enableNotBefore: ~
+      validDuration: ~
+    mdoc:
+      # certificate_chain_path is always the signing chain; these two are the
+      # only tunable parts. Unset uses vc's defaults (8760h, SHA-256).
+      defaultValidity: ""
+      digestAlgorithm: ""
+    # Attach a random pseudonym_seed claim, for ZK pairwise-pseudonym
+    # derivation. Unset leaves it out of the config entirely.
+    pseudonymSeed: ~
+    # Blind BBS issuance - the "jwp" credential format.
+    #
+    # Disabled leaves the `bbs:` section out of the issuer config entirely,
+    # which is what turns the format off. Keep it a flag rather than
+    # inferring from the keys below: an issuer image built without
+    # `-tags bbsnative` REFUSES TO START when this section is present, so a
+    # deployment rolling onto such an image needs a way to switch the
+    # feature off without deleting its key configuration.
+    bbs:
+      enabled: false
+      # The issuer's key pair.
+      #
+      # Not key_config above, and not cert-manager: a BBS secret key is a
+      # BLS12-381 scalar consumed inside the signing algebra rather than a
+      # key that signs a digest, so no PKCS#11 HSM can hold one and no CA
+      # can issue one. Generate the pair with zk-cred-bbs's `bbs-keygen`.
+      #
+      # The public half is not secret and belongs here. The secret half
+      # does NOT: it comes from the issuer-core-main Secret via the
+      # secrets renderer (see secrets.issuerCoreMain below), so it never
+      # appears in the rendered ConfigMap.
+      publicKey: ""
+      # For a deployment that can mount the key material as files instead.
+      # Set at most one of publicKey/publicKeyPath, and if secretKeyPath is
+      # set the Secret and its renderer are not used at all.
+      publicKeyPath: ""
+      secretKeyPath: ""
+      # How long an issued credential is valid for. Unset uses vc's default
+      # (8760h).
+      defaultValidity: ""
+    extraConfig: {}
+  registry:
+    # From the registry documentation: "SectionSize is the number of entries (decoys) per section."
+    # Increasing/decreasing this value will affect required CPU/memory to generate decoy entries
+    # and affect risk of information leakage. First boot builds this many
+    # entries in memory as one slice before a single bulk insert, so a small
+    # machine needs a smaller value.
+    sectionSize: 1000000
+    tokenRefreshInterval: ""
+    rateLimitRequestsPerMinute: ~
+    adminGui:
+      enabled: false
+      username: "admin"
+    extraConfig: {}
+verifier:
+  oidc_provider:
+    enabled: true
+    subjectType: pairwise
+    enableUserinfo: true
+    # Token/session lifetimes in seconds. Unset means "use vc's own default"
+    # (session 3600, code 300, access 3600, id 3600, refresh 86400) rather
+    # than zero - don't set these to 0 to mean "default".
+    sessionDuration: ~
+    codeDuration: ~
+    accessTokenDuration: ~
+    idTokenDuration: ~
+    refreshTokenDuration: ~
+    # Confidential OIDC clients of the verifier's own OP, for relying parties
+    # that log users in via a presentation. Each entry:
+    #   - client_id, client_secret, client_name
+    #     redirect_uris: [], allowed_scopes: []
+    #     token_endpoint_auth_method, grant_types: [], response_types: []
+    # A client_secret belongs in the secrets file, not here.
+    staticClients: []
+  # How this verifier identifies itself in an OpenID4VP request. Empty uses
+  # vc's default, "x509_san_dns", which derives the client_id from
+  # public_url - so the PDP whitelist entry must match the public hostname.
+  # "did" instead publishes /.well-known/did.json and requires `did` below.
+  clientIdScheme: ""
+  did: ""
+  # Informational VP formats/algorithms advertised to wallets, e.g.
+  #   "dc+sd-jwt": {sd-jwt_alg_values: [ES256], kb-jwt_alg_values: [ES256]}
+  # This is a top-level verifier field in vc's schema, NOT a member of
+  # inbound.openid4vp - nesting it there silently does nothing, since vc
+  # unmarshals its config non-strictly.
+  preferredVpFormats: {}
+  # Seconds a presentation may stay pending. Unset uses vc's default (300).
+  presentationTimeout: ~
+  # W3C Digital Credentials API (browser-mediated presentation).
+  digitalCredentials:
+    enabled: false
+    # Send the request object as a signed JWT (JAR) rather than plain JSON.
+    useJar: false
+    # Preferred credential formats, most-preferred first. Unset uses vc's
+    # default ["vc+sd-jwt", "dc+sd-jwt", "mso_mdoc"].
+    preferredFormats: []
+    # One of dc_api.jwt (encrypted), direct_post.jwt (signed), direct_post.
+    # Unset uses vc's default, dc_api.jwt.
+    responseMode: ""
+    # Fall back to a QR code when the browser has no DC API. Unset uses
+    # vc's default (true).
+    allowQrFallback: ~
+    deepLinkScheme: ""
+  # Accept provider-signed wallet attestations instead of requiring every
+  # wallet to be pre-registered as a client. See
+  # siros-id.vc.config.walletAttestation for what `mode` pins.
+  walletAttestation:
+    enabled: false
+    mode: ""
+    policy: {}
+  # Mirrors of the zk-circuits catalog, tried in order. Only consulted by
+  # verifier images built with the `zknative` tag. Unset uses vc's default
+  # (https://zk-circuits.fly.dev).
+  zkCircuits:
+    sources: []
+  # Deep-merged over everything above; see siros-id.vc.renderConfig. Use for
+  # parts of vc's verifier config this chart doesn't model. Two rules:
+  #   - it is rooted at the WHOLE config file, so it needs the `verifier:`
+  #     (or `common:`) wrapper - omitting it silently writes a top-level key
+  #     vc ignores, since vc unmarshals non-strictly;
+  #   - a list here REPLACES the list it merges over, it does not append.
+  # extraConfig:
+  #   verifier:
+  #     credential_display:
+  #       enable: true
+  #   common:
+  #     log:
+  #       level: debug
+  extraConfig: {}
+  # Example configuration for extra presentation request templates
+  # presentationRequestTemplates:
+  #   "demo_3-all":
+  #     enabled: true
+  #     name: "demo_3 - All claims"
+  #     description: "Request all claims for demo credentials"
+  #     version: "1.0"
+  #     oidc_scopes:
+  #       - "demo_3-all"
+  #     dcql:
+  #       credentials:
+  #         - id: "demo_3"
+  #           format: "dc+sd-jwt"
+  #           meta:
+  #             vct_values:
+  #               - "urn:demo:3"
+  #           claims:
+  #             - path: ["given_name"]
+  #             - path: ["family_name"]
+  #             - path: ["email"]
+  #     claim_mappings:
+  #       "*": "*"
+  presentationRequestTemplates: {}
+  presets: {}
+
+walletBackend:
+  # Deep-merged over the rendered backend.yaml / registry.yaml; see
+  # siros-id.vc.renderConfig. Reaches parts of go-wallet-backend's config
+  # this chart doesn't model (wallet_provider/WIA, AS rules, storage
+  # backends). A list here REPLACES the list it merges over.
+  extraConfig: {}
+  # How the VCTM registry role is configured.
+  #   legacy     (default) - a separate registry.yaml, passed with --registry-config.
+  #                          For go-wallet-backend images WITHOUT
+  #                          sirosfoundation/go-wallet-backend#431.
+  #   integrated           - a `registry:` block inside backend.yaml; no registry.yaml, no
+  #                          --registry-config. Needs an image WITH #431 (older binaries
+  #                          ignore the block and start the registry on built-in defaults).
+  # To switch: bump images.walletBackend to a release containing #431 first, then set
+  # "integrated". Roll back by setting "legacy" (before or with reverting the image).
+  registryConfigLayout: legacy
+  # Deep-merged over the registry defaults, in `registry:` block layout (source, sources,
+  # cache, dynamic_cache, image_embed, filter, rate_limit, require_auth). In "legacy" it is
+  # translated to the old file (require_auth -> jwt.require_auth). An old-layout
+  # jwt.require_auth is accepted. server/logging/http_client are rejected: they belong to
+  # the backend (extraConfig).
+  registryExtraConfig: {}
+  # oidcGate uses the following redirectURI: https://<frontend-url>/id/<tenant-id>/oidc/cb
+  # oidcGate:
+  #   mode: "both"
+  #   bind_identity: true
+  #   required_claims:
+  #     email_verified: true
+  #   registration_op:
+  #     display_name: "Corporate SSO"
+  #     issuer: "https://login.acme.com"
+  #     client_id: "wallet-app"
+  #     scopes: "openid profile email"
+  # extraTenants:
+  #  - id: "extra-tenant"
+  #    name: "Extra Tenant"
+  #    display_name: "Extra Tenant"
+  #    require_invite: false
+  #    trust_config:
+  #      pdp_url: http://pdp/
+  #    issuers:
+  #      - credential_issuer_identifier: https://issuer.example.com
+  #        client_id: https://wallet.example.com/cb
+  #        visible: true
+  #    verifiers:
+  #      - name: "Extra Verifier"
+  #        url: https://verifier.example.com
+  #        visible: true
+  extraRpOrigins:
+    - android:apk-key-hash:6ecHLQH10KiwVBFUGCTwGe+JmK7qdqqgjtojzMi322k
+    - android:apk-key-hash:DEvegOak87MZWC6pGyDa3hqKnNwptRv8iTeQssaM2ME
+    - android:apk-key-hash:GQ2BxyCHKNHPJZNdbHXOS4qjaAyKmn2L/xrilXv4ivA
+    - android:apk-key-hash:QjozcKdtxyF0wvpLJux1zAi4tQvQ0YjTvwQKtavKe3w
+    - android:apk-key-hash:uVM73oLq5x4fV43U6MG9HnEstc4OJ709UEBfZDDO56I
+
+walletFrontend:
+  basePath: ""
+  policyLinks: "Privacy Policy::https://siros.org/policies/privacy-policy,End User License Agreement::https://siros.org/policies/end-user-license-agreement"
+  wellknownAppleAppIds: "X3YM693CZ3.org.siros.id,W36S8KLY7S.com.netzarchitekten.funkewallet,X3YM693CZ3.org.siros.wwwallet"
+  wellknownAndroidPackageNamesAndFingerprints: "io.yubicolabs.wwwwallet::E9:E7:07:2D:01:F5:D0:A8:B0:54:11:54:18:24:F0:19:EF:89:98:AE:EA:76:AA:A0:8E:DA:23:CC:C8:B7:DB:69,io.yubicolabs.wwwwallet::0C:4B:DE:80:E6:A4:F3:B3:19:58:2E:A9:1B:20:DA:DE:1A:8A:9C:DC:29:B5:1B:FC:89:37:90:B2:C6:8C:D8:C1,io.yubicolabs.wwwwallet::42:3A:33:70:A7:6D:C7:21:74:C2:FA:4B:26:EC:75:CC:08:B8:B5:0B:D0:D1:88:D3:BF:04:0A:B5:AB:CA:7B:7C,io.yubicolabs.wwwwallet::19:0D:81:C7:20:87:28:D1:CF:25:93:5D:6C:75:CE:4B:8A:A3:68:0C:8A:9A:7D:8B:FF:1A:E2:95:7B:F8:8A:F0,org.siros.id::42:3A:33:70:A7:6D:C7:21:74:C2:FA:4B:26:EC:75:CC:08:B8:B5:0B:D0:D1:88:D3:BF:04:0A:B5:AB:CA:7B:7C,org.siros.id::0C:4B:DE:80:E6:A4:F3:B3:19:58:2E:A9:1B:20:DA:DE:1A:8A:9C:DC:29:B5:1B:FC:89:37:90:B2:C6:8C:D8:C1"
+  # Optional: override favicon and logos (data URLs); theme JSON string
+  faviconDataUrl: ""
+  logoLightDataUrl: ""
+  logoDarkDataUrl: ""
+  theme: ""
+
+# go-r2ps-service (WSCA-BE / Remote PKCS#11 Signing Service)
+r2ps:
+  enabled: false
+  # Operating mode — comma-separated list of: wscd, wsca, admin, all
+  mode: "all"
+  logLevel: "WARN"
+  # Admin API listen address (set empty to disable)
+  adminListen: ":8081"
+  # PKCS#11 HSM configuration
+  pkcs11:
+    # Path to the PKCS#11 shared library inside the container
+    modulePath: "/usr/lib/softhsm/libsofthsm2.so"
+    # Identify the token by label (preferred) or slot number
+    tokenLabel: "r2ps"
+    slotID: ""
+    # Number of concurrent PKCS#11 sessions
+    poolSize: "4"
+    # hostPath for the directory containing the PKCS#11 module .so
+    # Set this when the HSM library is not baked into the container image.
+    # Example: /usr/lib/x86_64-linux-gnu/softhsm for SoftHSM on the node.
+    hostPath: ""
+    # hostPath for SoftHSM token storage (only for SoftHSM deployments)
+    tokenHostPath: ""
+  hsmTimeout: "5s"
+  maxAttempts: "5"
+  lockoutDuration: "15m"
+  sessionTTL: "5m"
+  # MongoDB lifecycle store — use uri to override the default mongodb uri
+  store:
+    uri: ""
+    database: "r2ps"
+    tlsEnabled: "true"
+  # Prometheus ServiceMonitor
+  metrics:
+    enabled: false
+    interval: "30s"
+  # Extra env vars, volumes, and volume mounts for advanced use cases
+  # (e.g. mounting a CloudHSM or YubiHSM PKCS#11 config)
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+
+mongoBackup:
+  enabled: false
+  s3HostBase: ""
+  s3HostBucket: ""
+  s3BucketName: ""
+  s3Port: 443
+  s3AccessKey: ""
+  agePublicKeys: ""
+
+images:
+  # Application images
+  issuerRegistry: "ghcr.io/sirosfoundation/vc/registry:0.7.0-sirosid.1"
+  issuerApigw: "ghcr.io/sirosfoundation/vc/apigw:0.7.0-sirosid.1"
+  issuerCore: "ghcr.io/sirosfoundation/vc/issuer:0.7.0-sirosid.1"
+  verifier: "ghcr.io/sirosfoundation/vc/verifier:0.7.0-sirosid.1"
+  walletAdmin: "ghcr.io/sirosfoundation/go-wallet-admin:0.12.0"
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.12.0"
+  walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.13.0"
+  walletFrontendNginx: "ghcr.io/nginx/nginx-unprivileged:1.31.2-alpine"
+  otlpCollector: "docker.io/jaegertracing/jaeger:2.15.1"
+  r2ps: "ghcr.io/sirosfoundation/go-r2ps-service:0.1.0"
+  # Init/sidecar images
+  opsStackUtilities: "ghcr.io/sirosfoundation/ops_stack_utilities:0.2.1"
+  alpine: "docker.io/library/alpine:3.24"
+  # MongoDB
+  mongoCommunityVersion: "7.0.24"
+
+replicas:
+  r2ps: 1
+  otlpCollector: 1
+  pdp: 1
+  issuerRegistry: 1
+  issuerApigw: 1
+  issuerCore: 1
+  verifier: 1
+  walletBackend: 1
+  walletFrontend: 1
+  mongo: 3
+
+# PodDisruptionBudget minAvailable per component (number or percentage string e.g. "50%")
+podDisruptionBudget:
+  r2ps:
+    minAvailable: 0
+  pdp:
+    minAvailable: 0
+  issuerRegistry:
+    minAvailable: 0
+  issuerApigw:
+    minAvailable: 0
+  issuerCore:
+    minAvailable: 0
+  verifier:
+    minAvailable: 0
+  walletBackend:
+    minAvailable: 0
+  walletFrontend:
+    minAvailable: 0
+
+resources:
+  r2ps:
+    requests:
+      cpu: 50m
+      memory: 50M
+    limits:
+      cpu: 200m
+      memory: 150M
+  secretGenerator:
+    requests:
+      cpu: 20m
+      memory: 30M
+    limits:
+      cpu: 40m
+      memory: 60M
+  otlpCollector:
+    requests:
+      cpu: 4m
+      memory: 20M
+    limits:
+      cpu: 80m
+      memory: 100M
+  pdp:
+    requests:
+      cpu: 10m
+      memory: 30M
+    limits:
+      cpu: 20m
+      memory: 50M
+  issuerRegistry:
+    requests: 
+      cpu: 20m
+      memory: 100M
+    limits:
+      cpu: 150m
+      memory: 450M
+  issuerApigw:
+    requests:
+      cpu: 50m
+      memory: 40M
+    limits:
+      cpu: 100m
+      memory: 60M
+  issuerCore:
+    requests:
+      cpu: 30m
+      memory: 20M
+    limits:
+      cpu: 80m
+      memory: 50M
+  verifier:
+    requests:
+      cpu: 40m
+      memory: 210M
+    limits:
+      cpu: 80m
+      memory: 240M
+  walletBackend:
+    requests:
+      cpu: 10m
+      memory: 50M
+    limits:
+      cpu: 20m
+      memory: 80M
+  walletBackendConfig:
+    requests:
+      cpu: 15m
+      memory: 20M
+    limits:
+      cpu: 30m
+      memory: 40M
+  walletFrontend:
+    main:
+      requests:
+        cpu: 10m
+        memory: 30M
+      limits:
+        cpu: 20m
+        memory: 150M
+    configGen:
+      requests:
+        cpu: 150m
+        memory: 150M
+      limits:
+        cpu: 200m
+        memory: 250M
+  mongo:
+    mongod:
+      requests:
+        cpu: 200m
+        memory: 500M
+      limits:
+        cpu: 200m
+        memory: 500M
+    mongodbAgent:
+      requests:
+        cpu: 60m
+        memory: 150M
+      limits:
+        cpu: 60m
+        memory: 150M
+    mongodbAgentReadinessprobe:
+      requests:
+        cpu: 60m
+        memory: 75M
+      limits:
+        cpu: 60m
+        memory: 75M
+    mongodPosthook:
+      requests:
+        cpu: 30m
+        memory: 50M
+      limits:
+        cpu: 30m
+        memory: 50M
+  adminTools:
+    requests:
+      cpu: 5m
+      memory: 5M
+    limits:
+      cpu: 250m
+      memory: 500M
+  mongoBackup:
+    requests:
+      cpu: 5m
+      memory: 5M
+    limits:
+      cpu: 250m
+      memory: 500M
+
+storage:
+  mongo:
+    storageClassName: ""
+    data: 3Gi
+    logs: 10Mi
+
+secrets:
+  r2psMain:
+    name: r2ps-main
+    properties:
+      - hsmPin
+  walletBackendMain:
+    name: wallet-backend-main
+    properties:
+      - jwtSecret
+      - adminToken
+  issuerRegistryMain:
+    name: issuer-registry-main
+    properties:
+      - adminGuiPassword
+  issuerCoreMain:
+    name: issuer-core-main
+    properties:
+      # Like mongoBackupMain below, and for the same reason: this one is
+      # NOT produced by the secret generator. A BBS secret key has to be
+      # the real scalar matching issuer.core.bbs.publicKey, and a random
+      # 32 bytes is a perfectly well-formed scalar that is not it - the
+      # issuer would start, sign, and produce credentials nothing can
+      # verify. Create the issuer-core-main Secret yourself when enabling
+      # issuer.core.bbs, or use issuer.core.bbs.secretKeyPath instead.
+      - bbsSecretKey
+  issuerApigwMain:
+    name: issuer-apigw-main
+    properties:
+      - oidcProviderClientSecret
+      - apiAuthOidcClientSecret
+  verifierMain:
+    name: verifier-main
+    properties:
+      - oidcProviderSubjectSalt
+  mongoBackupMain:
+    name: mongo-backup-main
+    properties:
+      # The CronJob reads this exact key (templates/05-mongo-backup.yaml's
+      # AWS_SECRET_KEY secretKeyRef); it was previously declared as
+      # s3CredentialFileContent, which nothing reads. Unlike the other
+      # entries here this one is NOT produced by the secret generator - an
+      # S3 secret key has to be the real credential, not a random string -
+      # so create the mongo-backup-main Secret yourself when enabling
+      # mongoBackup.
+      - s3SecretKey
+
+networkPolicies:
+  kubeApiserverPort: 6443
+  ciliumNetworkPolicies: false

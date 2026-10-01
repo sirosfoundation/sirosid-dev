@@ -31,7 +31,7 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 # name -> path, relative to this repo. Every repo `make setup` clones, plus
 # this one. Missing ones are skipped rather than reported as errors: most
 # are only needed for particular flags (vc for VC=yes, facetec-api for
-# FACETEC=yes, siros-id-stack for PDP=helm / fly-up).
+# FACETEC=yes).
 REPOS = [
     ("wallet-frontend", "../wallet-frontend"),
     ("wallet-common", "../wallet-common"),
@@ -39,7 +39,6 @@ REPOS = [
     ("go-trust", "../go-trust"),
     ("vc", "../vc"),
     ("facetec-api", "../facetec-api"),
-    ("siros-id-stack", "../siros-id-stack"),
     ("sirosid-dev", "."),
 ]
 

@@ -20,7 +20,7 @@ WALLET_NAME ?= SIROS ID (dev)
         ensure-conformance-hosts ensure-local-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
         bbs-keys \
-        render-helm-config fly-up fly-down fly-status \
+        render-helm-config vc-config-parity fly-up fly-down fly-status \
         plan _print-compose-files storage-status storage-clear fly-storage-clear boot \
         datastore-token datastore-search datastore-upload \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
@@ -43,7 +43,7 @@ FRONTEND_PATH ?= ../wallet-frontend
 BACKEND_PATH ?= ../go-wallet-backend
 FACETEC_PATH ?= ../facetec-api
 GO_TRUST_PATH ?= ../go-trust
-SIROS_ID_STACK_PATH ?= ../siros-id-stack
+CHART_PATH ?= chart
 
 # Docker compose files
 PRIMARY_COMPOSE := docker-compose.test.yml
@@ -302,7 +302,7 @@ else ifeq ($(PDP),deny)
 else ifeq ($(PDP),mock)
   _PDP_LABEL := mock-trust-pdp
 else ifeq ($(PDP),helm)
-  # wallet-backend + PDP config rendered from the siros-id-stack chart
+  # wallet-backend + PDP config rendered from this repo's chart/
   # (see scripts/render-helm-config.py) instead of hand-maintained env vars /
   # CLI flags. Transitional/opt-in step towards removing the latter entirely.
   COMPOSE_FILES += -f $(HELM_CONFIG_COMPOSE)
@@ -541,8 +541,8 @@ help: ## Show this help
 	@echo "                     helm is also the only mode where wallet-backend gets the persistent"
 	@echo "                     Mongo volume; every other mode is an in-memory store."
 	@echo "                     helm: wallet-backend + PDP config rendered from the"
-	@echo "                     siros-id-stack chart instead of hand-maintained"
-	@echo "                     env vars/flags - requires SIROS_ID_STACK_PATH (../siros-id-stack)"
+	@echo "                     chart/ instead of hand-maintained"
+	@echo "                     env vars/flags - chart at CHART_PATH (default: ./chart)"
 	@echo ""
 	@echo "  $(YELLOW)AS_RULES=$(NC)<allow-all|baseline>"
 	@echo "                     Select the built-in Authorization Server's SPOCP ruleset"
@@ -688,7 +688,7 @@ help: ## Show this help
 	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
 	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
 	@echo "  $(YELLOW)FACETEC_PATH=$(NC)     facetec-api source     (default: $(GREEN)../facetec-api$(NC))"
-	@echo "  $(YELLOW)SIROS_ID_STACK_PATH=$(NC) siros-id-stack chart source (default: $(GREEN)../siros-id-stack$(NC)) - PDP=helm only"
+	@echo "  $(YELLOW)CHART_PATH=$(NC) config chart (default: $(GREEN)chart$(NC), in this repo) - PDP=helm only"
 	@echo ""
 	@echo "$(GREEN)Other Variables:$(NC)"
 	@echo ""
@@ -811,7 +811,7 @@ ifneq ($(call _truthy,$(VC)),)
 		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
 		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
-	@# Render every vc service's config from the siros-id-stack chart, the same
+	@# Render every vc service's config from the in-repo chart, the same
 	@# way PDP=helm already renders wallet-backend's and the PDP's. This
 	@# replaced fixtures/vc-config.yaml and the four mechanically-patched
 	@# copies of it (local/tunnel/android/android-usb) that had drifted apart
@@ -819,13 +819,6 @@ ifneq ($(call _truthy,$(VC)),)
 	@$(MAKE) --no-print-directory render-helm-config
 endif
 ifeq ($(PDP),helm)
-	@# Pre-flight: $(SIROS_ID_STACK_PATH) must exist to render config from
-	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
-		echo "$(RED)Error: PDP=helm requires the 'siros-id-stack' repo at $(SIROS_ID_STACK_PATH)$(NC)"; \
-		echo "  Run: make setup   (clones all required sibling repos)"; \
-		echo "  Or:  git clone $(GITHUB_ORG)/siros-id-stack.git $(SIROS_ID_STACK_PATH)"; \
-		exit 1; \
-	fi
 	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - PDP=helm renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
   ifeq ($(call _truthy,$(VC)),)
 	@$(MAKE) --no-print-directory render-helm-config
@@ -1257,12 +1250,11 @@ bbs-keys: ## Generate the issuer's blind BBS key pair into fixtures/vc-pki/
 # Helm-rendered config (PDP=helm) — see scripts/render-helm-config.py
 # =============================================================================
 
-render-helm-config: ## Render wallet-backend/PDP/vc-services config from the siros-id-stack chart (ANDROID_APPS=pkg=fingerprint,... adds debug/Play Store keys; ENV=<name> layers environments/<name>.yaml)
-	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
-		echo "$(RED)Error: siros-id-stack repo not found at $(SIROS_ID_STACK_PATH)$(NC)"; \
-		echo "  Run: make setup   (clones all required sibling repos)"; \
-		exit 1; \
-	fi
+vc-config-parity: ## Render chart/ for compose + fly-gdc and diff against fixtures/vc-config-golden (--update re-seeds; read the diff first)
+	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
+	python3 scripts/vc-config-parity.py --chart-dir "$(CHART_PATH)" $(PARITY_ARGS)
+
+render-helm-config: ## Render wallet-backend/PDP/vc-services config from the in-repo chart (chart/) (ANDROID_APPS=pkg=fingerprint,... adds debug/Play Store keys; ENV=<name> layers environments/<name>.yaml)
 	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - this renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
 	@_HASHES=$$(python3 scripts/android_apps.py --apk-key-hashes $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
 	_FLAGS=""; \
@@ -1278,7 +1270,7 @@ render-helm-config: ## Render wallet-backend/PDP/vc-services config from the sir
 			case "$$h" in *=) ;; *) _FLAGS="$$_FLAGS --hostname $$h" ;; esac; \
 		done; \
 	fi; \
-	python3 scripts/render-helm-config.py --chart-dir "$(SIROS_ID_STACK_PATH)" $$_FLAGS \
+	python3 scripts/render-helm-config.py --chart-dir "$(CHART_PATH)" $$_FLAGS \
 		--dc-api-enable "$(if $(call _truthy,$(DC_API)),true,false)" \
 		$(if $(MINI_OIDC_URL),--mini-oidc-url "$(MINI_OIDC_URL)") \
 		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)") \
@@ -1296,14 +1288,9 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [REGION=<co
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-up ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	@if [ ! -d "$(SIROS_ID_STACK_PATH)" ]; then \
-		echo "$(RED)Error: siros-id-stack repo not found at $(SIROS_ID_STACK_PATH)$(NC)"; \
-		echo "  Run: make setup   (clones all required sibling repos)"; \
-		exit 1; \
-	fi
 	@command -v flyctl >/dev/null 2>&1 || { echo "$(RED)Error: flyctl not found - https://fly.io/docs/flyctl/install/$(NC)"; exit 1; }
 	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - fly-up renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
-	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(SIROS_ID_STACK_PATH)" --images "$(IMAGES)" \
+	python3 scripts/fly-up.py --env "$(ENV)" --chart-dir "$(CHART_PATH)" --images "$(IMAGES)" \
 		$(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") \
 		$(if $(call _truthy,$(CONFORMANCE)),--conformance) \
 		$(if $(TRUSTED_ISSUERS),--trusted-issuer "$(TRUSTED_ISSUERS)") \
@@ -1353,10 +1340,6 @@ env-show: ## Print a named environment's persisted config (make env-show ENV=<na
 # =============================================================================
 
 # repo:branch pairs — override GITHUB_ORG to use a different remote
-# siros-id-stack is NOT in this list - it's consumed read-only as a config-
-# rendering source (PDP=helm), not branched for local feature work like the
-# repos below, so it gets its own clone-or-update step in `setup` instead of
-# the generic "exists -> leave alone" handling.
 SETUP_REPOS := \
 	wallet-frontend:release/sirosid \
 	wallet-common:release/sirosid \
@@ -1380,28 +1363,6 @@ setup: ## Bootstrap a checkout: clone the sibling repos, install the boot manage
 				printf "  %-24s $(RED)failed$(NC)\n" "$$repo"; \
 		fi; \
 	done
-	@# siros-id-stack: clone if missing; if present and on main, fast-forward it -
-	@# a stale chart would silently render outdated/wrong config for PDP=helm.
-	@# Left alone (with a note) if checked out to something other than main,
-	@# e.g. a PR branch someone's deliberately testing against.
-	@if [ -d "$(SIROS_ID_STACK_PATH)" ]; then \
-		branch="$$(git -C $(SIROS_ID_STACK_PATH) branch --show-current 2>/dev/null)"; \
-		if [ "$$branch" = "main" ]; then \
-			if git -C $(SIROS_ID_STACK_PATH) fetch origin --quiet && \
-				git -C $(SIROS_ID_STACK_PATH) pull --ff-only --quiet; then \
-				printf "  %-24s $(GREEN)updated$(NC) (main)\n" "siros-id-stack"; \
-			else \
-				printf "  %-24s $(RED)update failed$(NC) (main - check for local changes)\n" "siros-id-stack"; \
-			fi; \
-		else \
-			printf "  %-24s $(YELLOW)exists$(NC) (on '%s', not main — skipping auto-update)\n" "siros-id-stack" "$$branch"; \
-		fi; \
-	else \
-		echo "  Cloning siros-id-stack (branch main)..."; \
-		git clone -b main "$(GITHUB_ORG)/siros-id-stack.git" "$(SIROS_ID_STACK_PATH)" && \
-			printf "  %-24s $(GREEN)cloned$(NC) (main)\n" "siros-id-stack" || \
-			printf "  %-24s $(RED)failed$(NC)\n" "siros-id-stack"; \
-	fi
 	@$(MAKE) --no-print-directory _install-bootmgr
 	@echo ""
 	@echo "$(GREEN)Done.$(NC) Launch the boot manager any time with 'make boot', or 'make up' to start the stack directly."

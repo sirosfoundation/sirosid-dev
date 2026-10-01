@@ -52,10 +52,6 @@ Schema (all keys optional):
                                    # default apply. Only affects NEW machines.
     rical_provider_url: url        # RICAL (ISO 18013-5 2nd ed. Annex F) reader-trust list
     rical_root_cert: path          # relative to sirosid-dev root - PEM signer of the RICAL above
-    chart_ref: str                 # the siros-id-stack branch/tag this environment's config
-                                   # needs. ASSERTED, never checked out: that repo is consumed
-                                   # read-only and may have someone's own work in it. A
-                                   # mismatch stops the run and prints the checkout command.
                                    # Only needed while an environment depends on unmerged
                                    # chart work - delete it once that lands on main.
     bbs_public_key_file: path      # relative to sirosid-dev root - the issuer's blind BBS PUBLIC
@@ -85,7 +81,7 @@ overrides the file's (last-one-wins, same as `images`) rather than merging -
 there's exactly one value per environment, unlike the list-typed fields
 above.
 
-`values:` is an arbitrary siros-id-stack values tree, deep-merged LAST by
+`values:` is an arbitrary chart/values.yaml-shaped values tree, deep-merged LAST by
 render-helm-config.py - after values-base.yaml, the target's own
 values-dev/values-fly.yaml, and the generated per-run overlay. It is not
 validated here; `helm template` is the validator. Everything the chart can
@@ -117,7 +113,7 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
               "credential_registries", "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
-_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file", "chart_ref")
+_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file")
 _KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values", "local"))
 
 

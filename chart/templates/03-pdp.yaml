@@ -1,0 +1,62 @@
+{{- $ns := include "siros-id.namespace" . -}}
+
+{{/*
+go-trust's (the PDP's) config.yaml. A named template so
+siros-id.vc.renderConfig can deep-merge .Values.pdp.extraConfig over it -
+go-trust's own config surface (policies, always/never-trusted, OIDFed trust
+anchors and trust marks, ETSI/DID/MDOCIACA/FIDOMDS3 registries, cache TTLs,
+additional trusted roots) is far wider than the static allowlist modelled
+here, and reaching it should not require hand-writing all of
+pdp.extraRegistries.
+*/}}
+{{- define "siros-id.pdp.config" -}}
+server:
+  host: "0.0.0.0"
+  port: 8080
+  external_url: {{ .Values.pdp.externalUrl }}
+logging:
+  level: debug
+  format: json
+registries:
+{{- if .Values.pdp.extraRegistries }}
+  {{- toYamlPretty .Values.pdp.extraRegistries | nindent 2 }}
+{{- end }}
+{{- if .Values.pdp.default_whitelist }}
+  whitelist:
+    enabled: true
+    name: Static allowlist
+    description: Pre-configured URLs for trusted parties
+    lists:
+      # TODO: All issuers should not be PID provider, add another toggle for this.
+      pid-issuers:
+        - https://{{ include "siros-id.hostname.issuer" . }}
+        {{- range .Values.features.extraIssuers }}
+        - {{ .url }}
+        {{- end }}
+      verifiers:
+        # Issuers are included as verifiers since they may use OpenID4VP to authorize issuance
+        - https://{{ include "siros-id.hostname.issuer" . }}
+        {{- range .Values.features.extraIssuers }}
+        - {{ .url }}
+        {{- end }}
+        - https://{{ include "siros-id.hostname.verifier" . }}
+        {{- range .Values.features.extraVerifiers }}
+        - {{ .url }}
+        {{- end }}
+    actions:
+      pid-provider: pid-issuers
+      credential-issuer: pid-issuers
+      verifier: verifiers
+      credential-verifier: verifiers
+{{- end }}
+{{- end -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pdp-main
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  config.yaml: | {{- include "siros-id.vc.renderConfig" (list . "siros-id.pdp.config" .Values.pdp.extraConfig) | nindent 4 }}

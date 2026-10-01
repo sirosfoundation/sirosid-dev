@@ -64,7 +64,7 @@ OPTIONS = [
         "label": "Trust policy provider",
         "help": ("Which PDP answers wallet-backend's trust questions. allow/whitelist/deny are "
                  "go-trust with hand-maintained flags; mock is the in-repo mock; helm renders "
-                 "wallet-backend + PDP config from the siros-id-stack chart (needs ../siros-id-stack "
+                 "wallet-backend + PDP config from the in-repo chart (needs helm "
                  "and helm). helm is the only mode whose config cannot drift from production, and "
                  "the only one that gives wallet-backend a persistent Mongo store."),
     },
@@ -336,13 +336,8 @@ def preflight(opts: dict) -> list:
     if opts["vc"] or opts["conformance"] or opts["facetec"]:
         check("vc checkout", (root / "../vc").is_dir(), "../vc - run `make setup`")
     if opts["pdp"] == "helm" or opts["vc"] or opts["conformance"] or opts["facetec"]:
-        chart = root / "../siros-id-stack"
-        check("siros-id-stack checkout", chart.is_dir(), "../siros-id-stack - run `make setup`")
+        check("chart", (root / "chart" / "Chart.yaml").is_file(), "chart/ is part of this repo - restore it with git")
         check("helm", shutil.which("helm"), "config is rendered with `helm template`")
-        if chart.is_dir():
-            branch = _git(chart, "branch", "--show-current")
-            check("siros-id-stack on main", branch == "main",
-                  f"on '{branch or 'detached'}' - a stale chart renders wrong config for everything")
     if opts["facetec"]:
         import os
         check("FACETEC_SERVER_URL", os.environ.get("FACETEC_SERVER_URL"), "export it in your shell")
