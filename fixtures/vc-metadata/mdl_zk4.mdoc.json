@@ -27,5 +27,6 @@
         "value_type": "bstr"
       }
     }
-  }
+  },
+  "zk_salt_bytes": 32
 }
