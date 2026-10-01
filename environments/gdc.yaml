@@ -57,10 +57,23 @@ images:
   # All four vc-services MUST be bumped together: they share one config shape
   # unmarshaled into the same model.Cfg, so leaving one on an older binary
   # while another expects a newer shape crash-loops it on startup.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1789651774
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1789651816
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1789651730
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1789651694
+  #
+  # 2026-10-01 bump: SUNET/vc#722 (merged upstream, commit 74d464a82) fixes
+  # a real Vega ZK presentation bug found via this exact environment - the
+  # issuer sized each IssuerSignedItem's `random` salt at 16 bytes (tuned
+  # for zk-cred-longfellow's own item-size ceiling), but zk-cred-vega's r12
+  # circuit hardcodes a byte offset that only works with a 32-byte salt,
+  # so every Vega presentation failed verification with InvalidSumcheckProof
+  # regardless of digest ID or claim content. Fixed via an opt-in
+  # `zk_salt_bytes` MDDLSchema field (see fixtures/vc-metadata/
+  # mdl_zk4.mdoc.json's own `"zk_salt_bytes": 32`) - confirmed end-to-end on
+  # a real device against this redeploy before the PR was even merged;
+  # these four pins are simply the same fix rebuilt from the real merged
+  # upstream commit instead of the PR's feature-branch tip.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1790861609
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1790861651
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1790861559
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1790861522
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
