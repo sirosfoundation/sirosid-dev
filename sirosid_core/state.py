@@ -91,19 +91,26 @@ class MemoryStateStore:
 
 
 @contextlib.contextmanager
-def workdir(store: StateStore, instance_id: str, root: Path = None):
+def workdir(store: StateStore, instance_id: str, root: Path = None, subdir: str = ""):
     """A scratch working directory seeded with the instance's saved state.
 
     Yields the directory. On a clean exit the state files are saved back; if the
     body raises, nothing is saved - a half-finished deploy must not overwrite
     known-good state with values Fly may never have received. The scratch
     directory is always removed.
+
+    subdir: where, inside the scratch directory, the instance's own files live.
+    deploy_instance() keeps them in `<rendered_root>/fly-<env>/`, so pass
+    subdir=f"fly-{env}" and hand the YIELDED directory to it as rendered_root;
+    state is then seeded into and saved from that subdirectory.
     """
     scratch = Path(tempfile.mkdtemp(prefix=f"sirosid-{instance_id}-", dir=str(root) if root else None))
+    instance_dir = scratch / subdir if subdir else scratch
     try:
-        import_state(scratch, store.load(instance_id))
+        instance_dir.mkdir(parents=True, exist_ok=True)
+        import_state(instance_dir, store.load(instance_id))
         yield scratch
-        store.save(instance_id, export_state(scratch))
+        store.save(instance_id, export_state(instance_dir))
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 

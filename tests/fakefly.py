@@ -59,9 +59,18 @@ class FakeFly:
         client acts as the identity it was given."""
         self.tokens_seen = getattr(self, "tokens_seen", [])
 
+        real = subprocess.run
+
         def run(cmd, **kw):
-            self.tokens_seen.append((kw.get("env") or {}).get("FLY_API_TOKEN"))
-            return self.handle(cmd[1:])
+            if cmd and cmd[0] == "flyctl":
+                self.tokens_seen.append((kw.get("env") or {}).get("FLY_API_TOKEN"))
+                return self.handle(cmd[1:])
+            if cmd and cmd[0] == "docker":
+                self.log.append("docker " + " ".join(str(c) for c in cmd[1:]))
+                return _cp(cmd, returncode=1 if cmd[1:3] == ["image", "inspect"] else 0)
+            kw.setdefault("stdout", subprocess.DEVNULL)      # create-pki.sh etc: run for real, quietly
+            kw.setdefault("stderr", subprocess.DEVNULL)
+            return real(cmd, **kw)
         return run
 
     def _app(self, name):

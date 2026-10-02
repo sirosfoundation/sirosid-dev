@@ -319,7 +319,12 @@ def use_credential_registry(config: dict, credential_types: dict, registries: li
     return config
 
 
-def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: str = None, naming=None) -> dict:
+def _stderr(msg):
+    print(msg, file=sys.stderr)
+
+
+def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: str = None, naming=None,
+                   warn=None) -> dict:
     """Replace the chart's MongoDB Community Operator connection with this
     target's real one.
 
@@ -334,10 +339,9 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
         uri = "mongodb://mongodb:27017"
     else:
         if not mongo_password:
-            print(f"WARNING: no --mongo-password - rendering an UNAUTHENTICATED mongodb URI "
-                  f"for env '{env}'. Only consistent within the fly-up.py run that set the "
-                  f"matching Fly secret; for a one-off, re-run 'make fly-up ENV={env}'.",
-                  file=sys.stderr)
+            (warn or _stderr)(f"WARNING: no --mongo-password - rendering an UNAUTHENTICATED mongodb URI "
+                              f"for env '{env}'. Only consistent within the fly-up.py run that set the "
+                              f"matching Fly secret; for a one-off, re-run 'make fly-up ENV={env}'.")
         auth = f"root:{mongo_password}@" if mongo_password else ""
         uri = f"mongodb://{auth}{(naming or Naming(env)).internal('mongodb')}:27017/?authSource=admin"
     config.setdefault("common", {})["mongo"] = {"uri": uri}
@@ -432,7 +436,7 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
               plain_http_hosts: set = None, secret_overrides: dict = None,
               env: str = None, mongo_password: str = None,
               credential_types: dict = None, credential_registries: list = None,
-              naming: Naming = None) -> None:
+              naming: Naming = None, say=print, warn=None) -> None:
     """Extract every vc service's config plus the directories it mounts."""
     for cm_name, filename in VC_CONFIGMAPS.items():
         config = yaml.safe_load(extract_configmap_data(docs, cm_name)["config.yaml"])
@@ -440,13 +444,13 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
             config = patch_vc_compose(config, plain_http_hosts or set())
         # issuer-core is the one service with no mongo of its own.
         if (config.get("common") or {}).get("mongo"):
-            config = patch_vc_mongo(config, target, env, mongo_password, naming)
+            config = patch_vc_mongo(config, target, env, mongo_password, naming, warn)
         config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides)
         config = strip_unrenderable(config)
         if credential_registries:
             config = use_credential_registry(config, credential_types or {}, credential_registries)
         (out_dir / filename).write_text(yaml.dump(config, sort_keys=False))
-        print(f"wrote {out_dir / filename}")
+        say(f"wrote {out_dir / filename}")
         # The admin API's JWKS rides in apigw's ConfigMap next to config.yaml
         # (issuer.apiAuth.jwks.jwksData, generated per target by
         # render-helm-config.py); the config points at /main-config/<file>.
@@ -464,4 +468,4 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
     # files; the chart renders them into a single pres-reqs.yaml.
     pres = _write_documents(docs, out_dir, "verifier-pres-reqs", "pres-reqs")
     branding = write_branding_assets(docs, out_dir)
-    print(f"wrote {pres}/ , {out_dir / 'vctms'}/ , {out_dir / 'documents'}/ , {branding}/")
+    say(f"wrote {pres}/ , {out_dir / 'vctms'}/ , {out_dir / 'documents'}/ , {branding}/")

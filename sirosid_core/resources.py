@@ -12,6 +12,8 @@ values-dev.yaml, values-fly.yaml, fixtures/ (and env-admin/ for a local build).
 from dataclasses import dataclass
 from pathlib import Path
 
+import yaml
+
 
 @dataclass(frozen=True)
 class Resources:
@@ -54,3 +56,12 @@ class Resources:
         need = {"chart/": self.chart_dir, "values-base.yaml": self.values_base,
                 "values-fly.yaml": self.values_fly, "fixtures/": self.fixtures}
         return [n for n, p in need.items() if not p.exists()]
+
+    def image_pin(self, key: str, default: str) -> str:
+        """One pin from values-fly.yaml's images: block, for the images that are not
+        in the chart (mini-oidc, env-admin). `default` if the file or key is absent."""
+        try:
+            data = yaml.safe_load(self.values_fly.read_text()) or {}
+        except OSError:
+            return default
+        return (data.get("images") or {}).get(key) or default

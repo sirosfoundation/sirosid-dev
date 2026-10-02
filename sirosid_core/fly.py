@@ -27,6 +27,14 @@ class FlyError(RuntimeError):
     """A flyctl operation failed in a way the caller cannot carry on past."""
 
 
+class FlyDeployError(FlyError):
+    """`flyctl deploy` exited non-zero; returncode says how."""
+
+    def __init__(self, message, returncode):
+        super().__init__(message)
+        self.returncode = returncode
+
+
 def detect_region() -> str:
     """Fly's own suggestion for where to run: the anycast edge nearest here.
 
@@ -85,8 +93,52 @@ class FlyClient:
         env["FLY_API_TOKEN"] = self.token
         return env
 
-    def _docker(self, *args, check=False, capture_output=False):
-        return self._docker_runner(["docker", *args], check=check, capture_output=capture_output)
+    def _docker(self, *args, check=False, capture_output=False, cwd=None):
+        kw = {"check": check, "capture_output": capture_output}
+        if cwd is not None:
+            kw["cwd"] = str(cwd)
+        return self._docker_runner(["docker", *args], **kw)
+
+    def docker(self, *args, check=True, cwd=None):
+        """Run docker (build, manifest inspect, ...) through this client's docker runner."""
+        self._warn("+ docker " + " ".join(str(a) for a in args))
+        return self._docker(*[str(a) for a in args], check=check, cwd=cwd)
+
+    def image_pullable(self, ref: str) -> bool:
+        """Whether `docker manifest inspect <ref>` succeeds - a registry-side
+        check; does not need the image locally."""
+        try:
+            return self._docker("manifest", "inspect", ref, capture_output=True).returncode == 0
+        except FileNotFoundError:
+            return False
+
+    def exec(self, cmd, cwd=None, env=None, check=True):
+        """Run an arbitrary command (create-pki.sh) through this client's runner,
+        so a test's fake sees it. Raises subprocess.CalledProcessError on failure
+        when check is set."""
+        self._warn("+ " + " ".join(str(c) for c in cmd))
+        kw = {"check": check}
+        if cwd is not None:
+            kw["cwd"] = str(cwd)
+        if env is not None:
+            kw["env"] = env
+        return self._runner([str(c) for c in cmd], **kw)
+
+    def deploy(self, deploy_args, cwd=None):
+        """`flyctl deploy ...` as this client's identity (its token applies).
+        Raises FlyDeployError carrying the exit code when flyctl fails."""
+        cmd = ["flyctl"] + [str(a) for a in deploy_args]
+        self._warn("+ " + " ".join(cmd))
+        kw = {"check": False}
+        if cwd is not None:
+            kw["cwd"] = str(cwd)
+        env = self._env()
+        if env is not None:
+            kw["env"] = env
+        result = self._runner(cmd, **kw)
+        if result.returncode != 0:
+            raise FlyDeployError(f"flyctl deploy failed (exit {result.returncode})", result.returncode)
+        return result
 
     def run(self, *args, check=True, capture=False):
         cmd = ["flyctl"] + list(args)

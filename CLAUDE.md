@@ -58,10 +58,25 @@ never reads argv, the environment or a developer's disk:
   does, as a call that reports (`DestroyReport`) and keeps going past a failed
   app, so a TTL reaper never leaves the rest billing. `fly-down` takes
   `--app-prefix` for instances deployed with one.
+- `resources.py` — `Resources(root)`: where the chart, `values-*.yaml` and
+  `fixtures/` are. The CLI points it at the checkout; a service at what it
+  ships. The library never walks up from `__file__` to find them.
+- `render.py`, `vc_render.py`, `api_auth.py`, `helm.py` — the renderer
+  (`render()` needs `resources=`). `scripts/render-helm-config.py` is the CLI over
+  it; `scripts/{vc_render,api_auth,helm_render_lib}.py` are aliases so old
+  imports resolve to the package module. `scripts/bootstrap.py` is **not** moved —
+  the env-admin image copies it as a standalone file — so the library takes
+  registration as an injected `register(...)` callable.
+- `deploy.py` — `deploy_instance(spec, fly, naming, resources, ...)`: `fly-up`
+  as a library call. Prints nothing (progress goes to a callback), exits nothing
+  (raises `DeployError` with `.component` / `.deployed`), acts as the
+  `FlyClient`'s org and token. `scripts/fly-up.py` is now argument parsing,
+  `_spec_from_args()` and the summary.
 
-Still to come: the deploy orchestration (`fly-up.py`'s `main()` /
-`deploy_component`) as a function that takes an `InstanceSpec`, a `FlyClient`,
-a `Naming` and a working directory.
+To call the deploy from a service:
+`state.workdir(store, id, subdir=f"fly-{env}")` -> `deploy_instance(spec, fly, naming,
+Resources(root), rendered_root=<yielded dir>, register=..., progress=...)`.
+`tests/test_deploy_instance.py` is the worked example.
 
 ## Sibling repo layout
 

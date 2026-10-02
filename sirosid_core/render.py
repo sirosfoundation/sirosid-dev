@@ -56,6 +56,7 @@ import copy
 import json
 import secrets
 import string
+import sys
 from pathlib import Path
 
 import yaml
@@ -141,7 +142,8 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
 
 
 def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None,
-                              mongo_password: str = None, wallet_attestation: bool = False, naming: Naming = None) -> dict:
+                              mongo_password: str = None, wallet_attestation: bool = False, naming: Naming = None,
+                             warn=None) -> dict:
     naming = naming or Naming(env)
     # wallet-proxy is wallet-backend's public identity on Fly for the ACTUAL
     # API (see module docstring) - but NOT for WebAuthn. The passkey ceremony
@@ -191,14 +193,13 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # vars). Any app in the sirosfoundation org could otherwise reach this
     # database over Fly's shared 6PN network with zero credentials.
     if not mongo_password:
-        print(
+        (warn or (lambda m: print(m, file=sys.stderr)))(
             f"WARNING: --mongo-password not set - rendering an UNAUTHENTICATED "
             f"mongodb URI for env '{env}'. This will not match the mongodb app's "
             f"actual Fly secret (set per-invocation by fly-up.py) unless this "
             f"render happens to run inside that same fly-up.py invocation. "
             f"Re-run 'make fly-up ENV={env}' instead of hand-rendering a single "
             f"component if you're not sure.",
-            file=sys.stderr,
         )
     mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
     config["storage"]["mongodb"] = {
@@ -647,7 +648,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
            credential_registries: list = None, env_values: dict = None, bbs_secret_key: str = None, naming: Naming = None,
-           resources: Resources = None) -> list:
+           resources: Resources = None, say=print, warn=None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -760,7 +761,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         backend_cfg = patch_wallet_backend_compose(backend_cfg, android_apk_key_hashes)
     else:
         backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password,
-                                                wallet_attestation, naming=naming)
+                                                wallet_attestation, naming=naming, warn=warn)
 
     # Two layouts (chart: walletBackend.registryConfigLayout). legacy: a
     # separate registry.yaml. integrated (go-wallet-backend#431+): a
@@ -791,7 +792,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     if credential_registries:
         registry_cfg = patch_registry_sources(registry_cfg, credential_registries)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))
-    print(f"wrote {out_dir / 'wallet-backend.yaml'}")
+    say(f"wrote {out_dir / 'wallet-backend.yaml'}")
     registry_file = out_dir / "wallet-backend-registry.yaml"
     if integrated:
         # A leftover file from a legacy render would be mounted and ignored;
@@ -799,7 +800,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         registry_file.unlink(missing_ok=True)
     else:
         registry_file.write_text(yaml.dump(registry_cfg, sort_keys=False))
-        print(f"wrote {registry_file}")
+        say(f"wrote {registry_file}")
 
     # registry.yaml's local_overrides always points at /vctms - Helm mounts this
     # from a `vctms` ConfigMap (created even when empty), so the directory must
@@ -821,12 +822,12 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # See vc_render.write_as_rules: the chart's `as:` block names paths that
     # only exist in Kubernetes, and a missing signing key is fatal.
     vc_render.write_as_rules(docs, out_dir)
-    print(f"wrote {out_dir / 'as-rules'}/")
+    say(f"wrote {out_dir / 'as-rules'}/")
 
     # --- pdp ---
     pdp_data = extract_configmap_data(docs, "pdp-main")
     (out_dir / "pdp.yaml").write_text(pdp_data["config.yaml"])
-    print(f"wrote {out_dir / 'pdp.yaml'}")
+    say(f"wrote {out_dir / 'pdp.yaml'}")
 
     # --- vc services (issuer-apigw / issuer-core / issuer-registry / verifier) ---
     # Secrets for these are rendered for BOTH targets, unlike wallet-backend's:
@@ -854,14 +855,14 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                         },
                         env=env, mongo_password=mongo_password,
                         credential_types=(base.get("features") or {}).get("credentialTypes") or {},
-                        credential_registries=credential_registries, naming=naming)
+                        credential_registries=credential_registries, naming=naming, say=say, warn=warn)
 
     if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
         for name in WALLET_BACKEND_SECRETS:
             gen_secret(secrets_dir / name)
-        print(f"secrets ready in {secrets_dir} ({', '.join(WALLET_BACKEND_SECRETS)})")
+        say(f"secrets ready in {secrets_dir} ({', '.join(WALLET_BACKEND_SECRETS)})")
     else:
-        print("--target fly: wallet-backend secrets are handled by fly-up.py (fly secrets set), not here")
+        say("--target fly: wallet-backend secrets are handled by fly-up.py (fly secrets set), not here")
 
     return docs
