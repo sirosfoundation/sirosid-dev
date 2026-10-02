@@ -36,10 +36,27 @@ never reads argv, the environment or a developer's disk:
   (or `app_prefix:` / `host_pattern:` in `environments/<name>.yaml`) change it.
   Never write `f"sirosid-{env}-..."` again — take a `Naming`.
 
-This is the first stage of extracting a core library for a self-service service
-(deploy/destroy as library calls, state behind an interface). Still to come:
-state storage (today `fixtures/rendered/fly-<env>/`), a Fly client object in
-place of module-level `run_fly`, and `fly-down` as a library call.
+- `components.py` / `assets.py` / `android.py` — the component registry
+  (`build_components(mini_oidc_image, env_admin_image)`: the two pins from
+  `values-fly.yaml` are parameters, the library reads no repo file) and the pure
+  generators (fly.toml, nginx configs, dashboard, assetlinks). `fly_common.py`
+  re-exports them.
+- `fly.py` — `FlyClient(org, token, runner, ...)`: the flyctl operations as an
+  object (any org, any identity, injectable runner, raises `FlyError`).
+  `fly_common.py` keeps the old function names as a facade over one default
+  client and turns `FlyError` into `SystemExit`.
+- `state.py` — which files of an instance's working directory are **state**
+  (`mongoRootPassword`, `jwtSecret`, `adminToken`, `apiAuthKey.pem`, `vc-pki/`)
+  and `StateStore`/`workdir()` to carry them through a database. **If you add a
+  value that is generated once and handed to Fly (which cannot give it back),
+  add it to `STATE_FILES`** — `tests/test_state.py` redeploys from exported
+  state alone and fails when something is missing.
+- `tests/test_core_layering.py` keeps the package a library: no imports from
+  `scripts/`, no `__file__`/`SIROSID_DEV_ROOT`, no `open()`.
+
+Still to come: `fly-down` as a library call, and the deploy orchestration
+(`fly-up.py`'s `main()` / `deploy_component`) as a function that takes an
+`InstanceSpec`, a `FlyClient`, a `Naming` and a working directory.
 
 ## Sibling repo layout
 

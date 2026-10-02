@@ -70,6 +70,7 @@ from android_apps import load_android_apps  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sirosid_core.naming import Naming  # noqa: E402
 from sirosid_core.spec import InstanceSpec  # noqa: E402
+from sirosid_core.state import persistent_secret  # noqa: E402
 import bootstrap  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from vc_render import deep_merge  # noqa: E402
@@ -105,7 +106,7 @@ def run(cmd, **kwargs):
 
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
-                    spec: InstanceSpec, naming: Naming = None) -> list:
+                    spec: InstanceSpec, naming: Naming = None, rendered_root: Path = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -118,7 +119,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     # for a debug/sideloaded build's passkeys to actually work; only the
     # assetlinks.json half was wired in the first pass at this.
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
-                   out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
+                   out_dir=rendered_root or SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
                    conformance=spec.conformance, extra_trusted_issuers=spec.trusted_issuers,
                    wallet_attestation=spec.wallet_attestation, extra_trusted_verifiers=spec.trusted_verifiers,
                    extra_trusted_verifier_roots=spec.trusted_verifier_roots,
@@ -174,9 +175,9 @@ def check_pki_consistency(env: str, pki_dir: Path, naming: Naming = None):
         )
 
 
-def generate_pki(env: str, naming: Naming = None) -> Path:
+def generate_pki(env: str, naming: Naming = None, rendered_root: Path = None) -> Path:
     naming = naming or Naming(env)
-    pki_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{env}" / "vc-pki"
+    pki_dir = (rendered_root or SIROSID_DEV_ROOT / "fixtures" / "rendered") / f"fly-{env}" / "vc-pki"
     check_pki_consistency(env, pki_dir, naming)
     # The signing cert's URI SAN is the identity mdoc verifiers derive for an
     # mDL's issuer (vc's extractMDocIssuerID), and it has to be the same
@@ -400,8 +401,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # urn:eudi:pid:arf-1.8:1), and a local override would only shadow the
         # published copy with a stale one. --credential-registries drops
         # local_overrides entirely; the empty dir is harmless there.
-        ensure_secret(app, "jwtSecret", _persistent_secret(out_dir, "jwtSecret"))
-        ensure_secret(app, "adminToken", _persistent_secret(out_dir, "adminToken"))
+        ensure_secret(app, "jwtSecret", persistent_secret(out_dir, "jwtSecret"))
+        ensure_secret(app, "adminToken", persistent_secret(out_dir, "adminToken"))
         deploy_args += [
             "--file-secret", "/main-secrets/jwtSecret=jwtSecret",
             "--file-secret", "/main-secrets/adminToken=adminToken",
@@ -517,7 +518,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             consumers.append("conformance-server")
         tokens = {naming.app(c): create_deploy_token(naming.app(c)) for c in consumers if app_exists(naming.app(c))}
         ensure_secret(app, "flyApiTokens", json.dumps(tokens), force=True)
-        ensure_secret(app, "envAdminToken", _persistent_secret(out_dir, "adminToken"))
+        ensure_secret(app, "envAdminToken", persistent_secret(out_dir, "adminToken"))
         ensure_secret(app, "mongoUri",
                       f"mongodb://root:{mongo_password}@{naming.internal('mongodb')}:27017/?authSource=admin",
                       force=True)
@@ -547,7 +548,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # ensure_secret() (becomes a real env var once set via `flyctl
         # secrets set`, same as jwtSecret/adminToken on wallet-backend) -
         # not --env, since it's a credential, not a plain URL.
-        ensure_secret(app, "ADMIN_TOKEN", _persistent_secret(out_dir, "adminToken"))
+        ensure_secret(app, "ADMIN_TOKEN", persistent_secret(out_dir, "adminToken"))
         deploy_args += [
             "--env", f"CONFORMANCE_URL={naming.url('conformance')}",
             "--env", f"FRONTEND_URL={naming.url('wallet-frontend')}",
@@ -722,13 +723,6 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
     return args
 
 
-def _rand_secret(length: int = 32) -> str:
-    import secrets
-    import string
-    alphabet = string.ascii_letters + string.digits
-    return "".join(secrets.choice(alphabet) for _ in range(length))
-
-
 def _image_pullable(ref: str) -> bool:
     """Whether a registry ref resolves - `docker manifest inspect` needs no
     pull and works for public GHCR images without login. False also when
@@ -780,28 +774,7 @@ def resolve_mongo_password(env: str, out_dir: Path, naming: Naming = None) -> st
                 f"  make fly-storage-clear ENV={env}   (or: make fly-down ENV={env} without KEEP_DATA)")
         cached.write_text(value)
         return value
-    return _persistent_secret(out_dir, "mongoRootPassword")
-
-
-def _persistent_secret(out_dir: Path, name: str) -> str:
-    """wallet-backend's jwtSecret/adminToken back a long-lived app (real user
-    sessions, and now also register_vc_services()'s own Bearer auth), and
-    since Mongo got a volume its root password is one of these too (see
-    resolve_mongo_password) - `ensure_secret()` already
-    never rotates an already-set Fly secret, but Fly secrets can't be read
-    back, so without this, a rerun would generate a brand-new value that's
-    silently discarded (ensure_secret sees the OLD one still set and skips)
-    while nothing else knows what the OLD one actually was. Cached the same
-    way render-helm-config.py's gen_secret() does for the compose target's
-    secrets, just scoped to this Fly environment's own out_dir instead of the
-    shared fixtures/rendered-secrets/.
-    """
-    path = out_dir / name
-    if path.exists():
-        return path.read_text().strip()
-    value = _rand_secret()
-    path.write_text(value)
-    return value
+    return persistent_secret(out_dir, "mongoRootPassword")
 
 
 def _personal_region() -> str:
@@ -1032,6 +1005,11 @@ def main():
                              "domain you own, e.g. '{env}-{component}.dev.example.org' - every URL, "
                              "OAuth redirect, issuer identifier and passkey rp_id follows. The DNS "
                              "records and TLS in front of the apps are NOT created by fly-up.")
+    parser.add_argument("--rendered-root", default="",
+                        help="Directory under which the environment's working directory (fly-<env>/) is "
+                             "created: rendered configs, generated secrets and PKI. Default "
+                             "fixtures/rendered. Point it at a scratch directory to deploy without touching "
+                             "your persistent state; see sirosid_core/state.py for which files are state.")
     parser.add_argument("--render-only", action="store_true",
                         help="Render config into fixtures/rendered/fly-<env>/ and print the image each "
                              "component would run, then stop before touching Fly. Answers 'what would "
@@ -1160,7 +1138,8 @@ def main():
         raise SystemExit("flyctl not found - install it first (https://fly.io/docs/flyctl/install/)")
 
     chart_dir = Path(args.chart_dir)
-    out_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}"
+    rendered_root = Path(args.rendered_root) if args.rendered_root else SIROSID_DEV_ROOT / "fixtures" / "rendered"
+    out_dir = rendered_root / f"fly-{args.env}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     identities = load_android_apps(extra=spec.android_apps)
@@ -1172,7 +1151,7 @@ def main():
     # docs is the full rendered manifest (not just wallet-backend/pdp) -
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
-    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password, spec, naming)
+    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password, spec, naming, rendered_root)
     mongo_version = extract_image(docs, "mongoCommunityVersion")
 
     if args.render_only:
@@ -1190,7 +1169,7 @@ def main():
         return
 
     print(f"=== Generating per-environment PKI ===")
-    pki_dir = generate_pki(args.env, naming)
+    pki_dir = generate_pki(args.env, naming, rendered_root)
 
     print(f"=== Generating Android assetlinks.json ===")
     assetlinks_path = generate_android_assets(docs, out_dir, identities)
@@ -1256,8 +1235,8 @@ def main():
 
     print(f"=== Registering VC services with wallet-backend's default tenant ===")
     # Same value deploy_component()'s wallet-backend branch already wrote/read
-    # via _persistent_secret() - guaranteed consistent, not a race (sequential).
-    register_vc_services(args.env, _persistent_secret(out_dir, "adminToken"), naming)
+    # via persistent_secret() - guaranteed consistent, not a race (sequential).
+    register_vc_services(args.env, persistent_secret(out_dir, "adminToken"), naming)
 
     print()
     print(f"=== Environment '{args.env}' is up ===")
@@ -1269,7 +1248,7 @@ def main():
     print("environment instead of localhost (see sirosid-tests/specs/conformance/):")
     print(f"  export FRONTEND_URL={naming.url('wallet-frontend')}")
     print(f"  export ADMIN_URL={naming.url('wallet-proxy')}")
-    print(f"  export ADMIN_TOKEN={_persistent_secret(out_dir, 'adminToken')}")
+    print(f"  export ADMIN_TOKEN={persistent_secret(out_dir, 'adminToken')}")
     if spec.conformance:
         print(f"  export CONFORMANCE_URL={naming.url('conformance')}")
         print("  export NODE_TLS_REJECT_UNAUTHORIZED=0  # conformance suite's self-signed cert")

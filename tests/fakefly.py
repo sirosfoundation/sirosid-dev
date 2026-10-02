@@ -191,21 +191,34 @@ def hash_tree(out_dir: Path):
     return files
 
 
-def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False):
+def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False, rendered_root=None, state=None):
     """Run the real scripts/fly-up.py main() against `fake`.
 
     argv: fly-up arguments (without --env; it is added).  env_yaml: the text of
     an environments/<env>.yaml to use, or None for no file. State lands in
     fixtures/rendered/fly-<env> (gitignored) and is removed afterwards unless
     keep_state - never use a real environment's name here.
+
+    rendered_root: use this directory instead of fixtures/rendered (the caller
+    owns it and cleanup). state: {path: bytes} of sirosid_core.state files to
+    restore into it first - what a hosted service does from its database.
     """
     import os
     import unittest.mock as mock
 
     fake = fake or FakeFly()
-    out_dir = ROOT / "fixtures" / "rendered" / f"fly-{env}"
-    if out_dir.exists() and not keep_state:
+    root = Path(rendered_root) if rendered_root else ROOT / "fixtures" / "rendered"
+    out_dir = root / f"fly-{env}"
+    if out_dir.exists() and not keep_state and not rendered_root:
         shutil.rmtree(out_dir)
+    if state:
+        sys.path.insert(0, str(ROOT))
+        from sirosid_core.state import import_state
+        out_dir.mkdir(parents=True, exist_ok=True)
+        import_state(out_dir, state)
+    if rendered_root:
+        argv = ["--rendered-root", str(root), *argv]
+        keep_state = True
     rng = random.Random(1234)
     real_run = subprocess.run
     real_which = shutil.which
