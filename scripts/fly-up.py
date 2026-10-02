@@ -67,6 +67,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.spec import InstanceSpec  # noqa: E402
 import bootstrap  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
 from vc_render import deep_merge  # noqa: E402
@@ -102,12 +104,7 @@ def run(cmd, **kwargs):
 
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
-                    conformance: bool = False, extra_trusted_issuers: list = None,
-                    wallet_attestation: bool = False, extra_trusted_verifiers: list = None,
-                    extra_trusted_verifier_roots: list = None, zk_circuits_sources: list = None,
-                    rical_provider_url: str = None, rical_root_certificate_pem: str = None,
-                    dc_api_enable: str = "", credential_registries: list = None,
-                    env_values: dict = None, bbs_secret_key: str = None) -> list:
+                    spec: InstanceSpec) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -121,26 +118,23 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
     # assetlinks.json half was wired in the first pass at this.
     docs = render("fly", chart_dir, env=env, android_apk_key_hashes=android_apk_key_hashes,
                    out_dir=SIROSID_DEV_ROOT / "fixtures" / "rendered", mongo_password=mongo_password,
-                   conformance=conformance, extra_trusted_issuers=extra_trusted_issuers,
-                   wallet_attestation=wallet_attestation, extra_trusted_verifiers=extra_trusted_verifiers,
-                   extra_trusted_verifier_roots=extra_trusted_verifier_roots,
-                   rical_provider_url=rical_provider_url,
-                   rical_root_certificate_pem=rical_root_certificate_pem,
-                   # The vc services' config comes out of this same render
-                   # now, rather than a second pass over a hand-written
-                   # fixtures/vc-config.yaml (scripts/patch-vc-config-fly.py,
-                   # removed) - so a chart change reaches the issuer and
-                   # verifier the way it already reached wallet-backend.
-                   zk_circuits_sources=zk_circuits_sources,
-                   dc_api_enable=dc_api_enable,
+                   conformance=spec.conformance, extra_trusted_issuers=spec.trusted_issuers,
+                   wallet_attestation=spec.wallet_attestation, extra_trusted_verifiers=spec.trusted_verifiers,
+                   extra_trusted_verifier_roots=spec.trusted_verifier_roots,
+                   rical_provider_url=spec.rical_provider_url or None,
+                   rical_root_certificate_pem=spec.rical_root_pem or None,
+                   # The vc services' config comes out of this same render, so a
+                   # chart change reaches the issuer and verifier the way it
+                   # reaches wallet-backend.
+                   zk_circuits_sources=spec.zk_circuits_sources,
+                   dc_api_enable=spec.dc_api_enable,
                    # Both halves of the stack resolve credential metadata from
-                   # the SAME registries - vc through
-                   # common.credential_registry, wallet-backend through its
-                   # registry.yaml sources - so they cannot disagree about
-                   # what a type looks like. One render sets both.
-                   credential_registries=credential_registries,
-                   env_values=env_values,
-                   bbs_secret_key=bbs_secret_key)
+                   # the SAME registries - vc through common.credential_registry,
+                   # wallet-backend through its registry sources - so they cannot
+                   # disagree about what a type looks like. One render sets both.
+                   credential_registries=spec.credential_registries,
+                   env_values=spec.values,
+                   bbs_secret_key=spec.bbs_secret_key or None)
     return docs
 
 
@@ -866,6 +860,151 @@ def register_vc_services(env: str, admin_token: str):
         f"    python3 scripts/bootstrap.py --admin-url {proxy_url} --admin-token <adminToken> "
         f"--issuer-url {apigw_url} --verifier-url {verifier_url}")
 
+def _spec_from_args(args, env_cfg) -> InstanceSpec:
+    """The CLI's half of building an InstanceSpec: merge environments/<env>.yaml
+    with the command line (file first, CLI on top - see scripts/env_config.py),
+    and READ every file the spec refers to, so what comes out holds content and
+    the deploy code below never touches the developer's disk to find out what
+    to deploy. A service builds an InstanceSpec directly instead.
+
+    Region is left empty: resolving it consults the environment, a personal
+    dotfile and the network, which is the caller's business.
+    """
+    # environments/<env>.yaml (if present) supplies persisted defaults for a
+    # named, durable environment - see scripts/env_config.py's module doc
+    # for the full precedence (file first, CLI appends/overrides on top).
+    cli_trusted_issuers = []
+    for pair in (args.trusted_issuer or []):
+        cli_trusted_issuers.extend(v.strip() for v in pair.split(",") if v.strip())
+    extra_trusted_issuers = merge_list(env_cfg["trusted_issuers"], cli_trusted_issuers)
+
+    cli_trusted_verifiers = []
+    for pair in (args.trusted_verifier or []):
+        cli_trusted_verifiers.extend(v.strip() for v in pair.split(",") if v.strip())
+    extra_trusted_verifiers = merge_list(env_cfg["trusted_verifiers"], cli_trusted_verifiers)
+
+    cli_trusted_verifier_root_paths = []
+    for pair in (args.trusted_verifier_root or []):
+        cli_trusted_verifier_root_paths.extend(p.strip() for p in pair.split(",") if p.strip())
+    # Merged as PATHS (not yet-read content) so file/CLI de-duplication works
+    # on the same representation; each resulting path is read once below.
+    trusted_verifier_root_paths = merge_list(env_cfg["trusted_verifier_roots"], cli_trusted_verifier_root_paths)
+    extra_trusted_verifier_roots = [Path(p).read_text() for p in trusted_verifier_root_paths]
+
+    cli_zk_circuits_sources = []
+    for pair in (args.zk_circuits_source or []):
+        cli_zk_circuits_sources.extend(v.strip() for v in pair.split(",") if v.strip())
+    zk_circuits_sources = merge_list(env_cfg["zk_circuits_sources"], cli_zk_circuits_sources)
+
+    # Scalar, last-one-wins (CLI overrides file) - one RICAL provider per
+    # environment, unlike the repeatable trust flags above.
+    rical_provider_url = args.rical_provider_url or env_cfg["rical_provider_url"] or None
+    rical_root_cert_path = args.rical_root_cert or env_cfg["rical_root_cert"] or None
+    rical_root_certificate_pem = Path(rical_root_cert_path).read_text() if rical_root_cert_path else None
+    if bool(rical_provider_url) != bool(rical_root_certificate_pem):
+        raise SystemExit("--rical-provider-url and --rical-root-cert must both be set, or neither")
+
+    dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
+
+    # Ordered: later registries override earlier ones for the same
+    # vct/doctype, so the file's list comes first and a CLI one extends it.
+    credential_registries = merge_list(
+        env_cfg["credential_registries"],
+        [u.strip() for u in args.credential_registries.split(",") if u.strip()])
+
+    # The issuer's blind BBS secret key, read from a gitignored local file.
+    #
+    # It cannot live in environments/<name>.yaml: that file is committed and
+    # this is the whole of the issuer's BBS signing capability. It goes to
+    # the renderer as a secret OVERRIDE rather than into the values tree,
+    # which is how the chart already models it - issuer-core's
+    # secrets.yaml.template carries ${BBS_SECRET_KEY}, and render_vc
+    # substitutes it exactly the way Kubernetes' secrets-renderer
+    # initContainer would. So the key never reaches a values file or a
+    # rendered ConfigMap on either target.
+    bbs_secret_key = None
+    bbs_secret_key_file = env_cfg["bbs_secret_key_file"] or None
+    if bbs_secret_key_file:
+        path = Path(bbs_secret_key_file)
+        if not path.is_absolute():
+            path = SIROSID_DEV_ROOT / path
+        if not path.exists():
+            raise SystemExit(
+                f"bbs_secret_key_file {path} does not exist. Run `make bbs-keys` to generate the "
+                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
+            )
+        bbs_secret_key = path.read_text().strip()
+        if not bbs_secret_key:
+            # An empty string would be dropped by the `if bbs_secret_key`
+            # guard in the renderer and the issuer would boot with the
+            # chart's blank placeholder - a failure that says nothing about
+            # this file.
+            raise SystemExit(
+                f"bbs_secret_key_file {path} is empty. Re-run `make bbs-keys`."
+            )
+
+    # The public half, by contrast, goes straight into the values tree: it is
+    # not secret, and the chart wants it as issuer.core.bbs.publicKey. Read
+    # from a file for the same reason the secret is - `make bbs-keys` then
+    # covers both, and environments/<name>.yaml stays free of a key that
+    # differs per developer.
+    env_values = env_cfg.get("values") or {}
+    bbs_public_key_file = env_cfg["bbs_public_key_file"] or None
+    if bbs_public_key_file:
+        path = Path(bbs_public_key_file)
+        if not path.is_absolute():
+            path = SIROSID_DEV_ROOT / path
+        if not path.exists():
+            raise SystemExit(
+                f"bbs_public_key_file {path} does not exist. Run `make bbs-keys` to generate the "
+                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
+            )
+        bbs_public_key = path.read_text().strip()
+        if not bbs_public_key:
+            raise SystemExit(
+                f"bbs_public_key_file {path} is empty. Re-run `make bbs-keys`."
+            )
+        env_values = deep_merge(
+            env_values,
+            {"issuer": {"core": {"bbs": {"publicKey": bbs_public_key}}}},
+        )
+
+    cli_image_overrides = {}
+    for pair in args.images.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise SystemExit(f"--images entry {pair!r} must be component=image")
+        component, image = pair.split("=", 1)
+        component = component.strip()
+        if component not in {c["name"] for c in COMPONENTS}:
+            raise SystemExit(f"--images: unknown component {component!r} - see fly_common.COMPONENTS")
+        cli_image_overrides[component] = image.strip()
+    image_overrides = merge_images(env_cfg["images"], cli_image_overrides)
+
+    args.conformance = args.conformance or env_cfg["conformance"]
+    args.wallet_attestation = args.wallet_attestation or env_cfg["wallet_attestation"]
+
+    return InstanceSpec(
+        env=args.env,
+        images=image_overrides,
+        conformance=bool(args.conformance),
+        wallet_attestation=bool(args.wallet_attestation),
+        trusted_issuers=extra_trusted_issuers,
+        trusted_verifiers=extra_trusted_verifiers,
+        trusted_verifier_roots=extra_trusted_verifier_roots,
+        zk_circuits_sources=zk_circuits_sources,
+        rical_provider_url=rical_provider_url or "",
+        rical_root_pem=rical_root_certificate_pem or "",
+        dc_api_enable=dc_api_enable,
+        credential_registries=credential_registries,
+        android_apps=merge_list(env_cfg["android_apps"], args.android_app or []),
+        values=env_values,
+        bbs_secret_key=bbs_secret_key or "",
+    ).validate([c["name"] for c in COMPONENTS])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", required=True)
@@ -966,106 +1105,8 @@ def main():
                               "environments/<env>.yaml's dc_api_enable, same as the RICAL flags above.")
     args = parser.parse_args()
 
-    # environments/<env>.yaml (if present) supplies persisted defaults for a
-    # named, durable environment - see scripts/env_config.py's module doc
-    # for the full precedence (file first, CLI appends/overrides on top).
     env_cfg = load_environment_config(args.env)
-
-    cli_trusted_issuers = []
-    for pair in (args.trusted_issuer or []):
-        cli_trusted_issuers.extend(v.strip() for v in pair.split(",") if v.strip())
-    extra_trusted_issuers = merge_list(env_cfg["trusted_issuers"], cli_trusted_issuers)
-
-    cli_trusted_verifiers = []
-    for pair in (args.trusted_verifier or []):
-        cli_trusted_verifiers.extend(v.strip() for v in pair.split(",") if v.strip())
-    extra_trusted_verifiers = merge_list(env_cfg["trusted_verifiers"], cli_trusted_verifiers)
-
-    cli_trusted_verifier_root_paths = []
-    for pair in (args.trusted_verifier_root or []):
-        cli_trusted_verifier_root_paths.extend(p.strip() for p in pair.split(",") if p.strip())
-    # Merged as PATHS (not yet-read content) so file/CLI de-duplication works
-    # on the same representation; each resulting path is read once below.
-    trusted_verifier_root_paths = merge_list(env_cfg["trusted_verifier_roots"], cli_trusted_verifier_root_paths)
-    extra_trusted_verifier_roots = [Path(p).read_text() for p in trusted_verifier_root_paths]
-
-    cli_zk_circuits_sources = []
-    for pair in (args.zk_circuits_source or []):
-        cli_zk_circuits_sources.extend(v.strip() for v in pair.split(",") if v.strip())
-    zk_circuits_sources = merge_list(env_cfg["zk_circuits_sources"], cli_zk_circuits_sources)
-
-    # Scalar, last-one-wins (CLI overrides file) - one RICAL provider per
-    # environment, unlike the repeatable trust flags above.
-    rical_provider_url = args.rical_provider_url or env_cfg["rical_provider_url"] or None
-    rical_root_cert_path = args.rical_root_cert or env_cfg["rical_root_cert"] or None
-    rical_root_certificate_pem = Path(rical_root_cert_path).read_text() if rical_root_cert_path else None
-    if bool(rical_provider_url) != bool(rical_root_certificate_pem):
-        raise SystemExit("--rical-provider-url and --rical-root-cert must both be set, or neither")
-
-    dc_api_enable = args.dc_api_enable or env_cfg["dc_api_enable"] or ""
-
-    # Ordered: later registries override earlier ones for the same
-    # vct/doctype, so the file's list comes first and a CLI one extends it.
-    credential_registries = merge_list(
-        env_cfg["credential_registries"],
-        [u.strip() for u in args.credential_registries.split(",") if u.strip()])
-
-    # The issuer's blind BBS secret key, read from a gitignored local file.
-    #
-    # It cannot live in environments/<name>.yaml: that file is committed and
-    # this is the whole of the issuer's BBS signing capability. It goes to
-    # the renderer as a secret OVERRIDE rather than into the values tree,
-    # which is how the chart already models it - issuer-core's
-    # secrets.yaml.template carries ${BBS_SECRET_KEY}, and render_vc
-    # substitutes it exactly the way Kubernetes' secrets-renderer
-    # initContainer would. So the key never reaches a values file or a
-    # rendered ConfigMap on either target.
-    bbs_secret_key = None
-    bbs_secret_key_file = env_cfg["bbs_secret_key_file"] or None
-    if bbs_secret_key_file:
-        path = Path(bbs_secret_key_file)
-        if not path.is_absolute():
-            path = SIROSID_DEV_ROOT / path
-        if not path.exists():
-            raise SystemExit(
-                f"bbs_secret_key_file {path} does not exist. Run `make bbs-keys` to generate the "
-                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
-            )
-        bbs_secret_key = path.read_text().strip()
-        if not bbs_secret_key:
-            # An empty string would be dropped by the `if bbs_secret_key`
-            # guard in the renderer and the issuer would boot with the
-            # chart's blank placeholder - a failure that says nothing about
-            # this file.
-            raise SystemExit(
-                f"bbs_secret_key_file {path} is empty. Re-run `make bbs-keys`."
-            )
-
-    # The public half, by contrast, goes straight into the values tree: it is
-    # not secret, and the chart wants it as issuer.core.bbs.publicKey. Read
-    # from a file for the same reason the secret is - `make bbs-keys` then
-    # covers both, and environments/<name>.yaml stays free of a key that
-    # differs per developer.
-    env_values = env_cfg.get("values") or {}
-    bbs_public_key_file = env_cfg["bbs_public_key_file"] or None
-    if bbs_public_key_file:
-        path = Path(bbs_public_key_file)
-        if not path.is_absolute():
-            path = SIROSID_DEV_ROOT / path
-        if not path.exists():
-            raise SystemExit(
-                f"bbs_public_key_file {path} does not exist. Run `make bbs-keys` to generate the "
-                "issuer's BBS key pair (it is gitignored, so a fresh checkout has none)."
-            )
-        bbs_public_key = path.read_text().strip()
-        if not bbs_public_key:
-            raise SystemExit(
-                f"bbs_public_key_file {path} is empty. Re-run `make bbs-keys`."
-            )
-        env_values = deep_merge(
-            env_values,
-            {"issuer": {"core": {"bbs": {"publicKey": bbs_public_key}}}},
-        )
+    spec = _spec_from_args(args, env_cfg)
 
     # Region. Every level here is an explicit pin; if none is set we take
     # Fly's own suggestion, which is the right default when contributors are
@@ -1093,23 +1134,7 @@ def main():
         else:
             region = FLY_REGION_FALLBACK
             print(f"region: {region} (fallback - could not reach Fly to ask)")
-
-    cli_image_overrides = {}
-    for pair in args.images.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        if "=" not in pair:
-            raise SystemExit(f"--images entry {pair!r} must be component=image")
-        component, image = pair.split("=", 1)
-        component = component.strip()
-        if component not in {c["name"] for c in COMPONENTS}:
-            raise SystemExit(f"--images: unknown component {component!r} - see fly_common.COMPONENTS")
-        cli_image_overrides[component] = image.strip()
-    image_overrides = merge_images(env_cfg["images"], cli_image_overrides)
-
-    args.conformance = args.conformance or env_cfg["conformance"]
-    args.wallet_attestation = args.wallet_attestation or env_cfg["wallet_attestation"]
+    spec.region = region
 
     if not shutil.which("flyctl"):
         raise SystemExit("flyctl not found - install it first (https://fly.io/docs/flyctl/install/)")
@@ -1118,7 +1143,7 @@ def main():
     out_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    identities = load_android_apps(extra=merge_list(env_cfg["android_apps"], args.android_app or []))
+    identities = load_android_apps(extra=spec.android_apps)
     # Persisted per environment: the Mongo volume's data was initialised with
     # it and MONGO_INITDB_ROOT_* never re-applies to a non-empty /data/db.
     mongo_password = resolve_mongo_password(args.env, out_dir)
@@ -1127,24 +1152,15 @@ def main():
     # docs is the full rendered manifest (not just wallet-backend/pdp) -
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
-    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password,
-                           args.conformance, extra_trusted_issuers, args.wallet_attestation,
-                           extra_trusted_verifiers, extra_trusted_verifier_roots, zk_circuits_sources,
-                           rical_provider_url, rical_root_certificate_pem, dc_api_enable,
-                           credential_registries,
-                           # environments/<name>.yaml's free-form `values:`
-                           # block, deep-merged over everything else - the
-                           # escape hatch for anything the typed keys above
-                           # don't cover (see scripts/env_config.py).
-                           env_values, bbs_secret_key)
+    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password, spec)
     mongo_version = extract_image(docs, "mongoCommunityVersion")
 
     if args.render_only:
         print("=== Images (--render-only: nothing deployed) ===")
         for comp in COMPONENTS:
             name = comp["name"]
-            if name in image_overrides:
-                ref = image_overrides[name]
+            if name in spec.images:
+                ref = spec.images[name]
             elif "image_from_values" in comp:
                 ref = extract_image(docs, comp["image_from_values"])
             else:
@@ -1164,10 +1180,10 @@ def main():
     # domain - see wallet_proxy_conf()'s docstring for why an earlier version
     # of this deployment served a second, wrong-domain copy from wallet-proxy.
 
-    if image_overrides:
-        print(f"=== Image overrides for this environment: {image_overrides} ===")
+    if spec.images:
+        print(f"=== Image overrides for this environment: {spec.images} ===")
 
-    if args.conformance:
+    if spec.conformance:
         # conformance-mongodb/conformance-server/conformance-runner MUST
         # deploy before wallet-frontend - its nginx config statically
         # proxy_passes to both conformance-server.internal AND
@@ -1200,8 +1216,8 @@ def main():
         for comp in all_components:
             print(f"--- {comp['name']} ---")
             deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path,
-                              image_overrides, mongo_password, args.conformance, args.wallet_attestation,
-                              region=region)
+                              spec.images, mongo_password, spec.conformance, spec.wallet_attestation,
+                              region=spec.region)
             deployed.append(comp["name"])
     except subprocess.CalledProcessError as e:
         # No auto-rollback - components deployed so far are left running
@@ -1234,7 +1250,7 @@ def main():
     print(f"  export FRONTEND_URL={app_url(args.env, 'wallet-frontend')}")
     print(f"  export ADMIN_URL={app_url(args.env, 'wallet-proxy')}")
     print(f"  export ADMIN_TOKEN={_persistent_secret(out_dir, 'adminToken')}")
-    if args.conformance:
+    if spec.conformance:
         print(f"  export CONFORMANCE_URL={app_url(args.env, 'conformance')}")
         print("  export NODE_TLS_REJECT_UNAUTHORIZED=0  # conformance suite's self-signed cert")
         print()
