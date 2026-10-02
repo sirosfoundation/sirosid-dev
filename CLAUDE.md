@@ -642,6 +642,13 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
   own health check passed, since that check is local. Any new component
   must listen on `::` (dual-stack) — see `DualStackHTTPServer` in
   `env-admin/server.py`.
+- **Scale to zero is per ENVIRONMENT, never per app.** `make fly-stop ENV=x` stops
+  every machine (apps and the Mongo volume are kept; only the volume is billed) and
+  `make fly-start ENV=x` brings them back in deploy order, waiting for health.
+  Deploying with `--scale-to-zero` also sets `auto_start_machines = false`, so a stray
+  request cannot wake one machine in front of a stopped backend (verified on real Fly:
+  without it, a single request to a stopped environment woke only the frontend).
+  `--org <org>` on `fly-up`/`fly-down`/`fly-power.py` targets a dedicated org.
 - **Autostart only fires on the public edge**, never for internal 6PN calls
   between sibling apps — an internal-only component left on
   `auto_stop_machines='stop'` goes idle and *stays* stopped forever once a

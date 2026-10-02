@@ -60,6 +60,11 @@ class InstanceSpec:
     # these itself and must not let a user's saved config choose them.
     app_prefix: str = "sirosid"
     host_pattern: str = "{app}.fly.dev"
+    # Scale to zero as a unit. When set, no machine wakes itself on traffic: only
+    # start_instance() brings the instance up (see lifecycle.py for why per-app
+    # autostop cannot work for this stack). A hosted service sets this; the CLI
+    # leaves it off, where every machine just stays running.
+    scale_to_zero: bool = False
 
     def naming(self) -> Naming:
         return Naming(self.env, app_prefix=self.app_prefix, host_pattern=self.host_pattern)
@@ -104,7 +109,7 @@ class InstanceSpec:
                  "trusted_issuers": list, "trusted_verifiers": list, "trusted_verifier_roots": list,
                  "zk_circuits_sources": list, "credential_registries": list, "android_apps": list,
                  "env": str, "region": str, "rical_provider_url": str, "rical_root_pem": str,
-                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str}
+                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "scale_to_zero": bool}
         for key, value in data.items():
             if not isinstance(value, kinds[key]):
                 raise ValueError(f"instance spec key {key!r} must be {kinds[key].__name__}, "

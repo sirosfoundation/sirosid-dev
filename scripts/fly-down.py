@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import fly_common  # noqa: E402
+from sirosid_core.fly import FlyClient  # noqa: E402
 from sirosid_core.lifecycle import destroy_instance  # noqa: E402
 from sirosid_core.naming import Naming  # noqa: E402
 
@@ -33,11 +34,14 @@ def main():
     parser.add_argument("--env", required=True)
     parser.add_argument("--keep-data", action="store_true",
                         help="keep the Mongo apps and their volumes (machines stopped) for the next fly-up")
+    parser.add_argument("--org", default="",
+                        help="Fly organization the environment was deployed in (fly-up --org); default sirosfoundation")
     parser.add_argument("--app-prefix", default="sirosid",
                         help="app-name prefix the environment was deployed with (fly-up --app-prefix)")
     args = parser.parse_args()
 
-    report = destroy_instance(fly_common._client, Naming(args.env, app_prefix=args.app_prefix),
+    fly = FlyClient(args.org) if args.org else fly_common._client
+    report = destroy_instance(fly, Naming(args.env, app_prefix=args.app_prefix),
                               keep_data=args.keep_data, progress=print)
     for app, err in report.failed:
         print(f"FAILED to tear down {app}: {err}", file=sys.stderr)

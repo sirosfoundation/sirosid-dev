@@ -7,7 +7,7 @@ so every app is attempted and the failures are returned.
 """
 from dataclasses import dataclass, field
 
-from .components import STORAGE_APPS, component_names
+from .components import CONFORMANCE_COMPONENTS, STORAGE_APPS, build_components, component_names
 from .fly import FlyClient, FlyError
 from .naming import Naming
 
@@ -56,6 +56,79 @@ def destroy_instance(fly: FlyClient, naming: Naming, keep_data: bool = False, pr
                 fly.revoke_tokens(app)
             say(f"--- destroying {app} ---")
             (report.destroyed if fly.destroy_app(app) else report.absent).append(app)
+        except FlyError as e:
+            report.failed.append((app, str(e)))
+    return report
+
+
+@dataclass
+class PowerReport:
+    changed: list = field(default_factory=list)    # apps whose machines were stopped / started
+    absent: list = field(default_factory=list)     # apps that do not exist
+    failed: list = field(default_factory=list)     # (app, error message)
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed
+
+
+def stop_instance(fly: FlyClient, naming: Naming, progress=None) -> PowerReport:
+    """Stop every machine of the instance: the "zero" of scale-to-zero.
+
+    The instance's apps and its Mongo volume are kept, so nothing is lost and only
+    the volume is billed. This is done to the WHOLE instance, never one app: Fly
+    starts a stopped machine on traffic through its public edge, but never for a
+    direct 6PN call between sibling apps, so a stopped mongodb, vc-issuer, pdp or
+    wallet-backend would stay stopped for ever while the frontend in front of it
+    was awake (this was tried per-app and abandoned - see assets.write_fly_toml).
+
+    Consumers go first and Mongo last, the reverse of deploy order, so nothing is
+    left calling a store that is already gone. A failure on one app is recorded and
+    the rest are still stopped.
+    """
+    say = progress or (lambda msg: None)
+    report = PowerReport()
+    for name in reversed(component_names()):
+        app = naming.app(name)
+        try:
+            if not fly.app_exists(app):
+                report.absent.append(app)
+                continue
+            say(f"--- stopping {app} ---")
+            fly.stop_machines(app)
+            report.changed.append(app)
+        except FlyError as e:
+            report.failed.append((app, str(e)))
+    return report
+
+
+def start_instance(fly: FlyClient, naming: Naming, progress=None) -> PowerReport:
+    """Start every machine of a stopped instance, in deploy order, waiting for each
+    component that has a health check before starting the next - mongodb must be
+    answering before vc-registry connects to it, the issuer before the verifier
+    calls it, and so on, exactly as in a deploy.
+
+    Components that are already running are left alone, so it is safe to call on a
+    running or half-awake instance (the state a stray request leaves behind when
+    the machines can wake themselves). A component whose check never turns healthy
+    does not stop the rest: it is reported by wait_for_checks and the instance
+    comes up as far as it can.
+    """
+    say = progress or (lambda msg: None)
+    report = PowerReport()
+    comps = {c["name"]: c for c in build_components("", "") + CONFORMANCE_COMPONENTS}
+    for name in component_names():
+        app = naming.app(name)
+        try:
+            if not fly.app_exists(app):
+                report.absent.append(app)
+                continue
+            say(f"--- starting {app} ---")
+            fly.ensure_running(app)
+            comp = comps[name]
+            if comp.get("checks") or comp.get("internal_check"):
+                fly.wait_for_checks(app)
+            report.changed.append(app)
         except FlyError as e:
             report.failed.append((app, str(e)))
     return report

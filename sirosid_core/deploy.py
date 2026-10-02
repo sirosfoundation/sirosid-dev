@@ -434,7 +434,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
                     # existed but nothing used it and every deploy replaced the
                     # machine - fly.assert_volume_mounted() below now fails the deploy
                     # rather than letting that pass silently again.
-                    mount=comp.get("mount"))
+                    mount=comp.get("mount"), autostart=not spec.scale_to_zero)
 
     deploy_args = ["deploy", "-a", app, "-c", str(toml_path), "-i", image,
                    "--ha=false", "--strategy", "immediate", "--yes"]

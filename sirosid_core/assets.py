@@ -16,7 +16,7 @@ from .naming import Naming
 def write_fly_toml(path: Path, app: str, primary_public_port: int | None, process_cmd: str | None = None,
                     health_check_path: str | None = None, memory_mb: int = 256, cpus: int = 1,
                     internal_check: dict | None = None, tcp_passthrough_port: int | None = None,
-                    region: str = "", mount: dict | None = None):
+                    region: str = "", mount: dict | None = None, autostart: bool = True):
     """Minimal per-app fly.toml - image/files/secrets are passed as `fly deploy`
     flags (see fly-up.py), not baked in here. Only the app-level shape
     (region, autostart/autostop, the one public port if any, and a command
@@ -24,6 +24,9 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
     Dockerfile CMD is ["serve"], which its flag-based CLI treats as a bare
     positional and then stops parsing, silently ignoring any flags after it -
     `--config` must be passed with no "serve" ahead of it) lives in the file.
+
+    autostart=False (an instance that scales to zero as a unit) stops a stopped machine
+    from waking itself on traffic; see lifecycle.start_instance.
 
     Deliberately NOT using wmp-inspector's scale-to-zero
     (auto_stop_machines/min_machines_running=0) pattern: Fly's traffic-
@@ -88,7 +91,7 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
             f"  internal_port = {primary_public_port}",
             "  force_https = true",
             "  auto_stop_machines = 'off'",
-            "  auto_start_machines = true",
+            f"  auto_start_machines = {'true' if autostart else 'false'}",
             "  min_machines_running = 1",
         ]
         if process_cmd is not None:

@@ -66,9 +66,9 @@ import bootstrap  # noqa: E402
 import fly_common  # noqa: E402
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
-from fly_common import COMPONENTS, FLY_REGION_FALLBACK, detect_region  # noqa: E402
+from fly_common import COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region  # noqa: E402
 from sirosid_core.deploy import DeployError, RegistrationError, deploy_instance  # noqa: E402
-from sirosid_core.fly import FlyError  # noqa: E402
+from sirosid_core.fly import FlyClient, FlyError  # noqa: E402
 from sirosid_core.naming import Naming  # noqa: E402,F401
 from sirosid_core.resources import Resources  # noqa: E402
 from sirosid_core.spec import InstanceSpec  # noqa: E402
@@ -240,6 +240,7 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
         bbs_secret_key=bbs_secret_key or "",
         app_prefix=args.app_prefix or env_cfg["app_prefix"] or "sirosid",
         host_pattern=args.host_pattern or env_cfg["host_pattern"] or "{app}.fly.dev",
+        scale_to_zero=bool(args.scale_to_zero),
     ).validate([c["name"] for c in COMPONENTS])
 
 
@@ -251,6 +252,15 @@ def main():
                               "environments/<name>.yaml's `region:`, $FLY_REGION, .fly-region, and "
                               "Fly's own detected suggestion - see the region-resolution comment below.")
     parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
+    parser.add_argument("--scale-to-zero", action="store_true",
+                        help="Create the environment so that it can be scaled to zero AS A UNIT "
+                             "(make fly-stop / fly-start): no machine wakes itself on traffic, so a "
+                             "stopped environment stays stopped until fly-start brings it all up in "
+                             "order. Per-app autostop cannot work for this stack - Fly never wakes a "
+                             "machine for an internal 6PN call.")
+    parser.add_argument("--org", default="",
+                        help="Fly organization to create the apps in (default: sirosfoundation). Use a "
+                             "dedicated org for scratch or hosted instances; fly-down needs the same --org.")
     parser.add_argument("--app-prefix", default="",
                         help="Prefix of this environment's Fly app names (default 'sirosid': apps are "
                              "<prefix>-<env>-<component>). Fly app names are global across all orgs.")
@@ -396,6 +406,7 @@ def main():
     rendered_root = Path(args.rendered_root) if args.rendered_root else SIROSID_DEV_ROOT / "fixtures" / "rendered"
     out_dir = rendered_root / f"fly-{args.env}"
     identities = load_android_apps(extra=spec.android_apps)
+    fly_client = FlyClient(args.org) if args.org else fly_common._client
 
     def register(admin_url, admin_token, issuer_url, verifier_url):
         # scripts/bootstrap.py is the one implementation `make up`, env-admin's
@@ -406,7 +417,7 @@ def main():
             raise RegistrationError(str(e)) from e
 
     try:
-        result = deploy_instance(spec, fly_common._client, naming, Resources(SIROSID_DEV_ROOT),
+        result = deploy_instance(spec, fly_client, naming, Resources(SIROSID_DEV_ROOT),
                                  chart_dir=chart_dir, rendered_root=rendered_root, identities=identities,
                                  components=COMPONENTS, register=register, render_only=args.render_only)
     except DeployError as e:
