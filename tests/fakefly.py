@@ -53,6 +53,17 @@ class FakeFly:
         for a in existing_apps:
             self._app(a)
 
+    def runner(self):
+        """A subprocess.run-compatible callable for FlyClient(runner=...). Also
+        records the FLY_API_TOKEN each call was made with, so tests can assert a
+        client acts as the identity it was given."""
+        self.tokens_seen = getattr(self, "tokens_seen", [])
+
+        def run(cmd, **kw):
+            self.tokens_seen.append((kw.get("env") or {}).get("FLY_API_TOKEN"))
+            return self.handle(cmd[1:])
+        return run
+
     def _app(self, name):
         return self.apps.setdefault(name, {"machines": [], "volumes": [], "secrets": {}, "tokens": []})
 
