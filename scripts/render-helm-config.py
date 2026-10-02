@@ -13,6 +13,7 @@ import yaml  # noqa: F401
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sirosid_core import render as _render  # noqa: E402
+from sirosid_core.helm import HelmError  # noqa: E402
 from sirosid_core.render import render  # noqa: E402,F401  (re-exported)
 from sirosid_core.resources import Resources  # noqa: E402
 
@@ -92,14 +93,17 @@ def main():
 
     zk_sources = [u.strip() for arg in args.zk_circuits_source for u in arg.split(",") if u.strip()]
 
-    render(args.target, chart_dir, env=args.env, android_apk_key_hashes=args.android_apk_key_hash,
-           namespace=args.namespace, out_dir=Path(args.out_dir), secrets_dir=Path(args.secrets_dir),
-           mongo_password=args.mongo_password, conformance=args.conformance,
-           dc_api_enable=args.dc_api_enable, zk_circuits_sources=zk_sources,
-           hostnames=dict(h.split("=", 1) for h in args.hostname),
-           mini_oidc_url=args.mini_oidc_url,
-           credential_registries=[u.strip() for u in args.credential_registries.split(",") if u.strip()],
-           env_values=env_values, resources=Resources(SIROSID_DEV_ROOT))
+    try:
+        render(args.target, chart_dir, env=args.env, android_apk_key_hashes=args.android_apk_key_hash,
+               namespace=args.namespace, out_dir=Path(args.out_dir), secrets_dir=Path(args.secrets_dir),
+               mongo_password=args.mongo_password, conformance=args.conformance,
+               dc_api_enable=args.dc_api_enable, zk_circuits_sources=zk_sources,
+               hostnames=dict(h.split("=", 1) for h in args.hostname),
+               mini_oidc_url=args.mini_oidc_url,
+               credential_registries=[u.strip() for u in args.credential_registries.split(",") if u.strip()],
+               env_values=env_values, resources=Resources(SIROSID_DEV_ROOT))
+    except HelmError as e:
+        raise SystemExit(str(e))
 
 
 if __name__ == "__main__":

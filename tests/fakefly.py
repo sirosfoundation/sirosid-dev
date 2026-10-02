@@ -97,9 +97,11 @@ class FakeFly:
         sub = argv[1] if len(argv) > 1 else ""
 
         if head == "apps" and sub == "list":
-            return _cp(argv, stdout=json.dumps([{"Name": n} for n in self.apps]))
+            org = self._opt(argv, "-o", "--org")
+            names = [n for n, a in self.apps.items() if org is None or a.get("org") == org]
+            return _cp(argv, stdout=json.dumps([{"Name": n} for n in names]))
         if head == "apps" and sub == "create":
-            self._app(argv[2])
+            self._app(argv[2])["org"] = self._opt(argv, "-o", "--org")
             return _cp(argv)
         if head == "apps" and sub == "destroy":
             self.apps.pop(argv[2], None)
@@ -142,8 +144,15 @@ class FakeFly:
             self._app(app)["tokens"].append({"ID": self._id("tok_"), "Name": self._opt(argv, "--name", default="")})
             return _cp(argv, stdout=json.dumps({"token": tok}))
         if head == "tokens" and sub == "list":
-            return _cp(argv, stdout=json.dumps(self._app(app)["tokens"]))
+            # The real command prints a box-drawn table and has no --json.
+            if "--json" in argv:
+                return _cp(argv, returncode=1, stderr="unknown flag: --json")
+            rows = "".join(f" {x['ID']} \u2502 {x['Name']} \u2502 someone \u2502 2027-01-01 00:00:00 +0000 UTC \u2502\n"
+                           for x in self._app(app)["tokens"])
+            return _cp(argv, stdout=" ID \u2502 NAME \u2502 CREATED BY \u2502 EXPIRES AT \u2502\n" + rows)
         if head == "tokens" and sub == "revoke":
+            for a in self.apps.values():
+                a["tokens"] = [x for x in a["tokens"] if x["ID"] not in argv[2:]]
             return _cp(argv)
         if head == "ssh":
             return _cp(argv, returncode=1)   # nothing readable from a fake machine

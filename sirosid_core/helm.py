@@ -12,6 +12,10 @@ from pathlib import Path
 import yaml
 
 
+class HelmError(RuntimeError):
+    """`helm template` failed; the message carries helm's own stderr."""
+
+
 def helm_template(chart_dir: Path, values_files: list, namespace: str) -> str:
     cmd = [
         "helm", "template", "siros-id-stack", str(chart_dir),
@@ -21,8 +25,7 @@ def helm_template(chart_dir: Path, values_files: list, namespace: str) -> str:
         cmd += ["-f", str(f)]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
-        print(result.stderr, file=sys.stderr)
-        raise SystemExit(f"helm template failed (exit {result.returncode})")
+        raise HelmError(f"helm template failed (exit {result.returncode})\n{result.stderr.strip()}")
     return result.stdout
 
 

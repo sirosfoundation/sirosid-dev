@@ -152,8 +152,16 @@ class FlyClient:
             if capture:
                 self._warn(result.stdout)
                 self._warn(result.stderr)
-            raise FlyError(f"flyctl {args[0]} failed (exit {result.returncode})")
+            raise FlyError(f"flyctl {args[0]} failed (exit {result.returncode})" + self._detail(result))
         return result
+
+    @staticmethod
+    def _detail(result) -> str:
+        """flyctl's own explanation, when it was captured: 'exit 1' alone cost an
+        hour on real Fly ('Not authorized to access createlimitedaccesstoken')."""
+        text = ((getattr(result, "stderr", "") or "") + (getattr(result, "stdout", "") or "")).strip()
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        return f": {lines[-1][:240]}" if lines else ""
 
     def app_exists(self, name: str) -> bool:
         result = self.run("apps", "list", "--json", check=False, capture=True)
@@ -226,25 +234,39 @@ class FlyClient:
         self._docker("push", remote_ref, check=True)
         return remote_ref
 
-    def ensure_running(self, app: str):
+    # States a machine rests in. Anything else (created, starting, replacing,
+    # updating, stopping, ...) is a transition that will end in one of these.
+    AT_REST = ("started", "stopped", "suspended", "failed", "destroyed")
+
+    def ensure_running(self, app: str, settle_timeout: float = 30, poll_interval: float = 2):
         """`fly deploy` on a previously-stopped machine (e.g. crash-looped in an
-        earlier attempt, or a service-less internal app with no autostart path
-        at all) updates its config but doesn't necessarily start it - confirmed
-        empirically (vc-issuer stayed 'stopped' after a config-only update
-        following an earlier crash). Explicitly starts any machine still not
-        running post-deploy, for every component, not just internal-only ones.
+        earlier attempt, a service-less internal app with no autostart path at all,
+        or a storage app kept stopped by `fly-down --keep-data`) updates its config
+        but doesn't start it - confirmed empirically (vc-issuer stayed 'stopped'
+        after a config-only update following an earlier crash). Explicitly starts
+        any machine that settles stopped, for every component.
+
+        It waits for machines to SETTLE first. Right after a deploy a machine is
+        briefly 'replacing'/'updating', and a start request then fails with a
+        failed_precondition - so an earlier version skipped it, and the machine then
+        settled into 'stopped' and stayed there: a kept Mongo redeployed by fly-up
+        came back stopped, and wallet-backend crash-looped against it. Found on
+        real Fly; the fake flyctl never has a transitional state. A machine that is
+        already at rest is judged on the first look, as before.
         """
-        result = self.run("machine", "list", "-a", app, "--json", check=False, capture=True)
-        if result.returncode != 0:
-            return
-        try:
-            machines = json.loads(result.stdout or "[]")
-        except ValueError:
-            return
+        deadline = time.monotonic() + settle_timeout
+        while True:
+            result = self.run("machine", "list", "-a", app, "--json", check=False, capture=True)
+            if result.returncode != 0:
+                return
+            try:
+                machines = json.loads(result.stdout or "[]")
+            except ValueError:
+                return
+            if all(m.get("state") in self.AT_REST for m in machines) or time.monotonic() >= deadline:
+                break
+            time.sleep(poll_interval)
         for m in machines:
-            # Only a machine that is actually at rest. Right after a deploy a
-            # machine is briefly 'created'/'starting'/'replacing', and a start
-            # request then fails with a failed_precondition that only looks alarming.
             if m.get("state") in ("stopped", "suspended"):
                 self.run("machine", "start", m["id"], "-a", app, check=False)
 
@@ -294,9 +316,8 @@ class FlyClient:
                     self._say(f"{app}: all checks passing")
                     return
             time.sleep(poll_interval)
-        self._say(f"{app}: checks did not report passing within {timeout}s - continuing anyway "
-              f"(check `flyctl checks list -a {app}` if the next component fails to reach it)",
-              file=sys.stderr)
+        self._warn(f"{app}: checks did not report passing within {timeout}s - continuing anyway "
+                   f"(check `flyctl checks list -a {app}` if the next component fails to reach it)")
 
     def destroy_app(self, name: str) -> bool:
         """True if the app existed and was destroyed, False if there was nothing to do."""
@@ -308,9 +329,13 @@ class FlyClient:
 
     def list_apps(self) -> list:
         """Names of every app in the org (the sweeper's view of what exists)."""
-        result = self.run("apps", "list", "--json", check=False, capture=True)
+        # -o matters: without it flyctl lists every app the LOGIN can see, across all
+        # orgs - which would make a sweeper that destroys unknown apps a danger to
+        # every other org the credential happens to reach.
+        result = self.run("apps", "list", "-o", self.org, "--json", check=False, capture=True)
         if result.returncode != 0:
-            raise FlyError(f"could not list apps in org {self.org} (exit {result.returncode})")
+            raise FlyError(f"could not list apps in org {self.org} (exit {result.returncode})"
+                           + self._detail(result))
         return [a["Name"] for a in json.loads(result.stdout or "[]")]
 
     def list_machines(self, app: str) -> list:
@@ -426,19 +451,34 @@ class FlyClient:
             raise FlyError(f"could not create a deploy token for {app}: {result.stderr}")
         return token
 
-    def revoke_tokens(self, app: str, name: str = "sirosid-env-admin"):
-        """Best effort: an app-scoped token is useless once the app is destroyed,
-        so this is hygiene, not security-critical."""
-        result = self.run("tokens", "list", "-a", app, "--json", check=False, capture=True)
+    @staticmethod
+    def parse_token_table(text: str) -> list:
+        """Rows of `flyctl tokens list`: [{"id", "name"}]. flyctl prints a box-drawn
+        table (ID | NAME | CREATED BY | EXPIRES AT) and has no --json for this command;
+        the first version of revoke_tokens asked for JSON, parsed nothing and silently
+        revoked nothing, leaking a year-long token per consumer per deployed environment."""
+        import re
+        rows = []
+        for line in text.splitlines():
+            line = re.sub(r"\x1b\[[0-9;]*m", "", line)
+            if "\u2502" not in line:
+                continue
+            cols = [c.strip() for c in line.split("\u2502")]
+            if len(cols) >= 2 and cols[0] and cols[0] != "ID" and not set(cols[0]) <= set("\u2500\u253c\u251c\u2524 "):
+                rows.append({"id": cols[0], "name": cols[1]})
+        return rows
+
+    def revoke_tokens(self, app: str, name: str = "sirosid-env-admin") -> int:
+        """Revoke the app's tokens called `name`; returns how many. Best effort: an
+        app-scoped token is useless once the app is destroyed, but it would still sit
+        in the org's token list for the rest of its (year-long) life."""
+        result = self.run("tokens", "list", "-a", app, check=False, capture=True)
         if result.returncode != 0:
-            return
-        try:
-            tokens = json.loads(result.stdout or "[]")
-        except ValueError:
-            return
-        for t in tokens:
-            if t.get("Name", t.get("name")) == name:
-                self.run("tokens", "revoke", t.get("ID", t.get("id")), check=False)
+            return 0
+        ids = [t["id"] for t in self.parse_token_table(result.stdout or "") if t["name"] == name]
+        if ids:
+            self.run("tokens", "revoke", *ids, check=False)
+        return len(ids)
 
     def read_machine_file(self, app: str, path: str) -> str:
         """Read a file from the app's running machine over `fly ssh console`.

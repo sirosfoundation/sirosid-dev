@@ -23,7 +23,7 @@ from .assets import (assetlinks_json, mini_oidc_config, wallet_frontend_conf, wa
 from .components import (CONFORMANCE_COMPONENTS, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
                          build_components)
 from .fly import FlyClient, FlyDeployError, FlyError
-from .helm import extract_configmap_data, extract_image
+from .helm import HelmError, extract_configmap_data, extract_image
 from .naming import Naming
 from .render import render
 from .resources import Resources
@@ -822,18 +822,21 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
     # own origin is added to wallet-backend's rp_origins (the server-side
     # WebAuthn accept-list) - NOT the same thing as assetlinks.json, generated
     # below; a debug/sideloaded build's passkeys need both.
-    docs = render("fly", Path(chart_dir) if chart_dir else resources.chart_dir, env=env,
-                  android_apk_key_hashes=[i["apk_key_hash"] for i in identities],
-                  out_dir=rendered_root, mongo_password=mongo_password,
-                  conformance=spec.conformance, extra_trusted_issuers=spec.trusted_issuers,
-                  wallet_attestation=spec.wallet_attestation, extra_trusted_verifiers=spec.trusted_verifiers,
-                  extra_trusted_verifier_roots=spec.trusted_verifier_roots,
-                  rical_provider_url=spec.rical_provider_url or None,
-                  rical_root_certificate_pem=spec.rical_root_pem or None,
-                  zk_circuits_sources=spec.zk_circuits_sources, dc_api_enable=spec.dc_api_enable,
-                  credential_registries=spec.credential_registries, env_values=spec.values,
-                  bbs_secret_key=spec.bbs_secret_key or None, naming=naming, resources=resources,
-                  say=say, warn=say)
+    try:
+        docs = render("fly", Path(chart_dir) if chart_dir else resources.chart_dir, env=env,
+                      android_apk_key_hashes=[i["apk_key_hash"] for i in identities],
+                      out_dir=rendered_root, mongo_password=mongo_password,
+                      conformance=spec.conformance, extra_trusted_issuers=spec.trusted_issuers,
+                      wallet_attestation=spec.wallet_attestation, extra_trusted_verifiers=spec.trusted_verifiers,
+                      extra_trusted_verifier_roots=spec.trusted_verifier_roots,
+                      rical_provider_url=spec.rical_provider_url or None,
+                      rical_root_certificate_pem=spec.rical_root_pem or None,
+                      zk_circuits_sources=spec.zk_circuits_sources, dc_api_enable=spec.dc_api_enable,
+                      credential_registries=spec.credential_registries, env_values=spec.values,
+                      bbs_secret_key=spec.bbs_secret_key or None, naming=naming, resources=resources,
+                      say=say, warn=say)
+    except HelmError as e:
+        raise DeployError(str(e)) from e
     mongo_version = extract_image(docs, "mongoCommunityVersion")
     all_components = deploy_order(components, spec.conformance)
     images = {c["name"]: resolve_image(c, spec, docs, mongo_version) for c in all_components}
