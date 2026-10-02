@@ -20,6 +20,27 @@ Three entry points share one core and must stay in step:
   editing both** (and its help string in `stack.py`'s `OPTIONS`, which is
   where the TUI's per-field help comes from).
 
+## `sirosid_core/` — the part that is not a command line
+
+`scripts/` is the CLI (argv, the developer's gitignored files, printing).
+`sirosid_core/` is what a CLI **and** a hosted service can both call, and it
+never reads argv, the environment or a developer's disk:
+
+- `spec.py` — `InstanceSpec`, a content-only description of one instance
+  (PEM text and key material, not file paths). Strict `from_dict`: an unknown
+  key is an error. `fly-up.py` builds one in `_spec_from_args()`, which is where
+  every file read and the file-vs-CLI merge now live.
+- `naming.py` — `Naming`: Fly app names, `.internal` addresses, **public
+  hostnames** and the network, derived in one place. Default is the historical
+  `sirosid-<env>-<component>` / `*.fly.dev`; `--app-prefix` / `--host-pattern`
+  (or `app_prefix:` / `host_pattern:` in `environments/<name>.yaml`) change it.
+  Never write `f"sirosid-{env}-..."` again — take a `Naming`.
+
+This is the first stage of extracting a core library for a self-service service
+(deploy/destroy as library calls, state behind an interface). Still to come:
+state storage (today `fixtures/rendered/fly-<env>/`), a Fly client object in
+place of module-level `run_fly`, and `fly-down` as a library call.
+
 ## Sibling repo layout
 
 `make setup` clones these into `../`:
@@ -643,7 +664,12 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
   apps) unless `KEEP_DATA=yes` — ask before a plain `fly-down` of a shared
   environment.
 - Tests: `python3 -m unittest discover -s tests -p 'test_*.py'` (stack
-  parity needs `make`; nothing needs Docker or Fly). Run it after touching
+  parity needs `make`; the fly-up tests need `helm` and `openssl`; nothing needs
+  Docker or Fly — `tests/fakefly.py` is a stateful fake `flyctl`).
+  **`tests/test_fly_up_characterization.py` is the safety net under any change to
+  the deploy path**: it runs the real `fly-up.py` against the fake and compares
+  the exact command sequence and every rendered file with `tests/golden/`. A
+  deliberate change refreshes it with `UPDATE_GOLDEN=1`; an accidental one fails. Run it after touching
   the Makefile's compose logic, `scripts/stack.py`, `env-admin/`, or the Fly
   scripts' pure parts.
 - `env-admin/` changes ship as an image: bump `VERSION` in `server.py`, push a

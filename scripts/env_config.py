@@ -50,6 +50,10 @@ Schema (all keys optional):
                                    # redeploying it lands in the same place;
                                    # without one, $FLY_REGION then the built-in
                                    # default apply. Only affects NEW machines.
+    app_prefix: str                # Fly app-name prefix (default 'sirosid'): apps are
+                                   # <prefix>-<env>-<component>
+    host_pattern: str              # public hostname format, fields {app} {env} {component}
+                                   # (default '{app}.fly.dev') - see sirosid_core/naming.py
     rical_provider_url: url        # RICAL (ISO 18013-5 2nd ed. Annex F) reader-trust list
     rical_root_cert: path          # relative to sirosid-dev root - PEM signer of the RICAL above
                                    # Only needed while an environment depends on unmerged
@@ -113,7 +117,7 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
               "credential_registries", "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
-_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file")
+_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file", "app_prefix", "host_pattern")
 _KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values", "local"))
 
 

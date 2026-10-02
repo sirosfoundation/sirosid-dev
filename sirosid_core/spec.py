@@ -19,6 +19,8 @@ spec is internally consistent.
 """
 from dataclasses import dataclass, field, fields
 
+from .naming import Naming
+
 # Keys of InstanceSpec that carry a secret. Callers that log or persist a spec
 # for display must use redacted().
 SECRET_FIELDS = ("bbs_secret_key",)
@@ -53,6 +55,14 @@ class InstanceSpec:
     values: dict = field(default_factory=dict)
     # The issuer's blind-BBS secret key. Secret: see SECRET_FIELDS.
     bbs_secret_key: str = ""
+    # How this instance's apps and public hostnames are named (see naming.py).
+    # The defaults are sirosid-dev's historical scheme. A hosted service sets
+    # these itself and must not let a user's saved config choose them.
+    app_prefix: str = "sirosid"
+    host_pattern: str = "{app}.fly.dev"
+
+    def naming(self) -> Naming:
+        return Naming(self.env, app_prefix=self.app_prefix, host_pattern=self.host_pattern)
 
     def validate(self, known_components=None):
         """Raise ValueError if the spec contradicts itself. Does not apply policy."""
@@ -94,7 +104,7 @@ class InstanceSpec:
                  "trusted_issuers": list, "trusted_verifiers": list, "trusted_verifier_roots": list,
                  "zk_circuits_sources": list, "credential_registries": list, "android_apps": list,
                  "env": str, "region": str, "rical_provider_url": str, "rical_root_pem": str,
-                 "dc_api_enable": str, "bbs_secret_key": str}
+                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str}
         for key, value in data.items():
             if not isinstance(value, kinds[key]):
                 raise ValueError(f"instance spec key {key!r} must be {kinds[key].__name__}, "

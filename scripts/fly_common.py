@@ -19,6 +19,8 @@ import time
 from pathlib import Path
 
 from android_apps import hex_to_apk_key_hash
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.naming import Naming  # noqa: E402
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 
@@ -315,11 +317,11 @@ CONFORMANCE_COMPONENTS = [
 
 
 def app_name(env: str, component: str) -> str:
-    return f"sirosid-{env}-{component}"
+    return Naming(env).app(component)
 
 
 def app_url(env: str, component: str) -> str:
-    return f"https://{app_name(env, component)}.fly.dev"
+    return Naming(env).url(component)
 
 
 def run_fly(*args, check=True, capture=False):
@@ -351,7 +353,7 @@ def network_name(env: str) -> str:
     puts every component for this env in its own segment instead, so naming
     (`sirosid-<env>-*`) isn't the only thing preventing cross-environment
     reachability."""
-    return f"sirosid-{env}"
+    return Naming(env).network()
 
 
 def ensure_app(name: str, network: str = None, allocate_public_ips: bool = False):
@@ -831,7 +833,7 @@ def write_fly_toml(path: Path, app: str, primary_public_port: int | None, proces
     path.write_text("\n".join(lines))
 
 
-def mini_oidc_config(env: str) -> str:
+def mini_oidc_config(env: str, naming: Naming = None) -> str:
     """mini-oidc's configs/config.production.yaml, baked into its image at
     /etc/mini-oidc/configs/config.production.yaml, re-stated here so the Fly
     deployment can pin the client ids/redirects. Because it REPLACES the
@@ -845,6 +847,7 @@ def mini_oidc_config(env: str) -> str:
     env vars for this component) - this is the file's real content verbatim,
     not a Python-side template.
     """
+    naming = naming or Naming(env)
     return """# Production / Docker configuration.
 # Environment variables are expanded in string values: ${VAR_NAME}
 server:
@@ -885,7 +888,7 @@ rp:
 """
 
 
-def wallet_proxy_conf(env: str) -> str:
+def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     """Fly-hostname variant of fixtures/wallet-proxy.conf's first server block
     (assetlinks.json + proxy to wallet-backend) - the second block (Android
     issuer proxy via vc-proxy) is conformance-suite-only, not part of this
@@ -919,7 +922,8 @@ def wallet_proxy_conf(env: str) -> str:
     /admin/tenants and its immediate id/issuers/verifiers children match;
     everything else under /admin/ stays unreachable through wallet-proxy.
     """
-    backend = f"{app_name(env, 'wallet-backend')}.internal"
+    naming = naming or Naming(env)
+    backend = f"{naming.internal('wallet-backend')}"
     return f"""server {{
     listen 8090;
     # Fly's 6PN inter-app network is IPv6-only - without this, this app was
@@ -991,7 +995,7 @@ def wallet_proxy_conf(env: str) -> str:
 """
 
 
-def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
+def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = None) -> str:
     """nginx config for wallet-frontend's own image on Fly (mirrors
     sirosid-dev's local nginx-e2e.conf: same dashboard-at-/, same asset
     prefix-stripping - see wallet_frontend_dashboard_html() for what differs
@@ -1023,17 +1027,18 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
     main() interleaves CONFORMANCE_COMPONENTS around wallet-frontend instead
     of simply appending them at the very end.
     """
-    backend = f"{app_name(env, 'wallet-backend')}.internal"
-    wallet_proxy = f"{app_name(env, 'wallet-proxy')}.internal"
-    pdp = f"{app_name(env, 'pdp')}.internal"
-    mini_oidc = f"{app_name(env, 'mini-oidc')}.internal"
-    vc_registry = f"{app_name(env, 'vc-registry')}.internal"
-    vc_issuer = f"{app_name(env, 'vc-issuer')}.internal"
-    vc_verifier = f"{app_name(env, 'vc-verifier')}.internal"
-    vc_apigw = f"{app_name(env, 'vc-apigw')}.internal"
-    conformance_server = f"{app_name(env, 'conformance-server')}.internal"
-    conformance_runner = f"{app_name(env, 'conformance-runner')}.internal"
-    env_admin = f"{app_name(env, 'env-admin')}.internal"
+    naming = naming or Naming(env)
+    backend = f"{naming.internal('wallet-backend')}"
+    wallet_proxy = f"{naming.internal('wallet-proxy')}"
+    pdp = f"{naming.internal('pdp')}"
+    mini_oidc = f"{naming.internal('mini-oidc')}"
+    vc_registry = f"{naming.internal('vc-registry')}"
+    vc_issuer = f"{naming.internal('vc-issuer')}"
+    vc_verifier = f"{naming.internal('vc-verifier')}"
+    vc_apigw = f"{naming.internal('vc-apigw')}"
+    conformance_server = f"{naming.internal('conformance-server')}"
+    conformance_runner = f"{naming.internal('conformance-runner')}"
+    env_admin = f"{naming.internal('env-admin')}"
     conformance_health = (
         f"    location = /_health/conformance-server {{ proxy_pass "
         f"http://{conformance_server}:8080/api/runner/available; "
@@ -1177,7 +1182,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False) -> str:
 
 def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[str]] | None = None,
                                     apple_app_ids: list[str] | None = None,
-                                    conformance_url: str | None = None) -> str:
+                                    conformance_url: str | None = None, naming: Naming = None) -> str:
     """Fly-adapted version of sirosid-dev's local startup.html landing page
     (same navbar/branding/Quick-Links/Services-table styling, reusing its
     CSS near-verbatim), served at wallet-frontend's own bare / (see
@@ -1207,9 +1212,10 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
     is often to hand to someone else/a native app that doesn't already know
     any of this.
     """
-    backend_url = app_url(env, "wallet-proxy")
-    frontend_url = app_url(env, "wallet-frontend")
-    rp_id = f"{app_name(env, 'wallet-frontend')}.fly.dev"
+    naming = naming or Naming(env)
+    backend_url = naming.url("wallet-proxy")
+    frontend_url = naming.url("wallet-frontend")
+    rp_id = f"{naming.host('wallet-frontend')}"
     android_rows = "".join(
         f'<tr><td class="svc-name">{package}</td>'
         f'<td class="meta"><code>android:apk-key-hash:{hex_to_apk_key_hash(fp)}</code></td></tr>'
@@ -1778,7 +1784,7 @@ function toggleLogEntry(idx) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>sirosid-{env}</title>
+<title>{naming.label()}</title>
 <style>
   *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
   body {{
@@ -1827,7 +1833,7 @@ function toggleLogEntry(idx) {
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 239 234" width="32" height="32">
           <path fill="#1C4587" d="M 51.746094 89.585938 C 85.816406 84.324219 85.816406 84.324219 91.074219 50.246094 C 96.335938 84.324219 96.335938 84.324219 130.40625 89.585938 C 96.328125 94.84375 96.335938 94.910156 91.074219 128.929688 C 85.816406 94.847656 85.816406 94.847656 51.746094 89.585938 M 162.640625 217.410156 C 153.421875 157.6875 153.421875 157.6875 93.714844 148.46875 C 153.421875 139.246094 153.421875 139.246094 162.640625 79.523438 C 171.621094 137.710938 171.863281 139.207031 227.089844 147.773438 C 229.964844 137.921875 231.511719 127.503906 231.511719 116.71875 C 231.511719 55.589844 181.964844 6.03125 120.847656 6.03125 C 59.734375 6.03125 10.1875 55.589844 10.1875 116.71875 C 10.1875 177.851562 59.734375 227.410156 120.847656 227.410156 C 170.65625 227.410156 212.777344 194.496094 226.660156 149.226562 C 171.84375 157.730469 171.597656 159.472656 162.640625 217.410156"/>
         </svg>
-        sirosid-{env}
+        {naming.label()}
       </a>
       <div class="navbar-links">
         <a href="/id/default/login">Login</a>

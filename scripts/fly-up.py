@@ -68,6 +68,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from android_apps import load_android_apps  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.naming import Naming  # noqa: E402
 from sirosid_core.spec import InstanceSpec  # noqa: E402
 import bootstrap  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
@@ -104,7 +105,7 @@ def run(cmd, **kwargs):
 
 
 def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mongo_password: str,
-                    spec: InstanceSpec) -> list:
+                    spec: InstanceSpec, naming: Naming = None) -> list:
     """Calls render-helm-config.py's render() in-process (not a subprocess) so
     its `helm template` output can be reused below for image refs/mongo
     version/wellknown values too - previously a second, independent
@@ -134,11 +135,12 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    # disagree about what a type looks like. One render sets both.
                    credential_registries=spec.credential_registries,
                    env_values=spec.values,
-                   bbs_secret_key=spec.bbs_secret_key or None)
+                   bbs_secret_key=spec.bbs_secret_key or None,
+                   naming=naming)
     return docs
 
 
-def check_pki_consistency(env: str, pki_dir: Path):
+def check_pki_consistency(env: str, pki_dir: Path, naming: Naming = None):
     """Guards against a real mismatch scenario: fixtures/create-pki.sh's own
     idempotency is purely local-file-based (skips regeneration only if
     signing_ec_private.pem already exists in pki_dir - see that script) and
@@ -151,9 +153,10 @@ def check_pki_consistency(env: str, pki_dir: Path):
     rotates an already-set secret) - a real chain/key mismatch that breaks
     verification of anything this environment issues afterwards.
     """
+    naming = naming or Naming(env)
     if (pki_dir / "signing_ec_private.pem").exists():
         return  # create-pki.sh will reuse it as-is - no risk of a mismatch
-    app = app_name(env, "vc-registry")
+    app = naming.app("vc-registry")
     if not app_exists(app):
         return  # brand-new environment - nothing to mismatch against yet
     if "vcSigningKey" in existing_secret_names(app):
@@ -171,9 +174,10 @@ def check_pki_consistency(env: str, pki_dir: Path):
         )
 
 
-def generate_pki(env: str) -> Path:
+def generate_pki(env: str, naming: Naming = None) -> Path:
+    naming = naming or Naming(env)
     pki_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{env}" / "vc-pki"
-    check_pki_consistency(env, pki_dir)
+    check_pki_consistency(env, pki_dir, naming)
     # The signing cert's URI SAN is the identity mdoc verifiers derive for an
     # mDL's issuer (vc's extractMDocIssuerID), and it has to be the same
     # string build_fly_values_overlay() puts in the PDP's mdociaca allowlist
@@ -186,7 +190,7 @@ def generate_pki(env: str) -> Path:
     env_vars = {
         **os.environ,
         "PKI_DIR_OVERRIDE": str(pki_dir),
-        "SIGNING_CERT_ISSUER_URL": app_url(env, "vc-apigw"),
+        "SIGNING_CERT_ISSUER_URL": naming.url("vc-apigw"),
     }
     run(["bash", "./create-pki.sh"], cwd=SIROSID_DEV_ROOT / "fixtures", env=env_vars)
     return pki_dir
@@ -203,10 +207,11 @@ def generate_android_assets(docs: list, out_dir: Path, identities: list) -> Path
 
 def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_dir: Path, pki_dir: Path,
                       assetlinks_path: Path, image_overrides: dict, mongo_password: str, conformance: bool = False,
-                      wallet_attestation: bool = False, region: str = ""):
+                      wallet_attestation: bool = False, region: str = "", naming: Naming = None):
+    naming = naming or Naming(env)
     name = comp["name"]
-    app = app_name(env, name)
-    ensure_app(app, network=network_name(env), allocate_public_ips=(name == "conformance"))
+    app = naming.app(name)
+    ensure_app(app, network=naming.network(), allocate_public_ips=(name == "conformance"))
 
     if name in image_overrides:
         # Explicit --images override (e.g. a dev testing their own branch
@@ -341,8 +346,8 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         ]
     elif name == "mini-oidc":
         config_path = out_dir / "mini-oidc-config.yaml"
-        config_path.write_text(mini_oidc_config(env))
-        apigw_redirect = f"{app_url(env, 'vc-apigw')}/oidcrp/callback"
+        config_path.write_text(mini_oidc_config(env, naming))
+        apigw_redirect = f"{naming.url('vc-apigw')}/oidcrp/callback"
         deploy_args += [
             # mini-oidc's own binary defaults CONFIG_FILE to the relative
             # path configs/config.yaml, which doesn't exist in the image at
@@ -351,13 +356,13 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             # at the "right" path and looks like it should just be picked up.
             "--env", "CONFIG_FILE=/etc/mini-oidc/configs/config.production.yaml",
             "--env", "USERS_FILE=/etc/mini-oidc/users.yaml",
-            "--env", f"ISSUER={app_url(env, 'mini-oidc')}",
+            "--env", f"ISSUER={naming.url('mini-oidc')}",
             # RP_BASE_URL/CLIENT_ID only back the mini-oidc-rp test client
             # (mini_oidc_config's first `clients` entry) - mini-oidc-rp itself
             # isn't deployed here (a standalone harness for testing the OP,
             # not part of vc-apigw's real flow), so these are unused but must
             # be set to something for ${VAR} expansion to produce valid YAML.
-            "--env", f"RP_BASE_URL={app_url(env, 'mini-oidc')}",
+            "--env", f"RP_BASE_URL={naming.url('mini-oidc')}",
             "--env", "CLIENT_ID=mini-oidc-rp",
             # Must match apigw's auth_providers.oidc.redirect_uri, set to the
             # same value the rendered apigw config carries.
@@ -431,14 +436,14 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             deploy_args += ["--file-local", f"/as-rules/{rules.name}={rules}"]
     elif name == "wallet-proxy":
         conf_path = out_dir / "wallet-proxy.conf"
-        conf_path.write_text(wallet_proxy_conf(env))
+        conf_path.write_text(wallet_proxy_conf(env, naming))
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/etc/nginx/well-known/assetlinks.json={assetlinks_path}",
         ]
     elif name == "wallet-frontend":
         conf_path = out_dir / "wallet-frontend.conf"
-        conf_path.write_text(wallet_frontend_conf(env, conformance))
+        conf_path.write_text(wallet_frontend_conf(env, conformance, naming))
         dashboard_path = out_dir / "wallet-frontend-dashboard.html"
         # Reuse the exact identities already wired into assetlinks_path
         # (generate_android_assets(), same merge as rp_origins) rather than
@@ -449,20 +454,20 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         }
         fe_data = extract_configmap_data(docs, "wallet-frontend-main")
         apple_app_ids = [a.strip() for a in fe_data.get("wellknownAppleAppIds", "").split(",") if a.strip()]
-        conformance_url = app_url(env, "conformance") if conformance else None
+        conformance_url = naming.url("conformance") if conformance else None
         dashboard_path.write_text(
-            wallet_frontend_dashboard_html(env, android_identities, apple_app_ids, conformance_url))
+            wallet_frontend_dashboard_html(env, android_identities, apple_app_ids, conformance_url, naming=naming))
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
             # The Storage card - the very same file the local dashboard mounts.
             "--file-local", f"/usr/share/nginx/storage-card.js={SIROSID_DEV_ROOT / 'dashboard' / 'storage-card.js'}",
         ]
-        deploy_args += _wallet_frontend_env(env, docs, android_identities, wallet_attestation)
+        deploy_args += _wallet_frontend_env(env, docs, android_identities, wallet_attestation, naming=naming)
     elif name == "conformance-server":
         deploy_args += [
-            "--env", f"BASE_URL={app_url(env, 'conformance')}",
-            "--env", f"MONGODB_HOST={app_name(env, 'conformance-mongodb')}.internal",
+            "--env", f"BASE_URL={naming.url('conformance')}",
+            "--env", f"MONGODB_HOST={naming.internal('conformance-mongodb')}",
             # Matches docker-compose.conformance.yml exactly - devmode means
             # no real OAuth login is needed, so these never actually get used.
             "--env", "SPRING_PROFILES_ACTIVE=",
@@ -482,10 +487,10 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # checks /etc/hosts before the image's own `resolver 127.0.0.11`
         # directive even applies - that directive only matters for
         # variable-based proxy_pass targets, not this static one).
-        server_ip = machine_private_ip(app_name(env, "conformance-server"))
+        server_ip = machine_private_ip(naming.app("conformance-server"))
         if not server_ip:
             raise SystemExit(
-                f"Could not determine {app_name(env, 'conformance-server')}'s private IP - "
+                f"Could not determine {naming.app('conformance-server')}'s private IP - "
                 "it must be deployed (and have a running machine) before 'conformance'."
             )
         hosts_path = out_dir / "conformance-hosts"
@@ -510,11 +515,11 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         consumers = [c for c in ["wallet-backend", "vc-registry", "vc-issuer", "vc-verifier", "vc-apigw"]]
         if conformance:
             consumers.append("conformance-server")
-        tokens = {app_name(env, c): create_deploy_token(app_name(env, c)) for c in consumers if app_exists(app_name(env, c))}
+        tokens = {naming.app(c): create_deploy_token(naming.app(c)) for c in consumers if app_exists(naming.app(c))}
         ensure_secret(app, "flyApiTokens", json.dumps(tokens), force=True)
         ensure_secret(app, "envAdminToken", _persistent_secret(out_dir, "adminToken"))
         ensure_secret(app, "mongoUri",
-                      f"mongodb://root:{mongo_password}@{app_name(env, 'mongodb')}.internal:27017/?authSource=admin",
+                      f"mongodb://root:{mongo_password}@{naming.internal('mongodb')}:27017/?authSource=admin",
                       force=True)
         deploy_args += [
             "--env", "ENV_ADMIN_PLATFORM=fly",
@@ -524,12 +529,12 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
             "--env", "FLY_API_TOKENS_FILE=/run/secrets/flyApiTokens",
             # Every non-system database - this Mongo serves only this environment.
             "--env", "MONGO_DATABASES=*",
-            "--env", "CONSUMERS=" + json.dumps([{"name": c, "target": app_name(env, c)} for c in consumers]),
+            "--env", "CONSUMERS=" + json.dumps([{"name": c, "target": naming.app(c)} for c in consumers]),
             # Bootstrap after a reset - the same three values
             # register_vc_services() uses at deploy time.
-            "--env", f"ADMIN_URL={app_url(env, 'wallet-proxy')}",
-            "--env", f"ISSUER_URL={app_url(env, 'vc-apigw')}",
-            "--env", f"VERIFIER_URL={app_url(env, 'vc-verifier')}",
+            "--env", f"ADMIN_URL={naming.url('wallet-proxy')}",
+            "--env", f"ISSUER_URL={naming.url('vc-apigw')}",
+            "--env", f"VERIFIER_URL={naming.url('vc-verifier')}",
             "--file-secret", "/run/secrets/envAdminToken=envAdminToken",
             "--file-secret", "/run/secrets/mongoUri=mongoUri",
             "--file-secret", "/run/secrets/flyApiTokens=flyApiTokens",
@@ -544,17 +549,17 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         # not --env, since it's a credential, not a plain URL.
         ensure_secret(app, "ADMIN_TOKEN", _persistent_secret(out_dir, "adminToken"))
         deploy_args += [
-            "--env", f"CONFORMANCE_URL={app_url(env, 'conformance')}",
-            "--env", f"FRONTEND_URL={app_url(env, 'wallet-frontend')}",
-            "--env", f"ADMIN_URL={app_url(env, 'wallet-proxy')}",
+            "--env", f"CONFORMANCE_URL={naming.url('conformance')}",
+            "--env", f"FRONTEND_URL={naming.url('wallet-frontend')}",
+            "--env", f"ADMIN_URL={naming.url('wallet-proxy')}",
             # helpers/vc-services.ts's checkVCServicesHealth() (used by the
             # issuer/verifier specs) defaults to localhost:900x - meaningless
             # from inside a Fly machine. Override with 6PN .internal
             # addresses (reachable regardless of whether the target has a
             # public Fly URL too - vc-issuer doesn't, see COMPONENTS).
-            "--env", f"VC_ISSUER_URL=http://{app_name(env, 'vc-issuer')}.internal:8080",
-            "--env", f"VC_VERIFIER_URL=http://{app_name(env, 'vc-verifier')}.internal:8080",
-            "--env", f"VC_APIGW_URL=http://{app_name(env, 'vc-apigw')}.internal:8080",
+            "--env", f"VC_ISSUER_URL=http://{naming.internal('vc-issuer')}:8080",
+            "--env", f"VC_VERIFIER_URL=http://{naming.internal('vc-verifier')}:8080",
+            "--env", f"VC_APIGW_URL=http://{naming.internal('vc-apigw')}:8080",
             # Conformance suite's self-signed cert - matches docker-compose.conformance.yml locally.
             "--env", "NODE_TLS_REJECT_UNAUTHORIZED=0",
         ]
@@ -578,7 +583,7 @@ def deploy_component(env: str, comp: dict, docs: list, mongo_version: str, out_d
         wait_for_checks(app)
 
     if primary_public_port is not None or tcp_passthrough_port is not None:
-        print(f"{name}: {app_url(env, name)}")
+        print(f"{name}: {naming.url(name)}")
 
 
 def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, service: str, metadata: bool,
@@ -627,9 +632,10 @@ def _vc_service_files(app: str, out_dir: Path, pki_dir: Path, service: str, meta
 
 
 def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, list[str]] | None = None,
-                          wallet_attestation: bool = False) -> list:
-    proxy = app_url(env, "wallet-proxy")
-    frontend = app_url(env, "wallet-frontend")
+                          wallet_attestation: bool = False, naming: Naming = None) -> list:
+    naming = naming or Naming(env)
+    proxy = naming.url("wallet-proxy")
+    frontend = naming.url("wallet-frontend")
     fe_data = extract_configmap_data(docs, "wallet-frontend-main")
     # Android's Digital Asset Links check (assetlinks.json) must be served at
     # the RP ID's OWN domain (wallet-frontend's, same as WEBAUTHN_RPID below) -
@@ -663,7 +669,7 @@ def _wallet_frontend_env(env: str, docs: list, android_identities: dict[str, lis
         # patch_wallet_backend_fly) - the passkey ceremony runs in the
         # browser at THIS app's own origin, not wallet-proxy's, so rp_id has
         # to be wallet-frontend's domain or every passkey registration fails.
-        "WEBAUTHN_RPID": f"sirosid-{env}-wallet-frontend.fly.dev",
+        "WEBAUTHN_RPID": f"{naming.host('wallet-frontend')}",
         "STATIC_PUBLIC_URL": frontend,
         "WELLKNOWN_ANDROID_PACKAGE_NAMES_AND_FINGERPRINTS": wellknown_android,
         # For Universal Links on wallet-frontend's own domain (separate from
@@ -734,7 +740,7 @@ def _image_pullable(ref: str) -> bool:
         return False
 
 
-def resolve_mongo_password(env: str, out_dir: Path) -> str:
+def resolve_mongo_password(env: str, out_dir: Path, naming: Naming = None) -> str:
     """The Mongo root password this environment's VOLUME was initialised with.
 
     Before volumes it was regenerated every run (empty data every time, so
@@ -755,10 +761,11 @@ def resolve_mongo_password(env: str, out_dir: Path) -> str:
     Anything else is a hard stop: deploying a guessed password would leave
     every consumer failing Mongo auth against data nobody can then reach.
     """
+    naming = naming or Naming(env)
     cached = out_dir / "mongoRootPassword"
     if cached.exists():
         return cached.read_text().strip()
-    app = app_name(env, "mongodb")
+    app = naming.app("mongodb")
     has_volume = any(v.get("state") != "destroyed" for v in list_volumes(app)) if app_exists(app) else False
     if has_volume and "mongoRootPassword" in existing_secret_names(app):
         print(f"{app}: no local password cache but a volume exists - reading the password back from the machine")
@@ -815,7 +822,7 @@ def _personal_region() -> str:
     return ""
 
 
-def register_vc_services(env: str, admin_token: str):
+def register_vc_services(env: str, admin_token: str, naming: Naming = None):
     """Register this environment's vc-apigw and vc-verifier with wallet-backend's
     default tenant - scripts/bootstrap.py, the same code `make up` and
     env-admin's storage reset run, so the three cannot drift.
@@ -834,9 +841,10 @@ def register_vc_services(env: str, admin_token: str):
     Retries for a while since wallet-proxy's public DNS/TLS can take a few
     seconds to become reachable right after its own deploy returns.
     """
-    proxy_url = app_url(env, "wallet-proxy")
-    apigw_url = app_url(env, "vc-apigw")
-    verifier_url = app_url(env, "vc-verifier")
+    naming = naming or Naming(env)
+    proxy_url = naming.url("wallet-proxy")
+    apigw_url = naming.url("vc-apigw")
+    verifier_url = naming.url("vc-verifier")
     last_err = None
     for _ in range(15):
         try:
@@ -855,7 +863,7 @@ def register_vc_services(env: str, admin_token: str):
         f"\nERROR: could not register VC services with wallet-backend after retries ({last_err}).\n"
         f"  The environment is deployed but the wallet may have NO issuers or verifiers, so signup and\n"
         f"  credential issuance will fail. Check wallet-backend is actually serving:\n"
-        f"    flyctl logs -a sirosid-{env}-wallet-backend\n"
+        f"    flyctl logs -a {naming.app('wallet-backend')}\n"
         f"  then re-run `make fly-up ENV={env}` (idempotent), or register by hand:\n"
         f"    python3 scripts/bootstrap.py --admin-url {proxy_url} --admin-token <adminToken> "
         f"--issuer-url {apigw_url} --verifier-url {verifier_url}")
@@ -1002,6 +1010,8 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
         android_apps=merge_list(env_cfg["android_apps"], args.android_app or []),
         values=env_values,
         bbs_secret_key=bbs_secret_key or "",
+        app_prefix=args.app_prefix or env_cfg["app_prefix"] or "sirosid",
+        host_pattern=args.host_pattern or env_cfg["host_pattern"] or "{app}.fly.dev",
     ).validate([c["name"] for c in COMPONENTS])
 
 
@@ -1013,6 +1023,15 @@ def main():
                               "environments/<name>.yaml's `region:`, $FLY_REGION, .fly-region, and "
                               "Fly's own detected suggestion - see the region-resolution comment below.")
     parser.add_argument("--chart-dir", default=str(SIROSID_DEV_ROOT / "chart"))
+    parser.add_argument("--app-prefix", default="",
+                        help="Prefix of this environment's Fly app names (default 'sirosid': apps are "
+                             "<prefix>-<env>-<component>). Fly app names are global across all orgs.")
+    parser.add_argument("--host-pattern", default="",
+                        help="Format string for each component's PUBLIC hostname; fields {app}, {env}, "
+                             "{component}. Default '{app}.fly.dev'. Use it to serve an environment on a "
+                             "domain you own, e.g. '{env}-{component}.dev.example.org' - every URL, "
+                             "OAuth redirect, issuer identifier and passkey rp_id follows. The DNS "
+                             "records and TLS in front of the apps are NOT created by fly-up.")
     parser.add_argument("--render-only", action="store_true",
                         help="Render config into fixtures/rendered/fly-<env>/ and print the image each "
                              "component would run, then stop before touching Fly. Answers 'what would "
@@ -1107,6 +1126,7 @@ def main():
 
     env_cfg = load_environment_config(args.env)
     spec = _spec_from_args(args, env_cfg)
+    naming = spec.naming()
 
     # Region. Every level here is an explicit pin; if none is set we take
     # Fly's own suggestion, which is the right default when contributors are
@@ -1146,13 +1166,13 @@ def main():
     identities = load_android_apps(extra=spec.android_apps)
     # Persisted per environment: the Mongo volume's data was initialised with
     # it and MONGO_INITDB_ROOT_* never re-applies to a non-empty /data/db.
-    mongo_password = resolve_mongo_password(args.env, out_dir)
+    mongo_password = resolve_mongo_password(args.env, out_dir, naming)
 
     print(f"=== Rendering config for environment '{args.env}' ===")
     # docs is the full rendered manifest (not just wallet-backend/pdp) -
     # reused below for image refs + mongo version + wallet-frontend's
     # Android/iOS wellknown values, instead of a second `helm template` call.
-    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password, spec)
+    docs = render_configs(args.env, chart_dir, [i["apk_key_hash"] for i in identities], mongo_password, spec, naming)
     mongo_version = extract_image(docs, "mongoCommunityVersion")
 
     if args.render_only:
@@ -1170,7 +1190,7 @@ def main():
         return
 
     print(f"=== Generating per-environment PKI ===")
-    pki_dir = generate_pki(args.env)
+    pki_dir = generate_pki(args.env, naming)
 
     print(f"=== Generating Android assetlinks.json ===")
     assetlinks_path = generate_android_assets(docs, out_dir, identities)
@@ -1217,7 +1237,7 @@ def main():
             print(f"--- {comp['name']} ---")
             deploy_component(args.env, comp, docs, mongo_version, out_dir, pki_dir, assetlinks_path,
                               spec.images, mongo_password, spec.conformance, spec.wallet_attestation,
-                              region=spec.region)
+                              region=spec.region, naming=naming)
             deployed.append(comp["name"])
     except subprocess.CalledProcessError as e:
         # No auto-rollback - components deployed so far are left running
@@ -1237,25 +1257,25 @@ def main():
     print(f"=== Registering VC services with wallet-backend's default tenant ===")
     # Same value deploy_component()'s wallet-backend branch already wrote/read
     # via _persistent_secret() - guaranteed consistent, not a race (sequential).
-    register_vc_services(args.env, _persistent_secret(out_dir, "adminToken"))
+    register_vc_services(args.env, _persistent_secret(out_dir, "adminToken"), naming)
 
     print()
     print(f"=== Environment '{args.env}' is up ===")
     for comp in all_components:
         if any(p["public"] for p in comp["ports"]):
-            print(f"  {comp['name']}: {app_url(args.env, comp['name'])}")
+            print(f"  {comp['name']}: {naming.url(comp['name'])}")
     print()
     print("To run sirosid-tests' CDP-based WebAuthn conformance specs against this")
     print("environment instead of localhost (see sirosid-tests/specs/conformance/):")
-    print(f"  export FRONTEND_URL={app_url(args.env, 'wallet-frontend')}")
-    print(f"  export ADMIN_URL={app_url(args.env, 'wallet-proxy')}")
+    print(f"  export FRONTEND_URL={naming.url('wallet-frontend')}")
+    print(f"  export ADMIN_URL={naming.url('wallet-proxy')}")
     print(f"  export ADMIN_TOKEN={_persistent_secret(out_dir, 'adminToken')}")
     if spec.conformance:
-        print(f"  export CONFORMANCE_URL={app_url(args.env, 'conformance')}")
+        print(f"  export CONFORMANCE_URL={naming.url('conformance')}")
         print("  export NODE_TLS_REJECT_UNAUTHORIZED=0  # conformance suite's self-signed cert")
         print()
         print("Or run them from the dashboard's Conformance tab (same specs, driven by")
-        print(f"conformance-runner): {app_url(args.env, 'wallet-frontend')}")
+        print(f"conformance-runner): {naming.url('wallet-frontend')}")
     print()
     print(f"Storage: Mongo data persists on a Fly volume across redeploys. Clear it from the dashboard's")
     print(f"Storage card, or: make fly-storage-clear ENV={args.env}")

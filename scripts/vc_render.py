@@ -37,6 +37,8 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.naming import Naming  # noqa: E402
 from helm_render_lib import extract_configmap_data
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
@@ -323,7 +325,7 @@ def use_credential_registry(config: dict, credential_types: dict, registries: li
     return config
 
 
-def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: str = None) -> dict:
+def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: str = None, naming=None) -> dict:
     """Replace the chart's MongoDB Community Operator connection with this
     target's real one.
 
@@ -343,7 +345,7 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
                   f"matching Fly secret; for a one-off, re-run 'make fly-up ENV={env}'.",
                   file=sys.stderr)
         auth = f"root:{mongo_password}@" if mongo_password else ""
-        uri = f"mongodb://{auth}sirosid-{env}-mongodb.internal:27017/?authSource=admin"
+        uri = f"mongodb://{auth}{(naming or Naming(env)).internal('mongodb')}:27017/?authSource=admin"
     config.setdefault("common", {})["mongo"] = {"uri": uri}
     return config
 
@@ -435,7 +437,8 @@ def write_as_rules(docs: list, out_dir: Path) -> Path:
 def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_secret,
               plain_http_hosts: set = None, secret_overrides: dict = None,
               env: str = None, mongo_password: str = None,
-              credential_types: dict = None, credential_registries: list = None) -> None:
+              credential_types: dict = None, credential_registries: list = None,
+              naming: Naming = None) -> None:
     """Extract every vc service's config plus the directories it mounts."""
     for cm_name, filename in VC_CONFIGMAPS.items():
         config = yaml.safe_load(extract_configmap_data(docs, cm_name)["config.yaml"])
@@ -443,7 +446,7 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
             config = patch_vc_compose(config, plain_http_hosts or set())
         # issuer-core is the one service with no mongo of its own.
         if (config.get("common") or {}).get("mongo"):
-            config = patch_vc_mongo(config, target, env, mongo_password)
+            config = patch_vc_mongo(config, target, env, mongo_password, naming)
         config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides)
         config = strip_unrenderable(config)
         if credential_registries:

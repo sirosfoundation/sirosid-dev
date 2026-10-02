@@ -64,6 +64,8 @@ from pathlib import Path
 
 import yaml
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.naming import Naming  # noqa: E402
 import api_auth
 import fly_common
 import vc_render
@@ -146,7 +148,8 @@ def patch_wallet_backend_compose(config: dict, extra_android_apk_key_hashes: lis
 
 
 def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashes: list = None,
-                              mongo_password: str = None, wallet_attestation: bool = False) -> dict:
+                              mongo_password: str = None, wallet_attestation: bool = False, naming: Naming = None) -> dict:
+    naming = naming or Naming(env)
     # wallet-proxy is wallet-backend's public identity on Fly for the ACTUAL
     # API (see module docstring) - but NOT for WebAuthn. The passkey ceremony
     # (navigator.credentials.create/get) executes in the browser at
@@ -158,9 +161,9 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # creation failed" on every attempt). rp_id/rp_origins must reference
     # wallet-frontend's own domain instead - fly-up.py's WEBAUTHN_RPID env
     # var for the frontend must match this exactly.
-    proxy_url = f"https://sirosid-{env}-wallet-proxy.fly.dev"
-    frontend_url = f"https://sirosid-{env}-wallet-frontend.fly.dev"
-    config["server"]["rp_id"] = f"sirosid-{env}-wallet-frontend.fly.dev"
+    proxy_url = f"https://{naming.host('wallet-proxy')}"
+    frontend_url = f"https://{naming.host('wallet-frontend')}"
+    config["server"]["rp_id"] = f"{naming.host('wallet-frontend')}"
     android_origins = [o for o in config["server"]["rp_origins"] if o.startswith("android:")]
     # Debug builds / Play Store signing keys the operator wants THIS
     # environment to also authenticate (fly-up.py's --android-app / auto-read
@@ -188,7 +191,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # deployment before). Safe only because allowed_origins above is a
     # specific origin, never "*".
     config["server"]["cors"]["allow_credentials"] = True
-    config["trust"]["pdp_url"] = f"http://sirosid-{env}-pdp.internal:8080"
+    config["trust"]["pdp_url"] = f"http://{naming.internal('pdp')}:8080"
     config["trust"]["registry_url"] = f"{proxy_url}/registry"
     # Authenticated - mongodb's own root user/password (fly-up.py generates
     # one per deploy and sets it via Fly secret + MONGO_INITDB_ROOT_* env
@@ -206,7 +209,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
         )
     mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
     config["storage"]["mongodb"] = {
-        "uri": f"mongodb://{mongo_auth}sirosid-{env}-mongodb.internal:27017/wallet-backend?authSource=admin",
+        "uri": f"mongodb://{mongo_auth}{naming.internal('mongodb')}:27017/wallet-backend?authSource=admin",
         "tls_enabled": False,
         "database": "wallet-backend",
     }
@@ -316,11 +319,12 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                               extra_trusted_verifiers: list = None,
                               extra_trusted_verifier_roots: list = None,
                               rical_provider_url: str = None,
-                              rical_root_certificate_pem: str = None) -> dict:
+                              rical_root_certificate_pem: str = None, naming: Naming = None) -> dict:
     """Per-env values that can't live in the static values-fly.yaml because they
     embed the env name (hostnames, whitelist entries) - layered on top of it as
     an extra -f file. Mirrors values-dev.yaml's `pdp:` block, just parameterized.
     """
+    naming = naming or Naming(env)
     # The whitelist must match whatever identity string actually appears as
     # the `iss` claim on issued credentials/tokens - that's vc-apigw's PUBLIC
     # url (the rendered config sets both apigw.public_url and
@@ -331,8 +335,8 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     # discoverable). Real public https:// URLs, so unlike the docker-compose
     # target's local http-only whitelist, JWKS fetch works over real TLS here
     # without needing allow_http for these two entries.
-    apigw_url = f"https://sirosid-{env}-vc-apigw.fly.dev"
-    verifier_url = f"https://sirosid-{env}-vc-verifier.fly.dev"
+    apigw_url = f"https://{naming.host('vc-apigw')}"
+    verifier_url = f"https://{naming.host('vc-verifier')}"
 
     pid_issuers = [apigw_url]
     verifiers = [apigw_url, verifier_url]
@@ -351,7 +355,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
         # matchesList), which does. Added to both lists since the suite acts
         # as issuer (OID4VCI) and verifier (OID4VP) from the same domain,
         # and both spec suites already exist in sirosid-tests.
-        conformance_prefix = f"https://sirosid-{env}-conformance.fly.dev/*"
+        conformance_prefix = f"https://{naming.host('conformance')}/*"
         pid_issuers.append(conformance_prefix)
         verifiers.append(conformance_prefix)
 
@@ -429,7 +433,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     # every other environment should keep today's behavior unchanged.
     wallet_providers = []
     if wallet_attestation:
-        wallet_providers.append(f"https://sirosid-{env}-wallet-proxy.fly.dev")
+        wallet_providers.append(f"https://{naming.host('wallet-proxy')}")
 
     lists = {
         "pid-issuers": pid_issuers,
@@ -447,7 +451,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
 
     whitelist_config = {
         "enabled": True,
-        "name": f"sirosid-{env} Fly whitelist",
+        "name": f"{naming.label()} Fly whitelist",
         "description": "Fly-hosted vc-services URLs (rendered from siros-id-stack schema)",
         "lists": lists,
         "actions": actions,
@@ -483,7 +487,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
         # issuer that publishes a valid IACA").
         "mdociaca": {
             "enabled": True,
-            "name": f"sirosid-{env} mDOC IACA registry",
+            "name": f"{naming.label()} mDOC IACA registry",
             "description": "IACA cert validation for mso_mdoc issuers (rendered from siros-id-stack schema)",
             "issuer_allowlist": pid_issuers,
         },
@@ -500,13 +504,13 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
     if rical_provider_url and rical_root_certificate_pem:
         extra_registries["mdocrical"] = {
             "enabled": True,
-            "name": f"sirosid-{env} RICAL registry",
+            "name": f"{naming.label()} RICAL registry",
             "description": "Reader-trust list for mdoc BLE/NFC proximity presentation (rendered from siros-id-stack schema)",
             "rical_provider_url": rical_provider_url,
             "rical_root_certificate_pem": rical_root_certificate_pem,
         }
 
-    frontend_url = f"https://sirosid-{env}-wallet-frontend.fly.dev"
+    frontend_url = f"https://{naming.host('wallet-frontend')}"
     overlay = {
         "tenant": {"id": env},
         # Every vc service's public identity. These are load-bearing beyond
@@ -517,11 +521,11 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
         # issuer-core is deliberately absent: it is an internal gRPC signing
         # service that advertises the apigw's URL, never its own.
         "hostnames": {
-            "issuer": f"sirosid-{env}-vc-apigw.fly.dev",
-            "issuerRegistry": f"sirosid-{env}-vc-registry.fly.dev",
-            "verifier": f"sirosid-{env}-vc-verifier.fly.dev",
-            "walletFrontend": f"sirosid-{env}-wallet-frontend.fly.dev",
-            "walletBackend": f"sirosid-{env}-wallet-proxy.fly.dev",
+            "issuer": f"{naming.host('vc-apigw')}",
+            "issuerRegistry": f"{naming.host('vc-registry')}",
+            "verifier": f"{naming.host('vc-verifier')}",
+            "walletFrontend": f"{naming.host('wallet-frontend')}",
+            "walletBackend": f"{naming.host('wallet-proxy')}",
         },
         # fly-up.py deploys wallet-frontend with a hardcoded
         # BASE_PATH=/id/default/ (_wallet_frontend_env()), and
@@ -533,7 +537,7 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
         "walletFrontend": {"basePath": "/id/default"},
         "issuer": {
             "authProviders": {"oidc": {
-                "issuerUrl": f"https://sirosid-{env}-mini-oidc.fly.dev",
+                "issuerUrl": f"https://{naming.host('mini-oidc')}",
                 "clientId": fly_common.MINI_OIDC_APIGW_CLIENT_ID,
             }},
             "apigw": {"extraConfig": {"apigw": {
@@ -541,8 +545,8 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                 # tls: false - the chart wires cert-manager mTLS between k8s
                 # Services; Fly's 6PN is already a private per-environment
                 # network and there are no such certs here.
-                "issuer_client": {"addr": f"sirosid-{env}-vc-issuer.internal:8090", "tls": False},
-                "registry_client": {"addr": f"sirosid-{env}-vc-registry.internal:8090", "tls": False},
+                "issuer_client": {"addr": f"{naming.internal('vc-issuer')}:8090", "tls": False},
+                "registry_client": {"addr": f"{naming.internal('vc-registry')}:8090", "tls": False},
                 "delivery": {"openid4vci": {"clients": {
                     # Restated in full, not appended: a list in extraConfig
                     # replaces. This is the client_id fly-up.py's
@@ -570,12 +574,12 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                 }}},
             }}},
             "core": {"extraConfig": {"issuer": {
-                "registry_client": {"addr": f"sirosid-{env}-vc-registry.internal:8090", "tls": False},
+                "registry_client": {"addr": f"{naming.internal('vc-registry')}:8090", "tls": False},
             }}},
         },
         "pdp": {
             "default_whitelist": False,
-            "externalUrl": f"http://sirosid-{env}-pdp.internal:8080",
+            "externalUrl": f"http://{naming.internal('pdp')}:8080",
             "extraRegistries": extra_registries,
         },
     }
@@ -649,7 +653,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
            rical_provider_url: str = None, rical_root_certificate_pem: str = None,
            zk_circuits_sources: list = None, dc_api_enable: str = "",
            hostnames: dict = None, mini_oidc_url: str = "",
-           credential_registries: list = None, env_values: dict = None, bbs_secret_key: str = None) -> list:
+           credential_registries: list = None, env_values: dict = None, bbs_secret_key: str = None, naming: Naming = None) -> list:
     """Does the actual `helm template` + extract + patch + write-files work for
     one target; returns the rendered manifest's docs so a caller that also
     needs OTHER parts of the same manifest (fly-up.py: image refs, mongo
@@ -658,6 +662,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     """
     if target == "fly" and not env:
         raise ValueError("target 'fly' requires env")
+    naming = naming or (Naming(env) if env else None)
 
     out_dir = Path(out_dir) if out_dir else SIROSID_DEV_ROOT / "fixtures" / "rendered"
     if target == "fly":
@@ -691,7 +696,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         overlay_path.write_text(yaml.dump(
             build_fly_values_overlay(env, conformance, extra_trusted_issuers, wallet_attestation,
                                       extra_trusted_verifiers, extra_trusted_verifier_roots,
-                                      rical_provider_url, rical_root_certificate_pem), sort_keys=False))
+                                      rical_provider_url, rical_root_certificate_pem, naming=naming), sort_keys=False))
         values_files.append(overlay_path)
 
     # Hostname overrides for a run that isn't reachable at the target's usual
@@ -749,7 +754,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         env_values_path.write_text(yaml.dump(env_values, sort_keys=False))
         values_files.append(env_values_path)
 
-    manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else f"sirosid-{env}")
+    manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else (naming.label() if naming else f"sirosid-{env}"))
     docs = load_manifest_docs(manifest)
 
     # --- wallet-backend ---
@@ -759,7 +764,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         backend_cfg = patch_wallet_backend_compose(backend_cfg, android_apk_key_hashes)
     else:
         backend_cfg = patch_wallet_backend_fly(backend_cfg, env, android_apk_key_hashes, mongo_password,
-                                                wallet_attestation)
+                                                wallet_attestation, naming=naming)
 
     # Two layouts (chart: walletBackend.registryConfigLayout). legacy: a
     # separate registry.yaml. integrated (go-wallet-backend#431+): a
@@ -853,7 +858,7 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                         },
                         env=env, mongo_password=mongo_password,
                         credential_types=(base.get("features") or {}).get("credentialTypes") or {},
-                        credential_registries=credential_registries)
+                        credential_registries=credential_registries, naming=naming)
 
     if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
