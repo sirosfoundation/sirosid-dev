@@ -20,10 +20,10 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from fly_common import (  # noqa: E402
-    COMPONENTS, CONFORMANCE_COMPONENTS, STORAGE_APPS, app_exists, app_name, destroy_app, revoke_tokens,
-    stop_machines,
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import fly_common  # noqa: E402
+from sirosid_core.lifecycle import destroy_instance  # noqa: E402
+from sirosid_core.naming import Naming  # noqa: E402
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 
@@ -33,27 +33,19 @@ def main():
     parser.add_argument("--env", required=True)
     parser.add_argument("--keep-data", action="store_true",
                         help="keep the Mongo apps and their volumes (machines stopped) for the next fly-up")
+    parser.add_argument("--app-prefix", default="sirosid",
+                        help="app-name prefix the environment was deployed with (fly-up --app-prefix)")
     args = parser.parse_args()
 
-    # Always attempt the conformance apps too, regardless of whether
-    # --conformance was used at fly-up time - destroy_app() already tolerates
-    # "does not exist" for every other component, so there's no need to track
-    # whether this particular environment ever had them.
-    for comp in COMPONENTS + CONFORMANCE_COMPONENTS:
-        app = app_name(args.env, comp["name"])
-        if args.keep_data and comp["name"] in STORAGE_APPS:
-            if app_exists(app):
-                print(f"--- keeping {app} (KEEP_DATA) - stopping its machine ---")
-                stop_machines(app)
-            continue
-        if comp["name"] != "env-admin" and app_exists(app):
-            # env-admin's per-consumer deploy tokens die with the consumer apps;
-            # revoke them anyway so `fly tokens list` does not accumulate ghosts.
-            revoke_tokens(app)
-        print(f"--- destroying {app} ---")
-        destroy_app(app)
+    report = destroy_instance(fly_common._client, Naming(args.env, app_prefix=args.app_prefix),
+                              keep_data=args.keep_data, progress=print)
+    for app, err in report.failed:
+        print(f"FAILED to tear down {app}: {err}", file=sys.stderr)
 
     out_dir = SIROSID_DEV_ROOT / "fixtures" / "rendered" / f"fly-{args.env}"
+    if report.failed:
+        raise SystemExit(f"environment '{args.env}' only partly torn down ({len(report.failed)} app(s) failed); "
+                         f"the local working directory was left in place. Re-run `make fly-down ENV={args.env}`.")
     if out_dir.exists() and not args.keep_data:
         shutil.rmtree(out_dir)
         print(f"removed {out_dir}")

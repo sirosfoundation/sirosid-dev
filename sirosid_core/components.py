@@ -234,3 +234,11 @@ CONFORMANCE_COMPONENTS = [
         "internal_check": {"type": "http", "port": 3001, "path": "/health"},
     },
 ]
+
+
+def component_names(include_conformance: bool = True) -> list:
+    """Every component name, in deploy order. Needs no image pins."""
+    names = [c["name"] for c in build_components("", "")]
+    if include_conformance:
+        names += [c["name"] for c in CONFORMANCE_COMPONENTS]
+    return names

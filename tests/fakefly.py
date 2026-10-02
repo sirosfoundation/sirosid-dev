@@ -286,3 +286,41 @@ def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False,
     if out_dir.exists() and not keep_state:
         shutil.rmtree(out_dir)
     return result
+
+
+def run_fly_down(argv, fake, env="coretest"):
+    """Run the real scripts/fly-down.py main() against `fake` (see run_fly_up).
+    Returns the commands it issued (only those after the call started)."""
+    import contextlib
+    import io
+    import os
+    import unittest.mock as mock
+
+    real_run = subprocess.run
+    before = len(fake.log)
+
+    def fake_run(cmd, *a, **kw):
+        if isinstance(cmd, (list, tuple)) and cmd and cmd[0] == "flyctl":
+            return fake.handle(cmd[1:])
+        return real_run(cmd, *a, **kw)
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    fly_down = _load("fly_down_under_test", ROOT / "scripts" / "fly-down.py")
+    result = SimpleNamespace(exit=0)
+    sink = io.StringIO()
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(ROOT)
+        with mock.patch.object(subprocess, "run", fake_run), \
+             mock.patch.object(sys, "argv", ["fly-down.py", "--env", env, *argv]), \
+             contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+            try:
+                fly_down.main()
+            except SystemExit as e:
+                result.exit = e.code if isinstance(e.code, int) else 1
+                result.error = str(e.code)
+    finally:
+        os.chdir(old_cwd)
+    result.commands = [_normalize(c) for c in fake.log[before:]]
+    result.output = sink.getvalue()
+    return result

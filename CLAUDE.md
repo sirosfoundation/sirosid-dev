@@ -54,9 +54,14 @@ never reads argv, the environment or a developer's disk:
 - `tests/test_core_layering.py` keeps the package a library: no imports from
   `scripts/`, no `__file__`/`SIROSID_DEV_ROOT`, no `open()`.
 
-Still to come: `fly-down` as a library call, and the deploy orchestration
-(`fly-up.py`'s `main()` / `deploy_component`) as a function that takes an
-`InstanceSpec`, a `FlyClient`, a `Naming` and a working directory.
+- `lifecycle.py` — `destroy_instance(fly, naming, keep_data)`: what `fly-down`
+  does, as a call that reports (`DestroyReport`) and keeps going past a failed
+  app, so a TTL reaper never leaves the rest billing. `fly-down` takes
+  `--app-prefix` for instances deployed with one.
+
+Still to come: the deploy orchestration (`fly-up.py`'s `main()` /
+`deploy_component`) as a function that takes an `InstanceSpec`, a `FlyClient`,
+a `Naming` and a working directory.
 
 ## Sibling repo layout
 

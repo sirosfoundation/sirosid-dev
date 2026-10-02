@@ -48,7 +48,27 @@ def scenarios():
     shutil.rmtree(fakefly.ROOT / "fixtures" / "rendered" / "fly-coretest", ignore_errors=True)
     summary["redeploy-second-run"] = {"exit": second.exit, "commands": second.commands[len(first.commands):],
                                       "files": second.files}
+    summary.update(teardown_scenarios())
     return summary
+
+
+def teardown_scenarios():
+    """fly-down against the same fake: a full teardown, --keep-data, and tearing
+    down something that never existed (must not error)."""
+    out = {}
+    for name, argv in (("teardown", []), ("teardown-keep-data", ["--keep-data"])):
+        fake = fakefly.FakeFly()
+        up = fakefly.run_fly_up([], fake=fake, keep_state=True)
+        down = fakefly.run_fly_down(argv, fake)
+        out[name] = {"exit": down.exit, "commands": down.commands,
+                     "apps_left": sorted(fake.apps),
+                     "machines_stopped": sorted(a for a, v in fake.apps.items()
+                                                if v["machines"] and all(m["state"] == "stopped" for m in v["machines"]))}
+        shutil.rmtree(fakefly.ROOT / "fixtures" / "rendered" / "fly-coretest", ignore_errors=True)
+    nothing = fakefly.run_fly_down([], fakefly.FakeFly())
+    out["teardown-of-nothing"] = {"exit": nothing.exit, "commands": nothing.commands, "apps_left": [],
+                                  "machines_stopped": []}
+    return out
 
 
 @unittest.skipUnless(shutil.which("helm") and shutil.which("openssl"), "needs helm and openssl")
@@ -66,7 +86,11 @@ class FlyUpCharacterization(unittest.TestCase):
             with self.subTest(scenario=name):
                 self.assertEqual(got[name]["exit"], want[name]["exit"])
                 self.assertEqual(got[name]["commands"], want[name]["commands"], "flyctl/docker command sequence")
-                self.assertEqual(got[name]["files"], want[name]["files"], "rendered files")
+                if "files" in want[name]:
+                    self.assertEqual(got[name]["files"], want[name]["files"], "rendered files")
+                for extra in ("apps_left", "machines_stopped"):
+                    if extra in want[name]:
+                        self.assertEqual(got[name][extra], want[name][extra], extra)
 
     def test_redeploy_creates_nothing(self):
         redeploy = scenarios()["redeploy-second-run"]

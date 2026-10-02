@@ -246,11 +246,20 @@ class FlyClient:
               f"(check `flyctl checks list -a {app}` if the next component fails to reach it)",
               file=sys.stderr)
 
-    def destroy_app(self, name: str):
+    def destroy_app(self, name: str) -> bool:
+        """True if the app existed and was destroyed, False if there was nothing to do."""
         if not self.app_exists(name):
             self._say(f"app {name} does not exist, skipping")
-            return
+            return False
         self.run("apps", "destroy", name, "--yes")
+        return True
+
+    def list_apps(self) -> list:
+        """Names of every app in the org (the sweeper's view of what exists)."""
+        result = self.run("apps", "list", "--json", check=False, capture=True)
+        if result.returncode != 0:
+            raise FlyError(f"could not list apps in org {self.org} (exit {result.returncode})")
+        return [a["Name"] for a in json.loads(result.stdout or "[]")]
 
     def list_machines(self, app: str) -> list:
         result = self.run("machine", "list", "-a", app, "--json", check=False, capture=True)
