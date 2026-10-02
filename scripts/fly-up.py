@@ -92,12 +92,8 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 # render-helm-config.py's filename has a hyphen (matches `make render-helm-config`
 # / long-standing CLI convention across this repo), so it can't be a normal
 # `import` target - loaded by path instead, same module singleton either way.
-import importlib.util  # noqa: E402
-_render_helm_config_spec = importlib.util.spec_from_file_location(
-    "render_helm_config", Path(__file__).resolve().parent / "render-helm-config.py")
-render_helm_config = importlib.util.module_from_spec(_render_helm_config_spec)
-_render_helm_config_spec.loader.exec_module(render_helm_config)
-render = render_helm_config.render
+from sirosid_core.render import render  # noqa: E402
+from sirosid_core.resources import Resources  # noqa: E402
 
 
 def run(cmd, **kwargs):
@@ -137,7 +133,7 @@ def render_configs(env: str, chart_dir: Path, android_apk_key_hashes: list, mong
                    credential_registries=spec.credential_registries,
                    env_values=spec.values,
                    bbs_secret_key=spec.bbs_secret_key or None,
-                   naming=naming)
+                   naming=naming, resources=Resources(SIROSID_DEV_ROOT))
     return docs
 
 

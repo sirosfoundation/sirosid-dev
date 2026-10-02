@@ -20,7 +20,6 @@ and formatting are irrelevant. Run with --update to re-seed the goldens after
 a change that is meant to move them; read the diff before you do.
 """
 import argparse
-import importlib.util
 import shutil
 import subprocess
 import sys
@@ -29,6 +28,9 @@ from pathlib import Path
 import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.render import render  # noqa: E402
+from sirosid_core.resources import Resources  # noqa: E402
 from vc_config_diff import diff, is_accepted, split_legacy_config  # noqa: E402
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
@@ -48,11 +50,6 @@ CONTEXTS = {
 
 def render_context(name: str, spec: dict, chart_dir: Path, out_root: Path) -> dict:
     """Render one context and return {service: parsed config}."""
-    spec_file = importlib.util.spec_from_file_location(
-        "render_helm_config", Path(__file__).resolve().parent / "render-helm-config.py")
-    module = importlib.util.module_from_spec(spec_file)
-    spec_file.loader.exec_module(module)
-
     out_dir = out_root / name
     out_dir.mkdir(parents=True, exist_ok=True)
     env = spec.get("env")
@@ -60,7 +57,7 @@ def render_context(name: str, spec: dict, chart_dir: Path, out_root: Path) -> di
     if env:
         import env_config
         env_values = env_config.load_environment_config(env).get("values") or {}
-    module.render(spec["target"], chart_dir, env=env, out_dir=out_dir,
+    render(spec["target"], chart_dir, resources=Resources(SIROSID_DEV_ROOT), env=env, out_dir=out_dir,
                   secrets_dir=out_root / "secrets", env_values=env_values,
                   dc_api_enable=spec.get("dc_api_enable", ""),
                   # A real password only matters for a deploy; parity compares
