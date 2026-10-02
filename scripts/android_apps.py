@@ -41,14 +41,10 @@ import base64
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.android import hex_to_apk_key_hash  # noqa: E402,F401  (re-exported)
+
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
-
-
-def hex_to_apk_key_hash(fingerprint_hex: str) -> str:
-    """keytool -list -v prints colon-separated hex; rp_origins needs
-    base64url (no padding) - same conversion setup-android.sh does."""
-    raw = bytes.fromhex(fingerprint_hex.replace(":", ""))
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
 def apk_key_hash_to_hex(apk_key_hash: str) -> str:
