@@ -77,6 +77,7 @@ class PlatformPolicy:
     app_prefix: str = "sid"
     host_pattern: str = "{app}.fly.dev"
     scale_to_zero: bool = True
+    env_admin: bool = True                 # a hosted service sets False (see InstanceSpec.env_admin)
 
 
 # --- the schema ------------------------------------------------------------
@@ -374,4 +375,5 @@ def build_spec(saved: dict, env: str, capabilities=(), policy: PlatformPolicy = 
         app_prefix=policy.app_prefix,
         host_pattern=policy.host_pattern,
         scale_to_zero=policy.scale_to_zero,
+        env_admin=policy.env_admin,
     ).validate(component_names())

@@ -57,7 +57,7 @@ def make(fake=None, limits=None, platform=None):
     ids = iter(IDS)
     db = Database(clock=clock)
     _OPEN.append(db)
-    cp = ControlPlane(db, fly, Resources(ROOT), platform=platform or PlatformPolicy(),
+    cp = ControlPlane(db, fly, Resources(ROOT), platform=platform or PlatformPolicy(env_admin=False),
                       limits=limits, clock=clock, id_generator=lambda: next(ids))
     return cp, fake, clock
 

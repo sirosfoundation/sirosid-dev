@@ -309,7 +309,7 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
 """
 
 
-def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = None) -> str:
+def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = None, env_admin: bool = True) -> str:
     """nginx config for wallet-frontend's own image on Fly (mirrors
     sirosid-dev's local nginx-e2e.conf: same dashboard-at-/, same asset
     prefix-stripping - see wallet_frontend_dashboard_html() for what differs
@@ -352,7 +352,6 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     vc_apigw = f"{naming.internal('vc-apigw')}"
     conformance_server = f"{naming.internal('conformance-server')}"
     conformance_runner = f"{naming.internal('conformance-runner')}"
-    env_admin = f"{naming.internal('env-admin')}"
     conformance_health = (
         f"    location = /_health/conformance-server {{ proxy_pass "
         f"http://{conformance_server}:8080/api/runner/available; "
@@ -385,6 +384,33 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
         f"    }}\n"
         if conformance else ""
     )
+    # env-admin is optional: a hosted service has no credential to give it (see
+    # InstanceSpec.env_admin), so the proxy, health check and Storage card go too.
+    env_admin_name = f"{naming.internal('env-admin')}"
+    env_admin_health = (f"""    location = /_health/env-admin   {{ proxy_pass http://{env_admin_name}:3002/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}""") if env_admin else ""
+    env_admin_block = (f"""    # env-admin (storage status + "Clear all data", see env-admin/server.py) -
+    # mirrors nginx-e2e.conf's local /_admin/ block: same-origin, SSE-safe.
+    # env-admin is always deployed (COMPONENTS), so like the health proxies
+    # above this static target always resolves at nginx startup.
+    location /_admin/ {{
+        proxy_pass http://{env_admin_name}:3002/;
+        proxy_connect_timeout 5s;
+        proxy_read_timeout 600s;
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
+        proxy_buffering off;
+        proxy_cache off;
+        chunked_transfer_encoding off;
+    }}
+
+    # The dashboard's Storage card - the same dashboard/storage-card.js the
+    # local dashboard uses, uploaded by fly-up next to the dashboard HTML.
+    location = /storage-card.js {{
+        default_type application/javascript;
+        alias /usr/share/nginx/storage-card.js;
+        add_header Cache-Control "no-store" always;
+    }}
+""") if env_admin else ""
     return f"""server {{
     listen 80;
     absolute_redirect off;
@@ -416,32 +442,10 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8081/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
     location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/env-admin   {{ proxy_pass http://{env_admin}:3002/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+{env_admin_health}
 {conformance_health}
 {conformance_proxy}
-    # env-admin (storage status + "Clear all data", see env-admin/server.py) -
-    # mirrors nginx-e2e.conf's local /_admin/ block: same-origin, SSE-safe.
-    # env-admin is always deployed (COMPONENTS), so like the health proxies
-    # above this static target always resolves at nginx startup.
-    location /_admin/ {{
-        proxy_pass http://{env_admin}:3002/;
-        proxy_connect_timeout 5s;
-        proxy_read_timeout 600s;
-        proxy_http_version 1.1;
-        proxy_set_header Connection '';
-        proxy_buffering off;
-        proxy_cache off;
-        chunked_transfer_encoding off;
-    }}
-
-    # The dashboard's Storage card - the same dashboard/storage-card.js the
-    # local dashboard uses, uploaded by fly-up next to the dashboard HTML.
-    location = /storage-card.js {{
-        default_type application/javascript;
-        alias /usr/share/nginx/storage-card.js;
-        add_header Cache-Control "no-store" always;
-    }}
-
+{env_admin_block}
     # Same-origin proxy for wallet-frontend's own API calls (AuthServerClient,
     # AuthZENClient, private-data sync, etc. - everything under BACKEND_URL,
     # see fly-up.py's _wallet_frontend_env setting WALLET_BACKEND_URL to THIS
@@ -496,7 +500,8 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
 
 def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[str]] | None = None,
                                     apple_app_ids: list[str] | None = None,
-                                    conformance_url: str | None = None, naming: Naming = None) -> str:
+                                    conformance_url: str | None = None, naming: Naming = None,
+                                    env_admin: bool = True) -> str:
     """Fly-adapted version of sirosid-dev's local startup.html landing page
     (same navbar/branding/Quick-Links/Services-table styling, reusing its
     CSS near-verbatim), served at wallet-frontend's own bare / (see
@@ -551,7 +556,7 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         ("vc-issuer", "vc-issuer", 8081),
         ("vc-verifier", "vc-verifier", 8080),
         ("vc-apigw", "vc-apigw", 8080),
-        ("env-admin", "env-admin", 3002),
+        *([("env-admin", "env-admin", 3002)] if env_admin else []),
     ]
     if conformance_url:
         service_list.append(("conformance-server", "conformance-server", 8080))
@@ -1093,6 +1098,11 @@ function toggleLogEntry(idx) {
 }
 """ if conformance_url else ""
 
+    storage_card_html = """    <div class="card" id="storage-card">
+      <h2>Storage</h2>
+      <div id="storage-body"><span class="meta">Checking env-admin&hellip;</span></div>
+    </div>""" if env_admin else ""
+    storage_card_script = '<script src="/storage-card.js"></script>' if env_admin else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1205,10 +1215,7 @@ function toggleLogEntry(idx) {
       </table>
     </div>
 
-    <div class="card" id="storage-card">
-      <h2>Storage</h2>
-      <div id="storage-body"><span class="meta">Checking env-admin&hellip;</span></div>
-    </div>
+{storage_card_html}
 {status_panel_close}
 {conformance_tab}
   </div>
@@ -1285,7 +1292,7 @@ setInterval(checkAll, 10000);
 {conformance_js}
 </script>
 {conformance_log_viewer_html}
-<script src="/storage-card.js"></script>
+{storage_card_script}
 </body>
 </html>
 """

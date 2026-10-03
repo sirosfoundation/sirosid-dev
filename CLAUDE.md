@@ -92,7 +92,12 @@ deletion) and an orphan **sweeper** (only apps matching exactly
 state lives in SQLite (`DbStateStore`, with `seal`/`unseal` hooks where encryption at
 rest goes). `reset_instance` wipes data with only the service's own org credential
 (stop, destroy the Mongo machine and volume, redeploy) so service instances need no
-in-instance Fly credential. Front ends authenticate a caller into a `Principal` and
+in-instance Fly credential: the platform sets `PlatformPolicy.env_admin=False`, which
+`InstanceSpec.env_admin` (also `fly-up --no-env-admin`) turns into no env-admin app, no
+nginx `/_admin/` + health proxy, no dashboard Storage card and no per-consumer token
+minting. (Beware when editing `wallet_frontend_conf`: it once had a local named
+`env_admin` holding the *hostname*, which silently shadowed the boolean parameter.)
+Front ends authenticate a caller into a `Principal` and
 call `ControlPlane`; they must not reimplement any check. `tests/test_service.py` runs
 all of it against the fake flyctl.
 

@@ -560,7 +560,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
         ]
     elif name == "wallet-frontend":
         conf_path = out_dir / "wallet-frontend.conf"
-        conf_path.write_text(wallet_frontend_conf(env, conformance, naming))
+        conf_path.write_text(wallet_frontend_conf(env, conformance, naming, env_admin=spec.env_admin))
         dashboard_path = out_dir / "wallet-frontend-dashboard.html"
         # Reuse the exact identities already wired into assetlinks_path
         # (generate_android_assets(), same merge as rp_origins) rather than
@@ -573,13 +573,15 @@ def deploy_component(ctx: DeployContext, comp: dict):
         apple_app_ids = [a.strip() for a in fe_data.get("wellknownAppleAppIds", "").split(",") if a.strip()]
         conformance_url = naming.url("conformance") if conformance else None
         dashboard_path.write_text(
-            wallet_frontend_dashboard_html(env, android_identities, apple_app_ids, conformance_url, naming=naming))
+            wallet_frontend_dashboard_html(env, android_identities, apple_app_ids, conformance_url, naming=naming,
+                                           env_admin=spec.env_admin))
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/usr/share/nginx/startup.html={dashboard_path}",
-            # The Storage card - the very same file the local dashboard mounts.
-            "--file-local", f"/usr/share/nginx/storage-card.js={resources.root / 'dashboard' / 'storage-card.js'}",
         ]
+        if spec.env_admin:
+            # The Storage card - the very same file the local dashboard mounts.
+            deploy_args += ["--file-local", f"/usr/share/nginx/storage-card.js={resources.root / 'dashboard' / 'storage-card.js'}"]
         deploy_args += _wallet_frontend_env(ctx, android_identities)
     elif name == "conformance-server":
         deploy_args += [
@@ -755,7 +757,7 @@ def resolve_image(comp: dict, spec: InstanceSpec, docs: list, mongo_version: str
     return comp["image"].format(mongo_version=mongo_version)
 
 
-def deploy_order(components: list, conformance: bool) -> list:
+def deploy_order(components: list, conformance: bool, env_admin: bool = True) -> list:
     """Deploy order. There is no `depends_on` on Fly, so components go strictly in
     sequence and each `fly deploy` blocks until its machine is healthy.
 
@@ -766,6 +768,8 @@ def deploy_order(components: list, conformance: bool) -> list:
     deploy token for conformance-server), and the public `conformance` nginx front
     goes last (it needs conformance-server's machine to look up its private IP).
     """
+    if not env_admin:
+        components = [c for c in components if c["name"] != "env-admin"]
     if not conformance:
         return list(components)
     non_frontend = [c for c in components if c["name"] not in ("wallet-frontend", "env-admin")]
@@ -838,7 +842,7 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
     except HelmError as e:
         raise DeployError(str(e)) from e
     mongo_version = extract_image(docs, "mongoCommunityVersion")
-    all_components = deploy_order(components, spec.conformance)
+    all_components = deploy_order(components, spec.conformance, spec.env_admin)
     images = {c["name"]: resolve_image(c, spec, docs, mongo_version) for c in all_components}
     result = DeployResult(out_dir=out_dir, docs=docs, images=images, mongo_password=mongo_password)
     if render_only:

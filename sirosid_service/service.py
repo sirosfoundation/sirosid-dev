@@ -114,7 +114,7 @@ class ControlPlane:
         self.db = db
         self.fly = fly
         self.resources = resources
-        self.platform = platform or PlatformPolicy()
+        self.platform = platform or PlatformPolicy(env_admin=False)
         self.limits = limits or Limits()
         self.runner = runner or SyncRunner()
         self.register = register
