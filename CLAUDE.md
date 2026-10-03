@@ -20,6 +20,64 @@ Three entry points share one core and must stay in step:
   editing both** (and its help string in `stack.py`'s `OPTIONS`, which is
   where the TUI's per-field help comes from).
 
+## `sirosid_core/` — the part that is not a command line
+
+`scripts/` is the CLI (argv, the developer's gitignored files, printing).
+`sirosid_core/` is what a CLI **and** a hosted service can both call, and it
+never reads argv, the environment or a developer's disk:
+
+- `spec.py` — `InstanceSpec`, a content-only description of one instance
+  (PEM text and key material, not file paths). Strict `from_dict`: an unknown
+  key is an error. `fly-up.py` builds one in `_spec_from_args()`, which is where
+  every file read and the file-vs-CLI merge now live.
+- `naming.py` — `Naming`: Fly app names, `.internal` addresses, **public
+  hostnames** and the network, derived in one place. Default is the historical
+  `sirosid-<env>-<component>` / `*.fly.dev`; `--app-prefix` / `--host-pattern`
+  (or `app_prefix:` / `host_pattern:` in `environments/<name>.yaml`) change it.
+  Never write `f"sirosid-{env}-..."` again — take a `Naming`.
+
+- `components.py` / `assets.py` / `android.py` — the component registry
+  (`build_components(mini_oidc_image, env_admin_image)`: the two pins from
+  `values-fly.yaml` are parameters, the library reads no repo file) and the pure
+  generators (fly.toml, nginx configs, dashboard, assetlinks). `fly_common.py`
+  re-exports them.
+- `fly.py` — `FlyClient(org, token, runner, ...)`: the flyctl operations as an
+  object (any org, any identity, injectable runner, raises `FlyError`).
+  `fly_common.py` keeps the old function names as a facade over one default
+  client and turns `FlyError` into `SystemExit`.
+- `state.py` — which files of an instance's working directory are **state**
+  (`mongoRootPassword`, `jwtSecret`, `adminToken`, `apiAuthKey.pem`, `vc-pki/`)
+  and `StateStore`/`workdir()` to carry them through a database. **If you add a
+  value that is generated once and handed to Fly (which cannot give it back),
+  add it to `STATE_FILES`** — `tests/test_state.py` redeploys from exported
+  state alone and fails when something is missing.
+- `tests/test_core_layering.py` keeps the package a library: no imports from
+  `scripts/`, no `__file__`/`SIROSID_DEV_ROOT`, no `open()`.
+
+- `lifecycle.py` — `destroy_instance(fly, naming, keep_data)`: what `fly-down`
+  does, as a call that reports (`DestroyReport`) and keeps going past a failed
+  app, so a TTL reaper never leaves the rest billing. `fly-down` takes
+  `--app-prefix` for instances deployed with one.
+- `resources.py` — `Resources(root)`: where the chart, `values-*.yaml` and
+  `fixtures/` are. The CLI points it at the checkout; a service at what it
+  ships. The library never walks up from `__file__` to find them.
+- `render.py`, `vc_render.py`, `api_auth.py`, `helm.py` — the renderer
+  (`render()` needs `resources=`). `scripts/render-helm-config.py` is the CLI over
+  it; `scripts/{vc_render,api_auth,helm_render_lib}.py` are aliases so old
+  imports resolve to the package module. `scripts/bootstrap.py` is **not** moved —
+  the env-admin image copies it as a standalone file — so the library takes
+  registration as an injected `register(...)` callable.
+- `deploy.py` — `deploy_instance(spec, fly, naming, resources, ...)`: `fly-up`
+  as a library call. Prints nothing (progress goes to a callback), exits nothing
+  (raises `DeployError` with `.component` / `.deployed`), acts as the
+  `FlyClient`'s org and token. `scripts/fly-up.py` is now argument parsing,
+  `_spec_from_args()` and the summary.
+
+To call the deploy from a service:
+`state.workdir(store, id, subdir=f"fly-{env}")` -> `deploy_instance(spec, fly, naming,
+Resources(root), rendered_root=<yielded dir>, register=..., progress=...)`.
+`tests/test_deploy_instance.py` is the worked example.
+
 ## Sibling repo layout
 
 `make setup` clones these into `../`:
@@ -584,6 +642,13 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
   own health check passed, since that check is local. Any new component
   must listen on `::` (dual-stack) — see `DualStackHTTPServer` in
   `env-admin/server.py`.
+- **Scale to zero is per ENVIRONMENT, never per app.** `make fly-stop ENV=x` stops
+  every machine (apps and the Mongo volume are kept; only the volume is billed) and
+  `make fly-start ENV=x` brings them back in deploy order, waiting for health.
+  Deploying with `--scale-to-zero` also sets `auto_start_machines = false`, so a stray
+  request cannot wake one machine in front of a stopped backend (verified on real Fly:
+  without it, a single request to a stopped environment woke only the frontend).
+  `--org <org>` on `fly-up`/`fly-down`/`fly-power.py` targets a dedicated org.
 - **Autostart only fires on the public edge**, never for internal 6PN calls
   between sibling apps — an internal-only component left on
   `auto_stop_machines='stop'` goes idle and *stays* stopped forever once a
@@ -643,7 +708,12 @@ ghcr.io/sirosfoundation/mini-oidc:$MINI_OIDC_VERSION --format '{{.Created}}'`.
   apps) unless `KEEP_DATA=yes` — ask before a plain `fly-down` of a shared
   environment.
 - Tests: `python3 -m unittest discover -s tests -p 'test_*.py'` (stack
-  parity needs `make`; nothing needs Docker or Fly). Run it after touching
+  parity needs `make`; the fly-up tests need `helm` and `openssl`; nothing needs
+  Docker or Fly — `tests/fakefly.py` is a stateful fake `flyctl`).
+  **`tests/test_fly_up_characterization.py` is the safety net under any change to
+  the deploy path**: it runs the real `fly-up.py` against the fake and compares
+  the exact command sequence and every rendered file with `tests/golden/`. A
+  deliberate change refreshes it with `UPDATE_GOLDEN=1`; an accidental one fails. Run it after touching
   the Makefile's compose logic, `scripts/stack.py`, `env-admin/`, or the Fly
   scripts' pure parts.
 - `env-admin/` changes ship as an image: bump `VERSION` in `server.py`, push a

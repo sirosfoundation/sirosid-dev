@@ -20,7 +20,7 @@ WALLET_NAME ?= SIROS ID (dev)
         ensure-conformance-hosts ensure-local-hosts fetch-golden-env \
         register-mocks register-vc-services clean show-branches show-images build-info pki \
         bbs-keys \
-        render-helm-config vc-config-parity fly-up fly-down fly-status \
+        render-helm-config vc-config-parity fly-up fly-down fly-stop fly-start fly-status \
         plan _print-compose-files storage-status storage-clear fly-storage-clear boot \
         datastore-token datastore-search datastore-upload \
 	android-setup android-config android-up android-down android-full android-restart android-launch android-logs android-test \
@@ -494,6 +494,8 @@ help: ## Show this help
 	@echo "  make fly-up ENV=<name> [OPTIONS]     Deploy a named Fly.io environment"
 	@echo "  make fly-status ENV=<name>           Show Fly app status for a named environment"
 	@echo "  make fly-down ENV=<name>             Tear down a named Fly.io environment"
+	@echo "  make fly-stop ENV=<name> [ORG=<org>]   Stop every machine, keep the apps and data (scale to zero, as a unit)"
+	@echo "  make fly-start ENV=<name> [ORG=<org>]  Start a stopped environment in deploy order, waiting for health"
 	@echo "  make env-show ENV=<name>             Print a named environment's persisted config (environments/<name>.yaml)"
 	@echo ""
 	@echo "$(GREEN)Config Chart Targets:$(NC)  (chart/ is this repo's own chart - see chart/README.md)"
@@ -1307,6 +1309,14 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [REGION=<co
 		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)") \
 		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)")
 		$(if $(REGION),--region "$(REGION)")
+
+fly-stop: ## Stop every machine of a Fly environment but keep its apps and data (make fly-stop ENV=<name> [ORG=<org>]); fly-start brings it back
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV=<name> is required$(NC)"; exit 1; fi
+	python3 scripts/fly-power.py stop --env "$(ENV)" $(if $(ORG),--org "$(ORG)")
+
+fly-start: ## Start a stopped Fly environment, in deploy order, waiting for health (make fly-start ENV=<name> [ORG=<org>])
+	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV=<name> is required$(NC)"; exit 1; fi
+	python3 scripts/fly-power.py start --env "$(ENV)" $(if $(ORG),--org "$(ORG)")
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name> [KEEP_DATA=yes] - KEEP_DATA leaves the Mongo apps and their volumes, machines stopped, so the next fly-up finds the data again)
 	@if [ -z "$(ENV)" ]; then \

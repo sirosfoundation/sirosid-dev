@@ -59,9 +59,12 @@ class MountGuard(unittest.TestCase):
         # Regression: the first release generated the storage apps' fly.toml
         # without the mount because deploy_component never passed it on. The
         # deploy sequence itself needs flyctl, so pin the two call sites here.
-        src = (ROOT / "scripts" / "fly-up.py").read_text()
+        # (The deploy sequence moved into sirosid_core/deploy.py; the behaviour is
+        # also covered end to end by test_fly_up_characterization against a fake
+        # flyctl that models mounts.)
+        src = (ROOT / "sirosid_core" / "deploy.py").read_text()
         self.assertIn('mount=comp.get("mount")', src)
-        self.assertIn('assert_volume_mounted(app, comp["mount"]["volume"])', src)
+        self.assertIn('fly.assert_volume_mounted(app, comp["mount"]["volume"])', src)
 
     def test_ensure_running_only_starts_machines_at_rest(self):
         import inspect

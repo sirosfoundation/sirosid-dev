@@ -41,32 +41,11 @@ import base64
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from sirosid_core.android import (  # noqa: E402,F401  (re-exported)
+    apk_key_hash_to_hex, hex_to_apk_key_hash, identities_from_entries, parse_identity, rp_origins)
+
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
-
-
-def hex_to_apk_key_hash(fingerprint_hex: str) -> str:
-    """keytool -list -v prints colon-separated hex; rp_origins needs
-    base64url (no padding) - same conversion setup-android.sh does."""
-    raw = bytes.fromhex(fingerprint_hex.replace(":", ""))
-    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
-
-
-def apk_key_hash_to_hex(apk_key_hash: str) -> str:
-    """Opposite direction - .env.android/.android-apps may store either
-    form; assetlinks.json needs colon-separated hex."""
-    raw = base64.urlsafe_b64decode(apk_key_hash + "=" * (-len(apk_key_hash) % 4))
-    return ":".join(f"{b:02X}" for b in raw)
-
-
-def _parse_value(package: str, value: str) -> dict:
-    value = value.strip()
-    # Accept either encoding in the source files/flags - hex has colons,
-    # base64url doesn't (and never contains ':').
-    if ":" in value:
-        fingerprint_hex, apk_key_hash = value, hex_to_apk_key_hash(value)
-    else:
-        apk_key_hash, fingerprint_hex = value, apk_key_hash_to_hex(value)
-    return {"package": package.strip(), "fingerprint_hex": fingerprint_hex, "apk_key_hash": apk_key_hash}
 
 
 def _read_pairs_file(path: Path):
@@ -85,21 +64,17 @@ def load_android_apps(extra: list = None, root: Path = None) -> list:
     seen = set()
 
     def add(package: str, value: str):
-        ident = _parse_value(package, value)
+        ident = parse_identity(package, value)
         key = (ident["package"], ident["apk_key_hash"])
         if key not in seen:
             seen.add(key)
             identities.append(ident)
 
-    for entry in extra or []:
-        for part in entry.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            if "=" not in part:
-                raise SystemExit(f"android app entry {part!r} must be package=fingerprint")
-            package, value = part.split("=", 1)
-            add(package, value)
+    try:
+        for ident in identities_from_entries(extra):
+            add(ident["package"], ident["fingerprint_hex"])
+    except ValueError as e:
+        raise SystemExit(str(e))
 
     apps_file = root / ".android-apps"
     if apps_file.exists():
@@ -120,10 +95,6 @@ def load_android_apps(extra: list = None, root: Path = None) -> list:
                 print(f".env.android found - adding debug identity for {package}", file=sys.stderr)
 
     return identities
-
-
-def rp_origins(identities: list) -> list:
-    return [f"android:apk-key-hash:{i['apk_key_hash']}" for i in identities]
 
 
 def main():
