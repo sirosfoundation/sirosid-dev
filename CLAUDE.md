@@ -78,6 +78,24 @@ To call the deploy from a service:
 Resources(root), rendered_root=<yielded dir>, register=..., progress=...)`.
 `tests/test_deploy_instance.py` is the worked example.
 
+## `sirosid_service/` — the control plane (no HTTP/MCP/auth layer yet)
+
+Sits on top of `sirosid_core` (never the other way: a layering test enforces it) and
+holds every rule about who may do what: users and single-use **invites** (admin-issued,
+only a hash stored), per-user **quotas** and a global cap, saved **configs** validated by
+`sirosid_core.policy` against the caller's *current* capabilities (re-checked at create
+time, so a withdrawn grant bites), instance ownership (someone else's id and a
+nonexistent one are indistinguishable), **keep** allowances, an audit log, a TTL
+**reaper**, `lapse_kept()` (a lapsed allowance gets a day's grace, never instant
+deletion) and an orphan **sweeper** (only apps matching exactly
+`<prefix>-<8 id chars>-<known component>`, destroyed after a grace period). Instance
+state lives in SQLite (`DbStateStore`, with `seal`/`unseal` hooks where encryption at
+rest goes). `reset_instance` wipes data with only the service's own org credential
+(stop, destroy the Mongo machine and volume, redeploy) so service instances need no
+in-instance Fly credential. Front ends authenticate a caller into a `Principal` and
+call `ControlPlane`; they must not reimplement any check. `tests/test_service.py` runs
+all of it against the fake flyctl.
+
 ## Sibling repo layout
 
 `make setup` clones these into `../`:

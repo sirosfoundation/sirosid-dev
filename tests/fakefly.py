@@ -125,6 +125,14 @@ class FakeFly:
                    "size_gb": int(self._opt(argv, "-s", "--size", default="1")), "state": "created"}
             self._app(app)["volumes"].append(vol)
             return _cp(argv, stdout=json.dumps(vol))
+        if head == "volumes" and sub == "destroy":
+            a = self._app(app)
+            vid = argv[2]
+            attached = [m for m in a["machines"] if any(mt.get("volume") for mt in (m.get("config") or {}).get("mounts") or [])]
+            if attached:
+                return _cp(argv, returncode=1, stderr="volume is attached to a machine")
+            a["volumes"] = [v for v in a["volumes"] if v["id"] != vid]
+            return _cp(argv)
         if head in ("machine", "machines") and sub == "list":
             return _cp(argv, stdout=json.dumps(self._app(app)["machines"]))
         if head == "machine" and sub in ("start", "stop", "destroy"):
