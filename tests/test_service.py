@@ -19,6 +19,7 @@ from sirosid_service.service import (DAY, ControlPlane, Forbidden, InvalidInvite
                                      Principal, QuotaExceeded, ServiceError)
 
 NEEDS = unittest.skipUnless(shutil.which("helm") and shutil.which("openssl"), "needs helm and openssl")
+KEY = bytes(range(32))
 IDS = ["aaaaaaaa", "bbbbbbbb", "cccccccc", "dddddddd", "eeeeeeee", "ffffffff", "gggggggg", "hhhhhhhh", "iiiiiiii", "jjjjjjjj",
        "kkkkkkkk", "llllllll"]
 
@@ -65,7 +66,8 @@ def make(fake=None, limits=None, platform=None):
 def admin_and_user(cp, caps=(), **invite):
     admin = cp.bootstrap_admin("Root", "root@example.com")
     token = cp.create_invite(admin, capabilities=caps, **invite)
-    return admin, cp.redeem_invite(token, "Alice", "alice@example.com")
+    alice = cp.redeem_invite(token, "Alice", "alice@example.com")
+    return admin, cp.begin_session(alice.user_id, KEY)      # the user has unlocked with their passkey
 
 
 class InviteTests(unittest.TestCase):
@@ -212,7 +214,7 @@ class InstanceTests(unittest.TestCase):
     def test_per_user_and_global_quotas(self):
         cp, _, _ = make(limits=Limits(global_max_instances=3))
         admin, alice = admin_and_user(cp, max_concurrent=2)
-        bob = cp.redeem_invite(cp.create_invite(admin, max_concurrent=5), "Bob")
+        bob = cp.begin_session(cp.redeem_invite(cp.create_invite(admin, max_concurrent=5), "Bob").user_id, bytes(range(1, 33)))
         cp.create_instance(alice); cp.create_instance(alice)
         with self.assertRaises(QuotaExceeded):
             cp.create_instance(alice)
@@ -262,7 +264,7 @@ class InstanceTests(unittest.TestCase):
         a = cp.create_instance(alice)["id"]
         self.assertEqual(cp.destroy_instance(alice, a)["status"], "destroyed")
         self.assertEqual(fake.apps, {})
-        self.assertEqual(cp.store.load(a), {})
+        self.assertEqual(cp.db.all("SELECT * FROM state WHERE instance_id=?", (a,)), [])
         self.assertEqual(cp.list_instances(alice), [])
         self.assertEqual(cp.create_instance(alice)["status"], "running")        # quota freed
 
@@ -300,9 +302,9 @@ class CustomImageTests(unittest.TestCase):
         cp.save_config(alice, "dev", cfg)
         cp.grant(admin, alice.user_id, capabilities=[])            # withdrawn after saving
         with self.assertRaises(PolicyError):
-            cp.create_instance(cp.principal_for(alice.user_id), config_name="dev")
+            cp.create_instance(cp.principal_for(alice.user_id, alice.session_id), config_name="dev")
         cp.grant(admin, alice.user_id, capabilities=[CAP_CUSTOM_IMAGES])
-        cp.create_instance(cp.principal_for(alice.user_id), config_name="dev")
+        cp.create_instance(cp.principal_for(alice.user_id, alice.session_id), config_name="dev")
         deploys = [c for c in fake.log if c.startswith("flyctl deploy") and "-pdp " in c]
         self.assertTrue(any("-i ghcr.io/me/pdp:9.9" in c for c in deploys), deploys)
 
@@ -345,6 +347,7 @@ class KeepAndExpiryTests(unittest.TestCase):
         old = cp.create_instance(alice)["id"]
         keeper = cp.create_instance(alice, keep=True)["id"]
         clock.advance(days=2)
+        alice = cp.begin_session(alice.user_id, KEY)      # the 8-hour session expired; unlock again
         young = cp.create_instance(alice)["id"]
         clock.advance(days=1.5)                       # old is 3.5 days, young 1.5, keeper has no clock
         self.assertEqual(cp.reap(), [old])
@@ -422,17 +425,16 @@ class SweeperTests(unittest.TestCase):
 
 
 class StateStoreTests(unittest.TestCase):
-    def test_state_round_trips_and_is_sealed_at_rest(self):
-        from sirosid_service.db import DbStateStore
-        db = Database(seal=lambda b: b[::-1], unseal=lambda b: b[::-1])
+    def test_state_round_trips_sealed_under_the_owners_key(self):
+        from sirosid_service.db import SealedStateStore
+        from sirosid_service.vault import Sealer
+        db = Database()
         self.addCleanup(db.close)
-        store = DbStateStore(db)
+        store = SealedStateStore(db, Sealer(KEY), "u1")
         store.save("i1", {"adminToken": b"secret-token", "vc-pki/rootCA.key": b"KEY"})
         self.assertEqual(store.load("i1")["adminToken"], b"secret-token")
         raw = bytes(db.one("SELECT data FROM state WHERE path='adminToken'")["data"])
         self.assertNotIn(b"secret-token", raw)
-        store.delete("i1")
-        self.assertEqual(store.load("i1"), {})
 
 
 if __name__ == "__main__":

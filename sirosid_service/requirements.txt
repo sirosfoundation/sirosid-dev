@@ -1,0 +1,2 @@
+# Runtime dependencies of sirosid_service (sirosid_core needs only PyYAML).
+cryptography>=42

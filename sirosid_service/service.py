@@ -27,7 +27,8 @@ from sirosid_core.policy import PlatformPolicy, PolicyError
 from sirosid_core.resources import Resources
 from sirosid_core.spec import InstanceSpec
 
-from .db import Database, DbStateStore, hash_token
+from .db import Database, SealedStateStore, delete_state, hash_token
+from .vault import KEY_CHECK_PLAINTEXT, Locked, SessionKeys, VaultError, aad
 
 DAY = 86400.0
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
@@ -68,6 +69,10 @@ class Principal:
     user_id: str
     role: str = "member"
     capabilities: frozenset = frozenset()
+    # Set once the user has unlocked their data with their passkey (see vault.py).
+    # Without it a principal can still do everything that needs only plaintext
+    # metadata; anything that touches the user's own data raises Locked.
+    session_id: str = ""
 
     @property
     def is_admin(self) -> bool:
@@ -120,15 +125,62 @@ class ControlPlane:
         self.register = register
         self.clock = clock or db.clock
         self._new_id = id_generator or generate_instance_id
-        self.store = DbStateStore(db)
+        self.keys = SessionKeys(self.clock)
 
     # ---- principals -------------------------------------------------------
 
-    def principal_for(self, user_id: str) -> Principal:
+    def principal_for(self, user_id: str, session_id: str = "") -> Principal:
         u = self._user(user_id)
         if u["disabled"]:
             raise Forbidden("this account is disabled")
-        return Principal(u["id"], u["role"], frozenset(json.loads(u["capabilities"])))
+        return Principal(u["id"], u["role"], frozenset(json.loads(u["capabilities"])), session_id)
+
+    # ---- unlocking (the user's passkey produces the key; see vault.py) ---------
+
+    def begin_session(self, user_id: str, main_key: bytes, ttl: float = None) -> Principal:
+        """The browser has unlocked the user's container with their passkey and hands
+        over the main key for this session. Held in memory only, until it expires.
+
+        The first unlock stores a key-check blob; every later one must open it, so a
+        wrong key (a different container, a bug) is refused instead of being used to
+        seal data that the right key could then never read."""
+        u = self._user(user_id)
+        if u["disabled"]:
+            raise Forbidden("this account is disabled")
+        from .vault import Sealer
+        sealer = Sealer(main_key)
+        check_aad = aad(user_id, "keycheck")
+        if u["key_check"] is None:
+            self.db.execute("UPDATE users SET key_check=? WHERE id=?", (sealer.seal(KEY_CHECK_PLAINTEXT, check_aad), user_id))
+        else:
+            try:
+                ok = sealer.open(bytes(u["key_check"]), check_aad) == KEY_CHECK_PLAINTEXT
+            except VaultError:
+                ok = False
+            if not ok:
+                self.db.audit(user_id, "unlock_refused", user_id)
+                raise Forbidden("that key does not open this account's data")
+        sid = self.keys.put(user_id, main_key, ttl)
+        self.db.audit(user_id, "unlock", user_id)
+        return self.principal_for(user_id, sid)
+
+    def end_session(self, who: Principal):
+        self.keys.drop(who.session_id)
+
+    def _sealer(self, who: Principal):
+        return self.keys.get(who.session_id, who.user_id)
+
+    def set_privatedata(self, who: Principal, container: bytes):
+        """The browser's wrapped main-key container (one entry per passkey), stored
+        OPAQUE: the server never parses it and never sees a PRF output."""
+        if not isinstance(container, (bytes, bytearray)) or not 0 < len(container) <= 64 * 1024:
+            raise ServiceError("the container must be 1 byte to 64 KB")
+        self.db.execute("UPDATE users SET privatedata=? WHERE id=?", (bytes(container), who.user_id))
+        self.db.audit(who.user_id, "set_privatedata", who.user_id, bytes=len(container))
+
+    def get_privatedata(self, who: Principal) -> Optional[bytes]:
+        r = self._user(who.user_id)["privatedata"]
+        return bytes(r) if r is not None else None
 
     def _user(self, user_id):
         u = self.db.one("SELECT * FROM users WHERE id=?", (user_id,))
@@ -208,6 +260,7 @@ class ControlPlane:
         self._require_admin(who)
         self._user(user_id)
         self.db.execute("UPDATE users SET disabled=1 WHERE id=?", (user_id,))
+        self.keys.drop_user(user_id)
         soon = self.clock() + self.limits.lapse_grace_days * DAY
         self.db.execute("UPDATE instances SET kept=0, expires_at=MIN(COALESCE(expires_at, ?), ?) WHERE owner=? AND status IN (%s)"
                         % ",".join("?" * len(LIVE)), (soon, soon, user_id, *LIVE))
@@ -249,24 +302,27 @@ class ControlPlane:
     def save_config(self, who: Principal, name: str, doc: dict) -> dict:
         if not name or len(name) > 64:
             raise ServiceError("a config needs a name of at most 64 characters")
+        sealer = self._sealer(who)
         problems = policy_mod.validate(doc, who.capabilities, self.platform)
         if problems:
             raise PolicyError(problems)
         now = self.clock()
+        sealed = sealer.seal(_json(doc).encode(), aad(who.user_id, "config", name))
         existing = self.db.one("SELECT id FROM configs WHERE owner=? AND name=?", (who.user_id, name))
         if existing:
-            self.db.execute("UPDATE configs SET doc=?, updated_at=? WHERE id=?", (_json(doc), now, existing["id"]))
+            self.db.execute("UPDATE configs SET doc=?, updated_at=? WHERE id=?", (sealed, now, existing["id"]))
             cid = existing["id"]
         else:
             if self.db.one("SELECT COUNT(*) AS n FROM configs WHERE owner=?", (who.user_id,))["n"] >= 50:
                 raise QuotaExceeded("at most 50 saved configs")
             cid = "c_" + secrets.token_hex(6)
             self.db.execute("INSERT INTO configs(id,owner,name,doc,created_at,updated_at) VALUES(?,?,?,?,?,?)",
-                            (cid, who.user_id, name, _json(doc), now, now))
+                            (cid, who.user_id, name, sealed, now, now))
         self.db.audit(who.user_id, "save_config", cid, name=name)
         return {"id": cid, "name": name}
 
     def list_configs(self, who: Principal) -> list:
+        """Names only: listing needs no key, reading a config does."""
         return [{"id": r["id"], "name": r["name"], "updated_at": r["updated_at"]} for r in
                 self.db.all("SELECT * FROM configs WHERE owner=? ORDER BY name", (who.user_id,))]
 
@@ -274,7 +330,7 @@ class ControlPlane:
         r = self.db.one("SELECT * FROM configs WHERE owner=? AND name=?", (who.user_id, name))
         if not r:
             raise NotFound("no such saved config")
-        return json.loads(r["doc"])
+        return json.loads(self._sealer(who).open(bytes(r["doc"]), aad(who.user_id, "config", name)))
 
     def delete_config(self, who: Principal, name: str):
         self.db.execute("DELETE FROM configs WHERE owner=? AND name=?", (who.user_id, name))
@@ -284,6 +340,7 @@ class ControlPlane:
 
     def create_instance(self, who: Principal, *, config: dict = None, config_name: str = None, name: str = "",
                         keep: bool = False) -> dict:
+        sealer = self._sealer(who)          # creating touches the user's data: needs an unlocked session
         if config is None:
             config = self.get_config(who, config_name) if config_name else {}
         # Capabilities are checked NOW, not when the config was saved: a grant may
@@ -306,11 +363,14 @@ class ControlPlane:
                 expires = None
             iid = self._unused_id(d)
             spec = policy_mod.build_spec(config, iid, caps, self.platform)
-            d.execute("INSERT INTO instances(id,owner,name,status,spec,config,created_at,updated_at,expires_at,kept) VALUES(?,?,?,?,?,?,?,?,?,?)",
-                      (iid, who.user_id, name[:64], "creating", _json(spec.to_dict()), _json(config), self.clock(),
-                       self.clock(), expires, 1 if keep else 0))
+            naming = {"env": spec.env, "app_prefix": spec.app_prefix, "host_pattern": spec.host_pattern}
+            d.execute("INSERT INTO instances(id,owner,name,status,naming,spec,config,created_at,updated_at,expires_at,kept) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                      (iid, who.user_id, name[:64], "creating", _json(naming),
+                       sealer.seal(_json(spec.to_dict()).encode(), aad(who.user_id, "spec", iid)),
+                       sealer.seal(_json(config).encode(), aad(who.user_id, "config-snapshot", iid)),
+                       self.clock(), self.clock(), expires, 1 if keep else 0))
         self.db.audit(who.user_id, "create_instance", iid, kept=keep, images=sorted(spec.images))
-        self.runner.submit(self._deploy_job, iid)
+        self.runner.submit(self._deploy_job, iid, sealer)
         return self.get_instance(who, iid)
 
     def _check_keep(self, d, user):
@@ -360,7 +420,7 @@ class ControlPlane:
         r = self._instance_row(who, iid)
         if r["status"] not in ("running", "stopped"):
             raise InvalidState(f"the instance is {r['status']}")
-        blobs = self.store.load(iid)
+        blobs = SealedStateStore(self.db, self._sealer(who), r["owner"]).load(iid)
         token = blobs.get("adminToken", b"").decode().strip()
         return {"urls": json.loads(r["urls"]), "admin_token": token}
 
@@ -368,21 +428,31 @@ class ControlPlane:
         cols = ", ".join(f"{k}=?" for k in fields)
         self.db.execute(f"UPDATE instances SET {cols}, updated_at=? WHERE id=?", (*fields.values(), self.clock(), iid))
 
-    def _spec(self, r) -> InstanceSpec:
-        return InstanceSpec.from_dict(json.loads(r["spec"]))
+    def _naming(self, r) -> Naming:
+        """From the plaintext column: stop, start, destroy, the reaper and the
+        sweeper must work with nobody logged in, so they never need the sealed spec."""
+        n = json.loads(r["naming"])
+        return Naming(n["env"], app_prefix=n["app_prefix"], host_pattern=n["host_pattern"])
 
-    def _deploy_job(self, iid: str):
+    def _spec(self, r, sealer) -> InstanceSpec:
+        return InstanceSpec.from_dict(json.loads(sealer.open(bytes(r["spec"]), aad(r["owner"], "spec", r["id"]))))
+
+    def _deploy_job(self, iid: str, sealer):
+        """`sealer` is captured from the requesting session, so a job queued on a
+        thread finishes even if the session expires meanwhile - and never outlives
+        the request's own authority by being re-derived later."""
         r = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
         if not r or r["status"] not in ("creating", "resetting"):
             return
-        spec = self._spec(r)
+        spec = self._spec(r, sealer)
+        store = SealedStateStore(self.db, sealer, r["owner"])
         try:
-            with state_mod.workdir(self.store, iid, subdir=f"fly-{iid}") as scratch:
+            with state_mod.workdir(store, iid, subdir=f"fly-{iid}") as scratch:
                 result = deploy_instance(spec, self.fly, spec.naming(), self.resources, rendered_root=scratch,
                                          register=self.register, progress=None)
             self._set(iid, status="running", urls=_json(result.urls), error="")
             self.db.audit("system", "deployed", iid)
-        except (DeployError, FlyError, policy_mod.PolicyError) as e:
+        except (DeployError, FlyError, policy_mod.PolicyError, VaultError) as e:
             self._set(iid, status="failed", error=str(e)[:500])
             self.db.audit("system", "deploy_failed", iid, error=str(e)[:200])
 
@@ -390,7 +460,7 @@ class ControlPlane:
         r = self._instance_row(who, iid)
         if r["status"] not in ("running", "failed"):
             raise InvalidState(f"cannot stop an instance that is {r['status']}")
-        report = stop_instance(self.fly, self._spec(r).naming())
+        report = stop_instance(self.fly, self._naming(r))
         self._set(iid, status="stopped" if report.ok else "failed", error="" if report.ok else str(report.failed)[:300])
         self.db.audit(who.user_id, "stop_instance", iid)
         return self.get_instance(who, iid)
@@ -399,7 +469,7 @@ class ControlPlane:
         r = self._instance_row(who, iid)
         if r["status"] not in ("stopped", "failed"):
             raise InvalidState(f"cannot start an instance that is {r['status']}")
-        report = start_instance(self.fly, self._spec(r).naming())
+        report = start_instance(self.fly, self._naming(r))
         self._set(iid, status="running" if report.ok else "failed", error="" if report.ok else str(report.failed)[:300])
         self.db.audit(who.user_id, "start_instance", iid)
         return self.get_instance(who, iid)
@@ -413,10 +483,10 @@ class ControlPlane:
             return self._public(r)
         # No intermediate status on purpose: if the process dies mid-teardown the
         # instance still looks live and past its time, so the reaper simply retries.
-        report = destroy_instance(self.fly, self._spec(r).naming())
+        report = destroy_instance(self.fly, self._naming(r))
         if report.ok:
             self._set(r["id"], status="destroyed", urls="{}")
-            self.store.delete(r["id"])
+            delete_state(self.db, r["id"])
             self.db.audit(actor, "destroy_instance", r["id"])
         else:
             self._set(r["id"], status="failed", error=("could not destroy: " + str(report.failed))[:500])
@@ -428,10 +498,11 @@ class ControlPlane:
         redeploy. Needs no credential inside the instance (so no env-admin), only the
         service's own org credential. State (secrets, PKI) is kept, so the redeploy is
         a real redeploy onto a fresh volume."""
+        sealer = self._sealer(who)         # redeploying needs the sealed spec and the secrets
         r = self._instance_row(who, iid)
         if r["status"] not in ("running", "stopped", "failed"):
             raise InvalidState(f"cannot reset an instance that is {r['status']}")
-        naming = self._spec(r).naming()
+        naming = self._naming(r)
         app = naming.app("mongodb")
         self._set(iid, status="resetting", error="")
         stop_instance(self.fly, naming)
@@ -441,7 +512,7 @@ class ControlPlane:
                 if v.get("state") != "destroyed":
                     self.fly.destroy_volume(app, v["id"])
         self.db.audit(who.user_id, "reset_instance", iid)
-        self.runner.submit(self._deploy_job, iid)
+        self.runner.submit(self._deploy_job, iid, sealer)
         return self.get_instance(who, iid)
 
     def set_keep(self, who: Principal, iid: str, keep: bool) -> dict:

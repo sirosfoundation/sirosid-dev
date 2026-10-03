@@ -90,7 +90,17 @@ nonexistent one are indistinguishable), **keep** allowances, an audit log, a TTL
 deletion) and an orphan **sweeper** (only apps matching exactly
 `<prefix>-<8 id chars>-<known component>`, destroyed after a grace period). Instance
 state lives in SQLite (`DbStateStore`, with `seal`/`unseal` hooks where encryption at
-rest goes). `reset_instance` wipes data with only the service's own org credential
+state lives in SQLite. **A user's data is sealed under a key only their passkey can
+produce** (`vault.py`; the wallet's privatedata-spec model: one main AES-256-GCM key,
+wrapped per passkey in the browser from the WebAuthn PRF output, stored by the server as
+an opaque container). The browser unlocks it and hands the server the main key for the
+session only (`ControlPlane.begin_session`; held in memory, never persisted, capped at
+24 h). Configs, specs and instance secrets are sealed under it with AAD binding owner and
+object; ids, owners, status, expiry and `naming` stay plaintext, so stop, start, destroy,
+the reaper and the sweeper work with nobody logged in, while deploy, reset, reading a
+config or an instance's credentials raise `Locked` without a session. Admins cannot read
+users' data and a database dump or backup holds none. Without `cryptography` (see
+`sirosid_service/requirements.txt`) the service tests skip. with only the service's own org credential
 (stop, destroy the Mongo machine and volume, redeploy) so service instances need no
 in-instance Fly credential: the platform sets `PlatformPolicy.env_admin=False`, which
 `InstanceSpec.env_admin` (also `fly-up --no-env-admin`) turns into no env-admin app, no
