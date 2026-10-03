@@ -397,6 +397,16 @@ class FlyClient:
         # carries a rotated secret nobody knows) be set fresh.
         return {**vol, "created": True}
 
+    def destroy_machines(self, app: str):
+        """Destroy every machine of the app (volumes are kept)."""
+        for m in self.list_machines(app):
+            self.run("machine", "destroy", m["id"], "-a", app, "--force", check=False)
+
+    def destroy_volume(self, app: str, volume_id: str):
+        """Destroy one volume. Fly refuses while a machine still has it attached,
+        so destroy the machines first (destroy_machines)."""
+        self.run("volumes", "destroy", volume_id, "-a", app, "--yes")
+
     @staticmethod
     def machine_has_mount(machine: dict, volume: str) -> bool:
         """Whether a machine's config mounts the named volume (by volume name or
