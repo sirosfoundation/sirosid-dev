@@ -111,6 +111,33 @@ Front ends authenticate a caller into a `Principal` and
 call `ControlPlane`; they must not reimplement any check. `tests/test_service.py` runs
 all of it against the fake flyctl.
 
+### Front end of the control plane: `auth.py`, `api.py`, `__main__.py`
+
+- `auth.py` — passkey enrolment (invite + ceremony; the invite is only spent if the
+  ceremony succeeds), discoverable-credential login, web sessions (tokens stored hashed),
+  and `unlock` (the browser derives the main key from the passkey's PRF output
+  client-side and hands the server the key; the PRF output never reaches the server).
+  One constant PRF salt is advertised for every credential. Every verification failure
+  returns the same message. The server cannot verify PRF support (the client reports it
+  unsigned): the browser must refuse to enrol an authenticator without it.
+- `api.py` — a thin Starlette skin over `ControlPlane`; **it decides nothing**, so a rule
+  added there would be one MCP and the CLI lack. It owns only the web's own risks:
+  `__Host-sid` cookie (HttpOnly, SameSite=Strict, no Domain), an Origin allow-list on
+  every state-changing request (a cookie alone never authorises a write), JSON-only
+  size-capped bodies, per-client rate limits on the endpoints that take guesses, strict
+  security headers and no caching. Status mapping: 401 not signed in, 423 locked, 422
+  policy problems (all at once), 409 quota/invalid state, 404 for another user's or a
+  nonexistent id and for admin routes a member calls.
+- `python -m sirosid_service serve | admin-invite`; configuration from the environment
+  (`config.py`: `FLY_API_TOKEN` is required, origins must be https and under the RP ID, the
+  host pattern must vary per instance). The first admin gets a **bootstrap invite** from
+  `admin-invite` (refused once an admin exists) and enrols a passkey like anyone else.
+- RP ID is the apex **`sirosid.dev`** and is permanent. **Hard rule: nothing untrusted, and
+  in particular no instance content, may ever be served from any subdomain of
+  `sirosid.dev`** - any subdomain page may request passkeys scoped to the apex.
+- `tests/softauthn.py` is a software authenticator (real authenticator data, COSE keys,
+  signed assertions) so passkey verification is exercised, not mocked.
+
 ## Sibling repo layout
 
 `make setup` clones these into `../`:

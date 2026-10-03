@@ -204,6 +204,24 @@ class ControlPlane:
         self.db.audit(uid, "bootstrap_admin", uid)
         return self.principal_for(uid)
 
+    def bootstrap_invite(self, days_valid: float = 1.0) -> str:
+        """An invite for the FIRST admin, issued from the command line on the host.
+
+        Unlike bootstrap_admin it creates no account: whoever holds the token enrols a
+        passkey in the browser and becomes the admin, exactly like any later user. It
+        refuses once any admin exists, so it cannot be used to mint more of them.
+        """
+        if self.db.one("SELECT 1 AS x FROM users WHERE role='admin'"):
+            raise Forbidden("an admin already exists; admins create further invites")
+        token = secrets.token_urlsafe(24)
+        self.db.execute(
+            "INSERT INTO invites(token_hash,created_by,role,capabilities,max_concurrent,max_kept,email,expires_at,created_at)"
+            " VALUES(?,?,?,?,?,?,?,?,?)",
+            (hash_token(token), "system", "admin", _json(list(policy_mod.CAPABILITIES)), self.limits.default_max_concurrent, 5, "",
+             self.clock() + days_valid * DAY, self.clock()))
+        self.db.audit("system", "bootstrap_invite", hash_token(token)[:12])
+        return token
+
     # ---- invites (admin) ---------------------------------------------------
 
     def create_invite(self, who: Principal, *, capabilities=(), role="member", email="", days_valid=7.0,
