@@ -34,6 +34,18 @@ class CoreLayering(unittest.TestCase):
                 offenders += [f"{path.name}: imports {n}" for n in names if n in SCRIPT_MODULES]
         self.assertEqual(offenders, [])
 
+    def test_core_does_not_depend_on_the_service_above_it(self):
+        offenders = []
+        for path in self.modules():
+            for node in ast.walk(ast.parse(path.read_text())):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name.split(".")[0] for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    names = [node.module.split(".")[0]]
+                offenders += [f"{path.name}: imports {n}" for n in names if n == "sirosid_service"]
+        self.assertEqual(offenders, [])
+
     def test_core_does_not_locate_files_relative_to_the_repo(self):
         # Code, not prose: docstrings legitimately explain what is NOT read.
         offenders = []

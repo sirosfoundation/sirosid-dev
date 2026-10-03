@@ -241,6 +241,7 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
         app_prefix=args.app_prefix or env_cfg["app_prefix"] or "sirosid",
         host_pattern=args.host_pattern or env_cfg["host_pattern"] or "{app}.fly.dev",
         scale_to_zero=bool(args.scale_to_zero),
+        env_admin=not args.no_env_admin,
     ).validate([c["name"] for c in COMPONENTS])
 
 
@@ -258,6 +259,9 @@ def main():
                              "stopped environment stays stopped until fly-start brings it all up in "
                              "order. Per-app autostop cannot work for this stack - Fly never wakes a "
                              "machine for an internal 6PN call.")
+    parser.add_argument("--no-env-admin", action="store_true",
+                        help="Do not deploy env-admin (and drop its dashboard Storage card and nginx proxy). It needs "
+                             "one app-scoped deploy token per consumer, which an org-scoped credential cannot mint.")
     parser.add_argument("--org", default="",
                         help="Fly organization to create the apps in (default: sirosfoundation). Use a "
                              "dedicated org for scratch or hosted instances; fly-down needs the same --org.")

@@ -65,6 +65,10 @@ class InstanceSpec:
     # autostop cannot work for this stack). A hosted service sets this; the CLI
     # leaves it off, where every machine just stays running.
     scale_to_zero: bool = False
+    # Deploy env-admin (the per-instance 'Clear all data' actor)? It needs one app-scoped
+    # Fly deploy token per consumer, which an org-scoped credential cannot mint, so a hosted
+    # service sets this False and resets an instance itself (ControlPlane.reset_instance).
+    env_admin: bool = True
 
     def naming(self) -> Naming:
         return Naming(self.env, app_prefix=self.app_prefix, host_pattern=self.host_pattern)
@@ -109,7 +113,7 @@ class InstanceSpec:
                  "trusted_issuers": list, "trusted_verifiers": list, "trusted_verifier_roots": list,
                  "zk_circuits_sources": list, "credential_registries": list, "android_apps": list,
                  "env": str, "region": str, "rical_provider_url": str, "rical_root_pem": str,
-                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "scale_to_zero": bool}
+                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "scale_to_zero": bool, "env_admin": bool}
         for key, value in data.items():
             if not isinstance(value, kinds[key]):
                 raise ValueError(f"instance spec key {key!r} must be {kinds[key].__name__}, "
