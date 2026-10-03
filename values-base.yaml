@@ -213,6 +213,24 @@ features:
         source: datastore
         authOptions:
           claims: [given_name, family_name]
+    # EWC RFC013 Photo ID (ISO/IEC TS 23220-4 Annex C) - what facetec-api
+    # issues after a FaceTec photo-ID match with an NFC-verified passport
+    # (docker-compose.facetec.yml, ISSUER_FORMAT=mdoc). facetec-api uploads
+    # the document and hands the wallet a pre-authorized offer, so the
+    # authProvider below only matters for the synthetic documents in
+    # fixtures/vc-bootstrapping/photoid.json. The MDDL's svg_template shows
+    # name, birth date, nationality and expiry on the wallet's card; the
+    # portrait is shown among the claims on the detail page, not on the card.
+    photoid:
+      vct: "eu.europa.ec.eudi.photoid.1"
+      doctype: "eu.europa.ec.eudi.photoid.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/photoid.mdoc.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
 
 issuer:
   # Bearer-JWT auth for apigw's admin/datastore API (/api/v1/*). The chart
@@ -259,6 +277,7 @@ issuer:
       mdl_zk4: {file: fixtures/vc-bootstrapping/mdl_zk4.json}
       pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
       siros_id: {file: fixtures/vc-bootstrapping/siros_id.json}
+      photoid: {file: fixtures/vc-bootstrapping/photoid.json}
       # EU Business Wallet documents for the mini-oidc company users -
       # PID-authenticated issuance (see features.credentialTypes.ebw_oid/eucc/eu_poa).
       ebw_oid: {file: fixtures/vc-bootstrapping/ebw_oid.json}

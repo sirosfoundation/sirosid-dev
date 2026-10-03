@@ -345,6 +345,10 @@ endif
 # facetec-api (FaceTec SDK <-> vc issuer bridge). Requires VC services for
 # credential issuance via vc-apigw, so it implies VC=yes.
 ifneq ($(call _truthy,$(FACETEC)),)
+  # Set VC itself, not just the compose file: `up`'s VC pre-flight (config
+  # render from the chart, gobuild image, PKI) is gated on $(VC), and without
+  # it FACETEC=yes ran the vc services on stale or missing rendered config.
+  VC := yes
   ifeq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
     COMPOSE_FILES += -f $(VC_SERVICES_COMPOSE)
     _VC_LABEL := yes (via facetec)
@@ -845,6 +849,9 @@ ifneq ($(call _truthy,$(FACETEC)),)
 		echo "  export FACETEC_SERVER_URL=\"https://user:pass@your-facetec-server.example.org\""; \
 		exit 1; \
 	fi
+	@# vc-apigw's datastore API requires an admin JWT (scripts/api_auth.py);
+	@# facetec-api reads a static one from ISSUER_API_KEY_PATH.
+	@python3 scripts/facetec_issuer_token.py
 endif
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts

@@ -1,0 +1,91 @@
+{
+  "alice-001": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "photoid",
+      "document_id": "document_id_photoid_alice-001",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "alice-001"
+    ],
+    "document_data": {
+      "family_name_unicode": "Wonderland",
+      "given_name_unicode": "Alice",
+      "birth_date": "1990-01-15",
+      "portrait": "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",
+      "issue_date": "2026-09-01",
+      "expiry_date": "2031-09-01",
+      "issuing_authority_unicode": "SIROS Foundation",
+      "issuing_country": "SE",
+      "age_over_18": true
+    }
+  },
+  "bob-002": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "photoid",
+      "document_id": "document_id_photoid_bob-002",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "bob-002"
+    ],
+    "document_data": {
+      "family_name_unicode": "Builder",
+      "given_name_unicode": "Bob",
+      "birth_date": "1985-06-20",
+      "portrait": "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",
+      "issue_date": "2026-09-01",
+      "expiry_date": "2031-09-01",
+      "issuing_authority_unicode": "SIROS Foundation",
+      "issuing_country": "SE",
+      "age_over_18": true
+    }
+  },
+  "carol-003": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "photoid",
+      "document_id": "document_id_photoid_carol-003-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "carol-003"
+    ],
+    "document_data": {
+      "family_name_unicode": "Danvers",
+      "given_name_unicode": "Carol",
+      "birth_date": "1978-11-03",
+      "portrait": "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",
+      "issue_date": "2026-09-01",
+      "expiry_date": "2031-09-01",
+      "issuing_authority_unicode": "SIROS Foundation",
+      "issuing_country": "SE",
+      "age_over_18": true,
+      "sex": 2,
+      "nationality": "SE",
+      "document_number": "PHOTOID-0000000003",
+      "name_at_birth": "Carol Susan Jane Danvers",
+      "birthplace": "Boston, US",
+      "portrait_capture_date": "2026-08-15",
+      "resident_address_unicode": "Drottninggatan 1, 111 51 Stockholm",
+      "resident_city_unicode": "Stockholm",
+      "resident_postal_code": "111 51",
+      "resident_country": "SE",
+      "age_in_years": 47,
+      "age_birth_year": 1978,
+      "family_name_latin1": "Danvers",
+      "given_name_latin1": "Carol",
+      "person_id": "SE-197811030000",
+      "birth_country": "US",
+      "birth_state": "Massachusetts",
+      "birth_city": "Boston",
+      "administrative_number": "ADM-0000000003",
+      "resident_street": "Drottninggatan",
+      "resident_house_number": "1",
+      "travel_document_number": "XA0000003",
+      "resident_state": "Stockholms län"
+    }
+  }
+}
