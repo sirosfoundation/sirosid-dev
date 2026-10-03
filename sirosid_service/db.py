@@ -45,6 +45,12 @@ CREATE TABLE IF NOT EXISTS audit(
   id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL NOT NULL, actor TEXT NOT NULL, action TEXT NOT NULL,
   target TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}');
 CREATE TABLE IF NOT EXISTS orphans(app TEXT PRIMARY KEY, first_seen REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS credentials(
+  id TEXT PRIMARY KEY, user_id TEXT NOT NULL, public_key BLOB NOT NULL, sign_count INTEGER NOT NULL DEFAULT 0,
+  transports TEXT NOT NULL DEFAULT '[]', label TEXT NOT NULL DEFAULT '', created_at REAL NOT NULL, last_used REAL);
+CREATE INDEX IF NOT EXISTS credentials_user ON credentials(user_id);
+CREATE TABLE IF NOT EXISTS web_sessions(
+  token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at REAL NOT NULL, expires_at REAL NOT NULL);
 """
 
 

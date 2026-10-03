@@ -52,6 +52,10 @@ class Forbidden(ServiceError):
     pass
 
 
+class NotSignedIn(Forbidden):
+    """No valid web session: the caller must authenticate (HTTP 401, not 403)."""
+
+
 class QuotaExceeded(ServiceError):
     pass
 
@@ -237,6 +241,16 @@ class ControlPlane:
         self._require_admin(who)
         return [{**r, "token_hash": r["token_hash"][:12]} for r in
                 self.db.all("SELECT * FROM invites ORDER BY created_at DESC")]
+
+    def check_invite(self, token: str, email: str = ""):
+        """Raises InvalidInvite unless `token` could be redeemed right now. Consumes
+        nothing: a passkey ceremony is refused up front, and the invite is spent only
+        when the ceremony succeeds."""
+        inv = self.db.one("SELECT * FROM invites WHERE token_hash=?", (hash_token(token),))
+        if not inv or inv["revoked"] or inv["used_by"] or inv["expires_at"] < self.clock():
+            raise InvalidInvite("this invite is not valid (unknown, revoked, already used or expired)")
+        if inv["email"] and inv["email"] != email.strip().lower():
+            raise InvalidInvite("this invite is bound to a different email address")
 
     def redeem_invite(self, token: str, name: str, email: str = "") -> Principal:
         """Single use. An invite bound to an email only redeems for that email."""
