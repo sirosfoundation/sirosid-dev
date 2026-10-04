@@ -135,6 +135,21 @@ all of it against the fake flyctl.
 - RP ID is the apex **`sirosid.dev`** and is permanent. **Hard rule: nothing untrusted, and
   in particular no instance content, may ever be served from any subdomain of
   `sirosid.dev`** - any subdomain page may request passkeys scoped to the apex.
+- `console/` — the web UI, served by the service itself (`ApiConfig.console_dir`, env
+  `SIROSID_CONSOLE_DIR`; only `index.html`, `js/`, `css/` from a table built at startup, so
+  `console/test/` is never reachable). Plain ES modules, **no build step and no dependencies**.
+  Pages get their own CSP (`script-src 'self'`, no inline script or style, no handlers);
+  `tests/test_console_static.py` fails on inline code, `innerHTML`/`eval`, or web storage.
+  `js/container.js` is the key container (the privatedata-spec key layer, WebCrypto only;
+  our own HKDF info string so a PRF output is never confusable with the wallet's);
+  `js/webauthn.js` converts options and **strips the PRF output from everything sent to the
+  server**; `js/app.js` builds the DOM with `createElement`/`textContent` only. Enrolment refuses
+  an authenticator without `prf.enabled` before finish, then takes a second touch for the PRF
+  output. Adding a passkey stores the new container *before* registering the credential, so a
+  failure never leaves a passkey that cannot open it. The main key lives in page memory only: a
+  reload keeps the server session unlocked but needs a new sign-in to add/remove passkeys.
+  `tests/test_console_js.py` runs the Node tests (`node --test console/test/*.test.mjs`) and a
+  Python cross-implementation check of the container format; run the service tests with `.venv`.
 - `tests/softauthn.py` is a software authenticator (real authenticator data, COSE keys,
   signed assertions) so passkey verification is exercised, not mocked.
 

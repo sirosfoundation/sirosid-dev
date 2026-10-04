@@ -8,6 +8,7 @@
    implementation.
 """
 import base64
+import glob
 import json
 import os
 import shutil
@@ -99,8 +100,8 @@ def node(request):
 
 @unittest.skipUnless(NODE, "node is not installed")
 class NodeTests(unittest.TestCase):
-    def test_container_module(self):
-        p = subprocess.run([NODE, "--test", os.path.join(TESTS, "container.test.mjs")], capture_output=True, text=True, timeout=300)
+    def test_console_modules(self):
+        p = subprocess.run([NODE, "--test"] + sorted(glob.glob(os.path.join(TESTS, "*.test.mjs"))), capture_output=True, text=True, timeout=300)
         self.assertEqual(p.returncode, 0, p.stdout[-3000:] + p.stderr[-2000:])
 
 
