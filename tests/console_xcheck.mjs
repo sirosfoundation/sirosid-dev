@@ -1,7 +1,7 @@
 // Helper for tests/test_console_js.py: JSON in on stdin, JSON out on stdout.
 //   {"op":"create", credentialId, prfOutput, prfSalt}  (hex)  -> {container, mainKey}
 //   {"op":"open", container, credentialId, prfOutput}          -> {mainKey}
-import * as C from "../js/container.js";
+import * as C from "../console/js/container.js";
 const hex = (s) => Uint8Array.from(Buffer.from(s, "hex"));
 const out = (b) => Buffer.from(b).toString("hex");
 let input = "";

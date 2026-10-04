@@ -92,7 +92,7 @@ def py_create(credential_id, prf, prf_salt):
 
 
 def node(request):
-    p = subprocess.run([NODE, os.path.join(TESTS, "xcheck.mjs")], input=json.dumps(request), capture_output=True, text=True, timeout=60)
+    p = subprocess.run([NODE, os.path.join(ROOT, "tests", "console_xcheck.mjs")], input=json.dumps(request), capture_output=True, text=True, timeout=60)
     if p.returncode:
         raise AssertionError(p.stderr)
     return json.loads(p.stdout)
