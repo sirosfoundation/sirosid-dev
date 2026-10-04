@@ -58,8 +58,8 @@ class Console:
         b = self.post("/api/login/begin").json()
         return self.post("/api/login/finish", {"ceremony_id": b["ceremony_id"], "credential": self.authn.get(b["options"])})
 
-    def unlock(self, key=KEY):
-        return self.post("/api/unlock", {"main_key": B64(key)})
+    def unlock(self, key=None):
+        return self.post("/api/unlock", {"main_key": B64(KEY if key is None else key)})
 
 
 def build():
