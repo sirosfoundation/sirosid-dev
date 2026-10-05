@@ -1,0 +1,72 @@
+# Deploys the sirosid-dev control plane (deploy/control-plane/) to Fly.
+#
+#   manual:  Actions -> "deploy control plane" -> Run workflow
+#   tag:     git tag control-plane-v1.2.3 && git push origin control-plane-v1.2.3
+#
+# Nothing is built on the runner: `flyctl deploy --remote-only` sends the build
+# context (the repository root, filtered by the allow-list .dockerignore) to Fly's
+# remote builder. The credential is an APP-SCOPED deploy token for the control-plane
+# app only (`fly tokens create deploy -a sirosid-control-plane`), stored as the
+# environment secret FLY_DEPLOY_TOKEN_CONTROL_PLANE - never the org token the
+# service itself runs with.
+#
+# Environment protection: the job runs in the `control-plane` environment. Configure
+# it (Settings -> Environments) with required reviewers and "Deployment branches and
+# tags: selected" = main + control-plane-v*, so neither a branch push nor a fork can
+# reach the secret. Third-party actions are pinned to full commit SHAs
+# (tests/test_control_plane_deploy.py enforces it).
+name: deploy control plane
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "control-plane-v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-control-plane
+  cancel-in-progress: false
+
+env:
+  APP: sirosid-control-plane
+  # Same pin as deploy/control-plane/Dockerfile (a test keeps the two equal).
+  FLYCTL_VERSION: "0.4.111"
+  FLYCTL_SHA256: "1878d7fb1f8a418039042cf0749e4b7216c6c7018b66ae10611a64c2b6d9aa9e"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: control-plane
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install flyctl (pinned, sha256-verified)
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/flyctl.tgz "https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz"
+          echo "${FLYCTL_SHA256}  /tmp/flyctl.tgz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin" && tar -xzf /tmp/flyctl.tgz -C "$HOME/.local/bin" flyctl
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Deploy (remote build)
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_CONTROL_PLANE }}
+        run: |
+          flyctl deploy . --app "$APP" \
+            --config deploy/control-plane/fly.toml \
+            --dockerfile deploy/control-plane/Dockerfile \
+            --remote-only --wait-timeout 10m
+
+      - name: Health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://${APP}.fly.dev/healthz" | grep -q '"ok":true'; then echo healthy; exit 0; fi
+            sleep 10
+          done
+          echo "::error::${APP} did not answer /healthz"; exit 1
