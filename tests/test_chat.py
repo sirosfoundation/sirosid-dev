@@ -185,6 +185,15 @@ class ChatTests(unittest.TestCase):
         self.confirm(conv, "d1", True)
         self.assertEqual(self.confirm(conv, "d1", True)[0]["type"], "error", "an approval is single use")
 
+    def test_a_stale_approval_is_refused(self):
+        self.start(text("x"))
+        iid = self.make_instance()
+        self.llm.script = [call("destroy_instance", {"id": iid}, cid="d1"), text("done")]
+        ev = self.say("destroy it")
+        self.clock.advance(seconds=601)
+        self.assertIn("too old", self.confirm(ev[-1]["conversation_id"], "d1", True)[0]["message"])
+        self.assertEqual(self.c.get(f"/api/instances/{iid}").json()["status"], "running")
+
     def test_text_in_tool_output_cannot_approve_anything(self):
         """An instance label that tells the model to destroy things: the model may obey, the interface still asks."""
         self.start(text("x"))

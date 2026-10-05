@@ -31,6 +31,9 @@ from .vault import Locked
 
 log = logging.getLogger("sirosid.chat")
 
+# An approval request that sits unanswered this long is dropped (a stale click must not destroy things).
+APPROVAL_TTL = 600.0
+
 # Offered to the model: everything McpServer has except these.
 WITHHELD_TOOLS = frozenset({"get_instance_credentials"})
 
@@ -73,6 +76,7 @@ class _Pending:
     calls: List[dict]
     index: int = 0
     awaiting: str = ""
+    asked_at: float = 0.0
 
 
 @dataclass
@@ -214,6 +218,9 @@ class ChatService:
             p = conv.pending
             if not p or p.awaiting != call_id:
                 raise ChatError("there is nothing to approve here (it may already be answered)")
+            if self.clock() - p.asked_at > APPROVAL_TTL:
+                conv.pending = None
+                raise ChatError("that approval request is too old; ask again")
             call = p.calls[p.index]
             p.awaiting = ""
             if approve:
@@ -261,7 +268,7 @@ class ChatService:
             if not calls:
                 emit({"type": "done", "conversation_id": conv.id, "usage": self.status(who)["usage"]})
                 return
-            conv.pending = _Pending(record["tool_calls"])
+            conv.pending = _Pending(record["tool_calls"], asked_at=self.clock())
             if not self._process_calls(who, conv, emit):
                 return                                         # paused: waiting for the user's approval
         emit({"type": "error", "message": "I stopped after several steps without finishing. Tell me how to continue."})
@@ -276,6 +283,7 @@ class ChatService:
             if tool is not None and tool.spec["annotations"]["destructiveHint"]:
                 args = self._args(call)
                 p.awaiting = call["id"]
+                p.asked_at = self.clock()
                 emit({"type": "confirm", "conversation_id": conv.id, "call_id": call["id"], "name": tool.name,
                       "title": tool.spec["title"], "args": args if isinstance(args, dict) else {}})
                 return False

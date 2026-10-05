@@ -280,7 +280,8 @@ async function assistantScreen() {
     log.replaceChildren(...chat.items.map(item));
     log.scrollTop = log.scrollHeight;
     usage.textContent = `${chat.status.usage.used.toLocaleString()} of ${chat.status.usage.limit.toLocaleString()} tokens used today`;
-    send.disabled = chat.busy || !state.me.unlocked;
+    const waiting = chat.items.some((x) => x.kind === "confirm" && !x.answered);
+    send.disabled = chat.busy || waiting || !state.me.unlocked;
     model.disabled = !!chat.id;
   };
   const run = async (path, body) => {

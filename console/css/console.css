@@ -4,7 +4,7 @@
 body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 system-ui, sans-serif; }
 header { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line); }
 h1 { font-size:18px; margin:0; } h2 { font-size:16px; margin:20px 0 8px; }
-nav { display:flex; gap:4px; flex:1; } #who { color:var(--muted); font-size:13px; }
+nav { display:flex; flex-wrap:wrap; gap:4px; flex:1; } #who { color:var(--muted); font-size:13px; }
 main { max-width:920px; margin:0 auto; padding:16px; }
 button, input, select, textarea { font:inherit; color:inherit; background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
 button { cursor:pointer; } button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
