@@ -40,11 +40,8 @@ if [ "$(id -u)" = 0 ]; then
     exec setpriv --reuid="$RUN_AS" --regid="$RUN_AS" --init-groups env HOME="/home/$RUN_AS" "$0" "$@"
 fi
 
-# Tigris (`fly storage create`) sets AWS_*; Litestream's config names LITESTREAM_*.
-# Exported, never written: the config file only references them.
-export LITESTREAM_ACCESS_KEY_ID="${LITESTREAM_ACCESS_KEY_ID:-${AWS_ACCESS_KEY_ID:-}}"
-export LITESTREAM_SECRET_ACCESS_KEY="${LITESTREAM_SECRET_ACCESS_KEY:-${AWS_SECRET_ACCESS_KEY:-}}"
-
+# The replica settings are the names `fly storage create -a <app>` sets (BUCKET_NAME,
+# AWS_*); the config file only references the keys, Litestream expands them itself.
 rc=0
 "$PYTHON" "$HERE/litestream_config.py" "$CONF" || rc=$?
 case "$rc" in

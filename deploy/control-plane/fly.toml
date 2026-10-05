@@ -12,11 +12,11 @@
 #                                   .github/workflows/rotate-fly-org-token.yml
 #   BUCKET_NAME, AWS_ENDPOINT_URL_S3, AWS_REGION,
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY      set by `fly storage create -a <app>`
-#     (or LITESTREAM_BUCKET / LITESTREAM_ENDPOINT / LITESTREAM_REGION /
-#      LITESTREAM_ACCESS_KEY_ID / LITESTREAM_SECRET_ACCESS_KEY for another S3 store)
 #   OPENROUTER_API_KEY              optional: enables the assistant where the code has it
 
-app = "sirosid-control-plane"
+# Production: app sirosid-console in org sirosfoundation, serving console.sirosid.dev.
+# Its INSTANCES live in sirosdev (SIROSID_FLY_ORG), with an org token for sirosdev.
+app = "sirosid-console"
 primary_region = "arn"
 kill_signal = "SIGTERM"
 kill_timeout = "30s"
@@ -37,6 +37,8 @@ kill_timeout = "30s"
   SIROSID_TICK_SECONDS = "300"
   SIROSID_SWEEP_GRACE_SECONDS = "3600"
   SIROSID_MAX_INSTANCES = "10"
+  # Key prefix of the Litestream replica in BUCKET_NAME.
+  SIROSID_BACKUP_PATH = "sirosid.db"
   # A configured replica that cannot be restored stops the boot (entrypoint.sh);
   # this also refuses to run with NO replica configured.
   SIROSID_REQUIRE_REPLICA = "1"

@@ -322,8 +322,9 @@ class FlyTomlTests(unittest.TestCase):
 
 # ---- Litestream config + entrypoint ---------------------------------------------------
 
+# Exactly what `fly storage create -a <app>` sets as app secrets.
 TIGRIS = {"BUCKET_NAME": "cp-backups", "AWS_ENDPOINT_URL_S3": "https://fly.storage.tigris.dev", "AWS_REGION": "auto",
-          "LITESTREAM_ACCESS_KEY_ID": "tid_SECRETKEYID", "LITESTREAM_SECRET_ACCESS_KEY": "tsec_SECRETVALUE"}
+          "AWS_ACCESS_KEY_ID": "tid_SECRETKEYID", "AWS_SECRET_ACCESS_KEY": "tsec_SECRETVALUE"}
 
 
 class LitestreamConfigTests(unittest.TestCase):
@@ -337,36 +338,37 @@ class LitestreamConfigTests(unittest.TestCase):
         self.assertEqual(cfg["dbs"][0]["path"], "/data/sirosid.db")
         self.assertEqual((rep["type"], rep["bucket"], rep["endpoint"], rep["region"], rep["path"]),
                          ("s3", "cp-backups", "https://fly.storage.tigris.dev", "auto", "sirosid.db"))
-        self.assertEqual(rep["access-key-id"], "${LITESTREAM_ACCESS_KEY_ID}")
-        self.assertEqual(rep["secret-access-key"], "${LITESTREAM_SECRET_ACCESS_KEY}")
+        self.assertEqual(rep["access-key-id"], "${AWS_ACCESS_KEY_ID}")
+        self.assertEqual(rep["secret-access-key"], "${AWS_SECRET_ACCESS_KEY}")
+        self.assertEqual(yaml.safe_load(litestream_config.render({**TIGRIS, "SIROSID_BACKUP_PATH": "p/x.db"})[1])
+                         ["dbs"][0]["replica"]["path"], "p/x.db")
 
     def test_nothing_configured_is_its_own_answer(self):
         self.assertEqual(litestream_config.render({})[0], litestream_config.NOT_CONFIGURED)
 
     def test_half_a_replica_is_refused(self):
-        for env in ({"BUCKET_NAME": "b"}, {**TIGRIS, "LITESTREAM_SECRET_ACCESS_KEY": ""},
+        for env in ({"BUCKET_NAME": "b"}, {**TIGRIS, "AWS_SECRET_ACCESS_KEY": ""}, {**TIGRIS, "AWS_ENDPOINT_URL_S3": ""},
                     {"LITESTREAM_REPLICA_URL": "s3://b/db"}):
             self.assertEqual(litestream_config.render(env)[0], litestream_config.INCOMPLETE, env)
 
     def test_an_s3_url_replica_references_the_keys_and_never_contains_them(self):
         code, text = litestream_config.render({"LITESTREAM_REPLICA_URL": "s3://b/db?endpoint=https://e.example",
-                                               "LITESTREAM_ACCESS_KEY_ID": "tid_SECRETKEYID",
-                                               "LITESTREAM_SECRET_ACCESS_KEY": "tsec_SECRETVALUE"})
+                                               "AWS_ACCESS_KEY_ID": "tid_SECRETKEYID",
+                                               "AWS_SECRET_ACCESS_KEY": "tsec_SECRETVALUE"})
         self.assertEqual(code, 0)
         self.assertNotIn("SECRETKEYID", text)
         self.assertNotIn("SECRETVALUE", text)
-        self.assertEqual(yaml.safe_load(text)["dbs"][0]["replica"]["access-key-id"], "${LITESTREAM_ACCESS_KEY_ID}")
+        self.assertEqual(yaml.safe_load(text)["dbs"][0]["replica"]["access-key-id"], "${AWS_ACCESS_KEY_ID}")
 
     def test_a_url_replica(self):
         code, text = litestream_config.render({"LITESTREAM_REPLICA_URL": "file:///backup/db", "SIROSID_DB": "/x/y.db"})
         self.assertEqual(code, 0)
         self.assertEqual(yaml.safe_load(text)["dbs"][0], {"path": "/x/y.db", "replica": {"url": "file:///backup/db"}})
 
-    def test_the_cli_maps_aws_names_and_writes_no_secret(self):
+    def test_the_cli_writes_no_secret(self):
         out = Path(tempfile.mkdtemp()) / "ls.yml"
         self.addCleanup(shutil.rmtree, out.parent)
-        env = {k: v for k, v in TIGRIS.items() if not k.startswith("LITESTREAM_")}
-        env.update(AWS_ACCESS_KEY_ID="AKIDSECRET", AWS_SECRET_ACCESS_KEY="AWSSECRETVALUE", PATH=os.environ["PATH"])
+        env = {**TIGRIS, "AWS_ACCESS_KEY_ID": "AKIDSECRET", "AWS_SECRET_ACCESS_KEY": "AWSSECRETVALUE", "PATH": os.environ["PATH"]}
         r = subprocess.run([sys.executable, str(DEPLOY / "litestream_config.py"), str(out)], env=env, capture_output=True, text=True)
         self.assertEqual(r.returncode, 0, r.stderr)
         for secret in ("AKIDSECRET", "AWSSECRETVALUE"):
