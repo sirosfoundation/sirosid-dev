@@ -155,6 +155,16 @@ class MachinesClient:
     def start_machine(self, app: str, machine_id: str) -> dict:
         return self._call("POST", f"/apps/{self._q(app)}/machines/{self._q(machine_id)}/start", {})
 
+    def cordon(self, app: str, machine_id: str) -> dict:
+        """Take the machine out of Fly's proxy routing. A stopped machine behind a
+        fly-replay edge is otherwise STARTED by the replay even with its service's
+        autostart off (real Fly, 2026-10-05: event source "proxy"); cordoned, the
+        replay fails and the edge's fallback answers instead."""
+        return self._call("POST", f"/apps/{self._q(app)}/machines/{self._q(machine_id)}/cordon", {})
+
+    def uncordon(self, app: str, machine_id: str) -> dict:
+        return self._call("POST", f"/apps/{self._q(app)}/machines/{self._q(machine_id)}/uncordon", {})
+
     def restart_machine(self, app: str, machine_id: str) -> dict:
         return self._call("POST", f"/apps/{self._q(app)}/machines/{self._q(machine_id)}/restart", {})
 

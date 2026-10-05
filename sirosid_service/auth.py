@@ -49,9 +49,9 @@ class AuthError(ServiceError):
 
 @dataclass(frozen=True)
 class AuthConfig:
-    rp_id: str = "sirosid.dev"
+    rp_id: str = "console.sirosid.dev"
     rp_name: str = "SIROS ID Dev"
-    origins: Tuple[str, ...] = ("https://sirosid.dev",)
+    origins: Tuple[str, ...] = ("https://console.sirosid.dev",)
     challenge_ttl: float = CHALLENGE_TTL
     web_session_ttl: float = WEB_SESSION_TTL
 

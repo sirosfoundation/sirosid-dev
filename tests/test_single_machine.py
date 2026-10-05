@@ -276,9 +276,17 @@ class RoutingTests(unittest.TestCase):
         self.assertEqual(len(default), 1)
         self.assertIn("return 421;", default[0])
         self.assertIn("server_name _;", default[0])
-        self.assertIn("X-Forwarded-Proto $http_x_forwarded_proto", conf)
         self.assertIn("X-Real-IP $http_fly_client_ip", conf)
-        self.assertNotIn("X-Forwarded-Proto $http_x_forwarded_proto", front_nginx_conf(self.N))
+        # A client's X-Forwarded-Proto survives Fly's proxy (real Fly, 2026-10-05): never pass it on.
+        self.assertNotIn("$http_x_forwarded_proto", conf)
+        self.assertIn("X-Forwarded-Proto https;", conf)
+        self.assertNotIn("$http_x_forwarded_proto", front_nginx_conf(self.N))
+        # IPv4 only: 6PN neighbours on the default network (IPv6) must not reach it.
+        listens = re.findall(r"^\s*listen\s+([^;]+);", conf, re.M)
+        self.assertTrue(listens)
+        for listen in listens:
+            self.assertNotIn("[", listen, "an IPv6 listener would be reachable from every app on the org network")
+            self.assertNotIn("ipv6only", listen)
 
     def test_flat_host_pattern_is_required(self):
         self.assertEqual(self.N.flat_host_problem(), "")
@@ -370,6 +378,33 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(r.ok, r.failed)
         self.assertEqual(r.changed, [self.app])
         self.assertEqual(self.h.api.only(self.app)["state"], "started")
+
+    def test_stopped_means_cordoned_so_an_edge_replay_cannot_wake_it(self):
+        """Real Fly: a replay starts a stopped machine even with autostart off; only a
+        cordon keeps it stopped (the edge then shows its 503 page)."""
+        machine = self.h.api.only(self.app)
+        lifecycle.stop_instance(self.h.fly, self.n, machines=self.h.machines)
+        log = [c for c in self.h.api.log if c.endswith(("/cordon", "/stop"))]
+        self.assertEqual([c.rsplit("/", 1)[1] for c in log[-2:]], ["cordon", "stop"], "cordon before the stop")
+        self.assertTrue(machine["cordoned"])
+        lifecycle.start_instance(self.h.fly, self.n, machines=self.h.machines)
+        self.assertFalse(machine["cordoned"])
+        self.assertTrue(self.h.api.log[-1].endswith("/uncordon"), "routable only once the containers are up")
+        # a deploy over a stopped (cordoned) instance leaves it reachable
+        lifecycle.stop_instance(self.h.fly, self.n, machines=self.h.machines)
+        self.h.deploy()
+        self.assertFalse(machine["cordoned"])
+        # and so does a reset
+        lifecycle.stop_instance(self.h.fly, self.n, machines=self.h.machines)
+        self.assertTrue(lifecycle.reset_single_machine(self.h.fly, self.h.machines, self.n).ok)
+        self.assertFalse(machine["cordoned"])
+
+    def test_a_start_that_never_gets_healthy_still_uncordons(self):
+        lifecycle.stop_instance(self.h.fly, self.n, machines=self.h.machines)
+        self.h.api.fail["GET /apps/[^/]+/machines/[^/]+$"] = (500, {"error": "boom"})
+        r = lifecycle.start_instance(self.h.fly, self.n, machines=self.h.machines, ready_timeout=0)
+        self.assertFalse(r.ok)
+        self.assertFalse(self.h.api.only(self.app)["cordoned"])
 
     def test_reset_drops_data_in_place_and_restarts(self):
         before = self.h.api.log[:]

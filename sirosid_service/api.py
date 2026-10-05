@@ -66,7 +66,7 @@ STATIC_DIRS = ("js", "css")
 
 @dataclass
 class ApiConfig:
-    origins: Tuple[str, ...] = ("https://sirosid.dev",)
+    origins: Tuple[str, ...] = ("https://console.sirosid.dev",)
     cookie_max_age: float = 12 * 3600.0
     # Header carrying the real client address behind a trusted proxy (Fly sets
     # Fly-Client-IP). Empty = use the socket peer. Never trust it unless a proxy you
