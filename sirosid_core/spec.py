@@ -19,7 +19,7 @@ spec is internally consistent.
 """
 from dataclasses import dataclass, field, fields
 
-from .naming import Naming
+from .naming import LAYOUT_APPS, LAYOUTS, Naming
 
 # Keys of InstanceSpec that carry a secret. Callers that log or persist a spec
 # for display must use redacted().
@@ -69,9 +69,17 @@ class InstanceSpec:
     # Fly deploy token per consumer, which an org-scoped credential cannot mint, so a hosted
     # service sets this False and resets an instance itself (ControlPlane.reset_instance).
     env_admin: bool = True
+    # "apps" (one Fly app per component) or "single-machine" (one app, one
+    # multi-container machine: sirosid_core/singlemachine.py). Platform-chosen.
+    layout: str = LAYOUT_APPS
+    # Single-machine only: give the app public IPs (<app>.fly.dev answers).
+    # False for an instance reached only through a shared edge app that
+    # fly-replays to it: no public IPs, the org's default network, and the front
+    # nginx then trusts the edge's forwarded headers and refuses unknown hosts.
+    public_ips: bool = True
 
     def naming(self) -> Naming:
-        return Naming(self.env, app_prefix=self.app_prefix, host_pattern=self.host_pattern)
+        return Naming(self.env, app_prefix=self.app_prefix, host_pattern=self.host_pattern, layout=self.layout)
 
     def validate(self, known_components=None):
         """Raise ValueError if the spec contradicts itself. Does not apply policy."""
@@ -80,6 +88,8 @@ class InstanceSpec:
             problems.append("env is required")
         if bool(self.rical_provider_url) != bool(self.rical_root_pem):
             problems.append("rical_provider_url and rical_root_pem must both be set, or neither")
+        if self.layout not in LAYOUTS:
+            problems.append(f"layout must be one of {', '.join(LAYOUTS)}, got {self.layout!r}")
         if self.dc_api_enable not in ("", "true", "false"):
             problems.append(f"dc_api_enable must be '', 'true' or 'false', got {self.dc_api_enable!r}")
         if known_components is not None:
@@ -113,7 +123,8 @@ class InstanceSpec:
                  "trusted_issuers": list, "trusted_verifiers": list, "trusted_verifier_roots": list,
                  "zk_circuits_sources": list, "credential_registries": list, "android_apps": list,
                  "env": str, "region": str, "rical_provider_url": str, "rical_root_pem": str,
-                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "scale_to_zero": bool, "env_admin": bool}
+                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "scale_to_zero": bool, "env_admin": bool,
+                 "layout": str, "public_ips": bool}
         for key, value in data.items():
             if not isinstance(value, kinds[key]):
                 raise ValueError(f"instance spec key {key!r} must be {kinds[key].__name__}, "

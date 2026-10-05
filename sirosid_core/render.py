@@ -192,6 +192,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
         config["server"]["port"] = naming.port("wallet-backend", "http")
         config["server"]["admin_port"] = naming.port("wallet-backend", "admin")
         config["server"]["engine_port"] = naming.port("wallet-backend", "engine")
+        config["server"]["host"] = "127.0.0.1"   # loopback only: see Naming.listen
     config["trust"]["pdp_url"] = f"http://{naming.addr('pdp')}"
     config["trust"]["registry_url"] = f"{proxy_url}/registry"
     # Authenticated - mongodb's own root user/password (fly-up.py generates
@@ -600,7 +601,7 @@ def single_machine_listeners(naming: Naming) -> dict:
     8080, and both gRPC servers to 8090). Through the chart's own extraConfig
     knobs, so the rendered config is still the chart's."""
     def listen(component, kind="http"):
-        return {"addr": f":{naming.port(component, kind)}"}
+        return {"addr": naming.listen(component, kind)}
     return {
         "issuer": {
             "registry": {"extraConfig": {"registry": {
@@ -610,7 +611,7 @@ def single_machine_listeners(naming: Naming) -> dict:
             "apigw": {"extraConfig": {"apigw": {"api_server": listen("vc-apigw")}}},
         },
         "verifier": {"extraConfig": {"verifier": {"api_server": listen("vc-verifier")}}},
-        "pdp": {"extraConfig": {"server": {"port": naming.port("pdp")}}},
+        "pdp": {"extraConfig": {"server": {"host": "127.0.0.1", "port": naming.port("pdp")}}},
     }
 
 

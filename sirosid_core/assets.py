@@ -252,9 +252,13 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
 """
 
 
-def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/well-known/assetlinks.json") -> str:
+def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/well-known/assetlinks.json",
+                           forwarded_proto: str = "$scheme", real_ip: str = "$remote_addr") -> str:
     """The body of wallet-proxy's server block (see wallet_proxy_conf): what the
-    single-machine front nginx serves for the wallet-proxy host, unchanged."""
+    single-machine front nginx serves for the wallet-proxy host. forwarded_proto
+    / real_ip: what goes upstream as X-Forwarded-Proto / X-Real-IP - nginx's own
+    view by default (the apps layout, unchanged), the forwarding edge's headers
+    when the instance is only reachable through one (front_nginx_conf)."""
     http, admin = naming.addr("wallet-backend", "http"), naming.addr("wallet-backend", "admin")
     engine = naming.addr("wallet-backend", "engine")
     return f"""    # Matches go-wallet-backend's own MaxBodySize (pkg/middleware/bodysize.go)
@@ -299,9 +303,9 @@ def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/we
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-IP {real_ip};
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto {forwarded_proto};
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }}
@@ -309,11 +313,93 @@ def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/we
     location / {{
         proxy_pass http://{http};
         proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Real-IP {real_ip};
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Proto {forwarded_proto};
     }}
 """
+
+
+# Public components of a single-machine instance that the front nginx proxies
+# straight through to their own container (wallet-proxy is served by the front
+# itself, see front_nginx_conf).
+FRONT_PASSTHROUGH = ("mini-oidc", "vc-registry", "vc-verifier", "vc-apigw", "wallet-frontend")
+
+
+def front_nginx_conf(naming: Naming, assetlinks_path: str = "/etc/nginx/well-known/assetlinks.json",
+                     behind_edge: bool = False) -> str:
+    """The single-machine layout's only public listener: one nginx on the
+    machine's internal_port, routing by Host (one `server_name` per public
+    component host) to the containers on 127.0.0.1.
+
+    In the apps layout Fly's edge did this routing: each component had its own
+    app and *.fly.dev name. One app has one fly.dev name, so the per-component
+    hostnames come from `naming.host()` on a domain we route here (a wildcard
+    record and certificate, or a shared edge that fly-replays to this app).
+
+    wallet-proxy is folded in: its routes (wallet_proxy_locations, unchanged) are
+    served for its own host, as the DEFAULT server - which is also what answers
+    on <app>.fly.dev, so the admin routes the deploy registers issuers through
+    work before any custom domain exists - and on a loopback port that
+    wallet-frontend's same-origin API proxy calls, exactly as it called
+    wallet-proxy.internal:8090 before. Headers Fly's edge set (X-Forwarded-*,
+    Fly-Client-IP) pass through untouched: nginx forwards client headers.
+
+    Never `depends_on` a slow container: the edge gives up on a machine whose
+    service port is not answering within seconds of a start.
+
+    behind_edge=True is the production shape: the app has no public IPs and a
+    shared edge app fly-replays each request here, with the original Host,
+    Fly-Client-IP and X-Forwarded-Proto intact. Then (and only then) those
+    headers are trusted and passed upstream as the client's, and a request for
+    any Host that is not one of this instance's own public names is refused
+    (421) instead of falling through to a default.
+    """
+    front = naming.port("front")
+    if behind_edge:
+        proto, real_ip, default = "$http_x_forwarded_proto", "$http_fly_client_ip", ""
+        trusted = ("        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;\n"
+                   "        proxy_set_header X-Real-IP $http_fly_client_ip;\n")
+    else:
+        proto, real_ip, default, trusted = "$scheme", "$remote_addr", " default_server", ""
+    blocks = [f"""# Single-machine front (sirosid_core.assets.front_nginx_conf) - generated, do not edit.
+map $http_upgrade $sirosid_connection_upgrade {{
+    default upgrade;
+    ''      close;
+}}
+"""]
+    if behind_edge:
+        blocks.append(f"""server {{
+    listen {front} default_server;
+    server_name _;
+    return 421;
+}}
+""")
+    blocks.append(f"""server {{
+    listen {front}{default};
+    listen {naming.listen('wallet-proxy')};
+    server_name {naming.host('wallet-proxy')};
+
+{wallet_proxy_locations(naming, assetlinks_path, forwarded_proto=proto, real_ip=real_ip)}}}
+""")
+    for component in FRONT_PASSTHROUGH:
+        blocks.append(f"""server {{
+    listen {front};
+    server_name {naming.host(component)};
+    client_max_body_size 10m;
+
+    location / {{
+        proxy_pass http://{naming.addr(component)};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $sirosid_connection_upgrade;
+{trusted}        proxy_read_timeout 300s;
+        proxy_send_timeout 300s;
+    }}
+}}
+""")
+    return "\n".join(blocks)
 
 
 def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = None, env_admin: bool = True) -> str:
@@ -422,7 +508,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     }}
 """) if env_admin else ""
     return f"""server {{
-    listen {naming.port("wallet-frontend")};
+    listen {naming.listen("wallet-frontend")};
     absolute_redirect off;
 
     root /usr/share/nginx/html;

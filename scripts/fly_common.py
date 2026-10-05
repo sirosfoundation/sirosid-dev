@@ -102,6 +102,21 @@ for _name in ("app_exists", "ensure_app", "is_local_docker_image", "push_local_i
 machine_has_mount = FlyClient.machine_has_mount
 
 
+def machines_client():
+    """A Machines API client (sirosid_core.machines) as whoever flyctl runs as:
+    $FLY_API_TOKEN if set, else the logged-in session's token (`flyctl auth
+    token`). The token stays in this process's memory."""
+    import os
+    from sirosid_core.machines import MachinesClient
+    token = os.environ.get("FLY_API_TOKEN", "").strip()
+    if not token:
+        result = subprocess.run(["flyctl", "auth", "token"], capture_output=True, text=True)
+        token = result.stdout.strip().splitlines()[-1].strip() if result.returncode == 0 and result.stdout.strip() else ""
+    if not token:
+        raise SystemExit("no Fly credential for the Machines API: set FLY_API_TOKEN or run `flyctl auth login`")
+    return MachinesClient(token)
+
+
 def app_name(env: str, component: str) -> str:
     return Naming(env).app(component)
 

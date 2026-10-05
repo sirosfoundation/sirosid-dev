@@ -222,6 +222,20 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
     args.conformance = args.conformance or env_cfg["conformance"]
     args.wallet_attestation = args.wallet_attestation or env_cfg["wallet_attestation"]
 
+    host_pattern = args.host_pattern or env_cfg["host_pattern"] or "{app}.fly.dev"
+    if args.single_machine:
+        if args.conformance:
+            raise SystemExit("--single-machine does not support --conformance (its nginx image hard-codes "
+                             "server:8080); deploy it in the default layout")
+        if not (args.host_pattern or env_cfg["host_pattern"]):
+            # One app has ONE <app>.fly.dev name, so every public component needs
+            # its own host on a domain routed to the app. Without one, these
+            # synthetic names only work with an explicit Host header against
+            # https://<app>.fly.dev (curl -H 'Host: ...').
+            host_pattern = "{component}-{id}.sm.invalid"
+            print(f"--single-machine: no --host-pattern, using synthetic hosts {host_pattern!r} (not in DNS; "
+                  "reach them with a Host header against https://<app>.fly.dev)")
+
     return InstanceSpec(
         env=args.env,
         images=image_overrides,
@@ -239,9 +253,12 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
         values=env_values,
         bbs_secret_key=bbs_secret_key or "",
         app_prefix=args.app_prefix or env_cfg["app_prefix"] or "sirosid",
-        host_pattern=args.host_pattern or env_cfg["host_pattern"] or "{app}.fly.dev",
+        host_pattern=host_pattern,
         scale_to_zero=bool(args.scale_to_zero),
-        env_admin=not args.no_env_admin,
+        # env-admin restarts per-app machines with per-app deploy tokens; a
+        # single machine has neither, so the layout implies --no-env-admin.
+        env_admin=not (args.no_env_admin or args.single_machine),
+        **({"layout": "single-machine", "public_ips": not args.no_public_ips} if args.single_machine else {}),
     ).validate([c["name"] for c in COMPONENTS])
 
 
@@ -262,6 +279,17 @@ def main():
     parser.add_argument("--no-env-admin", action="store_true",
                         help="Do not deploy env-admin (and drop its dashboard Storage card and nginx proxy). It needs "
                              "one app-scoped deploy token per consumer, which an org-scoped credential cannot mint.")
+    parser.add_argument("--single-machine", action="store_true",
+                        help="Deploy the instance as ONE Fly app with ONE multi-container machine "
+                             "(sirosid_core/singlemachine.py) instead of one app per component. The app is "
+                             "<prefix>-<env>; public components are routed by Host, so --host-pattern must be "
+                             "flat ('{component}-{id}.<domain>') on a domain routed to the app (default: "
+                             "synthetic '*.sm.invalid' names, testable with a Host header against "
+                             "https://<app>.fly.dev). Implies --no-env-admin; --conformance is refused.")
+    parser.add_argument("--no-public-ips", action="store_true",
+                        help="With --single-machine: allocate no public IPs and stay on the org's default "
+                             "network - the instance is then only reachable through a shared edge app that "
+                             "fly-replays to it, whose forwarded headers its front nginx trusts.")
     parser.add_argument("--org", default="",
                         help="Fly organization to create the apps in (default: sirosfoundation). Use a "
                              "dedicated org for scratch or hosted instances; fly-down needs the same --org.")
@@ -420,6 +448,9 @@ def main():
         except bootstrap.BootstrapError as e:
             raise RegistrationError(str(e)) from e
 
+    if spec.layout == "single-machine":
+        return _single_machine(args, spec, naming, fly_client, chart_dir, rendered_root, identities, register)
+
     try:
         result = deploy_instance(spec, fly_client, naming, Resources(SIROSID_DEV_ROOT),
                                  chart_dir=chart_dir, rendered_root=rendered_root, identities=identities,
@@ -469,6 +500,43 @@ def main():
     print(f"Storage: Mongo data persists on a Fly volume across redeploys. Clear it from the dashboard's")
     print(f"Storage card, or: make fly-storage-clear ENV={args.env}")
     print(f"Tear down with: make fly-down ENV={args.env}   (KEEP_DATA=yes keeps the volume for the next fly-up)")
+
+
+def _single_machine(args, spec, naming, fly_client, chart_dir, rendered_root, identities, register):
+    """--single-machine: the same spec, deployed as one app with one machine."""
+    import time
+    from sirosid_core.singlemachine import deploy_instance_single_machine
+    t0 = time.monotonic()
+    try:
+        result = deploy_instance_single_machine(
+            spec, fly_client, naming, Resources(SIROSID_DEV_ROOT), machines=fly_common.machines_client(),
+            chart_dir=chart_dir, rendered_root=rendered_root, identities=identities, components=COMPONENTS,
+            register=register, render_only=args.render_only)
+    except DeployError as e:
+        print(file=sys.stderr)
+        print(f"=== Single-machine deploy failed at '{e.component}' ===", file=sys.stderr)
+        print(f"Completed steps: {', '.join(e.deployed) or '(none)'}", file=sys.stderr)
+        raise SystemExit(str(e))
+    out_dir = rendered_root / f"fly-{args.env}"
+    if args.render_only:
+        print("=== Images (--render-only: nothing deployed) ===")
+        for name, image in result.images.items():
+            print(f"  {name:<18} {image}")
+        print(f"machine config ({result.machine['config_bytes']} bytes) written to {out_dir / 'machine-config.json'}")
+        return
+    app = naming.machine_app()
+    print()
+    print(f"=== Single-machine instance '{args.env}' is up: app {app}, machine {result.machine['id']} "
+          f"({time.monotonic() - t0:.0f}s) ===")
+    for name, state in sorted(result.machine["containers"].items()):
+        print(f"  container {name:<16} {state}")
+    for name, url in result.urls.items():
+        print(f"  {name}: {url}")
+    if spec.public_ips:
+        print(f"Until those hosts are in DNS: curl -H 'Host: {naming.host('vc-apigw')}' https://{app}.fly.dev/health")
+    print(f"  export ADMIN_TOKEN={result.admin_token}")
+    print(f"Stop/start: make fly-stop/fly-start ENV={args.env} (detected as single-machine); "
+          f"tear down: make fly-down ENV={args.env}")
 
 
 if __name__ == "__main__":

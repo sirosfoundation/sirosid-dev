@@ -1307,23 +1307,24 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [REGION=<co
 		$(if $(RICAL_ROOT_CERT),--rical-root-cert "$(RICAL_ROOT_CERT)") \
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation) \
 		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)") \
+		$(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine) \
 		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)")
 		$(if $(REGION),--region "$(REGION)")
 
 fly-stop: ## Stop every machine of a Fly environment but keep its apps and data (make fly-stop ENV=<name> [ORG=<org>]); fly-start brings it back
 	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV=<name> is required$(NC)"; exit 1; fi
-	python3 scripts/fly-power.py stop --env "$(ENV)" $(if $(ORG),--org "$(ORG)")
+	python3 scripts/fly-power.py stop --env "$(ENV)" $(if $(ORG),--org "$(ORG)") $(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine)
 
 fly-start: ## Start a stopped Fly environment, in deploy order, waiting for health (make fly-start ENV=<name> [ORG=<org>])
 	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV=<name> is required$(NC)"; exit 1; fi
-	python3 scripts/fly-power.py start --env "$(ENV)" $(if $(ORG),--org "$(ORG)")
+	python3 scripts/fly-power.py start --env "$(ENV)" $(if $(ORG),--org "$(ORG)") $(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine)
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name> [KEEP_DATA=yes] - KEEP_DATA leaves the Mongo apps and their volumes, machines stopped, so the next fly-up finds the data again)
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-down ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	python3 scripts/fly-down.py --env "$(ENV)" $(if $(call _truthy,$(KEEP_DATA)),--keep-data)
+	python3 scripts/fly-down.py --env "$(ENV)" $(if $(call _truthy,$(KEEP_DATA)),--keep-data) $(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine)
 
 fly-storage-clear: ## Wipe a Fly environment's data through its env-admin app and re-register issuer/verifier (make fly-storage-clear ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \

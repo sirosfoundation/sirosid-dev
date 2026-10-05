@@ -84,7 +84,10 @@ class Naming:
     # The instance's identity: the CLI's environment name, or a generated id.
     env: str
     app_prefix: str = "sirosid"
-    # Format string for the public hostname. Fields: {app}, {env}, {component}.
+    # Format string for the public hostname. Fields: {app}, {env} (alias {id}),
+    # {component}. A single-machine instance needs FLAT names - every
+    # placeholder in the first label, e.g. "{component}-{id}.sid.example" - so
+    # one one-label wildcard certificate covers every instance (check_flat_host_pattern).
     host_pattern: str = "{app}.fly.dev"
     # "apps" (default: one Fly app per component) or "single-machine".
     layout: str = LAYOUT_APPS
@@ -111,6 +114,32 @@ class Naming:
         host = "127.0.0.1" if self.single_machine else self.internal(component)
         return f"{host}:{self.port(component, kind)}"
 
+    def flat_host_problem(self) -> str:
+        """Why host_pattern cannot serve a single-machine instance, or "".
+
+        One app has one *.fly.dev name, so each public component needs its own
+        host on a domain routed to the app, and a TLS wildcard covers ONE label:
+        the per-instance, per-component part must all sit in the first label
+        ("{component}-{id}.sid.example", not "{component}.{id}.sid.example")."""
+        first, _, domain = self.host_pattern.partition(".")
+        if "{component}" not in first or not ("{id}" in first or "{env}" in first):
+            return (f"host_pattern {self.host_pattern!r}: the first label must hold both {{component}} and "
+                    f"{{id}} (e.g. '{{component}}-{{id}}.sid.example') so one wildcard certificate covers it")
+        if not domain or "{" in domain:
+            return f"host_pattern {self.host_pattern!r}: everything after the first label must be a fixed domain"
+        if domain == "fly.dev" or domain.endswith(".fly.dev"):
+            return (f"host_pattern {self.host_pattern!r}: Fly routes *.fly.dev names to the app of that name, "
+                    f"which does not exist in this layout")
+        return ""
+
+    def listen(self, component: str, kind: str = "") -> str:
+        """What a component's own listener binds. Single-machine: loopback only
+        (Pilot's health checks come in over loopback - verified - and nothing
+        outside the machine needs these ports; on an org's default network every
+        other app could otherwise reach them). The apps layout: just the port."""
+        port = self.port(component, kind)
+        return f"127.0.0.1:{port}" if self.single_machine else str(port)
+
     def to_dict(self) -> dict:
         """What a service persists in plaintext so lifecycle works with nobody
         logged in. `layout` is omitted for the apps layout so rows written before
@@ -132,7 +161,8 @@ class Naming:
         return f"{self.app(component)}.internal"
 
     def host(self, component: str) -> str:
-        return self.host_pattern.format(app=self.app(component), env=self.env, component=component)
+        # {id} is {env} under the name a hosted service uses for it.
+        return self.host_pattern.format(app=self.app(component), env=self.env, id=self.env, component=component)
 
     def url(self, component: str) -> str:
         return f"https://{self.host(component)}"
