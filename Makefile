@@ -888,7 +888,7 @@ ifneq ($(GOLDEN),)
 		{ [ -n "$${TUNNEL_VC_APIGW_URL:-}" ] && export ENV_ADMIN_ISSUER_URL="$$TUNNEL_VC_APIGW_URL" || true; } && \
 		{ [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ] && export ENV_ADMIN_VERIFIER_URL="$$TUNNEL_VC_VERIFIER_URL" || true; } && \
 		{ _ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
-		  [ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; } && \
+		  [ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" WALLET_ANDROID_RP_ORIGINS="$$_ANDROID_ORIGINS" || true; } && \
 	WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
@@ -906,7 +906,7 @@ endif
 	[ -n "$${TUNNEL_VC_APIGW_URL:-}" ] && export ENV_ADMIN_ISSUER_URL="$$TUNNEL_VC_APIGW_URL" || true; \
 	[ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ] && export ENV_ADMIN_VERIFIER_URL="$$TUNNEL_VC_VERIFIER_URL" || true; \
 	_ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
-	[ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; \
+	[ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" WALLET_ANDROID_RP_ORIGINS="$$_ANDROID_ORIGINS" || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) FACETEC_PATH=$(FACETEC_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build >$$_LOG 2>&1; \
