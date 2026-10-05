@@ -44,6 +44,7 @@ class Settings:
     host: str
     port: int
     console_dir: str
+    sweep_grace_seconds: float = 3600.0
     # "apps" (one Fly app per component) or "single-machine" (one app `sid-<id>` per
     # instance, reached through the shared edge).
     layout: str = LAYOUT_APPS
@@ -73,6 +74,7 @@ class Settings:
             client_ip_header=_env("SIROSID_CLIENT_IP_HEADER", "Fly-Client-IP"),
             max_instances=int(_env("SIROSID_MAX_INSTANCES", "10")), host=_env("SIROSID_HOST", "0.0.0.0"), port=int(_env("PORT", "8080")),
             console_dir=_env("SIROSID_CONSOLE_DIR", str(root / "console")),
+            sweep_grace_seconds=float(_env("SIROSID_SWEEP_GRACE_SECONDS", "3600")),
             layout=layout, instance_domain=instance_domain, public_ips=public_ips in _TRUE)
         s.validate()
         return s
@@ -109,6 +111,13 @@ class Settings:
             if instance_host_may_be(self.host_pattern, name):
                 problems.append(f"instance hosts ({self.host_pattern}) could be {name} or under it: nothing untrusted may "
                                 f"be served at or under the console's RP ID or origin - instances must be its siblings")
+        if self.tick_seconds <= 0:
+            problems.append("SIROSID_TICK_SECONDS must be positive")
+        if self.sweep_grace_seconds < 60:
+            # The sweeper destroys apps that look like ours but have no live row; the
+            # grace is what lets a human notice (and a restored database catch up)
+            # before anything is deleted. Shorten it for a test, never to nothing.
+            problems.append("SIROSID_SWEEP_GRACE_SECONDS must be at least 60")
         if problems:
             raise SystemExit("configuration problems:\n  " + "\n  ".join(problems))
 

@@ -1,0 +1,12 @@
+#!/bin/sh
+# `python -m sirosid_service <command>` as the service user, for `fly ssh console`
+# (which logs in as root): a database file or WAL created by root would lock the
+# service out of its own data.
+#
+#   fly ssh console -a <app> -C "sirosid-admin admin-invite"
+set -eu
+cd /app
+if [ "$(id -u)" = 0 ]; then
+    exec setpriv --reuid=app --regid=app --init-groups env HOME=/home/app python3 -m sirosid_service "$@"
+fi
+exec python3 -m sirosid_service "$@"

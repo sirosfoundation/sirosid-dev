@@ -64,6 +64,7 @@ class FakeFly:
         def run(cmd, **kw):
             if cmd and cmd[0] == "flyctl":
                 self.tokens_seen.append((kw.get("env") or {}).get("FLY_API_TOKEN"))
+                self.stdin = kw.get("input")       # `secrets import` reads NAME=VALUE lines
                 return self.handle(cmd[1:])
             if cmd and cmd[0] == "docker":
                 self.log.append("docker " + " ".join(str(c) for c in cmd[1:]))
@@ -123,6 +124,12 @@ class FakeFly:
                     k, v = kv.split("=", 1)
                     self._app(app)["secrets"][k] = v
             return _cp(argv)
+        if head == "secrets" and sub == "import":
+            for line in (getattr(self, "stdin", None) or "").splitlines():
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    self._app(app)["secrets"][k] = v
+            return _cp(argv)
         if head == "volumes" and sub == "list":
             return _cp(argv, stdout=json.dumps(self._app(app)["volumes"]))
         if head == "volumes" and sub == "create":
@@ -152,6 +159,8 @@ class FakeFly:
         if head == "checks" and sub == "list":
             return _cp(argv, stdout=json.dumps(
                 {m["id"]: [{"name": "fake", "status": "passing"}] for m in self._app(app)["machines"]}))
+        if head == "tokens" and argv[1:3] in (["create", "org"], ["list", "-o"]) and not app:
+            return self._org_tokens(argv)
         if head == "tokens" and sub == "create":
             tok = f"FlyV1 fake-token-{app}"
             self._app(app)["tokens"].append({"ID": self._id("tok_"), "Name": self._opt(argv, "--name", default="")})
@@ -166,6 +175,11 @@ class FakeFly:
         if head == "tokens" and sub == "revoke":
             for a in self.apps.values():
                 a["tokens"] = [x for x in a["tokens"] if x["ID"] not in argv[2:]]
+            for t in getattr(self, "org_tokens", []):
+                if t["ID"] in argv[2:] and not t["revoked"]:
+                    t["revoked"] = "2026-10-05 12:00:00 +0000 UTC"
+            return _cp(argv)
+        if head == "secrets" and sub == "deploy":
             return _cp(argv)
         if head == "ssh":
             return _cp(argv, returncode=1)   # nothing readable from a fake machine
@@ -173,6 +187,22 @@ class FakeFly:
             self._deploy(app, argv)
             return _cp(argv)
         return _cp(argv, returncode=1, stderr=f"fake flyctl: unhandled {head} {sub}")
+
+    def _org_tokens(self, argv):
+        """Org-scoped tokens as the real flyctl shows them: `tokens list -o <org> -s org`
+        is a box-drawn table with a REVOKED AT column, and revoked tokens stay listed."""
+        self.org_tokens = getattr(self, "org_tokens", [])
+        org = self._opt(argv, "-o", "--org")
+        if argv[1] == "create":
+            self._n += 1
+            tok = {"ID": f"orgtok{self._n:04d}", "Name": self._opt(argv, "-n", "--name", default="Org deploy token"),
+                   "org": org, "revoked": "", "token": f"FlyV1 fm2_fake-org-token-{self._n:04d}"}
+            self.org_tokens.append(tok)
+            return _cp(argv, stdout=json.dumps({"token": tok["token"]}) if "--json" in argv else tok["token"] + "\n")
+        rows = "".join(f" {t['ID']} │ {t['Name']} │ someone │ 2027-01-01 00:00:00 +0000 UTC │ {t['revoked']} \n"
+                       for t in self.org_tokens if t["org"] == org)
+        return _cp(argv, stdout=f'Tokens for organization "{org}":\n'
+                                " ID │ NAME │ CREATED BY │ EXPIRES AT │ REVOKED AT \n" + rows)
 
     def _deploy(self, app, argv):
         a = self._app(app)

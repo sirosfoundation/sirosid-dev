@@ -1,0 +1,13 @@
+# The control plane image's direct dependencies, pinned to the versions the service
+# tests run with (sirosid_service/requirements.txt gives the ranges; httpx there is
+# only for Starlette's TestClient and is not shipped). sirosid_core needs PyYAML.
+#
+# requirements.lock is generated from this file, with hashes (pip install
+# --require-hashes refuses anything else):
+#   pip-compile --generate-hashes --strip-extras --no-emit-index-url \
+#       -o deploy/control-plane/requirements.lock deploy/control-plane/requirements.in
+cryptography==50.0.2
+starlette==1.7.0
+uvicorn==0.54.0
+webauthn==3.0.1
+PyYAML==6.0.3

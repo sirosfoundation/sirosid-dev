@@ -30,7 +30,9 @@ def build(settings: Settings, runner=None, register=None):
                               scale_to_zero=True, env_admin=False, layout=settings.layout,
                               public_ips=settings.public_ips)
     cp = ControlPlane(db, fly, Resources(settings.resources_root), platform=platform,
-                      limits=Limits(global_max_instances=settings.max_instances), runner=runner or ThreadRunner(),
+                      limits=Limits(global_max_instances=settings.max_instances,
+                                    sweep_grace_seconds=settings.sweep_grace_seconds),
+                      runner=runner or ThreadRunner(),
                       register=register)
     auth = AuthService(cp, AuthConfig(rp_id=settings.rp_id, rp_name=settings.rp_name, origins=settings.origins))
     app = create_app(cp, auth, ApiConfig(origins=settings.origins, client_ip_header=settings.client_ip_header,

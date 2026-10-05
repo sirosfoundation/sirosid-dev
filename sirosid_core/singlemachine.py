@@ -407,7 +407,7 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
                                    identities: list = None, components: list = None, register=None,
                                    progress=print, render_only: bool = False, registry: Registry = None,
                                    guest: dict = None, ready_timeout: float = 900,
-                                   push_credential: str = "") -> DeployResult:
+                                   push_credential: str = "", secrets_dir: Path = None) -> DeployResult:
     """Deploy `spec` as ONE Fly app with ONE multi-container machine.
 
     Same contract as deploy.deploy_instance: prints nothing (progress callback),
@@ -460,7 +460,7 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
                           zk_circuits_sources=spec.zk_circuits_sources, dc_api_enable=spec.dc_api_enable,
                           credential_registries=spec.credential_registries, env_values=spec.values,
                           bbs_secret_key=spec.bbs_secret_key or None, naming=naming, resources=resources,
-                          say=say, warn=say)
+                          say=say, warn=say, secrets_dir=secrets_dir)
         except HelmError as e:
             raise DeployError(str(e), component="render") from e
         step("render")

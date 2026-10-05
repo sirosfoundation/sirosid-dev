@@ -29,7 +29,11 @@ from pathlib import Path
 from typing import Dict, Protocol
 
 STATE_FILES = ("mongoRootPassword", "jwtSecret", "adminToken", "apiAuthKey.pem")
-STATE_DIRS = ("vc-pki",)
+# vc-secrets: the vc services' generated secrets (subject salt, admin GUI password,
+# ...) when the caller keeps them per instance (deploy_instance(secrets_dir=...), what
+# a service does). The CLI keeps them in fixtures/rendered-secrets, shared, as before.
+VC_SECRETS_DIR = "vc-secrets"
+STATE_DIRS = ("vc-pki", VC_SECRETS_DIR)
 
 Blobs = Dict[str, bytes]
 

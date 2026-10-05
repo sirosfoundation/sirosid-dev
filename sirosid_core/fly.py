@@ -544,3 +544,23 @@ class FlyClient:
             return
         encoded = base64.b64encode(value.encode()).decode()
         self.run("secrets", "set", f"{key}={encoded}", "-a", app, "--stage")
+
+    def import_secrets(self, app: str, values: dict, stage: bool = True):
+        """Set env-var secrets (used as-is, NOT base64 like ensure_secret's
+        --file-secret ones) through `flyctl secrets import`, which reads NAME=VALUE
+        from stdin: the values never appear on a command line (so not in `ps`, not
+        in this client's own "+ flyctl ..." trace, not in a CI log). Only the names
+        are reported. Raises FlyError without flyctl's output, which could echo input."""
+        for k, v in values.items():
+            if not k or "=" in k or "\n" in k or "\n" in str(v):
+                raise FlyError(f"secret {k!r}: names must not contain '=' and values must be one line")
+        cmd = ["flyctl", "secrets", "import", "-a", app] + (["--stage"] if stage else [])
+        self._warn("+ " + " ".join(cmd) + "  # " + ", ".join(sorted(values)) + " from stdin")
+        kw = {"text": True, "capture_output": True, "input": "".join(f"{k}={v}\n" for k, v in values.items())}
+        env = self._env()
+        if env is not None:
+            kw["env"] = env
+        result = self._runner(cmd, **kw)
+        if result.returncode != 0:
+            raise FlyError(f"flyctl secrets import failed (exit {result.returncode}) for {', '.join(sorted(values))} on {app}")
+        return result

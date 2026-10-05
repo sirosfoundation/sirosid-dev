@@ -1,0 +1,43 @@
+# Build context = the repository root, for env-admin/Dockerfile and
+# deploy/control-plane/Dockerfile. ALLOW-LIST: nothing reaches a builder (Fly's remote
+# builder included) unless it is named here, so a new local secret file cannot leak
+# by accident. tests/test_control_plane_deploy.py checks that every COPY source of
+# both Dockerfiles survives this file and that the generated-secret paths do not.
+*
+
+# env-admin/Dockerfile
+!env-admin/server.py
+!scripts/bootstrap.py
+
+# deploy/control-plane/Dockerfile
+!deploy/control-plane/requirements.lock
+!deploy/control-plane/entrypoint.sh
+!deploy/control-plane/litestream_config.py
+!deploy/control-plane/sirosid-admin
+!chart
+!values-base.yaml
+!values-dev.yaml
+!values-fly.yaml
+!fixtures
+!console
+!sirosid_core
+!sirosid_service
+
+# ...minus what is generated locally and gitignored under the allowed directories:
+# rendered configs and per-environment secrets, PKI keys, WRPAC CA state.
+fixtures/rendered
+fixtures/rendered-secrets
+fixtures/vc-pki/*.key
+fixtures/vc-pki/*.crt
+fixtures/vc-pki/*.pem
+fixtures/vc-pki/*.sk
+fixtures/vc-pki/*.pk
+fixtures/wrpac-pki
+fixtures/wrpac-clients/*.key
+fixtures/wrpac-clients/*.csr
+fixtures/wrpac-clients/*.issued
+fixtures/well-known
+fixtures/go-trust-whitelist-local.json
+console/test
+**/__pycache__
+**/*.pyc

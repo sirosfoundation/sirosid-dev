@@ -9,6 +9,7 @@ org with its own credential. Slow work (deploy, reset) runs through an injected
 Runner: threads in production, inline in tests.
 """
 import json
+import logging
 import re
 import secrets
 import time
@@ -31,6 +32,8 @@ from sirosid_core.spec import InstanceSpec
 
 from .db import Database, SealedStateStore, delete_state, hash_token
 from .vault import KEY_CHECK_PLAINTEXT, Locked, SessionKeys, VaultError, aad
+
+log = logging.getLogger("sirosid.service")
 
 DAY = 86400.0
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
@@ -107,7 +110,15 @@ class ThreadRunner:
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="cp-job")
 
     def submit(self, fn, *args):
-        self._pool.submit(fn, *args)
+        self._pool.submit(self._run, fn, *args)
+
+    @staticmethod
+    def _run(fn, *args):
+        # A pool swallows a job's exception into a Future nobody reads: log it.
+        try:
+            fn(*args)
+        except Exception:                                   # noqa: BLE001
+            log.exception("background job %s failed", getattr(fn, "__name__", fn))
 
 
 def generate_instance_id(rng=secrets) -> str:
@@ -524,18 +535,28 @@ class ControlPlane:
         store = SealedStateStore(self.db, sealer, r["owner"])
         try:
             with state_mod.workdir(store, iid, subdir=f"fly-{iid}") as scratch:
+                # Per instance and sealed with its state - never the shared, read-only resources.
+                secrets_dir = scratch / f"fly-{iid}" / state_mod.VC_SECRETS_DIR
                 if spec.layout == LAYOUT_SINGLE_MACHINE:
                     result = deploy_instance_single_machine(
                         spec, self.fly, spec.naming(), self.resources, machines=self.machines,
-                        rendered_root=scratch, register=self.register, progress=None, registry=self.registry)
+                        rendered_root=scratch, register=self.register, progress=None, registry=self.registry,
+                        secrets_dir=secrets_dir)
                 else:
                     result = deploy_instance(spec, self.fly, spec.naming(), self.resources, rendered_root=scratch,
-                                             register=self.register, progress=None)
+                                             register=self.register, progress=None, secrets_dir=secrets_dir)
             self._set(iid, status="running", urls=_json(result.urls), error="")
             self.db.audit("system", "deployed", iid)
         except (DeployError, FlyError, MachinesError, policy_mod.PolicyError, VaultError) as e:
             self._set(iid, status="failed", error=str(e)[:500])
             self.db.audit("system", "deploy_failed", iid, error=str(e)[:200])
+        except Exception as e:                              # noqa: BLE001
+            # Anything else (a bug, a read-only file, a missing binary) must still end
+            # the job in a state the owner can see and act on - not 'creating' forever.
+            log.exception("deploy of %s failed unexpectedly", iid)
+            msg = f"internal error during deploy ({type(e).__name__}: {e})"[:500]
+            self._set(iid, status="failed", error=msg)
+            self.db.audit("system", "deploy_failed", iid, error=msg[:200])
 
     def stop_instance(self, who: Principal, iid: str) -> dict:
         r = self._instance_row(who, iid)
@@ -623,6 +644,9 @@ class ControlPlane:
             self.db.audit("system", "reset_done", iid)
         except (DeployError, VaultError) as e:
             self._set(iid, status="failed", error=str(e)[:500])
+        except Exception as e:                              # noqa: BLE001
+            log.exception("reset of %s failed unexpectedly", iid)
+            self._set(iid, status="failed", error=f"internal error during reset ({type(e).__name__}: {e})"[:500])
 
     def set_keep(self, who: Principal, iid: str, keep: bool) -> dict:
         r = self._instance_row(who, iid)

@@ -1,0 +1,74 @@
+# The sirosid-dev control plane on Fly. Runbook: deploy/control-plane/README.md.
+#
+#   flyctl deploy . -c deploy/control-plane/fly.toml \
+#       --dockerfile deploy/control-plane/Dockerfile --remote-only
+#
+# ONE machine, always on: SQLite has one writer (and Litestream one replicator), and
+# the TTL reaper and orphan sweeper tick inside the service process, so a stopped
+# machine would stop them. Never `fly scale count 2`.
+#
+# Secrets (set with `fly secrets`, never here; see the README):
+#   FLY_API_TOKEN                   org token for `sirosdev`, rotated by
+#                                   .github/workflows/rotate-fly-org-token.yml
+#   BUCKET_NAME, AWS_ENDPOINT_URL_S3, AWS_REGION,
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY      set by `fly storage create -a <app>`
+#   OPENROUTER_API_KEY              optional: enables the assistant where the code has it
+
+# Production: app sirosid-console in org sirosfoundation, serving console.sirosid.dev.
+# Its INSTANCES live in sirosdev (SIROSID_FLY_ORG), with an org token for sirosdev.
+app = "sirosid-console"
+primary_region = "arn"
+kill_signal = "SIGTERM"
+kill_timeout = "30s"
+
+[env]
+  SIROSID_DB = "/data/sirosid.db"
+  SIROSID_RESOURCES = "/app"
+  SIROSID_ORIGINS = "https://console.sirosid.dev"
+  SIROSID_RP_ID = "console.sirosid.dev"
+  SIROSID_RP_NAME = "SIROS ID Dev"
+  SIROSID_FLY_ORG = "sirosdev"
+  SIROSID_REGION = "arn"
+  SIROSID_APP_PREFIX = "sid"
+  # One Fly app + one machine per instance (`sid-<id>`, no public IPs), reached through the shared edge
+  # app at <component>-<id>.sirosid.dev. These are SIBLINGS of the console, never under it (CLAUDE.md:
+  # nothing untrusted at or under the console's RP ID); the host pattern is derived from the domain.
+  SIROSID_LAYOUT = "single-machine"
+  SIROSID_INSTANCE_DOMAIN = "sirosid.dev"
+  SIROSID_CLIENT_IP_HEADER = "Fly-Client-IP"
+  SIROSID_TICK_SECONDS = "300"
+  SIROSID_SWEEP_GRACE_SECONDS = "3600"
+  SIROSID_MAX_INSTANCES = "10"
+  # Key prefix of the Litestream replica in BUCKET_NAME.
+  SIROSID_BACKUP_PATH = "sirosid.db"
+  # A configured replica that cannot be restored stops the boot (entrypoint.sh);
+  # this also refuses to run with NO replica configured.
+  SIROSID_REQUIRE_REPLICA = "1"
+
+[[mounts]]
+  source = "sirosid_data"
+  destination = "/data"
+  initial_size = "1gb"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "15s"
+    timeout = "5s"
+    method = "GET"
+    path = "/healthz"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
