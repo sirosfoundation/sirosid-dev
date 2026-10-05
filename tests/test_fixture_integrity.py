@@ -80,6 +80,9 @@ IDENTITY_CLAIMS = {
                  ("family_name",): "family_name"},
     "mdl_zk4": {("given_name",): "given_name",
                 ("family_name",): "family_name"},
+    "photoid": {("given_name_unicode",): "given_name",
+                ("family_name_unicode",): "family_name",
+                ("birth_date",): "birth_date"},
     # The EBW attestations describe a legal person, but three of them still
     # name the natural person holding the wallet.
     "iban_ov": {("account_ownership", "given_name"): "given_name",
@@ -108,6 +111,11 @@ AGE_DERIVATIONS = {
     }),
     "pid_mdoc": (None, {("age_over_18",): lambda age, year: age >= 18}),
     "mdl_zk4": (None, {("age_over_18",): lambda age, year: age >= 18}),
+    "photoid": (("birth_date",), {
+        ("age_in_years",): lambda age, year: age,
+        ("age_birth_year",): lambda age, year: year,
+        ("age_over_18",): lambda age, year: age >= 18,
+    }),
 }
 
 
