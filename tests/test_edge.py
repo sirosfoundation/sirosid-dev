@@ -196,6 +196,13 @@ class ConfigShape(unittest.TestCase):
 
 
 class StaticSite(unittest.TestCase):
+    def test_nothing_under_well_known_is_published_on_the_apex(self):
+        """Chrome's Related Origin Requests: a served /.well-known/webauthn would let listed origins use
+        the apex as their RP ID. The config answers 404 and the static root must have no such directory."""
+        conf = edge_nginx_conf("sirosid.dev", ["wallet-frontend"])
+        self.assertRegex(conf, r"location \^~ /\.well-known/ \{\s*return 404;")
+        self.assertFalse((ROOT / "edge" / "site" / ".well-known").exists())
+
     def test_site_has_no_inline_code_or_external_assets(self):
         site = ROOT / "edge" / "site"
         files = {p.name: p.read_text() for p in site.iterdir()}

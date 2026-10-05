@@ -241,6 +241,12 @@ server {{
         return 200 "ok\\n";
     }}
 
+    # Chrome honours /.well-known/webauthn (Related Origin Requests): a host that serves it lets the
+    # origins it lists use this host as their RP ID. Nothing under /.well-known/ is ever published here.
+    location ^~ /.well-known/ {{
+        return 404;
+    }}
+
     location / {{
         limit_except GET {{
             deny all;
