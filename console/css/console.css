@@ -24,3 +24,8 @@ pre { overflow:auto; background:var(--card); padding:8px; border-radius:6px; fon
 @media (max-width:600px) { header { padding:8px 12px; } main { padding:12px; } }
 .grow { flex:1; }
 .card { overflow-x:auto; } a { color:var(--accent); } td.row { display:table-cell; text-align:right; white-space:nowrap; }
+.chat-log { min-height:240px; max-height:55vh; overflow-y:auto; border:1px solid var(--line); border-radius:8px; padding:8px; margin:10px 0; }
+.msg { padding:6px 10px; margin:6px 0; border-radius:8px; white-space:pre-wrap; overflow-wrap:anywhere; }
+.msg.user { background:var(--card); margin-left:15%; } .msg.assistant { border:1px solid var(--line); margin-right:15%; }
+.msg.tool { font-size:12px; font-family:ui-monospace, monospace; padding:0 10px; }
+.chat-input { min-height:80px; }

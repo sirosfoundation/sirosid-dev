@@ -31,6 +31,10 @@ class Settings:
     host: str
     port: int
     console_dir: str
+    openrouter_api_key: str = ""
+    chat_models: Tuple[str, ...] = ()
+    chat_user_daily_tokens: int = 300_000
+    chat_global_daily_tokens: int = 3_000_000
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -43,7 +47,11 @@ class Settings:
             region=_env("SIROSID_REGION", "arn"), tick_seconds=float(_env("SIROSID_TICK_SECONDS", "300")),
             client_ip_header=_env("SIROSID_CLIENT_IP_HEADER", "Fly-Client-IP"),
             max_instances=int(_env("SIROSID_MAX_INSTANCES", "10")), host=_env("SIROSID_HOST", "0.0.0.0"), port=int(_env("PORT", "8080")),
-            console_dir=_env("SIROSID_CONSOLE_DIR", str(root / "console")))
+            console_dir=_env("SIROSID_CONSOLE_DIR", str(root / "console")),
+            openrouter_api_key=_env("OPENROUTER_API_KEY"),
+            chat_models=tuple(m.strip() for m in _env("SIROSID_CHAT_MODELS").split(",") if m.strip()),
+            chat_user_daily_tokens=int(_env("SIROSID_CHAT_USER_DAILY_TOKENS", "300000")),
+            chat_global_daily_tokens=int(_env("SIROSID_CHAT_GLOBAL_DAILY_TOKENS", "3000000")))
         s.validate()
         return s
 
@@ -59,5 +67,9 @@ class Settings:
                 problems.append(f"origin {o} is not under the RP ID {self.rp_id}")
         if "{app}" not in self.host_pattern and "{env}" not in self.host_pattern:
             problems.append("SIROSID_HOST_PATTERN must contain {app} or {env}, or every instance would share a hostname")
+        if self.chat_models and not self.openrouter_api_key:
+            problems.append("SIROSID_CHAT_MODELS is set but OPENROUTER_API_KEY is not")
+        if self.chat_user_daily_tokens <= 0 or self.chat_global_daily_tokens <= 0:
+            problems.append("the assistant's token budgets must be positive")
         if problems:
             raise SystemExit("configuration problems:\n  " + "\n  ".join(problems))

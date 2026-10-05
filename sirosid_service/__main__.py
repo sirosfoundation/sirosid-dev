@@ -32,8 +32,15 @@ def build(settings: Settings, runner=None, register=None):
                       limits=Limits(global_max_instances=settings.max_instances), runner=runner or ThreadRunner(),
                       register=register)
     auth = AuthService(cp, AuthConfig(rp_id=settings.rp_id, rp_name=settings.rp_name, origins=settings.origins))
+    chat = None
+    if settings.chat_models:
+        from .chat import ChatConfig, ChatService
+        from .llm import OpenRouter
+        chat = ChatService(cp, OpenRouter(settings.openrouter_api_key, referer=settings.origins[0]),
+                           ChatConfig(models=settings.chat_models, user_daily_tokens=settings.chat_user_daily_tokens,
+                                      global_daily_tokens=settings.chat_global_daily_tokens))
     app = create_app(cp, auth, ApiConfig(origins=settings.origins, client_ip_header=settings.client_ip_header,
-                                         console_dir=settings.console_dir))
+                                         console_dir=settings.console_dir), chat=chat)
     return cp, auth, app
 
 

@@ -136,8 +136,8 @@ def status_for(e: Exception) -> Tuple[int, dict]:
 
 
 class Api:
-    def __init__(self, cp: ControlPlane, auth: AuthService, config: ApiConfig = None, clock=None):
-        self.cp, self.auth = cp, auth
+    def __init__(self, cp: ControlPlane, auth: AuthService, config: ApiConfig = None, clock=None, chat=None):
+        self.cp, self.auth, self.chat = cp, auth, chat
         self.config = config or ApiConfig(origins=auth.config.origins)
         self.limiter = RateLimiter(clock or cp.clock)
         from .oauth import OAuthService
@@ -315,7 +315,13 @@ class Api:
             r("/api/admin/instances", ["GET"], lambda w, d, p, q: {"instances": cp.list_instances(w, all_users=True)}, admin=True),
             r("/api/admin/audit", ["GET"], lambda w, d, p, q: {"audit": (cp._require_admin(w) or cp.db.audit_log(
                 min(int(q.query_params.get("limit", 100)), 500)))}, admin=True),
-        ] + self._mcp_routes() + self.static_routes()
+        ] + self._mcp_routes() + self._chat_routes() + self.static_routes()
+
+    def _chat_routes(self):
+        if not self.chat:
+            return []
+        from .chat_web import ChatWeb
+        return ChatWeb(self, self.chat).routes()
 
     def _mcp_routes(self):
         from .mcp_web import McpWeb
@@ -334,5 +340,5 @@ class Api:
         return Result({"ok": True}, clear_session=True)
 
 
-def create_app(cp: ControlPlane, auth: AuthService, config: ApiConfig = None) -> Starlette:
-    return Starlette(routes=Api(cp, auth, config).routes())
+def create_app(cp: ControlPlane, auth: AuthService, config: ApiConfig = None, chat=None) -> Starlette:
+    return Starlette(routes=Api(cp, auth, config, chat=chat).routes())

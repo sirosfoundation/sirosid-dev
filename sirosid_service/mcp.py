@@ -139,6 +139,15 @@ class McpServer:
         except _Invalid as e:
             return self._error(mid, -32602, str(e))
 
+    def _call_safely(self, who: Principal, name: str, args: dict) -> dict:
+        """Run one tool for another front end (the assistant): {"text": str, "isError": bool}. Argument
+        problems come back as an error result instead of a protocol error."""
+        try:
+            r = self._call(who, {"name": name, "arguments": args})
+        except _Invalid as e:
+            return {"text": f"invalid arguments: {e}", "isError": True}
+        return {"text": r["content"][0]["text"], "isError": r["isError"]}
+
     def _call(self, who: Principal, params: dict) -> dict:
         tool = self.tools.get(params.get("name"))
         if not tool:
