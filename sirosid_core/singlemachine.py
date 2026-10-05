@@ -555,6 +555,9 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
         machines.wait(app, machine_id, "started", timeout=300, instance_id=m.get("instance_id", ""))
         say("=== Waiting for the containers ===")
         states = machines.wait_containers(app, machine_id, readiness(config), timeout=ready_timeout, progress=say)
+        # A machine stopped by lifecycle.stop_instance is cordoned, and a cordon
+        # survives an update: a deploy leaves the instance reachable.
+        machines.uncordon(app, machine_id)
         step("containers")
         result.deployed = list(done)
         result.machine = {"app": app, "id": machine_id, "containers": states, "config_bytes": size,

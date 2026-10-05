@@ -102,6 +102,10 @@ class FakeMachines:
             if action in ("start", "restart"):
                 self._boot(m)
                 return 200, b"{}"
+            if action in ("cordon", "uncordon"):
+                # Real Fly: idempotent, {"ok": true}; survives start, stop and update.
+                m["cordoned"] = action == "cordon"
+                return 200, b'{"ok":true}'
             if action == "exec":
                 m.setdefault("execs", []).append(data)
                 return 200, json.dumps(self.exec_result).encode()

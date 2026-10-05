@@ -349,16 +349,22 @@ def front_nginx_conf(naming: Naming, assetlinks_path: str = "/etc/nginx/well-kno
     service port is not answering within seconds of a start.
 
     behind_edge=True is the production shape: the app has no public IPs and a
-    shared edge app fly-replays each request here, with the original Host,
-    Fly-Client-IP and X-Forwarded-Proto intact. Then (and only then) those
-    headers are trusted and passed upstream as the client's, and a request for
-    any Host that is not one of this instance's own public names is refused
-    (421) instead of falling through to a default.
+    shared edge app fly-replays each request here, with the original Host and
+    Fly-Client-IP intact. A request for any Host that is not one of this
+    instance's own public names is refused (421) instead of falling through to
+    a default. Measured on real Fly (2026-10-05, sirosid_core/edge.py):
+    Fly-Client-IP is set by Fly's proxy (a client's own is replaced), so it is
+    passed upstream as X-Real-IP; X-Forwarded-Proto is NOT - a client's
+    `X-Forwarded-Proto: http` arrived here verbatim - so it is never trusted:
+    the edge forces https, so the protocol behind it is always https. The
+    public listener is IPv4-only on purpose: Fly's proxy reaches it over IPv4,
+    while every other app on the org's default network can only reach it over
+    6PN (IPv6) - where it is closed (verified: connection refused).
     """
     front = naming.port("front")
     if behind_edge:
-        proto, real_ip, default = "$http_x_forwarded_proto", "$http_fly_client_ip", ""
-        trusted = ("        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;\n"
+        proto, real_ip, default = "https", "$http_fly_client_ip", ""
+        trusted = ("        proxy_set_header X-Forwarded-Proto https;\n"
                    "        proxy_set_header X-Real-IP $http_fly_client_ip;\n")
     else:
         proto, real_ip, default, trusted = "$scheme", "$remote_addr", " default_server", ""
