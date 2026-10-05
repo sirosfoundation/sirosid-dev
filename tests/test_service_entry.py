@@ -38,7 +38,9 @@ def settings(**env):
 class ConfigTests(unittest.TestCase):
     def test_defaults_describe_the_planned_deployment(self):
         s = settings()
-        self.assertEqual((s.rp_id, s.origins, s.fly_org, s.app_prefix), ("sirosid.dev", ("https://sirosid.dev",), "sirosdev", "sid"))
+        self.assertEqual((s.rp_id, s.origins, s.fly_org, s.app_prefix),
+                         ("console.sirosid.dev", ("https://console.sirosid.dev",), "sirosdev", "sid"))
+        self.assertEqual((s.layout, s.host_pattern, s.instance_domain), ("apps", "{app}.fly.dev", ""))
 
     def test_a_token_is_required(self):
         old = os.environ.pop("FLY_API_TOKEN", None)
@@ -51,10 +53,57 @@ class ConfigTests(unittest.TestCase):
                 os.environ["FLY_API_TOKEN"] = old
 
     def test_origins_must_be_https_and_under_the_rp_id(self):
-        for origin in ("http://sirosid.dev", "https://evil.example", "https://sirosid.dev.evil.example"):
+        for origin in ("http://console.sirosid.dev", "https://evil.example", "https://console.sirosid.dev.evil.example",
+                       "https://sirosid.dev"):
             with self.assertRaises(SystemExit, msg=origin):
                 settings(SIROSID_ORIGINS=origin)
         self.assertEqual(settings(SIROSID_ORIGINS="https://console.sirosid.dev").origins, ("https://console.sirosid.dev",))
+
+    def test_single_machine_defaults_are_the_edge_shape(self):
+        s = settings(SIROSID_LAYOUT="single-machine")
+        self.assertEqual((s.layout, s.instance_domain, s.host_pattern, s.public_ips, s.app_prefix),
+                         ("single-machine", "sirosid.dev", "{component}-{id}.sirosid.dev", False, "sid"))
+        self.assertEqual(settings(SIROSID_LAYOUT="single-machine", SIROSID_PUBLIC_IPS="true").public_ips, True)
+        self.assertEqual(settings(SIROSID_LAYOUT="single-machine", SIROSID_INSTANCE_DOMAIN="sid.example").host_pattern,
+                         "{component}-{id}.sid.example")
+        from sirosid_service.__main__ import build
+        cp, _, _ = build(s)
+        self.assertEqual((cp.platform.layout, cp.platform.public_ips, cp.platform.host_pattern),
+                         ("single-machine", False, "{component}-{id}.sirosid.dev"))
+        from sirosid_core.naming import Naming
+        n = Naming("k7m2qx4d", app_prefix=cp.platform.app_prefix, host_pattern=cp.platform.host_pattern,
+                   layout=cp.platform.layout)
+        self.assertEqual((n.machine_app(), n.host("vc-apigw")), ("sid-k7m2qx4d", "vc-apigw-k7m2qx4d.sirosid.dev"))
+
+    def test_single_machine_settings_are_checked(self):
+        for env in ({"SIROSID_LAYOUT": "one-big-box"},
+                    {"SIROSID_LAYOUT": "single-machine", "SIROSID_INSTANCE_DOMAIN": "SIROSID.DEV"},
+                    {"SIROSID_LAYOUT": "single-machine", "SIROSID_INSTANCE_DOMAIN": "x.fly.dev"},
+                    {"SIROSID_LAYOUT": "single-machine", "SIROSID_HOST_PATTERN": "{component}.{id}.sid.example"},
+                    {"SIROSID_LAYOUT": "single-machine", "SIROSID_APP_PREFIX": "inst"},
+                    {"SIROSID_LAYOUT": "single-machine", "SIROSID_PUBLIC_IPS": "maybe"}):
+            with self.assertRaises(SystemExit, msg=env):
+                settings(**env)
+
+    def test_nothing_untrusted_at_or_under_the_console_host(self):
+        """Instances are SIBLINGS of the console, never at or under its RP ID / origin host."""
+        bad = [
+            # the old apex RP ID: every instance host would be under it
+            {"SIROSID_LAYOUT": "single-machine", "SIROSID_RP_ID": "sirosid.dev", "SIROSID_ORIGINS": "https://console.sirosid.dev"},
+            {"SIROSID_LAYOUT": "single-machine", "SIROSID_INSTANCE_DOMAIN": "console.sirosid.dev"},
+            {"SIROSID_LAYOUT": "single-machine", "SIROSID_INSTANCE_DOMAIN": "x.console.sirosid.dev"},
+            {"SIROSID_HOST_PATTERN": "{app}.console.sirosid.dev"},
+            {"SIROSID_HOST_PATTERN": "{id}.sirosid.dev", "SIROSID_RP_ID": "abc.sirosid.dev",
+             "SIROSID_ORIGINS": "https://abc.sirosid.dev"},
+            {"SIROSID_RP_ID": "fly.dev", "SIROSID_ORIGINS": "https://console.fly.dev"},
+        ]
+        for env in bad:
+            with self.assertRaises(SystemExit, msg=env) as cm:
+                settings(**env)
+            self.assertIn("at or under the console", str(cm.exception), env)
+        ok = settings(SIROSID_LAYOUT="single-machine")
+        self.assertEqual(ok.rp_id, "console.sirosid.dev")
+        settings(SIROSID_LAYOUT="single-machine", SIROSID_INSTANCE_DOMAIN="sid.example")
 
     def test_a_host_pattern_must_vary_per_instance(self):
         with self.assertRaises(SystemExit):

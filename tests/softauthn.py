@@ -27,7 +27,7 @@ def unb64u(s: str) -> bytes:
 
 
 class SoftAuthenticator:
-    def __init__(self, origin: str = "https://sirosid.dev", rp_id: str = "sirosid.dev"):
+    def __init__(self, origin: str = "https://console.sirosid.dev", rp_id: str = "console.sirosid.dev"):
         self.origin, self.rp_id = origin, rp_id
         self._creds = {}          # credential id -> dict(key, count, user_handle, prf_secret)
 
