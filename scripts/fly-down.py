@@ -38,11 +38,18 @@ def main():
                         help="Fly organization the environment was deployed in (fly-up --org); default sirosfoundation")
     parser.add_argument("--app-prefix", default="sirosid",
                         help="app-name prefix the environment was deployed with (fly-up --app-prefix)")
+    parser.add_argument("--single-machine", action="store_true",
+                        help="the environment was deployed with fly-up --single-machine (one app, one machine)")
     args = parser.parse_args()
 
     fly = FlyClient(args.org) if args.org else fly_common._client
-    report = destroy_instance(fly, Naming(args.env, app_prefix=args.app_prefix),
-                              keep_data=args.keep_data, progress=print)
+    # A single-machine instance (fly-up --single-machine) is one app named
+    # <prefix>-<env>. Explicit rather than detected: detecting costs a Fly call
+    # the default path must not make (its command sequence is characterized).
+    naming = Naming(args.env, app_prefix=args.app_prefix,
+                    layout="single-machine" if args.single_machine else "apps")
+    machines = fly_common.machines_client() if naming.single_machine else None
+    report = destroy_instance(fly, naming, keep_data=args.keep_data, progress=print, machines=machines)
     for app, err in report.failed:
         print(f"FAILED to tear down {app}: {err}", file=sys.stderr)
 

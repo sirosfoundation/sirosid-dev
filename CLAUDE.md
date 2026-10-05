@@ -73,6 +73,23 @@ never reads argv, the environment or a developer's disk:
   `FlyClient`'s org and token. `scripts/fly-up.py` is now argument parsing,
   `_spec_from_args()` and the summary.
 
+- `singlemachine.py` (+ `machines.py`, `oci.py`) — the **single-machine layout**
+  (`InstanceSpec.layout="single-machine"`, `fly-up --single-machine`): ONE app
+  `<prefix>-<env>` with ONE multi-container machine made through the Machines API, instead
+  of ~11 apps. Every component listens on its own loopback port (`naming.SINGLE_MACHINE_PORTS`,
+  always reached through `Naming.addr`); a front nginx inside wallet-frontend's nginx routes
+  by Host, so `host_pattern` must be FLAT (`{component}-{id}.<domain>`); large files ship
+  in a per-instance bundle image pushed without docker; secrets reach containers only via an
+  init container (app secrets and `files[].secret_name` do NOT reach API-created
+  containers). Real-Fly limits that shaped it: ~1 MiB config body, and **at most ~12 block
+  devices** (each distinct image, image volume, volume) - a 13th makes Firecracker fail with
+  `ResourceNotAvailable` and the machine sits in `created`. env-admin and conformance are
+  refused. fly-down / fly-power (`stop|start|reset`) need `--single-machine` (no
+  detection: the default path's command sequence is characterized).
+- `tests/test_fly_up_characterization.py`'s vc-*.yaml hashes depend on the gitignored
+  `fixtures/rendered-secrets/vc*` of the checkout that wrote the golden: a fresh worktree
+  fails it until those files match.
+
 To call the deploy from a service:
 `state.workdir(store, id, subdir=f"fly-{env}")` -> `deploy_instance(spec, fly, naming,
 Resources(root), rendered_root=<yielded dir>, register=..., progress=...)`.

@@ -46,6 +46,26 @@ class CoreLayering(unittest.TestCase):
                 offenders += [f"{path.name}: imports {n}" for n in names if n == "sirosid_service"]
         self.assertEqual(offenders, [])
 
+    def test_core_stays_dependency_light(self):
+        """Standard library and PyYAML only: the Machines API client and the
+        registry push (machines.py, oci.py) are urllib, not requests/docker SDKs."""
+        import sys
+        allowed = set(sys.stdlib_module_names) | {"yaml", "sirosid_core"}
+        offenders = []
+        for path in self.modules():
+            for node in ast.walk(ast.parse(path.read_text())):
+                names = []
+                if isinstance(node, ast.Import):
+                    names = [a.name.split(".")[0] for a in node.names]
+                elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                    names = [node.module.split(".")[0]]
+                offenders += [f"{path.name}: imports {n}" for n in names if n not in allowed]
+        self.assertEqual(offenders, [])
+
+    def test_the_single_machine_modules_are_checked(self):
+        names = {p.name for p in self.modules()}
+        self.assertTrue({"machines.py", "oci.py", "singlemachine.py"} <= names)
+
     def test_core_does_not_locate_files_relative_to_the_repo(self):
         # Code, not prose: docstrings legitimately explain what is NOT read.
         offenders = []

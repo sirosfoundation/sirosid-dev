@@ -78,6 +78,13 @@ class PlatformPolicy:
     host_pattern: str = "{app}.fly.dev"
     scale_to_zero: bool = True
     env_admin: bool = True                 # a hosted service sets False (see InstanceSpec.env_admin)
+    # "apps" or "single-machine" (one Fly app, one multi-container machine per
+    # instance: sirosid_core/singlemachine.py). Single-machine needs a FLAT
+    # host_pattern ("{component}-{id}.<instances domain>") and env_admin=False.
+    layout: str = "apps"
+    # Single-machine only: public IPs on each instance app. A service behind a
+    # shared fly-replay edge sets False (see InstanceSpec.public_ips).
+    public_ips: bool = True
 
 
 # --- the schema ------------------------------------------------------------
@@ -321,6 +328,8 @@ def validate(saved: dict, capabilities=(), policy: PlatformPolicy = None) -> Lis
             problems.append(Problem(key, "must be true or false"))
     if saved.get("conformance") is True and not policy.allow_conformance:
         problems.append(Problem("conformance", "is not available on this platform"))
+    elif saved.get("conformance") is True and policy.layout == "single-machine":
+        problems.append(Problem("conformance", "is not available in the single-machine layout"))
     if saved.get("dc_api_enable", "") not in ("", "true", "false"):
         problems.append(Problem("dc_api_enable", "must be '', 'true' or 'false'"))
 
@@ -376,4 +385,6 @@ def build_spec(saved: dict, env: str, capabilities=(), policy: PlatformPolicy = 
         host_pattern=policy.host_pattern,
         scale_to_zero=policy.scale_to_zero,
         env_admin=policy.env_admin,
+        layout=policy.layout,
+        public_ips=policy.public_ips,
     ).validate(component_names())
