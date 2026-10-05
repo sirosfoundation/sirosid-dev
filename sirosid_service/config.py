@@ -49,7 +49,8 @@ class Settings:
             max_instances=int(_env("SIROSID_MAX_INSTANCES", "10")), host=_env("SIROSID_HOST", "0.0.0.0"), port=int(_env("PORT", "8080")),
             console_dir=_env("SIROSID_CONSOLE_DIR", str(root / "console")),
             openrouter_api_key=_env("OPENROUTER_API_KEY"),
-            chat_models=tuple(m.strip() for m in _env("SIROSID_CHAT_MODELS").split(",") if m.strip()),
+            # With a key and no explicit list, let OpenRouter's auto router pick the model per request.
+            chat_models=tuple(m.strip() for m in _env("SIROSID_CHAT_MODELS", "openrouter/auto" if _env("OPENROUTER_API_KEY") else "").split(",") if m.strip()),
             chat_user_daily_tokens=int(_env("SIROSID_CHAT_USER_DAILY_TOKENS", "300000")),
             chat_global_daily_tokens=int(_env("SIROSID_CHAT_GLOBAL_DAILY_TOKENS", "3000000")))
         s.validate()

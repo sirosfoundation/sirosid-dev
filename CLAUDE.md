@@ -164,8 +164,10 @@ all of it against the fake flyctl.
   key container are deliberately not tools. `/mcp` refuses a browser `Origin` that is not ours
   (DNS rebinding). `tests/test_mcp.py` covers the flow and is mutation-checked (PKCE, redirect,
   origin, replay and key-session revocation each fail a test when removed).
-- `llm.py`, `chat.py`, `chat_web.py` — the **assistant** (console "Assistant" tab), enabled only when
-  `SIROSID_CHAT_MODELS` (comma list, first is default) and `OPENROUTER_API_KEY` are set; per-user and
+- `llm.py`, `chat.py`, `chat_web.py` — the **assistant** (console "Assistant" tab), enabled when
+  `OPENROUTER_API_KEY` (a Fly secret) is set; `SIROSID_CHAT_MODELS` (comma list, first is default)
+  defaults to `openrouter/auto` (OpenRouter's router picks per request; whether it always routes to a
+  tool-capable model is unverified - check before relying on it); per-user and
   global daily token budgets (`SIROSID_CHAT_USER_DAILY_TOKENS`/`..._GLOBAL_...`, table `chat_usage`).
   It is the MCP tool table driven by a model, acting only as the unlocked signed-in user, so it can
   do nothing the console cannot. What is special: a model provider sees the user's messages and tool
