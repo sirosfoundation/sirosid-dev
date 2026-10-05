@@ -237,7 +237,6 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     everything else under /admin/ stays unreachable through wallet-proxy.
     """
     naming = naming or Naming(env)
-    backend = f"{naming.internal('wallet-backend')}"
     return f"""server {{
     listen 8090;
     # Fly's 6PN inter-app network is IPv6-only - without this, this app was
@@ -249,7 +248,16 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     # wallet-proxy.internal:8090 until this was added.
     listen [::]:8090;
 
-    # Matches go-wallet-backend's own MaxBodySize (pkg/middleware/bodysize.go)
+{wallet_proxy_locations(naming)}}}
+"""
+
+
+def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/well-known/assetlinks.json") -> str:
+    """The body of wallet-proxy's server block (see wallet_proxy_conf): what the
+    single-machine front nginx serves for the wallet-proxy host, unchanged."""
+    http, admin = naming.addr("wallet-backend", "http"), naming.addr("wallet-backend", "admin")
+    engine = naming.addr("wallet-backend", "engine")
+    return f"""    # Matches go-wallet-backend's own MaxBodySize (pkg/middleware/bodysize.go)
     # - the private-data blob (S.credentials[] in the encrypted container)
     # grows unbounded as credentials accumulate, and mdoc/mDL credentials
     # each embed a base64 portrait photo. nginx's compiled-in default of 1m
@@ -258,22 +266,22 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     client_max_body_size 10m;
 
     location /.well-known/assetlinks.json {{
-        alias /etc/nginx/well-known/assetlinks.json;
+        alias {assetlinks_path};
         default_type application/json;
     }}
 
     location = /admin/tenants {{
-        proxy_pass http://{backend}:8081;
+        proxy_pass http://{admin};
         proxy_set_header Host $host;
     }}
 
     location ~ ^/admin/tenants/[^/]+$ {{
-        proxy_pass http://{backend}:8081;
+        proxy_pass http://{admin};
         proxy_set_header Host $host;
     }}
 
     location ~ ^/admin/tenants/[^/]+/(issuers|verifiers)$ {{
-        proxy_pass http://{backend}:8081;
+        proxy_pass http://{admin};
         proxy_set_header Host $host;
     }}
 
@@ -281,12 +289,12 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     # DELETE) - the collection-only match above doesn't cover these since it's
     # an exact ($) match, not a prefix.
     location ~ ^/admin/tenants/[^/]+/(issuers|verifiers)/[^/]+$ {{
-        proxy_pass http://{backend}:8081;
+        proxy_pass http://{admin};
         proxy_set_header Host $host;
     }}
 
     location /api/v2/wallet {{
-        proxy_pass http://{backend}:8082;
+        proxy_pass http://{engine};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -299,13 +307,12 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     }}
 
     location / {{
-        proxy_pass http://{backend}:8080;
+        proxy_pass http://{http};
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }}
-}}
 """
 
 
@@ -342,14 +349,17 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     of simply appending them at the very end.
     """
     naming = naming or Naming(env)
-    backend = f"{naming.internal('wallet-backend')}"
-    wallet_proxy = f"{naming.internal('wallet-proxy')}"
-    pdp = f"{naming.internal('pdp')}"
-    mini_oidc = f"{naming.internal('mini-oidc')}"
-    vc_registry = f"{naming.internal('vc-registry')}"
-    vc_issuer = f"{naming.internal('vc-issuer')}"
-    vc_verifier = f"{naming.internal('vc-verifier')}"
-    vc_apigw = f"{naming.internal('vc-apigw')}"
+    # host:port as a sibling reaches each one (naming.addr) - .internal names in
+    # the apps layout, 127.0.0.1 and the remapped ports in a single machine.
+    backend, backend_admin = naming.addr("wallet-backend", "http"), naming.addr("wallet-backend", "admin")
+    backend_engine = naming.addr("wallet-backend", "engine")
+    wallet_proxy = naming.addr("wallet-proxy")
+    pdp = naming.addr("pdp")
+    mini_oidc = naming.addr("mini-oidc")
+    vc_registry = naming.addr("vc-registry")
+    vc_issuer = naming.addr("vc-issuer")
+    vc_verifier = naming.addr("vc-verifier")
+    vc_apigw = naming.addr("vc-apigw")
     conformance_server = f"{naming.internal('conformance-server')}"
     conformance_runner = f"{naming.internal('conformance-runner')}"
     conformance_health = (
@@ -386,14 +396,14 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     )
     # env-admin is optional: a hosted service has no credential to give it (see
     # InstanceSpec.env_admin), so the proxy, health check and Storage card go too.
-    env_admin_name = f"{naming.internal('env-admin')}"
-    env_admin_health = (f"""    location = /_health/env-admin   {{ proxy_pass http://{env_admin_name}:3002/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}""") if env_admin else ""
+    env_admin_name = naming.addr("env-admin")
+    env_admin_health = (f"""    location = /_health/env-admin   {{ proxy_pass http://{env_admin_name}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}""") if env_admin else ""
     env_admin_block = (f"""    # env-admin (storage status + "Clear all data", see env-admin/server.py) -
     # mirrors nginx-e2e.conf's local /_admin/ block: same-origin, SSE-safe.
     # env-admin is always deployed (COMPONENTS), so like the health proxies
     # above this static target always resolves at nginx startup.
     location /_admin/ {{
-        proxy_pass http://{env_admin_name}:3002/;
+        proxy_pass http://{env_admin_name}/;
         proxy_connect_timeout 5s;
         proxy_read_timeout 600s;
         proxy_http_version 1.1;
@@ -412,7 +422,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     }}
 """) if env_admin else ""
     return f"""server {{
-    listen 80;
+    listen {naming.port("wallet-frontend")};
     absolute_redirect off;
 
     root /usr/share/nginx/html;
@@ -432,16 +442,16 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     # reachable because every component in this environment shares one
     # --network (see fly_common.network_name), unlike the browser itself,
     # which can only ever reach *.fly.dev public URLs.
-    location = /_health/backend  {{ proxy_pass http://{backend}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/admin    {{ proxy_pass http://{backend}:8081/admin/status; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/engine   {{ proxy_pass http://{backend}:8082/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/registry {{ proxy_pass http://{backend}:8080/registry/status; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/pdp        {{ proxy_pass http://{pdp}:8080/healthz; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/mini-oidc  {{ proxy_pass http://{mini_oidc}:9005/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/vc-registry {{ proxy_pass http://{vc_registry}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}:8081/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
-    location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}:8080/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/backend  {{ proxy_pass http://{backend}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/admin    {{ proxy_pass http://{backend_admin}/admin/status; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/engine   {{ proxy_pass http://{backend_engine}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/registry {{ proxy_pass http://{backend}/registry/status; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/pdp        {{ proxy_pass http://{pdp}/healthz; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/mini-oidc  {{ proxy_pass http://{mini_oidc}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-registry {{ proxy_pass http://{vc_registry}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-issuer   {{ proxy_pass http://{vc_issuer}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-verifier {{ proxy_pass http://{vc_verifier}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
+    location = /_health/vc-apigw    {{ proxy_pass http://{vc_apigw}/health; proxy_connect_timeout 2s; proxy_read_timeout 2s; }}
 {env_admin_health}
 {conformance_health}
 {conformance_proxy}
@@ -469,7 +479,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     # directly) to reuse its existing admin-subtree/websocket-upgrade
     # routing (fly_common.wallet_proxy_conf) rather than duplicating it here.
     location ~ ^/(api|auth|v1|user|helper|issuer|oidc|presentation|storage|verifier|wallet-provider)/ {{
-        proxy_pass http://{wallet_proxy}:8090;
+        proxy_pass http://{wallet_proxy};
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -546,17 +556,17 @@ def wallet_frontend_dashboard_html(env: str, android_identities: dict[str, list[
         for app_id in (apple_app_ids or [])
     )
     service_list = [
-        ("wallet-backend", "backend", 8080),
-        ("wallet-admin", "admin", 8081),
-        ("wallet-engine", "engine", 8082),
-        ("vctm-registry", "registry", 8080),
-        ("pdp (go-trust)", "pdp", 8080),
-        ("mini-oidc", "mini-oidc", 9005),
-        ("vc-registry", "vc-registry", 8080),
-        ("vc-issuer", "vc-issuer", 8081),
-        ("vc-verifier", "vc-verifier", 8080),
-        ("vc-apigw", "vc-apigw", 8080),
-        *([("env-admin", "env-admin", 3002)] if env_admin else []),
+        ("wallet-backend", "backend", naming.port("wallet-backend", "http")),
+        ("wallet-admin", "admin", naming.port("wallet-backend", "admin")),
+        ("wallet-engine", "engine", naming.port("wallet-backend", "engine")),
+        ("vctm-registry", "registry", naming.port("wallet-backend", "http")),
+        ("pdp (go-trust)", "pdp", naming.port("pdp")),
+        ("mini-oidc", "mini-oidc", naming.port("mini-oidc")),
+        ("vc-registry", "vc-registry", naming.port("vc-registry")),
+        ("vc-issuer", "vc-issuer", naming.port("vc-issuer")),
+        ("vc-verifier", "vc-verifier", naming.port("vc-verifier")),
+        ("vc-apigw", "vc-apigw", naming.port("vc-apigw")),
+        *([("env-admin", "env-admin", naming.port("env-admin"))] if env_admin else []),
     ]
     if conformance_url:
         service_list.append(("conformance-server", "conformance-server", 8080))

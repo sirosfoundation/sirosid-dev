@@ -638,7 +638,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
         fly.ensure_secret(app, "flyApiTokens", json.dumps(tokens), force=True)
         fly.ensure_secret(app, "envAdminToken", persistent_secret(out_dir, "adminToken"))
         fly.ensure_secret(app, "mongoUri",
-                      f"mongodb://root:{mongo_password}@{naming.internal('mongodb')}:27017/?authSource=admin",
+                      f"mongodb://root:{mongo_password}@{naming.addr('mongodb')}/?authSource=admin",
                       force=True)
         deploy_args += [
             "--env", "ENV_ADMIN_PLATFORM=fly",
@@ -676,6 +676,10 @@ def deploy_component(ctx: DeployContext, comp: dict):
             # from inside a Fly machine. Override with 6PN .internal
             # addresses (reachable regardless of whether the target has a
             # public Fly URL too - vc-issuer doesn't, see COMPONENTS).
+            # KNOWN BUG, left as-is on purpose: vc-issuer's HTTP API is on 8081
+            # (naming.addr('vc-issuer')), not 8080. Fixing it changes the
+            # conformance characterization golden, so it needs its own reviewed
+            # change; conformance is refused in the single-machine layout.
             "--env", f"VC_ISSUER_URL=http://{naming.internal('vc-issuer')}:8080",
             "--env", f"VC_VERIFIER_URL=http://{naming.internal('vc-verifier')}:8080",
             "--env", f"VC_APIGW_URL=http://{naming.internal('vc-apigw')}:8080",
