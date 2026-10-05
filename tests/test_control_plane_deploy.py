@@ -298,11 +298,13 @@ class FlyTomlTests(unittest.TestCase):
         self.assertEqual(env["SIROSID_DB"], "/data/sirosid.db")
         self.assertEqual(env["SIROSID_CLIENT_IP_HEADER"], "Fly-Client-IP")
         self.assertEqual(env["SIROSID_FLY_ORG"], "sirosdev")
-        for k in ("SIROSID_ORIGINS", "SIROSID_RP_ID", "SIROSID_APP_PREFIX", "SIROSID_HOST_PATTERN"):
+        for k in ("SIROSID_ORIGINS", "SIROSID_RP_ID", "SIROSID_APP_PREFIX", "SIROSID_LAYOUT", "SIROSID_INSTANCE_DOMAIN"):
             self.assertIn(k, env)
         for k in env:
             self.assertNotRegex(k, r"TOKEN|SECRET|ACCESS_KEY|PASSWORD|OPENROUTER", f"{k} is a secret; use fly secrets")
-        self.assertNotIn("sirosid.dev", env["SIROSID_HOST_PATTERN"], "no instance content under the RP ID")
+        self.assertEqual(env["SIROSID_RP_ID"], "console.sirosid.dev", "the RP ID is the console subdomain, not the apex")
+        self.assertEqual((env["SIROSID_LAYOUT"], env["SIROSID_APP_PREFIX"]), ("single-machine", "sid"))
+        self.assertNotIn("SIROSID_HOST_PATTERN", env, "derived from the instance domain: flat siblings of the console")
         self.assertNotRegex((DEPLOY / "fly.toml").read_text(), r"FlyV1|fm2_")
 
     def test_the_settings_load(self):
@@ -317,7 +319,9 @@ class FlyTomlTests(unittest.TestCase):
         finally:
             os.environ.clear(); os.environ.update(old)
         self.assertEqual((s.rp_id, s.origins, s.db_path, s.sweep_grace_seconds), (
-            "sirosid.dev", ("https://console.sirosid.dev",), "/data/sirosid.db", 3600.0))
+            "console.sirosid.dev", ("https://console.sirosid.dev",), "/data/sirosid.db", 3600.0))
+        self.assertEqual((s.layout, s.instance_domain, s.public_ips, s.host_pattern),
+                         ("single-machine", "sirosid.dev", False, "{component}-{id}.sirosid.dev"))
 
 
 # ---- Litestream config + entrypoint ---------------------------------------------------

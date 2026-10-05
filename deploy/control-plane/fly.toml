@@ -25,14 +25,16 @@ kill_timeout = "30s"
   SIROSID_DB = "/data/sirosid.db"
   SIROSID_RESOURCES = "/app"
   SIROSID_ORIGINS = "https://console.sirosid.dev"
-  SIROSID_RP_ID = "sirosid.dev"
+  SIROSID_RP_ID = "console.sirosid.dev"
   SIROSID_RP_NAME = "SIROS ID Dev"
   SIROSID_FLY_ORG = "sirosdev"
   SIROSID_REGION = "arn"
   SIROSID_APP_PREFIX = "sid"
-  # Instances are served from fly.dev, never from a sirosid.dev subdomain (CLAUDE.md:
-  # nothing untrusted under the RP ID).
-  SIROSID_HOST_PATTERN = "{app}.fly.dev"
+  # One Fly app + one machine per instance (`sid-<id>`, no public IPs), reached through the shared edge
+  # app at <component>-<id>.sirosid.dev. These are SIBLINGS of the console, never under it (CLAUDE.md:
+  # nothing untrusted at or under the console's RP ID); the host pattern is derived from the domain.
+  SIROSID_LAYOUT = "single-machine"
+  SIROSID_INSTANCE_DOMAIN = "sirosid.dev"
   SIROSID_CLIENT_IP_HEADER = "Fly-Client-IP"
   SIROSID_TICK_SECONDS = "300"
   SIROSID_SWEEP_GRACE_SECONDS = "3600"
