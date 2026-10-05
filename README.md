@@ -400,6 +400,7 @@ picks between them.
 | `diploma` | alice-001, bob-002 | carol-003 |
 | `pid_mdoc` | alice-001 | bob-002 |
 | `mdl_zk4` | alice-001 | bob-002 |
+| `photoid` | alice-001, bob-002 | carol-003 |
 | `ebw_oid` | erik-010, maria-011 | sophie-013 |
 | `eucc` | erik-010, maria-011, jan-012 | sophie-013 |
 | `eu_poa` | jan-012 | sophie-013 |
