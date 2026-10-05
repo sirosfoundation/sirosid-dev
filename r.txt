@@ -1,0 +1,9 @@
+HTTP/2 200 
+content-type: application/json; charset=utf-8
+content-length: 1050
+date: Mon, 05 Oct 2026 09:37:38 GMT
+server: Fly/6d530f8f2 (2026-09-29)
+via: 2 fly.io
+fly-request-id: 01M45PT3FENRF0QAXQPWMCQYKP-arn
+
+{"app": "spike-be1-15563b", "machine": "784777dc5055d8", "method": "GET", "path": "/__t/json", "version": "1.1", "host": "wallet.be1-15563b.example.test", "headers": {"User-Agent": "curl/8.12.1", "Accept": "*/*", "fly-replay-src": "instance=8372e1f79dd078;region=arn;t=1791193058800849", "Via": "2 fly.io", "x-keep": "yes", "x-request-start": "t=1791193058798805", "Host": "wallet.be1-15563b.example.test", "fly-client-ip": "5.150.248.66", "X-Forwarded-For": "5.150.248.66, 66.241.125.139", "fly-forwarded-proto": "https", "X-Forwarded-Proto": "https", "fly-forwarded-ssl": "on", "x-forwarded-ssl": "on", "fly-forwarded-port": "443", "x-forwarded-port": "443", "fly-region": "arn", "fly-request-id": "01M45PT3FENRF0QAXQPWMCQYKP-arn", "x-edge": "1", "fly-dispatch-start": "t=1791193058800912;instance=784777dc5055d8", "fly-traceparent": "00-0270339dcf9271acfde6e34957f792fb-10036a6f1977fc70-00", "fly-tracestate": "", "fly-replay-cache-status": "miss"}, "body_len": 0, "body_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
