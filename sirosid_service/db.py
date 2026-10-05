@@ -51,6 +51,8 @@ CREATE TABLE IF NOT EXISTS credentials(
 CREATE INDEX IF NOT EXISTS credentials_user ON credentials(user_id);
 CREATE TABLE IF NOT EXISTS web_sessions(
   token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, created_at REAL NOT NULL, expires_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS oauth_clients(
+  client_id TEXT PRIMARY KEY, name TEXT NOT NULL, redirect_uris TEXT NOT NULL, created_at REAL NOT NULL);
 """
 
 

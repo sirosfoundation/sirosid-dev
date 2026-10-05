@@ -150,6 +150,20 @@ all of it against the fake flyctl.
   reload keeps the server session unlocked but needs a new sign-in to add/remove passkeys.
   `tests/test_console_js.py` runs the Node tests (`node --test console/test/*.test.mjs`) and a
   Python cross-implementation check of the container format; run the service tests with `.venv`.
+- `oauth.py`, `mcp.py`, `mcp_web.py` — the MCP server (`POST /mcp`, JSON-RPC, JSON responses only,
+  no sessions, no batching) and the minimal OAuth 2.1 AS it needs (dynamic registration of
+  PUBLIC clients, code + mandatory S256 PKCE, no refresh tokens, no secrets). The only login is
+  the console's passkey login: `/oauth/authorize` parks the request and redirects to
+  `/#authorize=<id>`, the console shows consent, and **approving clones the user's key session**
+  (`SessionKeys.clone`): the application gets a bearer token for its own handle on the
+  server-held key - never the key - which dies on its 8 h clock, when revoked in the console's
+  "Connected apps" tab, when the user is disabled, or on restart (codes, tokens and keys are
+  memory-only; only registered clients are stored). So **token validity == key-session
+  validity**, and console sign-out does not kill an agent. Tools are one `ControlPlane` call
+  each as the token's Principal - decide nothing there; administrative actions, passkeys and the
+  key container are deliberately not tools. `/mcp` refuses a browser `Origin` that is not ours
+  (DNS rebinding). `tests/test_mcp.py` covers the flow and is mutation-checked (PKCE, redirect,
+  origin, replay and key-session revocation each fail a test when removed).
 - `tests/softauthn.py` is a software authenticator (real authenticator data, COSE keys,
   signed assertions) so passkey verification is exercised, not mocked.
 

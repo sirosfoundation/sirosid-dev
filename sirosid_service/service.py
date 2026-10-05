@@ -174,6 +174,24 @@ class ControlPlane:
     def _sealer(self, who: Principal):
         return self.keys.get(who.session_id, who.user_id)
 
+    def share_session(self, who: Principal, ttl: float) -> str:
+        """A separate key session for an application acting for this user (see SessionKeys.clone).
+        Needs the user to be unlocked right now."""
+        return self.keys.clone(who.session_id, who.user_id, ttl)
+
+    def drop_session(self, session_id: str):
+        self.keys.drop(session_id)
+
+    def session_alive(self, session_id: str, user_id: str) -> bool:
+        try:
+            self.keys.get(session_id, user_id)
+            return True
+        except Locked:
+            return False
+
+    def session_expiry(self, session_id: str, user_id: str) -> float:
+        return self.keys.expires_at(session_id, user_id)
+
     def is_unlocked(self, who: Principal) -> bool:
         """True only while the session's key is still held (it expires; the session id outlives it)."""
         try:

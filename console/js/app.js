@@ -151,10 +151,10 @@ function authScreen() {
       h("p", { class: "muted" }, "You need a passkey that supports the PRF extension."), join));
 }
 
-const NAMES = { instances: "Instances", configs: "Configs", passkeys: "Passkeys", admin: "Admin" };
+const NAMES = { instances: "Instances", configs: "Configs", apps: "Connected apps", passkeys: "Passkeys", admin: "Admin" };
 
 function chrome() {
-  const tabs = ["instances", "configs", "passkeys", ...(state.me.role === "admin" ? ["admin"] : [])];
+  const tabs = ["instances", "configs", "apps", "passkeys", ...(state.me.role === "admin" ? ["admin"] : [])];
   $("nav").hidden = false;
   $("nav").replaceChildren(...tabs.map((t) => h("button", { "aria-current": t === state.tab ? "page" : false, on: { click: () => { state.tab = t; show(); } } }, NAMES[t])),
     h("span", { class: "grow" }));
@@ -166,7 +166,9 @@ async function show() {
   stopPolling();
   chrome();
   try {
-    await ({ instances: instancesScreen, configs: configsScreen, passkeys: passkeysScreen, admin: adminScreen })[state.tab]();
+    const pending = authorizeId();
+    if (pending) return await consentScreen(pending);
+    await ({ instances: instancesScreen, configs: configsScreen, apps: appsScreen, passkeys: passkeysScreen, admin: adminScreen })[state.tab]();
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return start();
     fail(e);
@@ -261,6 +263,43 @@ async function configsScreen() {
     h("details", {}, h("summary", {}, "What can a config say?"), h("table", {}, keys)));
 }
 
+// ---- connected apps (OAuth / MCP) ----------------------------------------------------------------
+
+const authorizeId = () => new URLSearchParams(location.hash.slice(1)).get("authorize");
+const clearAuthorize = () => history.replaceState(null, "", location.pathname + location.search);
+
+/** An application (an MCP client) asked, in the browser, for access. The server parked the request;
+ *  approving needs this page to be unlocked, because the application is handed a handle on the key. */
+async function consentScreen(id) {
+  let info;
+  try { info = await api("GET", `/api/oauth/pending/${encodeURIComponent(id)}`); }
+  catch (e) { clearAuthorize(); fail(e); return show(); }
+  const go = guard(async (verb) => { const { redirect } = await api("POST", `/api/oauth/${verb}`, { id }); clearAuthorize(); location.assign(redirect); });
+  render(
+    h("div", { class: "card" }, h("h2", {}, `Let “${info.client_name}” use your account?`),
+      h("p", {}, "It will be able to create, stop, start, reset and destroy your SIROS ID Dev instances, manage your saved configs, and read your instances' credentials. It cannot see your passkeys, change your account, or use admin functions."),
+      h("p", { class: "muted" }, `After you choose, your browser is sent to ${info.redirect_host}. Only continue if you started this from that application: anyone can register an application under any name.`),
+      !state.me.unlocked && h("p", { class: "bad" }, "Your session is locked. Sign in again to approve."),
+      h("div", { class: "row end" },
+        h("button", { on: { click: () => go("deny") } }, "Deny"),
+        h("button", { class: "primary", disabled: !state.me.unlocked, on: { click: () => go("approve") } }, "Allow"))));
+}
+
+async function appsScreen() {
+  const { grants } = await api("GET", "/api/oauth/grants");
+  const url = `${location.origin}/mcp`;
+  render(
+    lockedBanner(),
+    h("div", { class: "card" }, h("h2", {}, "Use from an AI assistant"),
+      h("p", {}, "Add this address as an MCP server; you will be asked here to allow it:"), h("pre", {}, url),
+      h("p", { class: "muted" }, "Access ends after 8 hours, when you revoke it below, or when the server restarts.")),
+    h("div", { class: "card" }, h("h2", {}, "Connected applications"),
+      grants.length ? h("table", {}, grants.map((g) => h("tr", {}, h("td", {}, g.client_name),
+        h("td", { class: "muted" }, `since ${when(g.created_at)}, until ${when(g.expires_at)}`),
+        h("td", { class: "row end" }, h("button", { class: "danger", on: { click: guard(async () => { await api("DELETE", `/api/oauth/grants/${g.id}`); show(); }) } }, "Revoke")))))
+        : h("p", { class: "muted" }, "None.")));
+}
+
 // ---- passkeys ----------------------------------------------------------------------------------
 
 async function passkeysScreen() {
@@ -311,4 +350,5 @@ async function start() {
   show();
 }
 
+window.addEventListener("hashchange", () => { if (state.me) show(); });
 start();
