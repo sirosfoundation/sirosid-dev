@@ -74,6 +74,8 @@ class ApiConfig:
     client_ip_header: str = ""
     # Directory with index.html, js/ and css/ (the console). None = API only.
     console_dir: Optional[str] = None
+    # The public https origin applications are told about (OAuth issuer, MCP resource). Defaults to origins[0].
+    public_url: str = ""
 
 
 class RateLimited(ServiceError):
@@ -138,6 +140,8 @@ class Api:
         self.cp, self.auth = cp, auth
         self.config = config or ApiConfig(origins=auth.config.origins)
         self.limiter = RateLimiter(clock or cp.clock)
+        from .oauth import OAuthService
+        self.oauth = OAuthService(cp, self.config.public_url or self.config.origins[0])
 
     # ---- plumbing ----------------------------------------------------------------------------
 
@@ -196,6 +200,12 @@ class Api:
                 return self._finish(Result(payload, code))
             return self._finish(out if isinstance(out, Result) else Result(out))
         return Route(path, endpoint, methods=methods)
+
+    def _finish_empty(self, status: int) -> Response:
+        resp = Response(status_code=status)
+        for k, v in SECURITY_HEADERS.items():
+            resp.headers[k] = v
+        return resp
 
     def _finish(self, r: Result) -> Response:
         resp = JSONResponse(r.payload if r.payload is not None else {}, status_code=r.status)
@@ -301,11 +311,15 @@ class Api:
             r("/api/admin/users/{uid}/grant", ["POST"], lambda w, d, p, q: cp.grant(
                 w, p["uid"], capabilities=d.get("capabilities"), max_concurrent=d.get("max_concurrent"),
                 max_kept=d.get("max_kept"), kept_for_days=d.get("kept_for_days")) or {"ok": True}, admin=True),
-            r("/api/admin/users/{uid}/disable", ["POST"], lambda w, d, p, q: cp.disable_user(w, p["uid"]) or {"ok": True}, admin=True),
+            r("/api/admin/users/{uid}/disable", ["POST"], lambda w, d, p, q: (cp.disable_user(w, p["uid"]), self.oauth.revoke_user(p["uid"])) and {"ok": True}, admin=True),
             r("/api/admin/instances", ["GET"], lambda w, d, p, q: {"instances": cp.list_instances(w, all_users=True)}, admin=True),
             r("/api/admin/audit", ["GET"], lambda w, d, p, q: {"audit": (cp._require_admin(w) or cp.db.audit_log(
                 min(int(q.query_params.get("limit", 100)), 500)))}, admin=True),
-        ] + self.static_routes()
+        ] + self._mcp_routes() + self.static_routes()
+
+    def _mcp_routes(self):
+        from .mcp_web import McpWeb
+        return McpWeb(self, self.oauth).routes()
 
     def _finish_enroll(self, who, data, params, request):
         user, token = self.auth.finish_enrollment(str(data.get("ceremony_id", "")), data.get("credential") or {})

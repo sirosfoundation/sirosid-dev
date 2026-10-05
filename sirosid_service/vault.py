@@ -111,6 +111,24 @@ class SessionKeys:
             raise Locked("this session belongs to someone else")
         return e.sealer
 
+    def expires_at(self, session_id: str, user_id: str) -> float:
+        """When the key behind this session expires; raises Locked if there is none."""
+        self.get(session_id, user_id)
+        return self._entries[session_id].expires
+
+    def clone(self, session_id: str, user_id: str, ttl: float) -> str:
+        """A NEW session holding the same key with its own lifetime. How a user hands an
+        application (an MCP client) the ability to act on their data without giving it the
+        key: the server already holds the key; the clone is just another handle on it that
+        dies on its own clock, or when revoked, regardless of the console session."""
+        sealer = self.get(session_id, user_id)
+        ttl = min(float(ttl), MAX_SESSION_TTL)
+        if ttl <= 0:
+            raise ValueError("a session needs a positive lifetime")
+        sid = "s_" + secrets.token_urlsafe(24)
+        self._entries[sid] = _Entry(sealer, user_id, self._clock() + ttl)
+        return sid
+
     def drop(self, session_id: str):
         self._entries.pop(session_id or "", None)
 
