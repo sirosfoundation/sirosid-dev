@@ -163,53 +163,116 @@ class DockerfileTests(unittest.TestCase):
         self.assertIn("setpriv --reuid=app", (DEPLOY / "sirosid-admin").read_text())
 
 
-@unittest.skipUnless(shutil.which("helm") and shutil.which("openssl"), "needs helm and openssl")
-class ImageTreeTests(unittest.TestCase):
-    """Copy exactly what the Dockerfile copies (minus the .dockerignore) into a fresh
-    tree and run a real deploy against it: proves Resources(root=/app) is complete."""
+def build_image_tree(dest: Path):
+    """Copy exactly what the Dockerfile COPYs into /app (minus the .dockerignore)."""
+    rules = dockerignore_rules()
+    for sources, target in dockerfile_copies():
+        if not target.startswith("/app"):
+            continue
+        base = dest / target[len("/app/"):]
+        for s in sources:
+            src = ROOT / s
+            if src.is_dir():
+                for p in src.rglob("*"):
+                    if p.is_file() and not excluded(p.relative_to(ROOT).as_posix(), rules):
+                        out = base / p.relative_to(src)
+                        out.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(p, out)
+            else:
+                out = base / src.name if target.endswith("/") else base
+                out.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, out)
 
-    def test_a_deploy_from_the_image_tree_alone_works(self):
+
+def _chmod_tree(root: Path, writable: bool):
+    for p in [root, *root.rglob("*")]:
+        mode = p.stat().st_mode
+        p.chmod(mode | 0o200 if writable else mode & ~0o222)
+
+
+@unittest.skipUnless(shutil.which("helm") and shutil.which("openssl"), "needs helm and openssl")
+@unittest.skipIf(os.geteuid() == 0, "root ignores the read-only bits this relies on")
+class ImageTreeTests(unittest.TestCase):
+    """The image's /app, rebuilt from the Dockerfile's COPY lines and made READ-ONLY
+    (the service runs as `app`, which cannot write /app): what a deploy needs must be
+    there, and nothing may be written into it. The first real-Fly run failed exactly
+    here - vc secrets went to /app/fixtures/rendered-secrets."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tree = Path(tempfile.mkdtemp(prefix="cp-image-"))
+        build_image_tree(cls.tree)
+        _chmod_tree(cls.tree, writable=False)
+
+    @classmethod
+    def tearDownClass(cls):
+        _chmod_tree(cls.tree, writable=True)
+        shutil.rmtree(cls.tree, ignore_errors=True)
+
+    def platform(self, **kw):
+        from sirosid_core.policy import PlatformPolicy
+        return PlatformPolicy(**{"region": "arn", "app_prefix": "sid", "host_pattern": "{app}.fly.dev",
+                                 "scale_to_zero": True, "env_admin": False, **kw})
+
+    def test_the_tree_is_complete(self):
+        from sirosid_core.resources import Resources
+        self.assertEqual(Resources(self.tree).missing(), [])
+
+    def test_a_deploy_from_the_read_only_image_tree(self):
         from fakefly import FakeFly
         from sirosid_core.deploy import deploy_instance
         from sirosid_core.fly import FlyClient
-        from sirosid_core.naming import Naming
-        from sirosid_core.policy import PlatformPolicy, build_spec
+        from sirosid_core.policy import build_spec
         from sirosid_core.resources import Resources
-
-        rules = dockerignore_rules()
-        tree = Path(tempfile.mkdtemp(prefix="cp-image-"))
-        self.addCleanup(shutil.rmtree, tree, ignore_errors=True)
-        for sources, dest in dockerfile_copies():
-            if not dest.startswith("/app"):
-                continue
-            for s in sources:
-                src = ROOT / s
-                target = tree / dest[len("/app/"):] if dest.endswith("/") else tree / dest[len("/app/"):]
-                if src.is_dir():
-                    for p in src.rglob("*"):
-                        rel = p.relative_to(ROOT).as_posix()
-                        if p.is_file() and not excluded(rel, rules):
-                            out = target / p.relative_to(src)
-                            out.parent.mkdir(parents=True, exist_ok=True)
-                            shutil.copy2(p, out)
-                else:
-                    out = target / src.name if dest.endswith("/") else target
-                    out.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, out)
-        self.assertEqual(Resources(tree).missing(), [])
-        platform = PlatformPolicy(region="arn", app_prefix="sid", host_pattern="{app}.fly.dev", scale_to_zero=True,
-                                  env_admin=False)
-        spec = build_spec({}, "k7m2qx4d", frozenset(), platform)
+        spec = build_spec({}, "k7m2qx4d", frozenset(), self.platform())
         fake = FakeFly()
         ok = lambda cmd, **k: subprocess.CompletedProcess(cmd, 0)
         fly = FlyClient(org="sandbox", token="FlyV1 t", runner=fake.runner(), docker=ok, out=lambda m: None, err=lambda m: None)
         scratch = Path(tempfile.mkdtemp(prefix="cp-render-"))
         self.addCleanup(shutil.rmtree, scratch, ignore_errors=True)
-        result = deploy_instance(spec, fly, spec.naming(), Resources(tree), rendered_root=scratch, progress=lambda m: None)
+        result = deploy_instance(spec, fly, spec.naming(), Resources(self.tree), rendered_root=scratch,
+                                 progress=lambda m: None, secrets_dir=scratch / "fly-k7m2qx4d" / "vc-secrets")
         self.assertIn("wallet-frontend", result.urls)
         self.assertTrue(any(c.startswith("flyctl deploy") for c in fake.log))
-        leaked = [c for c in fake.log if str(ROOT) in c]
-        self.assertEqual(leaked, [], "the deploy reached outside the image tree")
+        self.assertEqual([c for c in fake.log if str(ROOT) in c], [], "the deploy reached outside the image tree")
+        self.assertTrue(list((scratch / "fly-k7m2qx4d" / "vc-secrets").iterdir()))
+
+    def _service(self, platform, single=False):
+        try:
+            import test_service as ts
+        except ImportError:
+            self.skipTest("service deps")
+        from sirosid_core.resources import Resources
+        if single:
+            cp, fake, *_ = ts.make_single()
+        else:
+            cp, fake, _ = ts.make(platform=platform)
+        cp.resources = Resources(self.tree)
+        _, alice = ts.admin_and_user(cp)
+        return cp, alice
+
+    def _check_secrets_are_per_instance_and_sealed(self, cp, alice):
+        from sirosid_service.db import SealedStateStore
+        a, b = (cp.create_instance(alice) for _ in range(2))
+        for i in (a, b):
+            self.assertEqual(i["status"], "running", i["error"])
+        store = SealedStateStore(cp.db, cp._sealer(alice), alice.user_id)
+        sa, sb = store.load(a["id"]), store.load(b["id"])
+        names = sorted(k for k in sa if k.startswith("vc-secrets/"))
+        self.assertIn("vc-secrets/vcOidcProviderSubjectSalt", names, sorted(sa))
+        self.assertEqual(names, sorted(k for k in sb if k.startswith("vc-secrets/")))
+        self.assertNotEqual(sa["vc-secrets/vcOidcProviderSubjectSalt"], sb["vc-secrets/vcOidcProviderSubjectSalt"],
+                            "two instances must not share a subject salt")
+        raw = cp.db.one("SELECT data FROM state WHERE instance_id=? AND path=?", (a["id"], "vc-secrets/vcOidcProviderSubjectSalt"))
+        self.assertNotIn(sa["vc-secrets/vcOidcProviderSubjectSalt"], bytes(raw["data"]), "stored sealed")
+
+    def test_the_service_deploys_from_the_read_only_tree_with_per_instance_vc_secrets(self):
+        cp, alice = self._service(self.platform())
+        self._check_secrets_are_per_instance_and_sealed(cp, alice)
+
+    def test_the_same_for_the_single_machine_layout(self):
+        cp, alice = self._service(None, single=True)
+        self._check_secrets_are_per_instance_and_sealed(cp, alice)
 
 
 # ---- fly.toml ----------------------------------------------------------------------

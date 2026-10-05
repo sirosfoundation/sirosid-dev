@@ -192,6 +192,28 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual(set(fake.tokens_seen), {"tok"})
         self.assertIn("wallet-frontend", inst["urls"])
 
+    def test_an_unexpected_error_in_the_deploy_job_ends_in_failed_not_creating_forever(self):
+        """Seen on real Fly: a PermissionError (not a DeployError) escaped the job, the
+        thread pool swallowed it and the instance said 'creating' for good."""
+        import unittest.mock as mock
+        import sirosid_service.service as svc
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        with mock.patch.object(svc, "deploy_instance", side_effect=PermissionError(13, "Permission denied", "/app/x")), \
+                self.assertLogs("sirosid.service", "ERROR"):
+            inst = cp.create_instance(alice, name="demo")
+        self.assertEqual(inst["status"], "failed")
+        self.assertIn("internal error during deploy (PermissionError", inst["error"])
+        self.assertIn("deploy_failed", [r["action"] for r in cp.db.audit_log()])
+
+    def test_the_thread_runner_logs_what_a_job_raises(self):
+        import sirosid_service.service as svc
+        r = svc.ThreadRunner(workers=1)
+        with self.assertLogs("sirosid.service", "ERROR") as logs:
+            r.submit(lambda: 1 / 0)
+            r._pool.shutdown(wait=True)
+        self.assertIn("ZeroDivisionError", "\n".join(logs.output))
+
     def test_ttl_is_three_days(self):
         cp, _, clock = make()
         _, alice = admin_and_user(cp)

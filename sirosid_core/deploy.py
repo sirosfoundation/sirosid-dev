@@ -802,13 +802,18 @@ def deploy_order(components: list, conformance: bool, env_admin: bool = True) ->
 def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resources: Resources, *,
                     chart_dir: Path = None, rendered_root: Path = None, identities: list = None,
                     components: list = None, register=None, progress=print,
-                    render_only: bool = False) -> DeployResult:
+                    render_only: bool = False, secrets_dir: Path = None) -> DeployResult:
     """Deploy the instance `spec` describes.
 
     identities: Android signing identities (from identities_from_entries or the
     CLI's local files); default is spec.android_apps alone. components: the
     registry to deploy, default built from the pins in values-fly.yaml.
     render_only: render config and resolve images, deploy nothing.
+    secrets_dir: where the vc services' generated secrets (state.VC_SECRETS_DIR's
+    files) are kept. Default: resources.rendered_secrets, the CLI's one directory
+    shared by every target - right for a developer, wrong for a service, where
+    resources are read-only and instances must not share secrets: a service
+    passes <rendered_root>/fly-<env>/vc-secrets, which state.py saves.
 
     Idempotent: a redeploy reuses the state in rendered_root/fly-<env> (see
     state.py), creates nothing that exists and never rotates a generated secret.
@@ -856,7 +861,7 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
                       zk_circuits_sources=spec.zk_circuits_sources, dc_api_enable=spec.dc_api_enable,
                       credential_registries=spec.credential_registries, env_values=spec.values,
                       bbs_secret_key=spec.bbs_secret_key or None, naming=naming, resources=resources,
-                      say=say, warn=say)
+                      say=say, warn=say, secrets_dir=secrets_dir)
     except HelmError as e:
         raise DeployError(str(e)) from e
     mongo_version = extract_image(docs, "mongoCommunityVersion")
