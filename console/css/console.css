@@ -24,3 +24,9 @@ pre { overflow:auto; background:var(--card); padding:8px; border-radius:6px; fon
 @media (max-width:600px) { header { padding:8px 12px; } main { padding:12px; } }
 .grow { flex:1; }
 .card { overflow-x:auto; } a { color:var(--accent); } td.row { display:table-cell; text-align:right; white-space:nowrap; }
+.hero { max-width:420px; margin:10vh auto 0; text-align:center; }
+.hero.left { text-align:left; }
+.hero h2 { font-size:22px; margin:0 0 6px; }
+.stack { display:grid; gap:10px; margin-top:20px; }
+button.big { padding:12px 16px; font-size:16px; width:100%; }
+nav[hidden] { display:none; }
