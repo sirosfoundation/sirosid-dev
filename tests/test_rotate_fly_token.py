@@ -19,7 +19,7 @@ _spec = importlib.util.spec_from_file_location("rotate_fly_token", ROOT / "scrip
 rot = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(rot)
 
-ORG, APP, NAME = "sirosdev", "sirosid-control-plane", "sirosid-control-plane"
+ORG, APP, NAME = "sirosdev", "sirosid-console", "sirosid-console"
 OLD = "FlyV1 fm2_OLDTOKENVALUE"
 
 REAL_ORG_TABLE = (
@@ -62,9 +62,11 @@ class Fake(FakeFly):
         return [t for t in self.org_tokens if t["ID"].startswith("orgtok0")]
 
 
-def rotation(fake, healthy=True, out=None, **kw):
+def rotation(fake, healthy=True, out=None, app_token=None, **kw):
     lines = out if out is not None else []
     fly = FlyClient(org=ORG, token="FlyV1 fm2_ROTATORTOKEN", runner=fake.runner(), out=lines.append, err=lines.append)
+    if app_token:
+        kw["app_fly"] = FlyClient(org=ORG, token=app_token, runner=fake.runner(), out=lines.append, err=lines.append)
     t = [0.0]
 
     def sleep(s):
@@ -106,6 +108,20 @@ class RotationTests(unittest.TestCase):
         create = [c for c in fake.log if "tokens create org" in c][0]
         self.assertIn("-x 1440h", create)
         self.assertIn(f"-o {ORG}", create)
+
+    def test_the_secret_is_set_with_the_app_token_and_tokens_are_minted_with_the_rotator(self):
+        """The console lives in another org than the one whose token it holds: an
+        app-scoped deploy token sets the secret, the bot user's token mints."""
+        fake = Fake()
+        r, out = rotation(fake, app_token="FlyV1 fm2_APPDEPLOYTOKEN")
+        self.assertEqual(r.run(), 0, out)
+        who = {}
+        for cmd, tok in zip(fake.log, fake.tokens_seen):
+            who.setdefault(" ".join(cmd.split()[1:3]), set()).add(tok)
+        self.assertEqual(who["secrets import"], {"FlyV1 fm2_APPDEPLOYTOKEN"})
+        self.assertEqual(who["secrets deploy"], {"FlyV1 fm2_APPDEPLOYTOKEN"})
+        self.assertEqual(who["tokens create"] | who["tokens revoke"] | who["tokens list"], {"FlyV1 fm2_ROTATORTOKEN"})
+        self.assertNotIn("APPDEPLOYTOKEN", "\n".join(out))
 
     def test_no_token_is_ever_printed(self):
         fake = Fake()

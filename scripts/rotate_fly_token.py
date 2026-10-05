@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Rotate the control plane's Fly org token (its FLY_API_TOKEN secret).
 
-    FLY_ROTATOR_TOKEN=... python3 scripts/rotate_fly_token.py \
-        --org sirosdev --app sirosid-control-plane \
+    FLY_ROTATOR_TOKEN=... [FLY_APP_TOKEN=...] python3 scripts/rotate_fly_token.py \
+        --org sirosdev --app sirosid-console \
         --health-url https://console.sirosid.dev/healthz [--dry-run]
 
 Why it runs as a separate identity: an org token cannot mint org tokens (nor app
 deploy tokens), so the service cannot rotate its own credential. FLY_ROTATOR_TOKEN
-belongs to a bot Fly USER who is a member of the target org only and can set
-secrets on the control-plane app; deploy/control-plane/README.md has the setup.
+belongs to a bot Fly USER who is a member of the target org (--org) only. The
+secret is set on --app with FLY_APP_TOKEN when given - an app-scoped deploy token,
+needed when the app lives in another org than the one whose token it holds (the
+console runs in sirosfoundation, its instances in sirosdev) - else with the rotator
+token. deploy/control-plane/README.md has the setup.
 
 Order, and what each failure leaves behind:
   1. list the org's unrevoked tokens called --name     (these are the "old" ones)
@@ -37,7 +40,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from sirosid_core.fly import FlyClient, FlyError  # noqa: E402
 
-DEFAULT_NAME = "sirosid-control-plane"
+DEFAULT_NAME = "sirosid-console"
 SECRET = "FLY_API_TOKEN"
 _TOKENISH = re.compile(r"(FlyV1\s+\S+|fm[12]_[A-Za-z0-9+/=_,-]+|fo1_[A-Za-z0-9_-]+)")
 
@@ -101,7 +104,11 @@ def wait_healthy(check, url, timeout: float, interval: float, consecutive: int, 
 class Rotation:
     def __init__(self, fly: FlyClient, *, org, app, name=DEFAULT_NAME, expiry="1440h", health_url,
                  health=http_healthy, health_timeout=300.0, health_interval=5.0, health_consecutive=3,
-                 out=print, sleep=time.sleep, clock=time.monotonic):
+                 out=print, sleep=time.sleep, clock=time.monotonic, app_fly: FlyClient = None):
+        # `fly` lists/mints/revokes org tokens in `org`; `app_fly` sets the secret on
+        # `app` (which may live in ANOTHER org, e.g. the console in sirosfoundation
+        # while its instances live in sirosdev). Default: the same identity.
+        self.app_fly = app_fly or fly
         self.fly, self.org, self.app, self.name, self.expiry = fly, org, app, name, expiry
         self.health_url, self.health = health_url, health
         self.health_timeout, self.health_interval, self.health_consecutive = health_timeout, health_interval, health_consecutive
@@ -110,9 +117,10 @@ class Rotation:
         # FlyClient traces commands and, on a failure, echoes flyctl's own output -
         # which could quote the value it was given. Everything it says goes through
         # redact() too, against the token minted in THIS run as well as by shape.
-        raw_out, raw_err = fly._out, fly._err
-        fly._out = lambda m: raw_out(redact(m, self._new))
-        fly._err = lambda m: raw_err(redact(m, self._new))
+        for client in {id(fly): fly, id(self.app_fly): self.app_fly}.values():
+            raw_out, raw_err = client._out, client._err
+            client._out = (lambda o: lambda m: o(redact(m, self._new)))(raw_out)
+            client._err = (lambda e: lambda m: e(redact(m, self._new)))(raw_err)
 
     def say(self, msg):
         self._out(redact(msg, self._new))
@@ -169,8 +177,8 @@ class Rotation:
             return 2
         self.say(f"minted a new org token {self.name!r} (expires in {self.expiry})")
         try:
-            self.fly.import_secrets(self.app, {SECRET: self._new}, stage=True)
-            self.fly.run("secrets", "deploy", "-a", self.app, capture=True)
+            self.app_fly.import_secrets(self.app, {SECRET: self._new}, stage=True)
+            self.app_fly.run("secrets", "deploy", "-a", self.app, capture=True)
         except FlyError as e:
             self.say(f"setting {SECRET} on {self.app} failed: {e}")
             self._revoke_new(set(ids))
@@ -213,11 +221,13 @@ def main(argv=None) -> int:
     if not token:
         print("FLY_ROTATOR_TOKEN is required (a bot user's token, see deploy/control-plane/README.md)", file=sys.stderr)
         return 1
-    trace = lambda m: print(redact(m, token), file=sys.stderr) if str(m).strip() else None
+    app_token = os.environ.get("FLY_APP_TOKEN", "")
+    trace = lambda m: print(redact(m, token, app_token), file=sys.stderr) if str(m).strip() else None
     fly = FlyClient(org=a.org, token=token, out=trace, err=trace)
+    app_fly = FlyClient(org=a.org, token=app_token, out=trace, err=trace) if app_token else None
     return Rotation(fly, org=a.org, app=a.app, name=a.name, expiry=a.expiry, health_url=a.health_url,
-                    health_timeout=a.health_timeout,
-                    out=lambda m: print(redact(m, token))).run(dry_run=a.dry_run)
+                    health_timeout=a.health_timeout, app_fly=app_fly,
+                    out=lambda m: print(redact(m, token, app_token))).run(dry_run=a.dry_run)
 
 
 if __name__ == "__main__":

@@ -4,15 +4,18 @@
 # the app's secret -> wait for /healthz -> only then revoke the old one(s). The token
 # is never printed.
 #
-# Credential: FLY_ROTATOR_TOKEN, an environment secret holding the token of a BOT Fly
-# USER that is a member of ONLY the sirosdev org. A user token is needed because org
-# tokens cannot mint org tokens (nor deploy tokens); a bot user that belongs to no
-# other org bounds what a leaked rotator token can reach. Setup in
-# deploy/control-plane/README.md ("Token rotation").
+# Credentials (environment secrets):
+#   FLY_ROTATOR_TOKEN   the token of a BOT Fly USER that is a member of ONLY the sirosdev
+#                       org: mints and revokes the sirosdev org token. A user token is
+#                       needed because org tokens cannot mint org tokens (nor deploy
+#                       tokens); a bot in no other org bounds what a leak can reach.
+#   FLY_DEPLOY_TOKEN_CONTROL_PLANE  the app-scoped deploy token for sirosid-console
+#                       (which lives in sirosfoundation, not sirosdev): sets the secret.
+# Setup in deploy/control-plane/README.md ("Token rotation").
 #
-# Environment protection: `control-plane-rotation`, deployment branches = main only
-# (a scheduled run cannot wait for a reviewer, so do not add required reviewers here;
-# the branch restriction is what keeps other branches off the secret).
+# Environment protection: `control-plane-rotation` (holding both secrets), deployment
+# branches = main only (a scheduled run cannot wait for a reviewer, so do not add
+# required reviewers here; the branch restriction keeps other branches off the secrets).
 name: rotate fly org token
 
 on:
@@ -34,7 +37,7 @@ concurrency:
 
 env:
   ORG: sirosdev
-  APP: sirosid-control-plane
+  APP: sirosid-console
   HEALTH_URL: https://console.sirosid.dev/healthz
   # Same pin as deploy/control-plane/Dockerfile (a test keeps the two equal).
   FLYCTL_VERSION: "0.4.111"
@@ -61,6 +64,7 @@ jobs:
       - name: Rotate
         env:
           FLY_ROTATOR_TOKEN: ${{ secrets.FLY_ROTATOR_TOKEN }}
+          FLY_APP_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_CONTROL_PLANE }}
           # A scheduled run has no inputs: it rotates for real.
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
         run: |
