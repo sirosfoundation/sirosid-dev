@@ -96,7 +96,13 @@ never reads argv, the environment or a developer's disk:
   comes back as `fly-replay-failed` -> a 503 page; instances must stay on the org's DEFAULT
   network (cross-network replay is refused); the edge never proxies or answers an Upgrade
   itself; its app name must not start with `sid-`. `tests/test_edge.py` runs an adversarial Host
-  corpus through a Python mirror and through real nginx (docker).
+  corpus through a Python mirror and through real nginx (docker). Measured through a real edge
+  (2026-10-05): ~2 ms replay overhead; websockets and 20 MB bodies pass intact; **a replay
+  STARTS a stopped machine even with autostart off**, so stopping a single-machine instance
+  cordons it (`lifecycle`) and start/reset/deploy uncordon - only then does a stopped instance
+  get the edge's 503 page (at the 10 s timeout); a replay to an app that does not exist is
+  Fly's empty 502 after ~7 s (no fallback); a client's `X-Forwarded-Proto` reaches the instance
+  verbatim (only `Fly-Client-IP` is replaced), so the behind-edge front sends `https` itself.
 - `tests/test_fly_up_characterization.py`'s vc-*.yaml hashes depend on the gitignored
   `fixtures/rendered-secrets/vc*` of the checkout that wrote the golden: a fresh worktree
   fails it until those files match.
