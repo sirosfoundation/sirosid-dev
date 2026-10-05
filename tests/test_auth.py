@@ -24,7 +24,7 @@ NEEDS = unittest.skipUnless(HAVE, "needs webauthn and cbor2 (sirosid_service/req
 
 def setup():
     cp, fake, clock = make()
-    auth = AuthService(cp, AuthConfig(origins=("https://sirosid.dev",)))
+    auth = AuthService(cp, AuthConfig(origins=("https://console.sirosid.dev",)))
     admin = cp.bootstrap_admin("Root")
     return cp, auth, admin, clock
 
@@ -78,7 +78,7 @@ class EnrolmentTests(unittest.TestCase):
     def test_the_options_demand_a_discoverable_credential_with_user_verification_and_ask_for_prf(self):
         cp, auth, admin, _ = setup()
         opts = auth.begin_enrollment(cp.create_invite(admin), "A", "")["options"]
-        self.assertEqual(opts["rp"]["id"], "sirosid.dev")
+        self.assertEqual(opts["rp"]["id"], "console.sirosid.dev")
         self.assertEqual(opts["authenticatorSelection"]["residentKey"], "required")
         self.assertEqual(opts["authenticatorSelection"]["userVerification"], "required")
         self.assertEqual(unb64u(opts["extensions"]["prf"]["eval"]["first"]), AuthConfig().prf_salt)

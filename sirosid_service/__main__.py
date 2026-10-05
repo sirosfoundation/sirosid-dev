@@ -27,7 +27,8 @@ def build(settings: Settings, runner=None, register=None):
     db = Database(settings.db_path)
     fly = FlyClient(org=settings.fly_org, token=settings.fly_token)
     platform = PlatformPolicy(region=settings.region, app_prefix=settings.app_prefix, host_pattern=settings.host_pattern,
-                              scale_to_zero=True, env_admin=False)
+                              scale_to_zero=True, env_admin=False, layout=settings.layout,
+                              public_ips=settings.public_ips)
     cp = ControlPlane(db, fly, Resources(settings.resources_root), platform=platform,
                       limits=Limits(global_max_instances=settings.max_instances,
                                     sweep_grace_seconds=settings.sweep_grace_seconds),

@@ -211,6 +211,11 @@ def _power_single_machine(fly, naming, action, say, machines, ready_timeout: flo
         for m in _machine_ids(fly, app, machines):
             say(f"--- {action} {app} machine {m['id']} ---")
             if action == "stop":
+                # Cordon FIRST: behind a fly-replay edge the replay STARTS a stopped
+                # machine even with autostart off (real Fly, 2026-10-05: event source
+                # "proxy"), so "stopped" only stays stopped while the proxy may not
+                # route to it. The edge's fallback then shows its 503 page.
+                _cordon(fly, machines, app, m["id"], True)
                 if m.get("state") not in ("stopped", "suspended"):
                     if machines is not None:
                         machines.stop_machine(app, m["id"])
@@ -223,12 +228,27 @@ def _power_single_machine(fly, naming, action, say, machines, ready_timeout: flo
                         machines.start_machine(app, m["id"])
                     else:
                         fly.run("machine", "start", m["id"], "-a", app)
-                if machines is not None:
-                    _wait_ready(machines, app, m["id"], say, ready_timeout)
+                try:
+                    if machines is not None:
+                        _wait_ready(machines, app, m["id"], say, ready_timeout)
+                finally:
+                    # Routable again once it is up (until then the edge says 503, not a
+                    # half-started stack's 502s) - and also if waiting failed, which would
+                    # otherwise leave a running instance unreachable.
+                    _cordon(fly, machines, app, m["id"], False)
         report.changed.append(app)
     except Exception as e:
         report.failed.append((app, str(e)))
     return report
+
+
+def _cordon(fly, machines, app, machine_id, on: bool):
+    """Take the machine out of (on=True) or back into Fly's proxy routing. Idempotent;
+    a cordon survives start, stop and a config update (real Fly)."""
+    if machines is not None:
+        (machines.cordon if on else machines.uncordon)(app, machine_id)
+    else:
+        fly.run("machine", "cordon" if on else "uncordon", machine_id, "-a", app)
 
 
 def _wait_ready(machines, app, machine_id, say, timeout):
@@ -280,7 +300,12 @@ def reset_single_machine(fly: FlyClient, machines, naming: Naming, progress=None
             machines.stop_machine(app, m["id"])
             machines.wait(app, m["id"], "stopped", timeout=120)
             machines.start_machine(app, m["id"])
-            _wait_ready(machines, app, m["id"], say, ready_timeout)
+            try:
+                _wait_ready(machines, app, m["id"], say, ready_timeout)
+            finally:
+                # A reset leaves the instance running and reachable, even one that
+                # was stopped (so cordoned) before.
+                machines.uncordon(app, m["id"])
         report.changed.append(app)
     except Exception as e:
         report.failed.append((app, str(e)))
