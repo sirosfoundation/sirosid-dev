@@ -213,7 +213,7 @@ class Api:
     def _me(self, who):
         u = self.cp._user(who.user_id)
         return {"user_id": who.user_id, "name": u["name"], "email": u["email"], "role": who.role,
-                "capabilities": sorted(who.capabilities), "unlocked": bool(who.session_id),
+                "capabilities": sorted(who.capabilities), "unlocked": self.cp.is_unlocked(who),
                 "limits": {"max_concurrent": u["max_concurrent"], "max_kept": u["max_kept"],
                            "kept_until": u["kept_until"], "ttl_days": self.cp.limits.ttl_days}}
 

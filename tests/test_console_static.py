@@ -95,6 +95,14 @@ class NoInlineCode(unittest.TestCase):
             self.assertNotRegex(src, r"""\bstyle\s*:\s*["']""", f.name)             # inline style attributes are blocked by the CSP
             self.assertNotRegex(src, r"https?://[a-z]", f.name) if f.name != "container.js" else None
 
+    def test_polling_cannot_leak_timers_and_null_is_never_rendered(self):
+        """Regressions found by the browser run: setInterval re-armed from its own tick made an
+        exponential request flood, and a null child rendered as the text 'null'."""
+        src = (CONSOLE / "js" / "app.js").read_text()
+        self.assertNotIn("setInterval", src)
+        self.assertIn("setTimeout", src)
+        self.assertRegex(src, r"replaceChildren\(\.\.\.kids\.flat\(\)\.filter")
+
     def test_the_prf_output_is_never_sent(self):
         src = (CONSOLE / "js" / "app.js").read_text()
         self.assertNotRegex(src, r"credentialToJSON\([^)]*prf", "the PRF output must not be passed into a request")

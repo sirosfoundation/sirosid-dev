@@ -23,3 +23,4 @@ pre { overflow:auto; background:var(--card); padding:8px; border-radius:6px; fon
 #toast.show { opacity:1; }
 @media (max-width:600px) { header { padding:8px 12px; } main { padding:12px; } }
 .grow { flex:1; }
+.card { overflow-x:auto; } a { color:var(--accent); } td.row { display:table-cell; text-align:right; white-space:nowrap; }

@@ -252,6 +252,18 @@ class ControlPlaneThroughHttpTests(unittest.TestCase):
             self.assertEqual((r.status_code, r.json()["error"]), (423, "locked"), path)
         self.assertEqual(c.get("/api/instances").status_code, 200, "metadata needs no key")
 
+    def test_me_stops_saying_unlocked_when_the_key_expires(self):
+        """The web session outlives the key (12 h vs 8 h): /api/me must tell the console the truth,
+        or it keeps showing an unlocked UI whose every sealed call answers 423."""
+        cp, auth, app, admin, fake, clock = build()
+        c = signed_in(cp, app, admin)
+        self.assertTrue(c.get("/api/me").json()["unlocked"])
+        clock.advance(seconds=9 * 3600)
+        me = c.get("/api/me")
+        self.assertEqual(me.status_code, 200, "still signed in")
+        self.assertFalse(me.json()["unlocked"])
+        self.assertEqual(c.req("PUT", "/api/configs/x", {"config": {}}).status_code, 423)
+
     def test_policy_problems_come_back_all_at_once_as_a_422(self):
         cp, auth, app, admin, *_ = build()
         c = signed_in(cp, app, admin)

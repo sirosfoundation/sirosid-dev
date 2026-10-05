@@ -6,6 +6,7 @@ import { creationOptions, requestOptions, credentialToJSON, prfEnabled, prfFirst
 
 const $ = (id) => document.getElementById(id);
 const state = { me: null, mainKey: null, container: null, tab: "instances", poll: null };
+const stopPolling = () => { clearTimeout(state.poll); state.poll = null; };
 
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
@@ -29,9 +30,9 @@ function toast(msg, bad = false) {
   toastTimer = setTimeout(() => (t.className = ""), 5000);
 }
 const fail = (e) => toast(e instanceof ApiError && e.problems.length ? e.problems.map((p) => `${p.path}: ${p.message}`).join("; ") : e.message || String(e), true);
-const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { fail(e); } };
+const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { fail(e); if (e instanceof ApiError && e.status === 423) relock(); } };
 const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "—");
-const render = (...kids) => { const m = $("main"); m.replaceChildren(...kids.flat()); };
+const render = (...kids) => { const m = $("main"); m.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); };
 
 // ---- passkey + key container ---------------------------------------------------------------
 
@@ -114,6 +115,14 @@ async function removePasskey(id) {
   }
 }
 
+/** The server says the key is gone (expired or dropped): show the Locked banner now, not at the next reload. */
+async function relock() {
+  if (!state.me?.unlocked) return;                       // already showing Locked: nothing to refresh, and no loop
+  try { state.me = await api("GET", "/api/me"); } catch { return start(); }
+  state.mainKey = null;
+  show();
+}
+
 async function logout() {
   await api("POST", "/api/logout");
   state.me = state.mainKey = state.container = null;
@@ -154,13 +163,14 @@ function chrome() {
 }
 
 async function show() {
-  clearInterval(state.poll);
+  stopPolling();
   chrome();
   try {
     await ({ instances: instancesScreen, configs: configsScreen, passkeys: passkeysScreen, admin: adminScreen })[state.tab]();
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return start();
     fail(e);
+    if (e instanceof ApiError && e.status === 423) relock();
   }
 }
 
@@ -193,7 +203,8 @@ async function instancesScreen() {
       h("label", { for: "iname" }, "Label"), nm,
       lim.max_kept > 0 && h("label", { class: "inline" }, keep, "Keep (does not expire)"), h("div", { class: "row end" }, create)),
     instances.length ? instances.map(instanceCard) : h("p", { class: "muted" }, "No instances yet."));
-  if (instances.some((i) => TRANSIENT.has(i.status))) state.poll = setInterval(() => instancesScreen().catch(() => {}), 8000);
+  stopPolling();
+  if (instances.some((i) => TRANSIENT.has(i.status))) state.poll = setTimeout(() => instancesScreen().catch(() => {}), 8000);   // one-shot: each pass re-arms at most one timer
 }
 
 function instanceCard(i) {
@@ -209,8 +220,8 @@ function instanceCard(i) {
     h("div", { class: "row" },
       i.status === "stopped" ? act("Start", "/start") : act("Stop", "/stop"),
       act("Reset data", "/reset"), 
-      state.me.limits.max_kept > 0 && h("button", { on: { click: guard(async () => { await api("POST", `/api/instances/${i.id}/keep`, { keep: !i.kept }); show(); }) } }, i.kept ? "Unkeep" : "Keep"),
-      h("button", { on: { click: guard(async () => {
+      state.me.limits.max_kept > 0 && h("button", { disabled: TRANSIENT.has(i.status), on: { click: guard(async () => { await api("POST", `/api/instances/${i.id}/keep`, { keep: !i.kept }); show(); }) } }, i.kept ? "Unkeep" : "Keep"),
+      h("button", { disabled: TRANSIENT.has(i.status), on: { click: guard(async () => {
         const c = await api("GET", `/api/instances/${i.id}/credentials`);
         creds.replaceChildren(h("pre", {}, JSON.stringify(c, null, 2)));
       }) } }, "Credentials"),
@@ -259,7 +270,7 @@ async function passkeysScreen() {
     h("div", { class: "card" }, h("h2", {}, "Passkeys"),
       h("table", {}, passkeys.map((p) => h("tr", {}, h("td", {}, p.label), h("td", { class: "muted" }, `added ${when(p.created_at)}`),
         h("td", { class: "row end" }, passkeys.length > 1 && h("button", { class: "danger", on: { click: guard(async () => { await removePasskey(p.id); show(); }) } }, "Remove")))))),
-    h("div", { class: "card" }, h("h2", {}, "Add a passkey"), h("p", { class: "muted" }, "Keep at least two: there is no recovery if you lose your only passkey."),
+    h("div", { class: "card" }, h("h2", {}, "Add a passkey"), h("p", { class: "muted" }, "Keep at least two, on different devices or keys (a device cannot add a second passkey to itself): there is no recovery if you lose your only passkey."),
       label, h("div", { class: "row end" }, h("button", { class: "primary", on: { click: guard(async () => { await addPasskey(label.value.trim()); toast("Added"); show(); }) } }, "Add"))));
 }
 
