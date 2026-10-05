@@ -60,6 +60,39 @@ class ConfigTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             settings(SIROSID_HOST_PATTERN="shared.example.com")
 
+    def test_the_sweep_grace_is_configurable_but_never_near_zero(self):
+        from sirosid_service.__main__ import build
+        s = settings(SIROSID_SWEEP_GRACE_SECONDS="120")
+        cp, _, _ = build(s)
+        self.assertEqual(cp.limits.sweep_grace_seconds, 120.0)
+        self.assertEqual(settings().sweep_grace_seconds, 3600.0)
+        for bad in ("0", "59"):
+            with self.assertRaises(SystemExit):
+                settings(SIROSID_SWEEP_GRACE_SECONDS=bad)
+        with self.assertRaises(SystemExit):
+            settings(SIROSID_TICK_SECONDS="0")
+
+
+@NEEDS
+class DeploymentFacingTests(unittest.TestCase):
+    def test_a_database_on_disk_is_in_wal_mode_for_litestream(self):
+        import tempfile
+        from sirosid_service.db import Database
+        d = tempfile.mkdtemp()
+        db = Database(os.path.join(d, "s.db"))
+        self.addCleanup(db.close)
+        self.assertEqual(db.one("PRAGMA journal_mode")["journal_mode"], "wal")
+        self.assertGreaterEqual(db.one("PRAGMA busy_timeout")["timeout"], 1000)
+
+    def test_the_console_host_serves_no_webauthn_related_origins_file(self):
+        """Related Origin Requests: a host serving /.well-known/webauthn can let OTHER
+        origins use its host as their RP ID. The console host must never serve one."""
+        cp, fake, clock = make()
+        auth = AuthService(cp, AuthConfig(origins=(ORIGIN,)))
+        c = Console(create_app(cp, auth, ApiConfig(origins=(ORIGIN,))))
+        for path in ("/.well-known/webauthn", "/.well-known/webauthn/", "/.well-known/passkey-endpoints"):
+            self.assertEqual(c.get(path).status_code, 404, path)
+
 
 @NEEDS
 class BootstrapInviteTests(unittest.TestCase):

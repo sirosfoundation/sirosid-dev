@@ -67,6 +67,12 @@ class Database:
         self._c = sqlite3.connect(path, check_same_thread=False, isolation_level=None)
         self._c.row_factory = sqlite3.Row
         with self._lock:
+            if path != ":memory:":
+                # WAL is what Litestream replicates (deploy/control-plane): it reads
+                # the WAL instead of copying the file. busy_timeout because Litestream
+                # (and an `admin-invite` over ssh) briefly hold locks of their own.
+                self._c.execute("PRAGMA busy_timeout=5000")
+                self._c.execute("PRAGMA journal_mode=WAL")
             self._c.executescript(SCHEMA)
 
     def close(self):
