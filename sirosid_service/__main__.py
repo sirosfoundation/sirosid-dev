@@ -32,7 +32,8 @@ def build(settings: Settings, runner=None, register=None):
                       limits=Limits(global_max_instances=settings.max_instances), runner=runner or ThreadRunner(),
                       register=register)
     auth = AuthService(cp, AuthConfig(rp_id=settings.rp_id, rp_name=settings.rp_name, origins=settings.origins))
-    app = create_app(cp, auth, ApiConfig(origins=settings.origins, client_ip_header=settings.client_ip_header))
+    app = create_app(cp, auth, ApiConfig(origins=settings.origins, client_ip_header=settings.client_ip_header,
+                                         console_dir=settings.console_dir))
     return cp, auth, app
 
 

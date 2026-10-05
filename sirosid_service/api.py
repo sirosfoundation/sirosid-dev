@@ -20,6 +20,7 @@ import base64
 import json
 import logging
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -54,6 +55,14 @@ SECURITY_HEADERS = {
     "Permissions-Policy": "publickey-credentials-get=(self), publickey-credentials-create=(self)",
 }
 
+# What the console's own pages may do: run its own scripts, load its own stylesheet, talk to
+# its own origin. No inline script or style, no framing, no other origin, no forms.
+PAGE_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; "
+            "frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+STATIC_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
+                ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
+STATIC_DIRS = ("js", "css")
+
 
 @dataclass
 class ApiConfig:
@@ -63,6 +72,8 @@ class ApiConfig:
     # Fly-Client-IP). Empty = use the socket peer. Never trust it unless a proxy you
     # control sets it, or a client can pick its own rate-limit bucket.
     client_ip_header: str = ""
+    # Directory with index.html, js/ and css/ (the console). None = API only.
+    console_dir: Optional[str] = None
 
 
 class RateLimited(ServiceError):
@@ -202,9 +213,40 @@ class Api:
     def _me(self, who):
         u = self.cp._user(who.user_id)
         return {"user_id": who.user_id, "name": u["name"], "email": u["email"], "role": who.role,
-                "capabilities": sorted(who.capabilities), "unlocked": bool(who.session_id),
+                "capabilities": sorted(who.capabilities), "unlocked": self.cp.is_unlocked(who),
                 "limits": {"max_concurrent": u["max_concurrent"], "max_kept": u["max_kept"],
                            "kept_until": u["kept_until"], "ttl_days": self.cp.limits.ttl_days}}
+
+    def static_routes(self) -> List[Route]:
+        """Serve the console. Only files that existed at startup under index.html, js/ and
+        css/ are served, from a fixed table: a request path is looked up, never joined, so
+        there is no traversal to get wrong, and tests/ and everything else stay private."""
+        if not self.config.console_dir:
+            return []
+        root = Path(self.config.console_dir).resolve()
+        table: Dict[str, Tuple[bytes, str]] = {}
+        files = [root / "index.html"]
+        for d in STATIC_DIRS:
+            files += sorted((root / d).glob("*"))
+        for f in files:
+            if f.is_file() and f.suffix in STATIC_TYPES:
+                table["/" + f.relative_to(root).as_posix()] = (f.read_bytes(), STATIC_TYPES[f.suffix])
+        if "/index.html" not in table:
+            raise ValueError(f"{root} has no index.html")
+        table["/"] = table["/index.html"]
+
+        async def serve(request: Request) -> Response:
+            hit = table.get(request.url.path)
+            if request.method not in ("GET", "HEAD") or not hit:
+                return self._finish(Result({"error": "not_found"}, 404))
+            body, ctype = hit
+            resp = Response(body if request.method == "GET" else b"", media_type=ctype)
+            for k, v in SECURITY_HEADERS.items():
+                resp.headers[k] = v
+            resp.headers["Content-Security-Policy"] = PAGE_CSP
+            resp.headers["Content-Length"] = str(len(body))
+            return resp
+        return [Route(path, serve, methods=["GET", "HEAD"]) for path in table]
 
     def routes(self) -> List[Route]:
         a, cp, r = self.auth, self.cp, self.route
@@ -263,7 +305,7 @@ class Api:
             r("/api/admin/instances", ["GET"], lambda w, d, p, q: {"instances": cp.list_instances(w, all_users=True)}, admin=True),
             r("/api/admin/audit", ["GET"], lambda w, d, p, q: {"audit": (cp._require_admin(w) or cp.db.audit_log(
                 min(int(q.query_params.get("limit", 100)), 500)))}, admin=True),
-        ]
+        ] + self.static_routes()
 
     def _finish_enroll(self, who, data, params, request):
         user, token = self.auth.finish_enrollment(str(data.get("ceremony_id", "")), data.get("credential") or {})

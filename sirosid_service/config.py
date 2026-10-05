@@ -30,6 +30,7 @@ class Settings:
     max_instances: int
     host: str
     port: int
+    console_dir: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -41,7 +42,8 @@ class Settings:
             origins=origins, app_prefix=_env("SIROSID_APP_PREFIX", "sid"), host_pattern=_env("SIROSID_HOST_PATTERN", "{app}.fly.dev"),
             region=_env("SIROSID_REGION", "arn"), tick_seconds=float(_env("SIROSID_TICK_SECONDS", "300")),
             client_ip_header=_env("SIROSID_CLIENT_IP_HEADER", "Fly-Client-IP"),
-            max_instances=int(_env("SIROSID_MAX_INSTANCES", "10")), host=_env("SIROSID_HOST", "0.0.0.0"), port=int(_env("PORT", "8080")))
+            max_instances=int(_env("SIROSID_MAX_INSTANCES", "10")), host=_env("SIROSID_HOST", "0.0.0.0"), port=int(_env("PORT", "8080")),
+            console_dir=_env("SIROSID_CONSOLE_DIR", str(root / "console")))
         s.validate()
         return s
 

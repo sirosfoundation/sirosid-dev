@@ -174,6 +174,14 @@ class ControlPlane:
     def _sealer(self, who: Principal):
         return self.keys.get(who.session_id, who.user_id)
 
+    def is_unlocked(self, who: Principal) -> bool:
+        """True only while the session's key is still held (it expires; the session id outlives it)."""
+        try:
+            self._sealer(who)
+            return True
+        except Locked:
+            return False
+
     def set_privatedata(self, who: Principal, container: bytes):
         """The browser's wrapped main-key container (one entry per passkey), stored
         OPAQUE: the server never parses it and never sees a PRF output."""
