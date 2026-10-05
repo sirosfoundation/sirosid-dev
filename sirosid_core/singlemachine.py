@@ -9,8 +9,8 @@ Machines API (machines.py). What changes, and why:
   its own port (naming.SINGLE_MACHINE_PORTS) and siblings reach each other on
   127.0.0.1 (Naming.addr). The renderer moves the vc services and the PDP through
   the chart's extraConfig and wallet-backend through its config.
-* Routing. One app has one <app>.fly.dev name, so a `front` nginx container is
-  the only public listener and routes by Host (assets.front_nginx_conf).
+* Routing. One app has one <app>.fly.dev name, so a front nginx server (inside
+  wallet-frontend's nginx) is the only public listener, routing by Host (assets.front_nginx_conf).
   wallet-proxy folds into it. Per-component hostnames need a domain routed to
   this app; until then `<app>.fly.dev` answers as wallet-proxy.
 * Large files. The whole machine config is capped at ~1 MiB and the vctms alone
@@ -73,7 +73,17 @@ SECRETS_DIR = "/run/sirosid-secrets"
 BUNDLE_DIRS = {"vctms": "/vctms", "pres-reqs": "/pres-reqs", "documents": "/documents",
                "branding-assets": "/branding-assets"}
 
-INIT_IMAGE = "busybox:1.36"
+# Every DISTINCT container image, every image volume and every Fly volume is a
+# guest block device, and a machine has few: the API refuses a 15th drive ("only
+# 14 slots are available (/dev/vdc through /dev/vdp)") and Firecracker already
+# fails to boot at 13 (`AttachDevice(MmioTransport(Allocator(ResourceNotAvailable)))`,
+# the machine then sits in `created` or stops). Measured on real Fly 2026-10-05:
+# 12 images, or 11 images + a volume, boot; 12 + a volume does not; memory
+# temp_dirs eat into the same budget (10 images + image volume + 3 temp_dirs +
+# volume failed, 9 + the same booted). Hence: the init container reuses the mongo
+# image and the front nginx lives inside wallet-frontend's nginx.
+MAX_BLOCK_DEVICES = 12
+MAX_DEVICES_WITH_TEMP_DIRS = 14
 GUEST = {"cpu_kind": "shared", "cpus": 4, "memory_mb": 8192}
 
 # The components that become containers, in the apps layout's deploy order.
@@ -177,7 +187,7 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
                          android_identities: dict, guest: dict = None) -> dict:
     """The machine config for the instance `ctx` describes. Pure apart from
     reading the rendered files under ctx.out_dir. `images`: component -> ref
-    (wallet-proxy's is the front nginx's)."""
+    (CONTAINER_COMPONENTS)."""
     naming, spec, out_dir, pki_dir = ctx.naming, ctx.spec, ctx.out_dir, ctx.pki_dir
     p = naming.port
     secret_mount = lambda group: [{"name": f"sec_{group}", "path": SECRETS_DIR}]  # noqa: E731
@@ -194,7 +204,9 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
             script.append(f'printf %s "${secret}" | base64 -d > /out/{group}/{fname}')
     script += ["chmod -R a+rX /out", "echo secrets-init: done"]
     containers.append({
-        "name": "secrets-init", "image": INIT_IMAGE, "cmd": ["sh", "-c", "\n".join(script)],
+        # The mongo image (it has sh and base64): a distinct init image would
+        # cost one of the machine's few block devices (see MAX_BLOCK_DEVICES).
+        "name": "secrets-init", "image": images["mongodb"], "cmd": ["sh", "-c", "\n".join(script)],
         "secrets": [{"env_var": s, "name": s} for s in SECRETS],
         "mounts": [{"name": f"sec_{g}", "path": f"/out/{g}"} for g in groups],
         "restart": {"policy": "no"},
@@ -258,28 +270,28 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
 
     fe_data = extract_configmap_data(ctx.docs, "wallet-frontend-main")
     apple_app_ids = [a.strip() for a in fe_data.get("wellknownAppleAppIds", "").split(",") if a.strip()]
+    # wallet-frontend's image is an nginx; the front (the public listener, Host
+    # routing, wallet-proxy's routes) is a second server file in the SAME nginx
+    # rather than a container of its own - one image less (MAX_BLOCK_DEVICES).
+    # No depends_on, deliberately: the edge gives up on a machine whose service
+    # port does not answer within seconds of starting. The front is checked on
+    # the loopback wallet-proxy listener, which answers whatever the Host (the
+    # public port refuses unknown hosts behind an edge).
     containers.append(_container(
         "wallet-frontend", images["wallet-frontend"], env=wallet_frontend_env(ctx, android_identities),
         files=[_file("/etc/nginx/conf.d/default.conf",
                      strip_nginx_comments(wallet_frontend_conf(naming.env, False, naming, env_admin=False))),
+               _file("/etc/nginx/conf.d/front.conf",
+                     strip_nginx_comments(front_nginx_conf(naming, behind_edge=not spec.public_ips))),
+               _file("/etc/nginx/well-known/assetlinks.json", ctx.assetlinks_path.read_bytes()),
                _file("/usr/share/nginx/startup.html",
                      wallet_frontend_dashboard_html(naming.env, android_identities, apple_app_ids, None,
                                                     naming=naming, env_admin=False))],
-        healthchecks=[_http_check("wallet-frontend", p("wallet-frontend"), "/")]))
-
-    containers.append(_container(
-        "front", images["wallet-proxy"],
-        files=[_file("/etc/nginx/conf.d/default.conf",
-                     strip_nginx_comments(front_nginx_conf(naming, behind_edge=not spec.public_ips))),
-               _file("/etc/nginx/well-known/assetlinks.json", ctx.assetlinks_path.read_bytes())],
-        # No depends_on, deliberately: the edge gives up on a machine whose
-        # service port does not answer within seconds of starting. Checked on
-        # the loopback wallet-proxy listener, which answers whatever the Host
-        # (the public port refuses unknown hosts behind an edge).
-        healthchecks=[_http_check("front", p("wallet-proxy"), "/.well-known/assetlinks.json", grace=5)]))
+        healthchecks=[_http_check("wallet-frontend", p("wallet-frontend"), "/"),
+                      _http_check("front", p("wallet-proxy"), "/.well-known/assetlinks.json", grace=5)]))
 
     config = {
-        "image": images["wallet-proxy"],
+        "image": images["wallet-frontend"],
         "guest": dict(guest or GUEST),
         "mounts": [{"volume": volume_id, "path": "/data/db", "name": volume_name("mongodb")}],
         "volumes": [{"name": "bundle", "image": bundle_ref}]
@@ -292,14 +304,20 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
             "autostop": "off", "autostart": not spec.scale_to_zero, "min_machines_running": 1,
         }],
         "restart": {"policy": "always"},
-        "metadata": {"sirosid_layout": LAYOUT_SINGLE_MACHINE, "sirosid_env": naming.env},
+        # What a caller holding only env + prefix (the CLI's fly-power reset)
+        # needs to name the instance's public URLs again: see
+        # lifecycle.naming_from_machine.
+        "metadata": {"sirosid_layout": LAYOUT_SINGLE_MACHINE, "sirosid_env": naming.env,
+                     "sirosid_host_pattern": naming.host_pattern,
+                     "sirosid_public_ips": "true" if spec.public_ips else "false"},
     }
     config["metadata"]["sirosid_config_hash"] = config_hash(config)
     return config
 
 
 def config_hash(config: dict) -> str:
-    body = {k: v for k, v in config.items() if k != "metadata"}
+    body = dict(config, metadata={k: v for k, v in (config.get("metadata") or {}).items()
+                                  if k != "sirosid_config_hash"})
     return hashlib.sha256(json.dumps(body, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:20]
 
 
@@ -308,6 +326,24 @@ def request_size(config: dict, region: str = "", min_secrets_version: int = None
     if min_secrets_version is not None:
         body["min_secrets_version"] = min_secrets_version
     return len(json.dumps(body).encode())
+
+
+def block_devices(config: dict) -> tuple:
+    """(drives, temp_dirs): distinct images + image volumes + Fly volumes, and
+    the memory temp_dirs, as the machine will need them (see MAX_BLOCK_DEVICES)."""
+    images = {c["image"] for c in config["containers"]}
+    vols = config.get("volumes") or []
+    drives = len(images) + sum(1 for v in vols if "image" in v) + len(config.get("mounts") or [])
+    return drives, sum(1 for v in vols if "temp_dir" in v)
+
+
+def check_block_devices(config: dict):
+    drives, temps = block_devices(config)
+    if drives > MAX_BLOCK_DEVICES or drives + temps > MAX_DEVICES_WITH_TEMP_DIRS:
+        raise DeployError(
+            f"the machine would need {drives} block devices (+{temps} temp_dirs); a Fly machine boots with at "
+            f"most {MAX_BLOCK_DEVICES} ({MAX_DEVICES_WITH_TEMP_DIRS} counting temp_dirs). Every distinct image "
+            f"is one: an image override that splits a shared image costs a slot.", component="config")
 
 
 def readiness(config: dict) -> dict:
@@ -431,7 +467,7 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
         mongo_version = extract_image(docs, "mongoCommunityVersion")
         by_name = {c["name"]: c for c in components}
         images = {n: resolve_image(by_name[n], spec, docs, mongo_version)
-                  for n in CONTAINER_COMPONENTS + ("wallet-proxy",)}
+                  for n in CONTAINER_COMPONENTS}
         result = DeployResult(out_dir=out_dir, docs=docs, images=images, mongo_password=mongo_password)
         ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say, docs=docs,
                             mongo_version=mongo_version, out_dir=out_dir, mongo_password=mongo_password)
@@ -450,6 +486,7 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
             config = build_machine_config(ctx, images, "registry.fly.io/<render-only>@sha256:" + "0" * 64,
                                           "vol_render_only", android_identities, guest)
             _write_config(out_dir, config)
+            check_block_devices(config)
             result.rendered_only = True
             result.machine = {"app": app, "config_bytes": request_size(config, spec.region)}
             return result
@@ -458,8 +495,9 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
         # public_ips (default): its own network segment and public IPs, so
         # <app>.fly.dev answers. Without: the org's default network and no IPs -
         # reachable only through a shared edge app that fly-replays to it.
-        fly.ensure_app(app, network=naming.network() if spec.public_ips else None,
-                       allocate_public_ips=spec.public_ips)
+        fly.ensure_app(app, network=naming.network() if spec.public_ips else None)
+        if spec.public_ips:
+            _ensure_public_ips(fly, app)
         for name in spec.images:
             if name in images and fly.is_local_docker_image(images[name]):
                 say(f"{name}: {images[name]!r} is a local Docker image - pushing to registry.fly.io/{app}")
@@ -480,6 +518,7 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
 
         config = build_machine_config(ctx, images, bundle_ref, volume["id"], android_identities, guest)
         _write_config(out_dir, config)
+        check_block_devices(config)
         size = request_size(config, spec.region, version)
         if size > MAX_CONFIG_BYTES:
             raise DeployError(f"machine config is {size} bytes; the Machines API refuses bodies near 1 MiB "
@@ -504,7 +543,13 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
                     machines.start_machine(app, m["id"])
             else:
                 say(f"=== Updating the machine ({size} bytes; this restarts every container) ===")
+                was = m.get("state")
                 m = machines.update_machine(app, m["id"], config, min_secrets_version=version)
+                if was != "started":
+                    # Fly: "machine was in a non-started state prior to the update
+                    # so leaving the new version stopped" - start it ourselves.
+                    machines.wait(app, m["id"], "stopped", timeout=120, instance_id=m.get("instance_id", ""))
+                    machines.start_machine(app, m["id"])
         step("machine")
         machine_id = m["id"]
         machines.wait(app, machine_id, "started", timeout=300, instance_id=m.get("instance_id", ""))
@@ -543,6 +588,21 @@ _STEPS = ("render", "pki", "app", "volume", "secrets", "bundle", "machine", "con
 
 def _next_step(done):
     return next((s for s in _STEPS if s not in done), "register")
+
+
+def _ensure_public_ips(fly: FlyClient, app: str):
+    """A shared v4 and a v6, once. `ips allocate-v6` is NOT idempotent (each call
+    adds another dedicated address - seen on real Fly), so look first."""
+    result = fly.run("ips", "list", "-a", app, "--json", check=False, capture=True)
+    try:
+        existing = json.loads(result.stdout or "[]") if result.returncode == 0 else []
+    except ValueError:
+        existing = []
+    kinds = {str(ip.get("Type") or ip.get("type") or "").lower() for ip in existing or []}
+    if not any(k.startswith("v4") or k == "shared_v4" for k in kinds):
+        fly.run("ips", "allocate-v4", "--shared", "-a", app)
+    if not any(k.startswith("v6") for k in kinds):
+        fly.run("ips", "allocate-v6", "-a", app)
 
 
 def _write_config(out_dir: Path, config: dict):

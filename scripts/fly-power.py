@@ -20,7 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import fly_common  # noqa: E402
 from sirosid_core.fly import FlyClient  # noqa: E402
-from sirosid_core.lifecycle import reset_single_machine, start_instance, stop_instance  # noqa: E402
+from sirosid_core.lifecycle import (naming_from_machine, reset_single_machine, start_instance,  # noqa: E402
+                                    stop_instance)
 from sirosid_core.naming import Naming  # noqa: E402
 
 SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
@@ -61,6 +62,7 @@ def main():
         if not args.single_machine:
             raise SystemExit("reset is the single-machine layout's; a default-layout environment clears its data "
                              "through env-admin: make fly-storage-clear ENV=<name>")
+        naming = naming_from_machine(machines, naming)   # the deployed host pattern
         report = reset_single_machine(fly, machines, naming, progress=print)
         if report.ok and report.changed:
             _register_again(naming, args)

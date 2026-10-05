@@ -74,10 +74,17 @@ class MachinesClient:
         headers = {"Authorization": authorization(self._token), "Accept": "application/json"}
         if data is not None:
             headers["Content-Type"] = "application/json"
-        try:
-            status, raw = self._transport(method, self.base_url + path, headers, data, timeout or self.timeout)
-        except OSError as e:
-            raise MachinesError(f"{method} {path}: {type(e).__name__}: {e}") from None
+        # A read is retried on a network error (a DNS hiccup must not fail a
+        # 10-minute deploy or a reaper pass); a write is not - it may have landed.
+        attempts = 3 if method == "GET" else 1
+        for attempt in range(attempts):
+            try:
+                status, raw = self._transport(method, self.base_url + path, headers, data, timeout or self.timeout)
+                break
+            except OSError as e:
+                if attempt + 1 == attempts:
+                    raise MachinesError(f"{method} {path}: {type(e).__name__}: {e}") from None
+                self._sleep(2 * (attempt + 1))
         if status not in ok:
             detail = "" if quiet else ": " + (raw or b"").decode("utf-8", "replace").strip()[:300]
             raise MachinesError(f"{method} {path}: HTTP {status}{detail}", status)

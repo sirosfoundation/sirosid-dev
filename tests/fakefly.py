@@ -107,6 +107,11 @@ class FakeFly:
             self.apps.pop(argv[2], None)
             return _cp(argv)
         if head == "ips":
+            ips = self._app(app).setdefault("ips", []) if app else []
+            if sub == "list":
+                return _cp(argv, stdout=json.dumps(ips))
+            if sub in ("allocate-v4", "allocate-v6"):
+                ips.append({"Type": "shared_v4" if sub == "allocate-v4" else "v6", "Address": f"fake-{len(ips)}"})
             return _cp(argv)
         if head == "auth":
             return _cp(argv)

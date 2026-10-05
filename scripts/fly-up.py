@@ -535,8 +535,9 @@ def _single_machine(args, spec, naming, fly_client, chart_dir, rendered_root, id
     if spec.public_ips:
         print(f"Until those hosts are in DNS: curl -H 'Host: {naming.host('vc-apigw')}' https://{app}.fly.dev/health")
     print(f"  export ADMIN_TOKEN={result.admin_token}")
-    print(f"Stop/start: make fly-stop/fly-start ENV={args.env} (detected as single-machine); "
-          f"tear down: make fly-down ENV={args.env}")
+    flags = f"--env {args.env} --app-prefix {spec.app_prefix}" + (f" --org {args.org}" if args.org else "")
+    print(f"Stop/start/reset: python3 scripts/fly-power.py stop|start|reset {flags} --single-machine")
+    print(f"Tear down:        python3 scripts/fly-down.py {flags} --single-machine")
 
 
 if __name__ == "__main__":

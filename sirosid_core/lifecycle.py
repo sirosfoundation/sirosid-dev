@@ -165,6 +165,18 @@ def detect_layout(fly: FlyClient, naming: Naming) -> Naming:
     return naming
 
 
+def naming_from_machine(machines, naming: Naming) -> Naming:
+    """The single-machine instance's Naming as deployed: the host pattern is in
+    its machine's metadata, so a caller that knows only env + prefix (the CLI)
+    registers the issuer under the right public URL after a reset."""
+    from dataclasses import replace
+    for m in machines.list_machines(naming.machine_app()):
+        meta = (m.get("config") or {}).get("metadata") or {}
+        if meta.get("sirosid_host_pattern"):
+            return replace(naming, host_pattern=meta["sirosid_host_pattern"])
+    return naming
+
+
 def _machine_ids(fly: FlyClient, app: str, machines) -> list:
     ms = machines.list_machines(app) if machines is not None else fly.list_machines(app)
     return [m for m in ms if m.get("state") != "destroyed"]
