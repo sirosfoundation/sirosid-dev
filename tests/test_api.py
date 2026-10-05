@@ -265,6 +265,21 @@ class ControlPlaneThroughHttpTests(unittest.TestCase):
         self.assertFalse(me.json()["unlocked"])
         self.assertEqual(c.req("PUT", "/api/configs/x", {"config": {}}).status_code, 423)
 
+    def test_templates_are_offered_by_capability_and_each_one_saves(self):
+        cp, auth, app, admin, *_ = build()
+        plain = signed_in(cp, app, admin)
+        ids = [t["id"] for t in plain.get("/api/templates").json()["templates"]]
+        self.assertEqual(ids[0], "standard")
+        self.assertNotIn("custom-wallet-backend", ids, "needs the custom_images capability")
+        self.assertEqual(Console(app).get("/api/templates").status_code, 401)
+        power = signed_in(cp, app, admin, capabilities=["custom_images"])
+        templates = power.get("/api/templates").json()["templates"]
+        self.assertIn("custom-wallet-backend", [t["id"] for t in templates])
+        for t in templates:
+            self.assertEqual(power.req("PUT", f"/api/configs/{t['id']}", {"config": t["config"]}).status_code, 200, t["id"])
+        for t in plain.get("/api/templates").json()["templates"]:
+            self.assertEqual(plain.req("PUT", f"/api/configs/{t['id']}", {"config": t["config"]}).status_code, 200, t["id"])
+
     def test_policy_problems_come_back_all_at_once_as_a_422(self):
         cp, auth, app, admin, *_ = build()
         c = signed_in(cp, app, admin)

@@ -379,6 +379,11 @@ class ControlPlane:
     def schema(self) -> dict:
         return policy_mod.schema()
 
+    def templates(self, who: Principal) -> list:
+        """Starting-point configs this user can save (those needing a capability they lack are left out)."""
+        from sirosid_core.templates import available_templates
+        return available_templates(who.capabilities, self.resources)
+
     def validate_config(self, who: Principal, doc: dict) -> list:
         return [str(p) for p in policy_mod.validate(doc, who.capabilities, self.platform)]
 

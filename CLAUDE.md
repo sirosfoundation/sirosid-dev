@@ -203,6 +203,12 @@ all of it against the fake flyctl.
   key container are deliberately not tools. `/mcp` refuses a browser `Origin` that is not ours
   (DNS rebinding). `tests/test_mcp.py` covers the flow and is mutation-checked (PKCE, redirect,
   origin, replay and key-session revocation each fail a test when removed).
+- `sirosid_core/templates.py` — **starting-point configs** (standard stack, SIROS registry, wallet
+  attestation, DC API, interop, custom wallet-backend image). Plain data: a template is a saved config
+  plus a title/description/hints/`requires`; `ControlPlane.templates(who)` offers only those the user's
+  capabilities allow (`GET /api/templates`, MCP `list_config_templates`, the Configs tab's "Start from a
+  template"). `tests/test_templates.py` validates every template through `policy.validate`, so one
+  cannot rot behind a policy change; adding a config key means deciding whether a template shows it.
 - `tests/softauthn.py` is a software authenticator (real authenticator data, COSE keys,
   signed assertions) so passkey verification is exercised, not mocked.
 
