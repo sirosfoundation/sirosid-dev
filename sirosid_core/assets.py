@@ -588,8 +588,8 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     # index.html references everything as /id/default/assets/... but the
     # config-gen step writes files directly under the docroot, not nested
     # under a matching id/default/ subdirectory.
-    location ~ ^/id/[^/]+/(.+\\.(js|css|svg|png|ico|json|woff2?|ttf|webmanifest|map|webm))$ {{
-        try_files /$1 =404;
+    location ~ ^/id/[^/]+/(.+)$ {{ 
+      try_files /$1 /index.html; 
     }}
 
     # SPA fallback: every other /id/<tenant>/* route serves index.html.
