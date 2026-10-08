@@ -112,6 +112,7 @@ images:
 # for the proximity-presentation test.
 trusted_issuers:
   - https://geneva2026.mdoc.online
+  - https://sirosid-yitbarek-vc-issuer.fly.dev
 
 # Every OpenID4VP verifier used for interop testing so far - each needs its
 # own reader-CA root below (ISO 18013-5 out-of-band trust convention, not a
@@ -126,6 +127,7 @@ trusted_verifiers:
   - https://verifier.multipaz.org
   - https://siros-multipaz-verifier.fly.dev
   - https://geneva2026.mdoc.online
+  - https://sirosid-yitbarek-vc-verifier.fly.dev
   # Google's public DC API test site, for browser-initiated presentation
   # testing. Written as the plain origin because that is what a whitelist
   # match actually compares against: an unsigned DC API request carries no
