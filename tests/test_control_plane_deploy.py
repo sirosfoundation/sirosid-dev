@@ -184,6 +184,33 @@ def build_image_tree(dest: Path):
                 shutil.copy2(src, out)
 
 
+class PackageDataTests(unittest.TestCase):
+    """sirosid_core ships DATA, not only code: the knowledge base (Markdown topics and
+    examples.yaml) is read at run time by the console, MCP and the assistant. A .dockerignore
+    rule or a narrowed COPY that drops it would build a fine-looking image whose knowledge
+    tools fail. Rebuild /app from the COPY lines and load the knowledge from there."""
+
+    def test_the_knowledge_base_reaches_the_image_and_loads_there(self):
+        knowledge_dir = ROOT / "sirosid_core" / "knowledge"
+        data = sorted(p.relative_to(ROOT).as_posix() for p in knowledge_dir.rglob("*")
+                      if p.is_file() and "__pycache__" not in p.parts)
+        self.assertTrue([d for d in data if d.endswith(".md")] and [d for d in data if d.endswith("examples.yaml")], data)
+        tree = Path(tempfile.mkdtemp(prefix="cp-pkgdata-"))
+        self.addCleanup(shutil.rmtree, tree, ignore_errors=True)
+        build_image_tree(tree)
+        missing = [d for d in data if not (tree / d).is_file()]
+        self.assertEqual(missing, [], "knowledge files that would not reach the image")
+        probe = ("import sys; from sirosid_core import knowledge as k; "
+                 "print(len(k.list_topics()), len(k.examples()), k.__file__)")
+        r = subprocess.run([sys.executable, "-c", probe], cwd=tree, capture_output=True, text=True,
+                           env={"PATH": os.environ.get("PATH", ""), "PYTHONPATH": str(tree)})
+        self.assertEqual(r.returncode, 0, r.stderr)
+        n_topics, n_examples, where = r.stdout.split()
+        self.assertTrue(where.startswith(str(tree)), "loaded from the image tree, not the checkout")
+        from sirosid_core import knowledge
+        self.assertEqual((int(n_topics), int(n_examples)), (len(knowledge.list_topics()), len(knowledge.examples())))
+
+
 def _chmod_tree(root: Path, writable: bool):
     for p in [root, *root.rglob("*")]:
         mode = p.stat().st_mode
