@@ -108,6 +108,7 @@ body.app { height: 100vh; height: 100dvh; overflow: hidden; }
 body.app .site-footer { display: none; }
 body.app .site-header .container { max-width: none; padding: 0.45rem 1.25rem; gap: 1rem; flex-wrap: nowrap; }
 body.app .logo-image { height: 32px; }
+.logo span { white-space: nowrap; }
 main.app-shell { flex: 1; min-height: 0; display: grid; grid-template-columns: 380px minmax(0, 1fr) 320px; position: relative; z-index: 1; }
 .pane { min-height: 0; min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
 .pane-chat { display: flex; flex-direction: column; overflow: hidden; background: var(--color-surface); border-right: 1px solid var(--color-border); }
@@ -232,7 +233,7 @@ button.tab:focus-visible { outline-offset: -2px; }
             display: flex; flex-direction: column; gap: 0.35rem; min-width: 0; }
 .url-role { font-weight: 600; color: var(--color-primary-dark); }
 .url-hint { font-size: 0.85rem; line-height: 1.4; }
-code.url { display: block; background: var(--color-background); padding: 0.3rem 0.5rem; font-size: 0.78rem; overflow-wrap: anywhere; word-break: break-all; }
+code.url { display: block; background: var(--color-background); padding: 0.3rem 0.5rem; font-size: 0.78rem; overflow-wrap: anywhere; }
 .url-card .row, .secret .row { margin-top: auto; padding-top: 0.25rem; }
 .checklist { margin: 0; padding-left: 1.4rem; display: grid; gap: 0.45rem; }
 .checklist li::marker { color: var(--color-primary-dark); font-weight: 600; }
@@ -266,6 +267,8 @@ button.env-card[aria-current="true"] { border-color: var(--color-primary); backg
 .tpl-card { border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: 0.75rem 0.85rem; background: var(--color-surface); box-shadow: var(--shadow); }
 .tpl-card h3 { margin: 0 0 0.25rem; font-size: 0.95rem; color: var(--color-primary-dark); }
 .tpl-card p { margin: 0 0 0.6rem; font-size: 0.85rem; line-height: 1.45; }
+.tpl-card p.clamp { display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; margin-bottom: 0.1rem; }
+.tpl-card button.more { display: block; margin: 0 0 0.5rem; font-size: 0.8rem; }
 .advanced summary { font-size: 0.92rem; }
 .cfg-list li { border: 1px solid var(--color-border); border-radius: var(--border-radius); padding: 0.5rem 0.6rem; display: grid; gap: 0.35rem; }
 .cfg-name { overflow-wrap: anywhere; }
@@ -312,14 +315,16 @@ button.account-btn:hover:not(:disabled), button.account-btn[aria-expanded="true"
   .tabbar-btn[aria-pressed="true"] { color: var(--color-primary-dark); border-top-color: var(--color-primary-dark); font-weight: 600; background: var(--color-accent-bg); }
   .tabbar-btn:focus-visible { outline-offset: -3px; }
   .badge { display: inline-block; margin-left: 0.35rem; min-width: 1.25rem; padding: 0 0.35rem; border-radius: 999px; background: var(--color-warning); color: #000; font-size: 0.75rem; font-weight: 700; }
-  body.app:has(.chat-input:focus) .tabbar { display: none; }
   .start { margin-top: 0.5rem; }
 }
+/* a phone with its keyboard open (the viewport shrinks, interactive-widget=resizes-content): give the composer the room */
+@media (max-width: 1099px) and (max-height: 520px) { body.app:has(.chat-input:focus) .tabbar { display: none; } }
 @media (max-width: 600px) {
   body.app .site-header .container { padding: 0.4rem 16px; }
   .account-name { max-width: 7rem; }
-  .env-actions { width: 100%; }
-  .env-actions button { flex: 1 1 auto; }
+  .env-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .tabs { flex-wrap: wrap; overflow-x: visible; gap: 0; }
+  button.tab { padding: 0.5rem 0.6rem; }
   .msg { max-width: 96%; }
   .pane-head { padding: 0.6rem 16px; } .chat-log { padding: 0.75rem 16px; } .composer { padding: 0.5rem 16px; }
 }

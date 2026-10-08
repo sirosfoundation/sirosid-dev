@@ -28,7 +28,7 @@ export function focusLibrary(section = "templates") {
   setMobile("library");
   const target = section === "templates" ? el.templates : el.envs;
   target?.scrollIntoView({ block: "start", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
-  (target?.querySelector("button") || target)?.focus({ preventScroll: true });
+  (target?.querySelector("button.primary") || target?.querySelector("button") || target)?.focus({ preventScroll: true });
 }
 
 function paintEnvs() {
@@ -55,7 +55,7 @@ function paintTemplates() {
     state.templates.length
       ? h("ul", { class: "tpl-list" }, state.templates.map((t) => h("li", { class: "tpl-card" },
           h("h3", {}, t.title),
-          t.description && h("p", { class: "muted" }, t.description),
+          t.description && description(t.description),
           h("div", { class: "row" },
             h("button", { class: "small primary", on: { click: () => newEnvironmentModal({ template: t }) } }, "Create environment"),
             chatOn() && h("button", { class: "small", on: { click: () => prefill(`Create an environment from the ${t.title} template and `) } }, "Ask the agent to customise")))))
@@ -81,6 +81,19 @@ function paintConfigs() {
               }) } }, "Delete")))))
         : h("p", { class: "muted" }, "None saved."));
   el.configs.open = open;
+}
+
+/** A template's description, clamped to a few lines with a More/Less toggle when it is long. */
+function description(text) {
+  const p = h("p", { class: "muted" + (text.length > 160 ? " clamp" : "") }, text);
+  if (text.length <= 160) return p;
+  const more = h("button", { class: "link small more", "aria-expanded": "false" }, "More");
+  more.addEventListener("click", () => {
+    const open = p.classList.toggle("clamp") === false;
+    more.textContent = open ? "Less" : "More";
+    more.setAttribute("aria-expanded", String(open));
+  });
+  return [p, more];
 }
 
 /** The manual way to create an environment (works without the assistant). One of `template` (a template
