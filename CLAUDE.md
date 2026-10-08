@@ -182,7 +182,7 @@ all of it against the fake flyctl.
   `js/container.js` is the key container (the privatedata-spec key layer, WebCrypto only;
   our own HKDF info string so a PRF output is never confusable with the wallet's);
   `js/webauthn.js` converts options and **strips the PRF output from everything sent to the
-  server**; `js/app.js` builds the DOM with `createElement`/`textContent` only. Enrolment refuses
+  server**; the page is flat ES modules in `js/` (the server serves no subdirectories): `app.js` (sign-in pages and the chat | environment | library workspace), `store.js` (state, bus, 401/423 handling, the ~4 s status poll), `ui.js` (`h()`, modal with focus trap, popover, toast), `keys.js` (passkeys + container), `chat.js`/`chatlogic.js` (the assistant pane; the queue and approval gate are pure and mutation-tested), `env.js`, `library.js`, `settings.js`, `format.js`; the DOM is built with `createElement`/`textContent` only and a newer endpoint that 404s without an API error code is treated as absent (its tab is hidden). Enrolment refuses
   an authenticator without `prf.enabled` before finish, then takes a second touch for the PRF
   output. Adding a passkey stores the new container *before* registering the credential, so a
   failure never leaves a passkey that cannot open it. The main key lives in page memory only: a
