@@ -303,6 +303,87 @@ class ControlPlaneThroughHttpTests(unittest.TestCase):
         self.assertEqual((r.status_code, r.json()["error"]), (409, "quota"))
 
 
+@NEEDS_HELM
+class EnvironmentRoutesTests(unittest.TestCase):
+    """The routes the chat-first console uses to show and change ONE environment."""
+
+    def setUp(self):
+        from fakemachines import FakeMachines
+        from sirosid_core.machines import MachinesClient
+        self.cp, self.auth, self.app, self.admin, self.fake, self.clock = build()
+        self.cp._machines = MachinesClient("tok", transport=FakeMachines(self.fake).transport, sleep=lambda s: None)
+        self.c = signed_in(self.cp, self.app, self.admin)
+        self.iid = self.c.post("/api/instances", {"config": {}, "name": "demo"}).json()["id"]
+
+    def test_every_new_route_needs_a_session(self):
+        anon = Console(self.app)
+        for method, path in (("GET", f"/api/instances/{self.iid}/config"), ("POST", f"/api/instances/{self.iid}/reconfigure"),
+                             ("GET", f"/api/instances/{self.iid}/health"), ("GET", f"/api/instances/{self.iid}/activity"),
+                             ("GET", "/api/examples"), ("GET", "/api/knowledge"), ("GET", "/api/knowledge/overview")):
+            r = anon.req(method, path, {"config": {}} if method == "POST" else None)
+            self.assertEqual(r.status_code, 401, path)
+
+    def test_another_users_environment_is_a_404(self):
+        other = signed_in(self.cp, self.app, self.admin)
+        for method, path in (("GET", "config"), ("POST", "reconfigure"), ("GET", "health"), ("GET", "activity")):
+            for iid in (self.iid, "zzzzzzzz"):
+                r = other.req(method, f"/api/instances/{iid}/{path}", {"config": {}} if method == "POST" else None)
+                self.assertEqual((r.status_code, r.json()["error"]), (404, "not_found"), (path, iid))
+
+    def test_reading_or_changing_the_config_needs_the_unlock(self):
+        locked = Console(self.app, authn=self.c.authn)
+        self.assertEqual(locked.login().status_code, 200)               # signed in, not unlocked
+        for method, path in (("GET", "config"), ("POST", "reconfigure")):
+            r = locked.req(method, f"/api/instances/{self.iid}/{path}", {"config": {}} if method == "POST" else None)
+            self.assertEqual((r.status_code, r.json()["error"]), (423, "locked"), path)
+        self.assertEqual(locked.get(f"/api/instances/{self.iid}/health").status_code, 200, "status is metadata")
+        self.assertEqual(locked.get(f"/api/instances/{self.iid}/activity").status_code, 200)
+
+    def test_reconfigure_over_http(self):
+        c, iid = self.c, self.iid
+        self.assertEqual(c.get(f"/api/instances/{iid}/config").json()["config"], {})
+        inst = c.get(f"/api/instances/{iid}").json()
+        self.assertEqual((inst["config_name"], inst["layout"], inst["reconfigurable"]), (None, "apps", True))
+        r = c.post(f"/api/instances/{iid}/reconfigure", {"config": {"trusted_issuers": ["http://x"], "mystery": 1}})
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(sorted(p["path"] for p in r.json()["problems"]), ["mystery", "trusted_issuers[0]"])
+        self.assertEqual(c.post(f"/api/instances/{iid}/reconfigure", {"config": {}}, origin="https://evil.example").status_code, 403)
+        self.assertEqual(c.post(f"/api/instances/{iid}/reconfigure", {"config": "x"}).status_code, 400)
+        self.assertEqual(c.post(f"/api/instances/{iid}/reconfigure", {}).status_code, 400)
+        self.assertEqual(c.post(f"/api/instances/{iid}/reconfigure", {"config_name": "nope"}).status_code, 404)
+        c.req("PUT", "/api/configs/partner", {"config": {"trusted_issuers": ["https://i.example.com"]}})
+        r = c.post(f"/api/instances/{iid}/reconfigure", {"config_name": "partner"})
+        self.assertEqual(r.status_code, 202, r.text)
+        self.assertEqual((r.json()["id"], r.json()["config_name"]), (iid, "partner"))
+        self.assertEqual(c.get(f"/api/instances/{iid}/config").json()["config"], {"trusted_issuers": ["https://i.example.com"]})
+        self.assertEqual(c.post(f"/api/instances/{iid}/stop").status_code, 200)
+        r = c.post(f"/api/instances/{iid}/reconfigure", {"config": {}})
+        self.assertEqual((r.status_code, r.json()["error"]), (409, "invalid_state"))
+        self.assertIn("start it first", r.json()["message"])
+
+    def test_health_and_activity(self):
+        h = self.c.get(f"/api/instances/{self.iid}/health").json()
+        self.assertEqual(h["instance"]["id"], self.iid)
+        self.assertTrue(h["components"])
+        self.assertIn("checked_at", h)
+        acts = self.c.get(f"/api/instances/{self.iid}/activity?limit=5").json()["activity"]
+        self.assertEqual(acts[-1]["action"], "create_instance")
+        self.assertEqual(set(acts[0]), {"ts", "action", "by", "detail"})
+        self.assertEqual(self.c.get(f"/api/instances/{self.iid}/activity?limit=x").status_code, 400)
+
+    def test_examples_and_knowledge(self):
+        from sirosid_core import knowledge
+        ex = self.c.get("/api/examples").json()["examples"]
+        self.assertEqual(ex, knowledge.examples())
+        topics = self.c.get("/api/knowledge").json()["topics"]
+        self.assertEqual([t["id"] for t in topics], [t.id for t in knowledge.list_topics()])
+        self.assertNotIn("body", topics[0], "the list is summaries only")
+        one = self.c.get(f"/api/knowledge/{topics[0]['id']}").json()["topic"]
+        self.assertTrue(one["body"])
+        for bad in ("nope", "..%2Fsecrets", "OVERVIEW"):
+            self.assertEqual(self.c.get(f"/api/knowledge/{bad}").status_code, 404, bad)
+
+
 @NEEDS
 class AdminTests(unittest.TestCase):
     def admin_console(self, cp, app, admin):

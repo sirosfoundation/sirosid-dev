@@ -545,6 +545,394 @@ class SingleMachineServiceTests(unittest.TestCase):
             self.cp.create_instance(self.alice, config={"conformance": True})
 
 
+class SwitchableFailure(FakeFly):
+    """A fake whose `flyctl deploy` of one component can be made to fail later."""
+    fail_on = None
+
+    def handle(self, argv):
+        if self.fail_on and argv[:1] == ["deploy"] and self.fail_on in (self._opt(argv, "-a") or ""):
+            self.log.append("flyctl " + " ".join(argv))
+            return subprocess.CompletedProcess(argv, 5, "", "boom")
+        return super().handle(argv)
+
+
+class DeferredRunner:
+    """Holds background jobs until the test runs them: to interleave a job with other calls."""
+
+    def __init__(self):
+        self.jobs = []
+
+    def submit(self, fn, *args):
+        self.jobs.append((fn, args))
+
+    def run_all(self):
+        while self.jobs:
+            fn, args = self.jobs.pop(0)
+            fn(*args)
+
+
+ISSUER = {"trusted_issuers": ["https://issuer.example.com"]}
+
+
+def sealed_spec(cp, who, iid):
+    return cp._spec(cp.db.one("SELECT * FROM instances WHERE id=?", (iid,)), cp._sealer(who))
+
+
+@NEEDS
+class JobResultTests(unittest.TestCase):
+    def test_a_finished_deploy_cannot_resurrect_an_instance_destroyed_meanwhile(self):
+        """create's job runs while the owner (or the reaper) destroys the instance: the job's result must be
+        discarded, not written over `destroyed` as `running` with URLs for apps that are gone."""
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        cp.runner = DeferredRunner()
+        iid = cp.create_instance(alice, name="demo")["id"]
+        real = cp._deploy
+
+        def deploy_then_get_destroyed(r, spec, sealer):
+            out = real(r, spec, sealer)
+            cp.destroy_instance(alice, iid)                  # destroyed while the job was still running
+            return out
+        cp._deploy = deploy_then_get_destroyed
+        cp.runner.run_all()
+        row = cp.db.one("SELECT status, urls FROM instances WHERE id=?", (iid,))
+        self.assertEqual(row["status"], "destroyed")
+        self.assertEqual(row["urls"], "{}")
+        self.assertIn("job_result_discarded", [a["action"] for a in cp.db.audit_log(20)])
+
+
+@NEEDS
+class ReconfigureTests(unittest.TestCase):
+    def deploys(self, fake, component):
+        return [c for c in fake.log if c.startswith("flyctl deploy") and f"-{component} " in c + " "]
+
+    def test_reconfigure_redeploys_with_the_new_config_and_keeps_data_and_secrets(self):
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice, name="demo")["id"]
+        mongo = f"sid-{iid}-mongodb"
+        vol = fake.apps[mongo]["volumes"][0]["id"]
+        token = cp.instance_credentials(alice, iid)["admin_token"]
+        before = len(self.deploys(fake, "pdp"))
+        out = cp.reconfigure_instance(alice, iid, config=ISSUER)
+        self.assertEqual(out["status"], "running", out["error"])
+        self.assertEqual(cp.get_instance_config(alice, iid), ISSUER)
+        self.assertEqual(sealed_spec(cp, alice, iid).trusted_issuers, ISSUER["trusted_issuers"])
+        self.assertGreater(len(self.deploys(fake, "pdp")), before, "redeployed")
+        self.assertEqual([v["id"] for v in fake.apps[mongo]["volumes"] if v.get("state") != "destroyed"], [vol], "data kept")
+        self.assertEqual(cp.instance_credentials(alice, iid)["admin_token"], token, "generated state kept")
+        self.assertFalse(any("volumes destroy" in c for c in fake.log))
+        row = cp.db.one("SELECT pending_spec, pending_config FROM instances WHERE id=?", (iid,))
+        self.assertEqual((row["pending_spec"], row["pending_config"]), (None, None))
+        acts = [r["action"] for r in cp.db.audit_log()]
+        self.assertIn("reconfigure_instance", acts)
+        self.assertIn("reconfigured", acts)
+
+    def test_the_config_name_is_kept_as_plaintext_metadata_and_only_the_name(self):
+        cp, _, _ = make()
+        _, alice = admin_and_user(cp)
+        cp.save_config(alice, "partner", ISSUER)
+        inst = cp.create_instance(alice, config_name="partner")
+        self.assertEqual((inst["config_name"], inst["layout"], inst["reconfigurable"]), ("partner", "apps", True))
+        self.assertIsNone(cp.create_instance(alice, config={}, config_name="partner")["config_name"], "inline wins")
+        row = json.dumps({k: v for k, v in cp.db.one("SELECT * FROM instances WHERE id=?", (inst["id"],)).items()
+                          if isinstance(v, str)})
+        self.assertNotIn("issuer.example.com", row, "the config's content is never plaintext")
+        cp.save_config(alice, "other", {})
+        out = cp.reconfigure_instance(alice, inst["id"], config_name="other")
+        self.assertEqual(out["config_name"], "other")
+        self.assertIsNone(cp.reconfigure_instance(alice, inst["id"], config={})["config_name"])
+
+    def test_every_policy_problem_at_once_and_nothing_changes(self):
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice, config=ISSUER)["id"]
+        n = len(fake.log)
+        with self.assertRaises(PolicyError) as e:
+            cp.reconfigure_instance(alice, iid, config={"trusted_issuers": ["http://x"], "mystery": 1})
+        self.assertEqual(sorted(p.path for p in e.exception.problems), ["mystery", "trusted_issuers[0]"])
+        self.assertEqual(cp.get_instance(alice, iid)["status"], "running")
+        self.assertEqual(cp.get_instance_config(alice, iid), ISSUER)
+        self.assertEqual(fake.log[n:], [], "nothing reached Fly")
+
+    def test_capabilities_are_checked_now(self):
+        cp, _, _ = make()
+        admin, alice = admin_and_user(cp, caps=[CAP_CUSTOM_IMAGES])
+        iid = cp.create_instance(alice)["id"]
+        cp.grant(admin, alice.user_id, capabilities=[])
+        with self.assertRaises(PolicyError):
+            cp.reconfigure_instance(cp.principal_for(alice.user_id, alice.session_id), iid,
+                                    config={"images": {"pdp": "ghcr.io/me/pdp:1"}})
+
+    def test_which_states_may_be_reconfigured(self):
+        cp, _, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        cp.stop_instance(alice, iid)
+        self.assertFalse(cp.get_instance(alice, iid)["reconfigurable"])
+        with self.assertRaises(InvalidState) as e:
+            cp.reconfigure_instance(alice, iid, config={})
+        self.assertIn("start it first", str(e.exception))
+        self.assertEqual(cp.get_instance(alice, iid)["status"], "stopped", "left stopped, not started behind the user's back")
+        for status in ("creating", "resetting", "reconfiguring", "destroyed"):
+            cp._set(iid, status=status)
+            with self.assertRaises(InvalidState, msg=status):
+                cp.reconfigure_instance(alice, iid, config={})
+        cp._set(iid, status="failed")
+        self.assertEqual(cp.reconfigure_instance(alice, iid, config={})["status"], "running", "a failed one may be fixed")
+
+    def test_locked_ownership_and_arguments(self):
+        cp, _, _ = make()
+        admin, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        from sirosid_service.vault import Locked
+        locked = cp.principal_for(alice.user_id)
+        for call in (lambda: cp.reconfigure_instance(locked, iid, config={}), lambda: cp.get_instance_config(locked, iid)):
+            with self.assertRaises(Locked):
+                call()
+        bob = cp.begin_session(cp.redeem_invite(cp.create_invite(admin), "Bob").user_id, bytes(range(1, 33)))
+        for call in (cp.get_instance_config, cp.instance_health, cp.instance_activity,
+                     lambda w, i: cp.reconfigure_instance(w, i, config={})):
+            with self.assertRaises(NotFound) as e1:
+                call(bob, iid)
+            with self.assertRaises(NotFound) as e2:
+                call(bob, "zzzzzzzz")
+            self.assertEqual(str(e1.exception), str(e2.exception))
+        with self.assertRaises(NotFound):
+            cp.reconfigure_instance(cp.begin_session(admin.user_id, bytes(range(2, 34))), iid, config={})  # an admin may look, not reconfigure
+        with self.assertRaises(ServiceError):
+            cp.reconfigure_instance(alice, iid)
+        with self.assertRaises(NotFound):
+            cp.reconfigure_instance(alice, iid, config_name="no-such-config")
+
+    def test_a_failed_redeploy_keeps_the_previous_config(self):
+        """Mutation-checked: writing the new config before the redeploy (or not
+        restoring it) fails this test."""
+        fake = SwitchableFailure()
+        cp, fake, _ = make(fake=fake)
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice, config=ISSUER)["id"]
+        fake.fail_on = "pdp"
+        out = cp.reconfigure_instance(alice, iid, config={"trusted_issuers": ["https://other.example.com"]})
+        self.assertEqual(out["status"], "failed")
+        self.assertIn("reconfigure failed", out["error"])
+        self.assertIn("previous config", out["error"])
+        self.assertEqual(cp.get_instance_config(alice, iid), ISSUER, "the working config is not lost")
+        self.assertEqual(sealed_spec(cp, alice, iid).trusted_issuers, ISSUER["trusted_issuers"])
+        self.assertIsNone(cp.db.one("SELECT pending_spec FROM instances WHERE id=?", (iid,))["pending_spec"])
+        self.assertIn("reconfigure_failed", [r["action"] for r in cp.db.audit_log()])
+        fake.fail_on = None
+        self.assertEqual(cp.reconfigure_instance(alice, iid, config=cp.get_instance_config(alice, iid))["status"], "running",
+                         "the way back: reconfigure with the previous config")
+
+    def test_an_unexpected_error_in_the_job_also_ends_failed_and_keeps_the_config(self):
+        import unittest.mock as mock
+        import sirosid_service.service as svc
+        cp, _, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice, config=ISSUER)["id"]
+        with mock.patch.object(svc, "deploy_instance", side_effect=PermissionError(13, "denied")), \
+                self.assertLogs("sirosid.service", "ERROR"):
+            out = cp.reconfigure_instance(alice, iid, config={})
+        self.assertEqual(out["status"], "failed")
+        self.assertIn("internal error during reconfigure", out["error"])
+        self.assertEqual(cp.get_instance_config(alice, iid), ISSUER)
+
+    def test_the_instance_keeps_its_layout_and_naming_when_the_platform_changes(self):
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        before = sealed_spec(cp, alice, iid)
+        cp.platform = PlatformPolicy(env_admin=False, layout="single-machine", host_pattern="{component}-{id}.sid.example",
+                                     region="fra", app_prefix="new")
+        self.assertEqual(cp.reconfigure_instance(alice, iid, config=ISSUER)["status"], "running")
+        after = sealed_spec(cp, alice, iid)
+        for f in ("layout", "region", "app_prefix", "host_pattern", "env", "public_ips", "scale_to_zero", "env_admin"):
+            self.assertEqual(getattr(after, f), getattr(before, f), f)
+        self.assertNotIn(f"sid-{iid}", fake.apps, "no second, single-machine copy of the instance")
+        self.assertFalse([a for a in fake.apps if a.startswith("new-")])
+
+    def test_a_destroy_while_reconfiguring_wins(self):
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        cp.runner = DeferredRunner()
+        self.assertEqual(cp.reconfigure_instance(alice, iid, config=ISSUER)["status"], "reconfiguring")
+        cp.destroy_instance(alice, iid)
+        cp.runner.run_all()
+        self.assertEqual(cp.get_instance(alice, iid)["status"], "destroyed")
+
+    def test_a_destroy_during_the_redeploy_wins(self):
+        """The reaper (or the owner) destroys the instance while its redeploy is running:
+        the finished job must not bring the row back to 'running'."""
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        real = cp._deploy
+
+        def deploy_then_destroyed(r, spec, sealer):
+            result = real(r, spec, sealer)
+            cp.destroy_instance(alice, iid)
+            return result
+        cp._deploy = deploy_then_destroyed
+        cp.reconfigure_instance(alice, iid, config=ISSUER)
+        self.assertEqual(cp.get_instance(alice, iid)["status"], "destroyed")
+        self.assertEqual(cp.list_instances(alice), [])
+
+    def test_reconfiguring_counts_as_live(self):
+        cp, _, _ = make()
+        _, alice = admin_and_user(cp, max_concurrent=1)
+        iid = cp.create_instance(alice)["id"]
+        cp.runner = DeferredRunner()
+        cp.reconfigure_instance(alice, iid, config={})
+        with self.assertRaises(QuotaExceeded):
+            cp.create_instance(alice)
+
+
+@NEEDS
+class SingleMachineReconfigureTests(unittest.TestCase):
+    def test_the_machine_config_is_updated_and_the_volume_stays(self):
+        cp, fake, api, _, _, undo = make_single()
+        self.addCleanup(undo)
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        m = api.only(f"sid-{iid}")
+        updates, vols = m["updates"], [v["id"] for v in fake.apps[f"sid-{iid}"]["volumes"]]
+        out = cp.reconfigure_instance(alice, iid, config=ISSUER)
+        self.assertEqual(out["status"], "running", out["error"])
+        self.assertEqual(api.only(f"sid-{iid}")["updates"], updates + 1, "one update = one restart of the machine")
+        self.assertEqual([v["id"] for v in fake.apps[f"sid-{iid}"]["volumes"]], vols)
+        self.assertEqual(sealed_spec(cp, alice, iid).layout, "single-machine")
+        self.assertEqual(out["layout"], "single-machine")
+
+
+@NEEDS
+class HealthAndActivityTests(unittest.TestCase):
+    def test_single_machine_health_reads_the_containers(self):
+        cp, fake, api, _, _, undo = make_single()
+        self.addCleanup(undo)
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        n = len(api.log)
+        h = cp.instance_health(cp.principal_for(alice.user_id), iid)        # no unlock needed
+        self.assertNotIn("error", h)
+        self.assertEqual(h["instance"]["id"], iid)
+        names = {c["name"] for c in h["components"]}
+        self.assertIn("wallet-backend", names)
+        self.assertTrue(all(c["healthy"] for c in h["components"]), h["components"])
+        self.assertEqual({k for c in h["components"] for k in c}, {"name", "state", "healthy", "detail"})
+        self.assertTrue(all(line.startswith("GET ") for line in api.log[n:]), "a probe only reads")
+        self.assertLessEqual(len(api.log[n:]), 2)
+        cp.stop_instance(alice, iid)
+        h = cp.instance_health(alice, iid)
+        self.assertTrue(h["components"] and not any(c["healthy"] for c in h["components"]))
+        self.assertIn("stopped", h["components"][0]["detail"])
+
+    def test_apps_layout_health_lists_each_component(self):
+        from fakemachines import FakeMachines
+        from sirosid_core.machines import MachinesClient
+        cp, fake, _ = make()
+        cp._machines = MachinesClient("tok", transport=FakeMachines(fake).transport, sleep=lambda s: None)
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        h = cp.instance_health(alice, iid)
+        self.assertNotIn("error", h)
+        names = [c["name"] for c in h["components"]]
+        self.assertIn("mongodb", names)
+        self.assertIn("wallet-frontend", names)
+        self.assertNotIn("conformance", names, "a component the instance does not have is left out, not an error")
+        self.assertTrue(all(c["healthy"] for c in h["components"]))
+
+    def test_health_never_raises_on_a_fly_problem_and_never_carries_secrets(self):
+        from fakemachines import FakeMachines
+        from sirosid_core.machines import MachinesClient
+        cp, fake, api, _, _, undo = make_single()
+        self.addCleanup(undo)
+        _, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice)["id"]
+        token = cp.instance_credentials(alice, iid)["admin_token"]
+        h = cp.instance_health(alice, iid)
+        self.assertNotIn(token, json.dumps(h))
+        self.assertNotIn("env", json.dumps(h["components"]))
+        api.fail["GET /apps/"] = (500, {"error": "fly is having a day"})
+        h = cp.instance_health(alice, iid)
+        self.assertEqual(h["components"], [])
+        self.assertIn("could not reach Fly", h["error"])
+        api.fail.clear()
+
+        def broken(*a, **k):
+            raise OSError("network is unreachable")
+        cp._machines = MachinesClient("tok", transport=broken, sleep=lambda s: self.fail("a probe must not retry"))
+        h = cp.instance_health(alice, iid)
+        self.assertEqual(h["components"], [])
+        self.assertIn("unreachable", h["error"])
+
+        class NoCredential:
+            def __getattr__(self, name):
+                raise RuntimeError("no token")
+        cp._machines = NoCredential()
+        self.assertEqual(cp.instance_health(alice, iid)["components"], [])
+
+    def test_the_apps_probe_is_bounded_in_time(self):
+        import time
+        from sirosid_core.health import instance_health
+        from sirosid_core.machines import MachinesClient
+
+        def slow(*a, **k):
+            time.sleep(1.0)
+            return 200, b"[]"
+        t0 = time.monotonic()
+        r = instance_health(MachinesClient("tok", transport=slow), Naming("aaaaaaaa", app_prefix="sid"), timeout=0.1, budget=0.3)
+        self.assertLess(time.monotonic() - t0, 0.9)
+        self.assertIn("in time", r.error)
+
+    def test_activity_is_the_instances_own_and_carries_no_secrets(self):
+        cp, _, _ = make()
+        admin, alice = admin_and_user(cp)
+        iid = cp.create_instance(alice, config=ISSUER)["id"]
+        cp.stop_instance(alice, iid)
+        cp.start_instance(alice, iid)
+        cp.reconfigure_instance(alice, iid, config={})
+        bob = cp.begin_session(cp.redeem_invite(cp.create_invite(admin), "Bob").user_id, bytes(range(1, 33)))
+        cp.save_config(bob, iid, {})                       # a config NAMED like alice's instance id
+        cp.delete_config(bob, iid)
+        acts = cp.instance_activity(alice, iid)
+        self.assertEqual([a["action"] for a in acts][:4], ["reconfigured", "reconfigure_instance", "start_instance", "stop_instance"])
+        self.assertEqual(acts[-1]["action"], "create_instance")
+        self.assertNotIn("delete_config", [a["action"] for a in acts], "another user's audit row never shows")
+        self.assertEqual({a["by"] for a in acts}, {"you", "system"})
+        self.assertEqual(next(a for a in acts if a["action"] == "reconfigure_instance")["detail"]["changed"], ["trusted_issuers"])
+        token = cp.instance_credentials(alice, iid)["admin_token"]
+        dump = json.dumps(acts)
+        self.assertNotIn(token, dump)
+        self.assertNotIn("issuer.example.com", dump, "config values never reach the activity")
+        self.assertEqual(len(cp.instance_activity(alice, iid, limit=2)), 2)
+        cp.db.audit(alice.user_id, "stop_instance", iid, secret="hunter2")       # a detail key nobody vetted
+        self.assertNotIn("hunter2", json.dumps(cp.instance_activity(alice, iid)))
+
+
+class MigrationTests(unittest.TestCase):
+    def test_an_old_database_gets_the_new_columns(self):
+        import sqlite3
+        import tempfile
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        path = f"{d}/old.db"
+        c = sqlite3.connect(path)
+        c.execute("CREATE TABLE instances(id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,"
+                  " naming TEXT NOT NULL, spec BLOB NOT NULL, config BLOB NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL,"
+                  " expires_at REAL, kept INTEGER NOT NULL DEFAULT 0, urls TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '')")
+        c.execute("INSERT INTO instances(id,owner,status,naming,spec,config,created_at,updated_at) VALUES('a','u','running','{\"env\":\"a\"}',x'00',x'00',1,1)")
+        c.commit()
+        c.close()
+        db = Database(path)
+        self.addCleanup(db.close)
+        r = db.one("SELECT * FROM instances")
+        self.assertIsNone(r["config_name"])
+        self.assertEqual(ControlPlane._public(r)["layout"], "apps")
+        Database(path).close()                          # and again: idempotent
+
+
 class StateStoreTests(unittest.TestCase):
     def test_state_round_trips_sealed_under_the_owners_key(self):
         from sirosid_service.db import SealedStateStore

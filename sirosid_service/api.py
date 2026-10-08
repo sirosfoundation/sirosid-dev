@@ -30,6 +30,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 from starlette.routing import Route
 
+from sirosid_core import knowledge
 from sirosid_core.policy import PolicyError
 
 from .auth import AuthError, AuthService
@@ -133,6 +134,20 @@ def status_for(e: Exception) -> Tuple[int, dict]:
         if isinstance(e, cls):
             return code, {"error": name, "message": str(e)}
     return 500, {"error": "internal", "message": "something went wrong"}
+
+
+def _int(value, default: int) -> int:
+    try:
+        return int(value) if value is not None else default
+    except ValueError:
+        raise ServiceError("expected an integer") from None
+
+
+def _topic(topic_id: str):
+    t = knowledge.get_topic(topic_id)
+    if t is None:
+        raise NotFound("no such knowledge topic")
+    return t
 
 
 class Api:
@@ -302,6 +317,15 @@ class Api:
             r("/api/instances/{iid}/start", ["POST"], lambda w, d, p, q: cp.start_instance(w, p["iid"])),
             r("/api/instances/{iid}/reset", ["POST"], lambda w, d, p, q: Result(cp.reset_instance(w, p["iid"]), 202)),
             r("/api/instances/{iid}/keep", ["POST"], lambda w, d, p, q: cp.set_keep(w, p["iid"], bool(d.get("keep", True)))),
+            r("/api/instances/{iid}/config", ["GET"], lambda w, d, p, q: {"config": cp.get_instance_config(w, p["iid"])}),
+            r("/api/instances/{iid}/reconfigure", ["POST"], self._reconfigure),
+            r("/api/instances/{iid}/health", ["GET"], lambda w, d, p, q: cp.instance_health(w, p["iid"])),
+            r("/api/instances/{iid}/activity", ["GET"], lambda w, d, p, q: {"activity": cp.instance_activity(
+                w, p["iid"], _int(q.query_params.get("limit"), 50))}),
+            # --- what the platform knows (sirosid_core.knowledge) and the example prompts
+            r("/api/examples", ["GET"], lambda w, d, p, q: {"examples": knowledge.examples()}),
+            r("/api/knowledge", ["GET"], lambda w, d, p, q: {"topics": [t.to_dict() for t in knowledge.list_topics()]}),
+            r("/api/knowledge/{topic}", ["GET"], lambda w, d, p, q: {"topic": _topic(p["topic"]).to_dict(with_body=True)}),
             # --- admin (a non-admin gets a plain 404)
             r("/api/admin/invites", ["POST"], lambda w, d, p, q: {"token": cp.create_invite(
                 w, capabilities=d.get("capabilities") or [], role=str(d.get("role", "member")), email=str(d.get("email", "")),
@@ -327,6 +351,14 @@ class Api:
     def _mcp_routes(self):
         from .mcp_web import McpWeb
         return McpWeb(self, self.oauth).routes()
+
+    def _reconfigure(self, who, data, params, request):
+        config, name = data.get("config"), data.get("config_name")
+        if config is not None and not isinstance(config, dict):
+            raise ServiceError("config must be a JSON object")
+        if name is not None and not isinstance(name, str):
+            raise ServiceError("config_name must be a string")
+        return Result(self.cp.reconfigure_instance(who, params["iid"], config=config, config_name=name), 202)
 
     def _finish_enroll(self, who, data, params, request):
         user, token = self.auth.finish_enrollment(str(data.get("ceremony_id", "")), data.get("credential") or {})
