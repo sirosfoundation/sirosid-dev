@@ -205,11 +205,11 @@ class StaticSite(unittest.TestCase):
 
     def test_site_has_no_inline_code_or_external_assets(self):
         site = ROOT / "edge" / "site"
-        files = {p.name: p.read_text() for p in site.iterdir()}
+        files = {p.relative_to(site).as_posix(): p.read_text() for p in sorted(site.rglob("*")) if p.is_file()}
         self.assertIn("index.html", files)
         rendered = render_site(files, "sirosid.dev")
         self.assertIn('href="https://console.sirosid.dev/"', rendered["index.html"])
-        self.assertIn("invite-only development instances", rendered["index.html"])
+        self.assertIn("Your own SIROS ID stack", rendered["index.html"])
         for name, text in rendered.items():
             self.assertNotIn("@", text.replace("@media", ""), name)
             if name.endswith(".html"):
@@ -217,6 +217,26 @@ class StaticSite(unittest.TestCase):
                 for ref in re.findall(r'(?:src|href)="([^"]+)"', text):
                     self.assertTrue(ref.startswith("/") or ref == "https://console.sirosid.dev/", (name, ref))
             self.assertNotRegex(text, r"(?i)@import|url\(\s*['\"]?https?:", name)
+
+    def test_every_internal_link_resolves_and_every_page_is_complete(self):
+        site = ROOT / "edge" / "site"
+        files = {p.relative_to(site).as_posix(): p.read_text() for p in sorted(site.rglob("*")) if p.is_file()}
+        rendered = render_site(files, "sirosid.dev")
+        for name, text in rendered.items():
+            if not name.endswith(".html"):
+                continue
+            self.assertRegex(text, r"<title>[^<]{5,}</title>", name)
+            self.assertIn('rel="stylesheet" href="/site.css"', text, name)
+            self.assertIn('lang="en"', text, name)
+            for ref in re.findall(r'(?:src|href)="(/[^"#?]*)', text):
+                target = ref.lstrip("/")
+                target = target + "index.html" if target == "" or target.endswith("/") else target
+                self.assertIn(target, rendered, f"{name} links to {ref}, which the site does not contain")
+        for page in ("how-it-works/index.html", "connect/index.html", "security/index.html"):
+            self.assertIn(page, rendered)
+            self.assertIn('href="https://console.sirosid.dev/"', rendered[page], "every page links to the console")
+        self.assertIn("https://console.sirosid.dev/mcp", rendered["connect/index.html"])
+        self.assertFalse([n for n in rendered if any(part.startswith(".") for part in n.split("/"))], "no hidden files are published")
 
 
 def _free_port():
@@ -341,7 +361,7 @@ class RealNginx(unittest.TestCase):
         self._need_server()
         status, headers, body = self.get("/", D)
         self.assertEqual(status, 200)
-        self.assertIn(b"invite-only development instances", body)
+        self.assertIn(b"Your own SIROS ID stack", body)
         self.assertIn(b"https://console.sm.invalid/", body)
         self.assertNotIn("fly-replay", headers)
         self.assertIn("default-src 'none'", headers["content-security-policy"])
@@ -350,6 +370,21 @@ class RealNginx(unittest.TestCase):
         status, headers, _ = self.get("/nope", D)
         self.assertEqual(status, 404)
         self.assertIn("content-security-policy", headers)
+
+    def test_the_site_pages_are_served_with_clean_urls(self):
+        self._need_server()
+        for path in ("/how-it-works/", "/connect/", "/security/"):
+            status, headers, body = self.get(path, D)
+            self.assertEqual(status, 200, path)
+            self.assertIn("text/html", headers["content-type"], path)
+            self.assertIn(b"console.sm.invalid", body, path)
+        status, headers, _ = self.get("/connect", D)
+        self.assertEqual(status, 301)
+        self.assertEqual(headers["location"], "/connect/", "the redirect stays relative behind Fly's TLS")
+        self.assertIn("image/svg+xml", self.get("/favicon.svg", D)[1]["content-type"])
+        for path in ("/.well-known/webauthn", "/.well-known/", "/.hidden"):
+            self.assertEqual(self.get(path, D)[0], 404, path)
+        self.assertIn(self.get("/connect/../../etc/passwd", D)[0], (400, 404), "traversal is refused, never served")
 
 
 if __name__ == "__main__":

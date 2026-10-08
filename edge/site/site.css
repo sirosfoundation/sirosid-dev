@@ -1,7 +1,48 @@
-:root { color-scheme: light dark; --fg: #1a1a1a; --bg: #ffffff; --link: #0b57d0; }
-@media (prefers-color-scheme: dark) { :root { --fg: #e8e8e8; --bg: #141414; --link: #8ab4f8; } }
+:root {
+  color-scheme: light dark;
+  --fg: #16202a; --muted: #566573; --bg: #ffffff; --card: #f4f7fa; --line: #d7dee5;
+  --link: #0b57d0; --accent: #0b57d0; --accent-fg: #ffffff; --warn-bg: #fff6e0; --warn-line: #e5c670;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --fg: #e8edf2; --muted: #9aa8b5; --bg: #0f1419; --card: #171e26; --line: #2a3541;
+          --link: #8ab4f8; --accent: #5b9dff; --accent-fg: #0b1220; --warn-bg: #2a2412; --warn-line: #6b5a1f; }
+}
+* { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--fg); }
-body { font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-main { max-width: 40rem; margin: 0 auto; padding: 4rem 16px; }
-h1 { font-size: 1.75rem; margin: 0 0 1rem; }
+body { font: 17px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--link); }
+header.top { border-bottom: 1px solid var(--line); }
+header.top .bar { max-width: 62rem; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; }
+.brand { font-weight: 700; color: var(--fg); text-decoration: none; font-size: 1.1rem; }
+nav.main { display: flex; flex-wrap: wrap; gap: 4px 16px; flex: 1; }
+nav.main a { color: var(--fg); text-decoration: none; padding: 4px 0; border-bottom: 2px solid transparent; }
+nav.main a:hover, nav.main a[aria-current="page"] { border-bottom-color: var(--accent); }
+.btn { display: inline-block; padding: 10px 18px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent);
+       color: var(--accent-fg); text-decoration: none; font-weight: 600; }
+.btn.ghost { background: transparent; color: var(--accent); }
+main { max-width: 62rem; margin: 0 auto; padding: 0 16px 56px; }
+.hero { padding: 56px 0 32px; max-width: 44rem; }
+.hero h1 { font-size: 2.4rem; line-height: 1.15; margin: 0 0 16px; }
+.hero p.lead { font-size: 1.2rem; color: var(--muted); margin: 0 0 24px; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; }
+h2 { font-size: 1.45rem; margin: 40px 0 12px; }
+h3 { font-size: 1.1rem; margin: 24px 0 6px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 16px; margin: 16px 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.card h3 { margin-top: 0; }
+.card p { margin: 6px 0 0; color: var(--muted); }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 16px 0; display: grid; gap: 12px; }
+.steps li { counter-increment: s; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px 14px 56px; position: relative; }
+.steps li::before { content: counter(s); position: absolute; left: 16px; top: 12px; width: 28px; height: 28px; border-radius: 50%;
+                    background: var(--accent); color: var(--accent-fg); display: grid; place-items: center; font-weight: 700; }
+.note { background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 10px; padding: 12px 16px; margin: 20px 0; }
+code, pre { font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+pre { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; overflow-x: auto; }
+pre code { background: none; border: 0; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
+footer .bar { max-width: 62rem; margin: 0 auto; padding: 20px 16px; }
+@media (max-width: 600px) { body { font-size: 16px; } .hero { padding-top: 32px; } .hero h1 { font-size: 1.9rem; } }

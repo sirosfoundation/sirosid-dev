@@ -232,6 +232,7 @@ server {{
     server_name {domain} www.{domain};
     root {static_root};
     index index.html;
+    absolute_redirect off;               # /dir -> /dir/ stays relative: this nginx sits behind Fly's TLS
     client_max_body_size 1k;
     error_page 404 /404.html;
 {_nginx_header_lines("    ")}
