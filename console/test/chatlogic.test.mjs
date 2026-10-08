@@ -118,4 +118,12 @@ test("examples are grouped by category in order, malformed ones dropped", () => 
     { id: "3", title: "C", prompt: "pc", category: "X" }, { id: "4", title: "bad" }, null, { prompt: "  " }]);
   assert.deepEqual(g.map((x) => [x.category, x.items.map((i) => i.title)]), [["X", ["A", "C"]], ["Y", ["pb"]]]);
   assert.equal(L.groupExamples(L.FALLBACK_EXAMPLES).flatMap((x) => x.items).length, 4);
+  assert.deepEqual(L.groupExamples([{ prompt: "p", category: "get-started" }, { prompt: "q" }]).map((g) => g.category), ["Get started", "Examples"]);
+});
+
+test("a prompt with a <slot> is prefilled with the slot selected, not sent", () => {
+  assert.deepEqual(L.firstSlot("Trust the issuer at <issuer URL> for me"), [20, 32]);
+  assert.equal(L.firstSlot("Create a standard environment"), null);
+  assert.equal(L.firstSlot("a <> b"), null);
+  assert.equal(L.firstSlot(null), null);
 });

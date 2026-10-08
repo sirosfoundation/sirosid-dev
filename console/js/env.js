@@ -239,7 +239,10 @@ function config(inst) {
     try { const v = JSON.parse(doc.value || "{}"); if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error("the config must be a JSON object"); return v; }
     catch (e) { showProblems([`Not valid JSON: ${e.message}`]); return null; }
   };
-  const showProblems = (list) => fill(problems, list.length ? [h("p", { class: "problems-title" }, `${list.length} problem${list.length === 1 ? "" : "s"}`), h("ul", {}, list.map((p) => h("li", {}, typeof p === "string" ? p : `${p.path}: ${p.message}`)))] : []);
+  const showProblems = (list) => {
+    fill(problems, list.length ? [h("p", { class: "problems-title" }, `${list.length} problem${list.length === 1 ? "" : "s"}`), h("ul", {}, list.map((p) => h("li", {}, typeof p === "string" ? p : `${p.path}: ${p.message}`)))] : []);
+    if (list.length) problems.scrollIntoView({ block: "nearest" });
+  };
   const validate = async () => {
     const cfg = parse(); if (!cfg) return null;
     const { problems: p } = await api("POST", "/api/configs/validate", { config: cfg });
@@ -260,6 +263,7 @@ function config(inst) {
     } catch (e) {
       if (e instanceof ApiError && e.status === 422 && e.problems.length) return showProblems(e.problems);
       if (isMissingEndpoint(e)) return showProblems(["This server cannot reconfigure an environment in place yet."]);
+      if (e instanceof ApiError && [400, 404, 409].includes(e.status)) { await loadInstances().catch(() => {}); return showProblems([e.message]); }   // e.g. stopped meanwhile: "start it first"
       throw e;
     }
   }) } }, "Apply");
@@ -287,11 +291,13 @@ function config(inst) {
 function configStatusNote(inst) {
   if (!el.cfgNote || !el.cfgButtons) return;
   const busy = isTransient(inst.status);
-  const cannot = inst.reconfigurable === false;
+  const cannot = !busy && inst.reconfigurable === false;          // the server says: only running (or failed) environments
   el.cfgButtons.applyBtn.disabled = busy || cannot;
   fill(el.cfgNote,
     busy && h("p", { class: "alert busy" }, spinner(), ` The environment is ${inst.status}; Apply is available again when it is done.`),
-    cannot && h("p", { class: "alert warn" }, "This environment cannot be reconfigured in place. Save this config and create a new environment from it instead."));
+    cannot && h("p", { class: "alert warn" }, inst.status === "stopped"
+      ? "This environment is stopped: start it first, then apply a new config. You can still edit and validate here."
+      : `An environment that is ${inst.status} cannot be reconfigured. Save this config and create a new environment from it instead.`));
 }
 
 function saveAsModal(parse) {
@@ -313,11 +319,11 @@ function activity(inst) {
   const list = h("div", {}, h("p", { class: "muted" }, "Loading…"));
   fill(el.body, h("section", { class: "section" }, h("h2", {}, "Activity"), list));
   api("GET", `/api/instances/${encodeURIComponent(inst.id)}/activity`).then((r) => {
-    const ev = [...(r.events || [])].sort((a, b) => (b.ts || 0) - (a.ts || 0));
+    const ev = [...(r.activity || r.events || [])].sort((a, b) => (b.ts || 0) - (a.ts || 0));
     fill(list, ev.length ? h("ol", { class: "timeline" }, ev.map((x) => h("li", {},
-      h("span", { class: "tl-time muted" }, x.ts ? new Date(x.ts * 1000).toLocaleString() : ""),
-      h("span", { class: "tl-action" }, String(x.action || "")),
-      x.detail && h("span", { class: "tl-detail muted" }, typeof x.detail === "string" ? x.detail : JSON.stringify(x.detail)))))
+      h("span", { class: "tl-time muted" }, [x.ts ? new Date(x.ts * 1000).toLocaleString() : "", x.by ? ` · by ${x.by}` : ""].join("")),
+      h("span", { class: "tl-action" }, activityLabel(x.action)),
+      activityDetail(x.detail) && h("span", { class: "tl-detail muted" }, activityDetail(x.detail)))))
       : h("p", { class: "muted" }, "Nothing yet."));
   }).catch((e) => {
     if (isMissingEndpoint(e)) return missing("activity");
@@ -325,6 +331,13 @@ function activity(inst) {
     fill(list, h("p", { class: "bad" }, `Could not load the activity: ${e.message}`));
   });
 }
+
+const activityLabel = (a) => { const s = String(a || "").replace(/_instance$/, "").replace(/_/g, " "); return s ? s[0].toUpperCase() + s.slice(1) : ""; };
+const activityDetail = (d) => {
+  if (!d) return "";
+  if (typeof d === "string") return d;
+  return Object.entries(d).map(([k, v]) => `${k.replace(/_/g, " ")}: ${Array.isArray(v) ? v.join(", ") : typeof v === "object" ? JSON.stringify(v) : v}`).join("; ");
+};
 
 // ---- credentials --------------------------------------------------------------------------------------
 

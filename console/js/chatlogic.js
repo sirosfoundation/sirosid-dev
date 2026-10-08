@@ -144,12 +144,22 @@ export const FALLBACK_EXAMPLES = [
   { id: "dcapi", category: "Explore", title: "Try the Digital Credentials API", prompt: "Set up an environment where I can test the W3C Digital Credentials API." },
 ];
 
+/** A category slug as a heading: "get-started" -> "Get started". */
+export const categoryLabel = (c) => { const s = String(c || "Examples").replace(/[-_]+/g, " ").trim(); return s ? s[0].toUpperCase() + s.slice(1) : "Examples"; };
+
+/** The first <slot> the user is meant to fill in, as [start, end) offsets, or null. Such a prompt is put in the
+ *  composer with the slot selected instead of being sent as it stands. */
+export function firstSlot(prompt) {
+  const m = /<[^<>\n]{1,80}>/.exec(String(prompt || ""));
+  return m ? [m.index, m.index + m[0].length] : null;
+}
+
 /** Examples grouped by category, in first-seen order; malformed entries are dropped. */
 export function groupExamples(examples) {
   const groups = new Map();
   for (const e of examples || []) {
     if (!e || typeof e.prompt !== "string" || !e.prompt.trim()) continue;
-    const cat = String(e.category || "Examples");
+    const cat = categoryLabel(e.category);
     if (!groups.has(cat)) groups.set(cat, []);
     groups.get(cat).push({ id: String(e.id || e.prompt), title: String(e.title || e.prompt), prompt: e.prompt });
   }

@@ -157,7 +157,7 @@ function welcome() {
   return h("div", { class: "welcome" },
     h("h3", {}, "What would you like to test?"),
     h("p", { class: "muted" }, "Describe an environment in your own words, or start from one of these. The assistant can create, change and inspect your environments; destroying or resetting one always asks you first."),
-    examplesList(groups, (p) => submit(p)));
+    examplesList(groups, usePrompt));
 }
 
 export function examplesList(groups, pick) {
@@ -167,11 +167,20 @@ export function examplesList(groups, pick) {
       h("span", { class: "chip-title" }, x.title), x.title !== x.prompt && h("span", { class: "chip-prompt" }, x.prompt)))))));
 }
 
+/** Send an example prompt, or (when it has a <slot> to fill in) put it in the composer with the slot selected. */
+export function usePrompt(p) {
+  const slot = L.firstSlot(p);
+  if (!slot) return submit(p);
+  prefill(p);
+  el.input.setSelectionRange(slot[0], slot[1]);
+  return true;
+}
+
 /** "Try an example": the examples in a modal (clicking one sends it). */
 export function showExamples() {
   const groups = L.groupExamples(state.examples || L.FALLBACK_EXAMPLES);
-  const m = modal({ title: "Try an example", wide: true, body: [h("p", { class: "muted" }, "Pick one: it is sent to the assistant as your message."),
-    examplesList(groups, (p) => { m.close(); setMobile("chat"); submit(p); })] });
+  const m = modal({ title: "Try an example", wide: true, body: [h("p", { class: "muted" }, "Pick one: it is sent to the assistant as your message (one with a <placeholder> goes into the message box for you to fill in first)."),
+    examplesList(groups, (p) => { m.close(); setMobile("chat"); usePrompt(p); })] });
 }
 
 function paintLog() {
