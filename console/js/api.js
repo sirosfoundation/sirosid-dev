@@ -21,3 +21,31 @@ export async function api(method, path, body) {
   if (!res.ok) throw new ApiError(res.status, data);
   return data;
 }
+
+/** POST and read a server-sent-event stream: calls onEvent(obj) for each `data:` line. Resolves when
+ *  the stream ends. A non-200 answer (not signed in, locked, bad origin) throws ApiError like api(). */
+export async function stream(path, body, onEvent) {
+  const res = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    let data = {};
+    try { data = await res.json(); } catch { /* empty body */ }
+    throw new ApiError(res.status, data);
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      for (const line of frame.split("\n")) {
+        if (!line.startsWith("data: ")) continue;
+        try { onEvent(JSON.parse(line.slice(6))); } catch (e) { if (!(e instanceof SyntaxError)) throw e; }
+      }
+    }
+  }
+}

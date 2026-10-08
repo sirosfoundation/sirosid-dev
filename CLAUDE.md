@@ -203,6 +203,22 @@ all of it against the fake flyctl.
   key container are deliberately not tools. `/mcp` refuses a browser `Origin` that is not ours
   (DNS rebinding). `tests/test_mcp.py` covers the flow and is mutation-checked (PKCE, redirect,
   origin, replay and key-session revocation each fail a test when removed).
+- `llm.py`, `chat.py`, `chat_web.py` — the **assistant** (console "Assistant" tab), enabled when
+  `OPENROUTER_API_KEY` (a Fly secret) is set; `SIROSID_CHAT_MODELS` (comma list, first is default)
+  defaults to `openrouter/auto` (OpenRouter's router picks per request; whether it always routes to a
+  tool-capable model is unverified - check before relying on it); per-user and
+  global daily token budgets (`SIROSID_CHAT_USER_DAILY_TOKENS`/`..._GLOBAL_...`, table `chat_usage`).
+  It is the MCP tool table driven by a model, acting only as the unlocked signed-in user, so it can
+  do nothing the console cannot. What is special: a model provider sees the user's messages and tool
+  results (requests ask OpenRouter for `data_collection: deny`; the UI says so); the credentials
+  tool is **not offered** and admin actions are not tools; destructive tools (`destructiveHint`:
+  destroy, reset, delete config) **pause for an Approve click** bound to the exact tool call id
+  (`confirm` is single-use, per user); tool output is data (system prompt says so) and the console
+  renders everything as text. One running turn per user, step limit, bounded history/tool output.
+  Conversations are server memory only. The turn streams SSE (`status/tool/tool_result/confirm/
+  message/error/done`). `tests/test_chat.py` uses a scripted fake model against the real tools and
+  HTTP layer; the approval gate, withheld tool, call binding, budget and unlock checks are
+  mutation-checked.
 - `sirosid_core/templates.py` — **starting-point configs** (standard stack, SIROS registry, wallet
   attestation, DC API, interop, custom wallet-backend image). Plain data: a template is a saved config
   plus a title/description/hints/`requires`; `ControlPlane.templates(who)` offers only those the user's

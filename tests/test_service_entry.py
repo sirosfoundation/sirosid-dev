@@ -42,6 +42,13 @@ class ConfigTests(unittest.TestCase):
                          ("console.sirosid.dev", ("https://console.sirosid.dev",), "sirosdev", "sid"))
         self.assertEqual((s.layout, s.host_pattern, s.instance_domain), ("apps", "{app}.fly.dev", ""))
 
+    def test_the_assistant_is_off_without_a_key_and_auto_routed_with_one(self):
+        self.assertEqual(settings().chat_models, ())
+        self.assertEqual(settings(OPENROUTER_API_KEY="k").chat_models, ("openrouter/auto",))
+        self.assertEqual(settings(OPENROUTER_API_KEY="k", SIROSID_CHAT_MODELS="a/b, c/d").chat_models, ("a/b", "c/d"))
+        with self.assertRaises(SystemExit):
+            settings(SIROSID_CHAT_MODELS="a/b")                     # models without a key
+
     def test_a_token_is_required(self):
         old = os.environ.pop("FLY_API_TOKEN", None)
         try:

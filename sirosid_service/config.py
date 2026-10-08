@@ -53,6 +53,10 @@ class Settings:
     instance_domain: str = ""
     # Single-machine only: public IPs on each instance app. Behind the edge: False.
     public_ips: bool = True
+    openrouter_api_key: str = ""
+    chat_models: Tuple[str, ...] = ()
+    chat_user_daily_tokens: int = 300_000
+    chat_global_daily_tokens: int = 3_000_000
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -75,7 +79,12 @@ class Settings:
             max_instances=int(_env("SIROSID_MAX_INSTANCES", "10")), host=_env("SIROSID_HOST", "0.0.0.0"), port=int(_env("PORT", "8080")),
             console_dir=_env("SIROSID_CONSOLE_DIR", str(root / "console")),
             sweep_grace_seconds=float(_env("SIROSID_SWEEP_GRACE_SECONDS", "3600")),
-            layout=layout, instance_domain=instance_domain, public_ips=public_ips in _TRUE)
+            layout=layout, instance_domain=instance_domain, public_ips=public_ips in _TRUE,
+            openrouter_api_key=_env("OPENROUTER_API_KEY"),
+            # With a key and no explicit list, let OpenRouter's auto router pick the model per request.
+            chat_models=tuple(m.strip() for m in _env("SIROSID_CHAT_MODELS", "openrouter/auto" if _env("OPENROUTER_API_KEY") else "").split(",") if m.strip()),
+            chat_user_daily_tokens=int(_env("SIROSID_CHAT_USER_DAILY_TOKENS", "300000")),
+            chat_global_daily_tokens=int(_env("SIROSID_CHAT_GLOBAL_DAILY_TOKENS", "3000000")))
         s.validate()
         return s
 
@@ -118,6 +127,10 @@ class Settings:
             # grace is what lets a human notice (and a restored database catch up)
             # before anything is deleted. Shorten it for a test, never to nothing.
             problems.append("SIROSID_SWEEP_GRACE_SECONDS must be at least 60")
+        if self.chat_models and not self.openrouter_api_key:
+            problems.append("SIROSID_CHAT_MODELS is set but OPENROUTER_API_KEY is not")
+        if self.chat_user_daily_tokens <= 0 or self.chat_global_daily_tokens <= 0:
+            problems.append("the assistant's token budgets must be positive")
         if problems:
             raise SystemExit("configuration problems:\n  " + "\n  ".join(problems))
 

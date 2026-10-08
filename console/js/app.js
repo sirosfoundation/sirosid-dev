@@ -1,11 +1,11 @@
 // The console. Everything is built with textContent/createElement: never HTML strings, so nothing
 // the server returns (instance names, URLs, error text) is ever parsed as markup.
-import { api, ApiError } from "./api.js";
+import { api, ApiError, stream } from "./api.js";
 import * as C from "./container.js";
 import { creationOptions, requestOptions, credentialToJSON, prfEnabled, prfFirst, randomChallenge } from "./webauthn.js";
 
 const $ = (id) => document.getElementById(id);
-const state = { me: null, mainKey: null, container: null, tab: "instances", poll: null };
+const state = { me: null, mainKey: null, container: null, tab: "instances", poll: null, chat: { id: null, items: [], busy: false, status: null } };
 const stopPolling = () => { clearTimeout(state.poll); state.poll = null; };
 
 function h(tag, attrs = {}, ...kids) {
@@ -133,6 +133,7 @@ async function relock() {
 async function logout() {
   await api("POST", "/api/logout");
   state.me = state.mainKey = state.container = null;
+  state.chat = { id: null, items: [], busy: false, status: null };
   start();
 }
 
@@ -195,10 +196,10 @@ function unlockScreen() {
     h("div", { class: "stack" }, unlock, h("button", { class: "big", on: { click: guard(logout) } }, "Sign out"))));
 }
 
-const NAMES = { instances: "Instances", configs: "Configs", apps: "Connected apps", passkeys: "Passkeys", admin: "Admin" };
+const NAMES = { instances: "Instances", configs: "Configs", assistant: "Assistant", apps: "Connected apps", passkeys: "Passkeys", admin: "Admin" };
 
 function chrome() {
-  const tabs = ["instances", "configs", "apps", "passkeys", ...(state.me.role === "admin" ? ["admin"] : [])];
+  const tabs = ["instances", "configs", "assistant", "apps", "passkeys", ...(state.me.role === "admin" ? ["admin"] : [])];
   $("nav").hidden = false;
   $("nav").replaceChildren(...tabs.map((t) => h("button", { "aria-current": t === state.tab ? "page" : false, on: { click: () => { state.tab = t; show(); } } }, NAMES[t])),
     h("span", { class: "grow" }));
@@ -213,7 +214,7 @@ async function show() {
   try {
     const pending = authorizeId();
     if (pending) return await consentScreen(pending);
-    await ({ instances: instancesScreen, configs: configsScreen, apps: appsScreen, passkeys: passkeysScreen, admin: adminScreen })[state.tab]();
+    await ({ instances: instancesScreen, configs: configsScreen, assistant: assistantScreen, apps: appsScreen, passkeys: passkeysScreen, admin: adminScreen })[state.tab]();
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return start();
     fail(e);
@@ -310,6 +311,78 @@ async function configsScreen() {
         }) } }, "Save"))),
     h("details", {}, h("summary", {}, "What can a config say?"), h("table", {}, keys)));
 }
+
+// ---- assistant -----------------------------------------------------------------------------------
+// Everything the assistant or a tool returns is shown as plain text (textContent) and nowhere else.
+
+async function assistantScreen() {
+  const chat = state.chat;
+  chat.status = await api("GET", "/api/chat/status");
+  if (!chat.status.enabled) return render(h("div", { class: "card" }, h("h2", {}, "Assistant"), h("p", { class: "muted" }, "The assistant is not enabled on this server.")));
+  const log = h("div", { class: "chat-log", "aria-live": "polite" });
+  const input = h("textarea", { id: "chat-input", class: "chat-input", placeholder: "Ask for a config, an instance, a status…", maxlength: "8000" });
+  const model = h("select", { id: "chat-model", "aria-label": "Model" }, chat.status.models.map((m) => h("option", { value: m }, m)));
+  const send = h("button", { class: "primary" }, "Send");
+  const usage = h("span", { class: "muted" });
+  const paint = () => {
+    log.replaceChildren(...chat.items.map(item));
+    log.scrollTop = log.scrollHeight;
+    usage.textContent = `${chat.status.usage.used.toLocaleString()} of ${chat.status.usage.limit.toLocaleString()} tokens used today`;
+    const waiting = chat.items.some((x) => x.kind === "confirm" && !x.answered);
+    send.disabled = chat.busy || waiting || !state.me.unlocked;
+    model.disabled = !!chat.id;
+  };
+  const run = async (path, body) => {
+    chat.busy = true; paint();
+    try {
+      await stream(path, body, (ev) => {
+        if (ev.conversation_id) chat.id = ev.conversation_id;
+        if (ev.type === "done") chat.status.usage = ev.usage;
+        else if (ev.type === "confirm") chat.items.push({ kind: "confirm", ...ev });
+        else if (ev.type === "message") chat.items.push({ kind: "assistant", text: ev.text });
+        else if (ev.type === "tool") chat.items.push({ kind: "tool", text: `${ev.name} ${briefArgs(ev.args)}`, call: ev.call_id });
+        else if (ev.type === "tool_result") { const t = chat.items.find((x) => x.call === ev.call_id); if (t) { t.ok = ev.ok; t.result = ev.summary; } }
+        else if (ev.type === "error") chat.items.push({ kind: "error", text: ev.message });
+        paint();
+      });
+    } catch (e) {
+      if (e instanceof ApiError && (e.status === 401 || e.status === 423)) return fail(e);   // back to sign-in / the lock page
+      chat.items.push({ kind: "error", text: e.message });
+    } finally { chat.busy = false; paint(); }
+  };
+  const answer = (it, approve) => {
+    it.answered = approve ? "approved" : "declined";
+    run("/api/chat/confirm", { conversation_id: chat.id, call_id: it.call_id, approve });
+  };
+  const item = (it) => {
+    if (it.kind === "user") return h("div", { class: "msg user" }, it.text);
+    if (it.kind === "assistant") return h("div", { class: "msg assistant" }, it.text);
+    if (it.kind === "error") return h("div", { class: "msg error bad" }, it.text);
+    if (it.kind === "tool") return h("div", { class: "msg tool muted" }, `${it.ok === false ? "✗" : it.ok ? "✓" : "…"} ${it.text}`);
+    return h("div", { class: "card" }, h("b", {}, `Approve: ${it.title}?`), h("pre", {}, JSON.stringify(it.args, null, 2)),
+      it.answered ? h("span", { class: "muted" }, it.answered)
+        : h("div", { class: "row end" }, h("button", { disabled: chat.busy, on: { click: () => answer(it, false) } }, "Decline"),
+            h("button", { class: "danger", disabled: chat.busy, on: { click: () => answer(it, true) } }, "Approve")));
+  };
+  const submit = () => {
+    const text = input.value.trim();
+    if (!text || chat.busy) return;
+    input.value = "";
+    chat.items.push({ kind: "user", text });
+    run("/api/chat", { message: text, conversation_id: chat.id, model: chat.id ? undefined : model.value });
+  };
+  send.addEventListener("click", submit);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) submit(); });
+  render(
+    h("div", { class: "card" }, h("p", { class: "muted" }, "Your messages, your configs and your instances' status are sent to OpenRouter and the chosen model's provider to answer. The assistant never sees credentials, and destroying or resetting anything needs your approval here.")),
+    log,
+    h("div", { class: "row" }, model, usage, h("span", { class: "grow" }),
+      h("button", { on: { click: guard(async () => { if (chat.id) await api("DELETE", `/api/chat/${chat.id}`).catch(() => {}); chat.id = null; chat.items = []; paint(); }) } }, "New conversation")),
+    input, h("div", { class: "row end" }, send));
+  paint();
+}
+
+const briefArgs = (a) => { const s = JSON.stringify(a || {}); return s.length > 80 ? s.slice(0, 77) + "…" : s; };
 
 // ---- connected apps (OAuth / MCP) ----------------------------------------------------------------
 

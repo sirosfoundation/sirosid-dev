@@ -53,6 +53,12 @@ class Static(unittest.TestCase):
             self.assertEqual(r.status_code, 404, path)
             self.assertNotIn(b"describe", r.content)
 
+    def test_the_console_never_publishes_a_webauthn_related_origins_file(self):
+        """Chrome honours /.well-known/webauthn: a host that serves it lets the listed origins use its host as
+        their RP ID. The console is the RP; it must never delegate, and nothing under /.well-known is served."""
+        for path in ("/.well-known/webauthn", "/.well-known/", "/.well-known/security.txt"):
+            self.assertEqual(self.http.get(path).status_code, 404, path)
+
     def test_static_is_read_only_and_head_has_no_body(self):
         self.assertEqual(self.http.post("/", headers={"Origin": ORIGIN}).status_code, 405)
         r = self.http.head("/js/app.js")
