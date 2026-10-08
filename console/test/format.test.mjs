@@ -72,7 +72,7 @@ test("a missing endpoint is the framework's code-less 404/405, never the API's n
 
 test("parseRich: paragraphs, bullets, bold and code, and nothing else", () => {
   const b = F.parseRich("I created **demo** for you.\n\nNext:\n- open `the wallet`\n- sign up");
-  assert.equal(b.length, 3);
+  assert.deepEqual(b.map((x) => x.type), ["p", "p", "ul"], "prose, a lead-in line and its list, even with no blank line between them");
   assert.deepEqual(b[0], { type: "p", inlines: [{ t: "text", v: "I created " }, { t: "b", v: "demo" }, { t: "text", v: " for you." }] });
   assert.equal(b[2].type, "ul");
   assert.deepEqual(b[2].items[0], [{ t: "text", v: "open " }, { t: "code", v: "the wallet" }]);

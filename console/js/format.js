@@ -130,12 +130,13 @@ export function parseRich(text) {
   const blocks = [];
   for (const chunk of String(text || "").replace(/\r\n?/g, "\n").split(/\n{2,}/)) {
     const lines = chunk.split("\n").filter((l) => l.trim() !== "");
-    if (!lines.length) continue;
-    if (lines.every((l) => /^\s*[-*] +/.test(l))) {
-      blocks.push({ type: "ul", items: lines.map((l) => inline(l.replace(/^\s*[-*] +/, ""))) });
-    } else {
-      blocks.push({ type: "p", inlines: inline(lines.join("\n")) });
+    let para = [], items = [];
+    const flushPara = () => { if (para.length) blocks.push({ type: "p", inlines: inline(para.join("\n")) }); para = []; };
+    const flushList = () => { if (items.length) blocks.push({ type: "ul", items }); items = []; };
+    for (const l of lines) {                       // a list may follow a line of prose with no blank line between
+      if (/^\s*[-*] +/.test(l)) { flushPara(); items.push(inline(l.replace(/^\s*[-*] +/, ""))); } else { flushList(); para.push(l); }
     }
+    flushPara(); flushList();
   }
   return blocks;
 }
