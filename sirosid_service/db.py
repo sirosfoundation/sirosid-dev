@@ -83,12 +83,22 @@ class Database:
         with self._lock:
             return self._c.execute(sql, params)
 
+    # Reads FETCH under the lock too, not only execute. One connection is shared by
+    # every thread (requests and the deploy/reset jobs), and a cursor's fetch steps
+    # the statement again: fetched outside the lock it interleaves with another
+    # thread's statements on the same connection and can come back empty (an
+    # existing row read as missing - create_instance answering 404 for the instance
+    # it had just created while its job thread ran) or raise "bad parameter or other
+    # API misuse". tests/test_db_threading.py reproduces it.
     def one(self, sql, params=()):
-        r = self.execute(sql, params).fetchone()
+        with self._lock:
+            r = self._c.execute(sql, params).fetchone()
         return dict(r) if r else None
 
     def all(self, sql, params=()):
-        return [dict(r) for r in self.execute(sql, params).fetchall()]
+        with self._lock:
+            rows = self._c.execute(sql, params).fetchall()
+        return [dict(r) for r in rows]
 
     def transaction(self):
         return _Tx(self)
