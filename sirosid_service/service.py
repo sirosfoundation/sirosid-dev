@@ -532,6 +532,10 @@ class ControlPlane:
     def get_instance(self, who: Principal, iid: str) -> dict:
         return self._public(self._instance_row(who, iid, allow_admin=True))
 
+    def get_own_instance(self, who: Principal, iid: str) -> dict:
+        """As get_instance, but only the caller's own (an admin's view of someone else's is NotFound)."""
+        return self._public(self._instance_row(who, iid))
+
     def instance_credentials(self, who: Principal, iid: str) -> dict:
         """The owner's way in: public URLs and the wallet-backend admin token. Never an admin's."""
         r = self._instance_row(who, iid)
