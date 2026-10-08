@@ -95,7 +95,10 @@ images:
 # for the proximity-presentation test.
 trusted_issuers:
   - https://geneva2026.mdoc.online
-  - https://sirosid-yitbarek-vc-issuer.fly.dev
+  # yitbarek's issuer. The issuer identity is the APIGW's public URL (its credential_issuer, with keys at
+  # /.well-known/jwt-vc-issuer); there is no public ...-vc-issuer host (that app is internal), so trusting
+  # it never resolved and the PDP could not fetch its keys.
+  - https://sirosid-yitbarek-vc-apigw.fly.dev
 
 # Every OpenID4VP verifier used for interop testing so far - each needs its
 # own reader-CA root below (ISO 18013-5 out-of-band trust convention, not a
