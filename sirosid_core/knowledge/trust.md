@@ -16,7 +16,7 @@ Every instance's PDP (go-trust) gets a whitelist built at deploy time:
   pool plus any `trusted_verifier_roots`.
 
 The saved config only ever **adds** entries. Trust lists are fixed at deploy time: changing them means a
-new instance (or the reconfigure tool, if available; see `lifecycle`).
+reconfigure (`reconfigure_instance`, see `lifecycle`; the components restart) or a new instance.
 
 ## To trust a partner issuer
 

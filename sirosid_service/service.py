@@ -549,6 +549,18 @@ class ControlPlane:
         cols = ", ".join(f"{k}=?" for k in fields)
         self.db.execute(f"UPDATE instances SET {cols}, updated_at=? WHERE id=?", (*fields.values(), self.clock(), iid))
 
+    def _finish_job(self, iid, **fields) -> bool:
+        """The result of a create/reset JOB: written only while the instance is still `creating`/`resetting`.
+        If the owner (or the reaper) destroyed it meanwhile, the finished job must not flip the row back to
+        `running` with URLs for apps that are gone or half re-created."""
+        cols = ", ".join(f"{k}=?" for k in fields)
+        cur = self.db.execute(f"UPDATE instances SET {cols}, updated_at=? WHERE id=? AND status IN ('creating','resetting')",
+                              (*fields.values(), self.clock(), iid))
+        if cur.rowcount == 0:
+            self.db.audit("system", "job_result_discarded", iid, wanted=str(fields.get("status", "")))
+            return False
+        return True
+
     def _naming(self, r) -> Naming:
         """From the plaintext column: stop, start, destroy, the reaper and the
         sweeper must work with nobody logged in, so they never need the sealed spec."""
@@ -569,12 +581,12 @@ class ControlPlane:
             return
         try:
             result = self._deploy(r, self._spec(r, sealer), sealer)
-            self._set(iid, status="running", urls=_json(result.urls), error="")
-            self.db.audit("system", "deployed", iid)
+            if self._finish_job(iid, status="running", urls=_json(result.urls), error=""):
+                self.db.audit("system", "deployed", iid)
         except Exception as e:                              # noqa: BLE001 - see _failure
             msg = self._failure(iid, e, "deploy")
-            self._set(iid, status="failed", error=msg)
-            self.db.audit("system", "deploy_failed", iid, error=msg[:200])
+            if self._finish_job(iid, status="failed", error=msg):
+                self.db.audit("system", "deploy_failed", iid, error=msg[:200])
 
     def _deploy(self, r, spec: InstanceSpec, sealer):
         """Deploy `spec` as instance `r`, with its sealed state (secrets, PKI, Mongo
@@ -797,8 +809,8 @@ class ControlPlane:
         naming = self._naming(r)
         report = reset_single_machine(self.fly, self.machines, naming)
         if not report.ok:
-            self._set(iid, status="failed", error=("reset failed: " + str(report.failed))[:500])
-            self.db.audit("system", "reset_failed", iid)
+            if self._finish_job(iid, status="failed", error=("reset failed: " + str(report.failed))[:500]):
+                self.db.audit("system", "reset_failed", iid)
             return
         try:
             if self.register is not None:
@@ -806,13 +818,13 @@ class ControlPlane:
                 token = SealedStateStore(self.db, sealer, r["owner"]).load(iid).get("adminToken", b"").decode().strip()
                 register_vc_services(naming, token, self.register, lambda m: None,
                                      admin_url=f"https://{naming.machine_app()}.fly.dev" if spec.public_ips else "")
-            self._set(iid, status="running", error="")
-            self.db.audit("system", "reset_done", iid)
+            if self._finish_job(iid, status="running", error=""):
+                self.db.audit("system", "reset_done", iid)
         except (DeployError, VaultError) as e:
-            self._set(iid, status="failed", error=str(e)[:500])
+            self._finish_job(iid, status="failed", error=str(e)[:500])
         except Exception as e:                              # noqa: BLE001
             log.exception("reset of %s failed unexpectedly", iid)
-            self._set(iid, status="failed", error=f"internal error during reset ({type(e).__name__}: {e})"[:500])
+            self._finish_job(iid, status="failed", error=f"internal error during reset ({type(e).__name__}: {e})"[:500])
 
     def set_keep(self, who: Principal, iid: str, keep: bool) -> dict:
         r = self._instance_row(who, iid)

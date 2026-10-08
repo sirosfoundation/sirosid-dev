@@ -40,19 +40,34 @@ refuses requests carrying a browser Origin that is not the console's.
 | `stop_instance` / `start_instance` | power off/on, data kept | |
 | `reset_instance` | erase data, bring back up empty | destructive |
 | `destroy_instance` | delete instance and data | destructive |
+| `reconfigure_instance` | apply a new config (`config` or `config_name`) to a `running`/`failed` instance, data kept; components restart | read `lifecycle` first; the assistant asks the user to approve |
+| `get_instance_config` | the config an instance runs | needs unlock |
+| `get_instance_health` | per-component state and health | read-only; no unlock |
+| `get_instance_activity` | what was done to it, by whom (`limit`) | read-only |
+| `get_knowledge` | `topic` = full text, `query` = search, none = list topics | read-only; use when unsure |
+| `list_example_prompts` | example requests users find useful | read-only |
 | `set_keep` | keep past expiry or release | uses keep allowance |
 | `get_instance_credentials` | returns a secret (the admin token) and the URLs | only when the user asks; never repeat the token; not offered to the in-console assistant |
 
 Arguments are checked strictly: unknown, missing or wrongly typed arguments are refused. A tool failure
 comes back as a tool result with `isError`, carrying the control plane's message (for example a list of
-config problems). There are no MCP resources or prompts today; a knowledge tool (the agent's
-`get_knowledge`) may be listed alongside these - use `tools/list` to see what this server offers.
-Deliberately not tools: invites, grants, disabling users, the audit log, passkeys and the key container.
+config problems). Deliberately not tools: invites, grants, disabling users, the audit log, passkeys and
+the key container.
+
+## Resources and prompts (skills)
+
+Besides tools the server offers **resources**: `sirosid://knowledge/<topic-id>` (these topics, as
+Markdown), `sirosid://templates/<id>` (the templates you may use, as JSON) and `sirosid://schema/config`
+(the JSON Schema of a saved config). It also offers **prompts**, which are ready-made runbooks: 
+`spin-up-environment`, `reconfigure-environment`, `add-trusted-party`, `test-android-passkeys`,
+`diagnose-environment` and `clean-up-environments`. Each tells you which tools to call in which order
+and which topics to read first; clients that do not support prompts can read the same guidance through
+`get_knowledge`.
 
 ## The in-console assistant
 
 The console's Assistant tab drives the same tool table with a language model, acting only as the
-signed-in, unlocked user. It does not get `get_instance_credentials`; `reset_instance`,
+signed-in, unlocked user. It does not get `get_instance_credentials`; `reconfigure_instance`, `reset_instance`,
 `destroy_instance` and `delete_config` pause for the user's **Approve** click, bound to that exact call.
 See `limits-and-policy` for its budgets.
 
@@ -60,8 +75,8 @@ See `limits-and-policy` for its budgets.
 
 1. Start from `list_config_templates`; `validate_config` before `save_config`; fix every reported
    problem in one pass.
-2. After `create_instance`, `start_instance` or `reset_instance`, poll `get_instance`; report ready only
-   at `running`, report `failed` with its `error`.
+2. After `create_instance`, `start_instance`, `reset_instance` or `reconfigure_instance`, poll `get_instance`
+   (and `get_instance_health` for detail); report ready only at `running`, report `failed` with its `error`.
 3. Before a destructive action, say what will be lost (data, passkeys, URLs) and ask; if the user or the
    approval gate declines, do not retry or find another route to the same effect.
 4. Identify instances by id from `list_instances`; never guess ids. Someone else's id and a nonexistent

@@ -579,6 +579,29 @@ def sealed_spec(cp, who, iid):
 
 
 @NEEDS
+class JobResultTests(unittest.TestCase):
+    def test_a_finished_deploy_cannot_resurrect_an_instance_destroyed_meanwhile(self):
+        """create's job runs while the owner (or the reaper) destroys the instance: the job's result must be
+        discarded, not written over `destroyed` as `running` with URLs for apps that are gone."""
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        cp.runner = DeferredRunner()
+        iid = cp.create_instance(alice, name="demo")["id"]
+        real = cp._deploy
+
+        def deploy_then_get_destroyed(r, spec, sealer):
+            out = real(r, spec, sealer)
+            cp.destroy_instance(alice, iid)                  # destroyed while the job was still running
+            return out
+        cp._deploy = deploy_then_get_destroyed
+        cp.runner.run_all()
+        row = cp.db.one("SELECT status, urls FROM instances WHERE id=?", (iid,))
+        self.assertEqual(row["status"], "destroyed")
+        self.assertEqual(row["urls"], "{}")
+        self.assertIn("job_result_discarded", [a["action"] for a in cp.db.audit_log(20)])
+
+
+@NEEDS
 class ReconfigureTests(unittest.TestCase):
     def deploys(self, fake, component):
         return [c for c in fake.log if c.startswith("flyctl deploy") and f"-{component} " in c + " "]
