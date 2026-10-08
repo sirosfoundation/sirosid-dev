@@ -1,4 +1,68 @@
+# Example prompts for the console's assistant (and MCP clients). Each must be achievable with the tools
+# that exist: templates, validate/save/get/delete configs, create/get/list/stop/start/reset/destroy
+# instances, set_keep. Slots the user is expected to edit are written <like this>.
+# Categories: get-started, configure, test, manage, troubleshoot.
 - id: spin-up-standard
   title: Spin up a standard test stack
   category: get-started
   prompt: Create a standard test environment for me and tell me when it is ready.
+- id: explain-templates
+  title: Which template should I use?
+  category: get-started
+  prompt: Show me the available config templates and explain in one line each when I would use it.
+- id: interop-environment
+  title: Interop environment
+  category: get-started
+  prompt: Make me an interop environment with the SIROS registry, wallet attestation and the Digital Credentials API, and tell me when it is ready.
+- id: urls-and-users
+  title: URLs and test users
+  category: test
+  prompt: Show me the URLs of my running environment and which test users I can log in as for each credential type.
+- id: issue-first-credential
+  title: How do I issue my first credential?
+  category: test
+  prompt: Walk me through issuing a PID to the web wallet of my environment, step by step, with the exact URLs.
+- id: business-wallet-test
+  title: Test an EU Business Wallet attestation
+  category: test
+  prompt: Which user should I log in as to get an EU Company Certificate (eucc), and what do I need to have in the wallet first?
+- id: trust-partner-issuer
+  title: Trust a partner's issuer
+  category: configure
+  prompt: Trust <https://issuer.example.org> as an issuer. Save it as a new config based on the standard template and create an environment from it.
+- id: trust-dc-test-site
+  title: Present to digital-credentials.dev
+  category: configure
+  prompt: Prepare a config so my wallet can present an mDL to digital-credentials.dev, and tell me what I still need to add after the first attempt.
+- id: android-passkeys
+  title: Let my Android app use passkeys
+  category: configure
+  prompt: Add my Android app <package name> with signing key SHA-256 <AA:BB:...> to a config, validate it and save it.
+- id: own-wallet-backend
+  title: Run my own wallet-backend build
+  category: configure
+  prompt: Make a config that runs my own wallet-backend image <ghcr.io/me/go-wallet-backend:my-tag>, validate it, save it and create an environment from it.
+- id: why-not-ready
+  title: Why is my environment not ready?
+  category: troubleshoot
+  prompt: Why is my environment not ready yet? Check its status and tell me what is going on.
+- id: no-documents
+  title: '"no documents" when issuing'
+  category: troubleshoot
+  prompt: Issuing a credential in my environment fails with "no documents". What is wrong and how do I fix it?
+- id: issuer-not-trusted
+  title: '"Issuer not trusted"'
+  category: troubleshoot
+  prompt: My wallet says the issuer is not trusted. Look at my environment's config and tell me what to change.
+- id: stop-unused
+  title: Stop what I am not using
+  category: manage
+  prompt: List my environments and stop every one that is running but that I am not using right now; ask me before stopping anything.
+- id: reset-data
+  title: Reset my environment's data
+  category: manage
+  prompt: Reset the data of my environment and tell me what I will lose and when it is back up.
+- id: keep-environment
+  title: Keep an environment longer
+  category: manage
+  prompt: Keep my environment past its normal expiry if my allowance allows it, and tell me when it would otherwise have expired.
