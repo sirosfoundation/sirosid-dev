@@ -45,4 +45,8 @@ th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--lin
 th { color: var(--muted); font-weight: 600; }
 footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 0.9rem; }
 footer .bar { max-width: 62rem; margin: 0 auto; padding: 20px 16px; }
-@media (max-width: 600px) { body { font-size: 16px; } .hero { padding-top: 32px; } .hero h1 { font-size: 1.9rem; } }
+@media (max-width: 600px) {
+  .brand { flex: 1; }
+  nav.main { order: 3; flex: 0 0 100%; gap: 4px 18px; }
+  body { font-size: 16px; } .hero { padding-top: 32px; } .hero h1 { font-size: 1.9rem; }
+}
