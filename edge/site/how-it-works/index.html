@@ -9,20 +9,11 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-<header class="top"><div class="bar">
-  <a class="brand" href="/">SIROS ID Dev</a>
-  <nav class="main" aria-label="Main">
-    <a href="/how-it-works/" aria-current="page">How it works</a>
-    <a href="/connect/">Connect an assistant</a>
-    <a href="/security/">Security and privacy</a>
-  </nav>
-  <a class="btn" href="@CONSOLE_URL@/">Open the console</a>
-</div></header>
+@PARTIAL:header@
 <main>
-
-<section class="hero"><h1>How it works</h1>
-<p class="lead">Four steps from an invite to a running instance.</p></section>
-
+<div class="container page"><div class="prose">
+<h1 class="page-title">How it works</h1>
+<p class="page-lead">Four steps from an invite to a running instance.</p>
 <ol class="steps">
   <li><strong>Register.</strong> Open the console, choose <em>Register</em> and enter your invite token. You create a passkey, and it must
   support the WebAuthn PRF extension (recent security keys and most current platform passkeys do). Add a second passkey on a different device or key
@@ -61,10 +52,8 @@
 <h2>Limits</h2>
 <p>By default each person can run two instances at once, and an instance lives for three days. Some people have a keep allowance that lets
 chosen instances outlive that. A stopped instance starts again within a minute or so.</p>
+</div></div>
 </main>
-<footer><div class="bar">
-  SIROS ID Dev is a test and development service run by the SIROS Foundation. It is not a production service and carries no
-  availability or data-retention promise. Access is by invitation.
-</div></footer>
+@PARTIAL:footer@
 </body>
 </html>

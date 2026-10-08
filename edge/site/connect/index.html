@@ -9,21 +9,12 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-<header class="top"><div class="bar">
-  <a class="brand" href="/">SIROS ID Dev</a>
-  <nav class="main" aria-label="Main">
-    <a href="/how-it-works/">How it works</a>
-    <a href="/connect/" aria-current="page">Connect an assistant</a>
-    <a href="/security/">Security and privacy</a>
-  </nav>
-  <a class="btn" href="@CONSOLE_URL@/">Open the console</a>
-</div></header>
+@PARTIAL:header@
 <main>
-
-<section class="hero"><h1>Connect an assistant</h1>
-<p class="lead">Let an AI assistant create and manage your instances. SIROS ID Dev is an MCP server: add its address to a client that
-supports remote MCP servers and approve the connection in the console.</p></section>
-
+<div class="container page"><div class="prose">
+<h1 class="page-title">Connect an assistant</h1>
+<p class="page-lead">Let an AI assistant create and manage your instances. SIROS ID Dev is an MCP server: add its address to a client that
+supports remote MCP servers and approve the connection in the console.</p>
 <h2>The address</h2>
 <pre><code>https://console.@DOMAIN@/mcp</code></pre>
 
@@ -51,10 +42,8 @@ your limits, your permissions and your ownership checks apply exactly as they do
   <li>Anyone can register an application under any name, so check the address your browser is sent to before you allow it.</li>
   <li>Text that an assistant reads from your instances can come from outside. Treat what it does after reading untrusted text with the same care as anything else it does.</li>
 </ul>
+</div></div>
 </main>
-<footer><div class="bar">
-  SIROS ID Dev is a test and development service run by the SIROS Foundation. It is not a production service and carries no
-  availability or data-retention promise. Access is by invitation.
-</div></footer>
+@PARTIAL:footer@
 </body>
 </html>

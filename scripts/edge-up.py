@@ -34,12 +34,15 @@ from sirosid_core.fly import FlyClient, FlyError  # noqa: E402
 EDGE_DIR = ROOT / "edge"
 
 
+TEXT_SUFFIXES = (".html", ".css", ".svg", ".txt")
+
+
 def build_context(dest: Path, app: str, domain: str, region: str) -> Path:
     """Dockerfile + generated edge.conf + the rendered site + fly.toml, in `dest`."""
     shutil.copy(EDGE_DIR / "Dockerfile", dest / "Dockerfile")
     (dest / "edge.conf").write_text(edge_nginx_conf(domain))
     root = EDGE_DIR / "site"
-    site_src = {}
+    text_src, binary_src = {}, {}
     for p in sorted(root.rglob("*")):
         if not p.is_file():
             continue
@@ -47,11 +50,19 @@ def build_context(dest: Path, app: str, domain: str, region: str) -> Path:
         if any(part.startswith(".") for part in rel.parts):
             # Nothing hidden is ever published, and above all nothing under /.well-known/ (see edge.py).
             raise SystemExit(f"edge/site/{rel}: hidden files and directories are not published")
-        site_src[rel.as_posix()] = p.read_text()
-    for name, text in render_site(site_src, domain).items():
+        if p.suffix in TEXT_SUFFIXES:
+            text_src[rel.as_posix()] = p.read_text()
+        else:
+            binary_src[rel.as_posix()] = p.read_bytes()
+    partials = {p.stem: p.read_text() for p in sorted((EDGE_DIR / "partials").glob("*.html"))}
+    for name, text in render_site(text_src, domain, partials).items():
         out = dest / "site" / name
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text)
+    for name, data in binary_src.items():                    # images are shipped byte for byte
+        out = dest / "site" / name
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
     (dest / "fly.toml").write_text(edge_fly_toml(app, region=region))
     return dest
 

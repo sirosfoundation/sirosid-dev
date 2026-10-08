@@ -9,20 +9,11 @@
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-<header class="top"><div class="bar">
-  <a class="brand" href="/">SIROS ID Dev</a>
-  <nav class="main" aria-label="Main">
-    <a href="/how-it-works/">How it works</a>
-    <a href="/connect/">Connect an assistant</a>
-    <a href="/security/" aria-current="page">Security and privacy</a>
-  </nav>
-  <a class="btn" href="@CONSOLE_URL@/">Open the console</a>
-</div></header>
+@PARTIAL:header@
 <main>
-
-<section class="hero"><h1>Security and privacy</h1>
-<p class="lead">What is protected, from whom, and what to keep out.</p></section>
-
+<div class="container page"><div class="prose">
+<h1 class="page-title">Security and privacy</h1>
+<p class="page-lead">What is protected, from whom, and what to keep out.</p>
 <h2>Your data is sealed with your passkey</h2>
 <p>Your saved configurations, the specification of each instance and its secrets (admin token, keys, database password) are encrypted with a key
 that only your passkey can unlock. The unlocking happens in your browser, and the passkey's secret never leaves it. The service holds your key in memory
@@ -51,11 +42,9 @@ Instances run what you configure, including images you name if you were given pe
   <li>Long-lived secrets. Instance credentials are for the instance's lifetime.</li>
 </ul>
 
-<div class="note">Found a security problem? Tell your SIROS contact before telling anyone else.</div>
+<div class="disclaimer"><p>Found a security problem? Tell your SIROS contact, or write to info@siros.org, before telling anyone else.</p></div>
+</div></div>
 </main>
-<footer><div class="bar">
-  SIROS ID Dev is a test and development service run by the SIROS Foundation. It is not a production service and carries no
-  availability or data-retention promise. Access is by invitation.
-</div></footer>
+@PARTIAL:footer@
 </body>
 </html>
