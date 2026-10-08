@@ -109,3 +109,33 @@ export function quotaLine(instances, limits) {
 
 /** What a user sees for an environment: its label, else its id. */
 export const envLabel = (i) => (i && (i.name || i.id)) || "";
+
+/** A deliberately tiny, safe subset of Markdown for the assistant's replies: paragraphs, `- ` bullet lists,
+ *  **bold** and `code`. Returns a structure (never markup), so the renderer builds DOM nodes with text only:
+ *  nothing the model says can become a link, an image, a script or an attribute.
+ *  blocks: [{type:"p"|"ul", inlines|items}], inline: {t:"text"|"b"|"code", v}. */
+export function parseRich(text) {
+  const inline = (s) => {
+    const out = [];
+    const re = /\*\*([^*\n]+)\*\*|`([^`\n]+)`/g;
+    let last = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > last) out.push({ t: "text", v: s.slice(last, m.index) });
+      out.push(m[1] !== undefined ? { t: "b", v: m[1] } : { t: "code", v: m[2] });
+      last = re.lastIndex;
+    }
+    if (last < s.length) out.push({ t: "text", v: s.slice(last) });
+    return out;
+  };
+  const blocks = [];
+  for (const chunk of String(text || "").replace(/\r\n?/g, "\n").split(/\n{2,}/)) {
+    const lines = chunk.split("\n").filter((l) => l.trim() !== "");
+    if (!lines.length) continue;
+    if (lines.every((l) => /^\s*[-*] +/.test(l))) {
+      blocks.push({ type: "ul", items: lines.map((l) => inline(l.replace(/^\s*[-*] +/, ""))) });
+    } else {
+      blocks.push({ type: "p", inlines: inline(lines.join("\n")) });
+    }
+  }
+  return blocks;
+}

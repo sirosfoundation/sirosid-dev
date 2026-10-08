@@ -69,3 +69,21 @@ test("a missing endpoint is the framework's code-less 404/405, never the API's n
   assert.ok(!isMissingEndpoint(new ApiError(500, {})));
   assert.ok(!isMissingEndpoint(new Error("x")));
 });
+
+test("parseRich: paragraphs, bullets, bold and code, and nothing else", () => {
+  const b = F.parseRich("I created **demo** for you.\n\nNext:\n- open `the wallet`\n- sign up");
+  assert.equal(b.length, 3);
+  assert.deepEqual(b[0], { type: "p", inlines: [{ t: "text", v: "I created " }, { t: "b", v: "demo" }, { t: "text", v: " for you." }] });
+  assert.equal(b[2].type, "ul");
+  assert.deepEqual(b[2].items[0], [{ t: "text", v: "open " }, { t: "code", v: "the wallet" }]);
+  assert.deepEqual(F.parseRich(""), []);
+  assert.deepEqual(F.parseRich(null), []);
+});
+
+test("parseRich never produces markup: html, links and images stay literal text", () => {
+  const hostile = '<img src=x onerror=alert(1)> [click](javascript:alert(1)) ![i](http://e/x.png) <script>1</script>';
+  const b = F.parseRich(hostile);
+  assert.equal(b.length, 1);
+  assert.deepEqual(b[0].inlines, [{ t: "text", v: hostile }], "one literal text run: no tags are interpreted");
+  assert.deepEqual(F.parseRich("**unclosed and `unclosed")[0].inlines, [{ t: "text", v: "**unclosed and `unclosed" }]);
+});

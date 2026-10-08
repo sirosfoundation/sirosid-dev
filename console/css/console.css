@@ -332,3 +332,6 @@ button.account-btn:hover:not(:disabled), button.account-btn[aria-expanded="true"
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
   .spinner { animation: none; border-right-color: currentColor; opacity: 0.6; }
 }
+
+.msg.assistant p.rich { margin: 0 0 0.5rem; white-space: pre-wrap; } .msg.assistant p.rich:last-child { margin-bottom: 0; }
+.msg.assistant ul.rich { margin: 0 0 0.5rem; padding-left: 1.25rem; } .msg.assistant ul.rich:last-child { margin-bottom: 0; }

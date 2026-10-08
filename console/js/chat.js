@@ -2,7 +2,7 @@
 // the composer. Everything the assistant or a tool returns is shown as plain text (textContent).
 import { api, ApiError, stream } from "./api.js";
 import * as L from "./chatlogic.js";
-import { briefArgs, describeArgs, envLabel } from "./format.js";
+import { briefArgs, describeArgs, envLabel, parseRich } from "./format.js";
 import { state, on, emit, fail, guard, byId, select, refresh, loadInstances, setMobile } from "./store.js";
 import { h, fill, spinner, modal } from "./ui.js";
 
@@ -126,11 +126,17 @@ function answer(item, approve) {
 
 // ---- rendering ------------------------------------------------------------------------------------
 
+/** The assistant's text as DOM: paragraphs, bullets, bold and code - built from parseRich's structure, text only. */
+function richNodes(text) {
+  const inl = (xs) => xs.map((x) => (x.t === "b" ? h("strong", {}, x.v) : x.t === "code" ? h("code", {}, x.v) : x.v));
+  return parseRich(text).map((b) => (b.type === "ul" ? h("ul", { class: "rich" }, b.items.map((i) => h("li", {}, inl(i)))) : h("p", { class: "rich" }, inl(b.inlines))));
+}
+
 const nameOf = (id) => { const i = byId(id); return i ? envLabel(i) : null; };
 
 function itemNode(it) {
   if (it.kind === "user") return h("div", { class: "msg user" }, h("span", { class: "sr-only" }, "You: "), it.text);
-  if (it.kind === "assistant") return h("div", { class: "msg assistant" }, h("span", { class: "sr-only" }, "Assistant: "), it.text);
+  if (it.kind === "assistant") return h("div", { class: "msg assistant" }, h("span", { class: "sr-only" }, "Assistant: "), richNodes(it.text));
   if (it.kind === "error") return h("div", { class: "msg error", role: "alert" }, it.text);
   if (it.kind === "tool") {
     const mark = it.ok === false ? "✗" : it.ok ? "✓" : "…";
