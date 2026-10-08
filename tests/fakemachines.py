@@ -66,7 +66,9 @@ class FakeMachines:
             if method == "GET":
                 return 200, json.dumps({"secrets": [{"name": n} for n in self.fly.apps[app]["secrets"]]}).encode()
         if rest == ["machines"] and method == "GET":
-            return 200, json.dumps(list(ms.values())).encode()
+            # An apps-layout app's machines were made by `flyctl deploy` (fakefly): the
+            # same machines, seen through the API, as on real Fly.
+            return 200, json.dumps(list(ms.values()) or self.fly.apps[app]["machines"]).encode()
         if rest == ["machines"] and method == "POST":
             self._n += 1
             mid = f"m{self._n:04d}"

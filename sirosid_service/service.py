@@ -42,7 +42,26 @@ ID_LENGTH = 8
 # random, so this only matters if the generator is ever swapped for a chosen one.
 RESERVED_IDS = frozenset({"admin", "console", "status", "www", "api", "mail", "login", "siros", "sirosid", "support"})
 
-LIVE = ("creating", "running", "stopped", "stopping", "starting", "resetting", "failed")
+# Instance statuses. Every one but 'destroyed' counts against quotas and is on the
+# reaper's clock. creating/resetting/reconfiguring end in running or failed when their
+# background job finishes; stopping/starting are reserved (stop and start are synchronous).
+LIVE = ("creating", "running", "stopped", "stopping", "starting", "resetting", "reconfiguring", "failed")
+STATUSES = LIVE + ("destroyed",)
+# Where a reconfigure is accepted. NOT 'stopped': a redeploy starts every machine (the
+# apps layout's ensure_running, the single-machine update), so applying a config to a
+# stopped instance would silently start it and bill it; the caller starts it first.
+RECONFIGURABLE = ("running", "failed")
+
+# The audit actions that describe an instance, as instance_activity shows them, and the
+# detail keys it may pass on. Both are allow-lists: an audit row's target is a bare
+# string (a config NAME is one too), and a new detail key must be looked at before an
+# owner - or the model reading their activity - sees it.
+INSTANCE_ACTIONS = frozenset({
+    "create_instance", "deployed", "deploy_failed", "stop_instance", "start_instance", "reset_instance",
+    "reset_done", "reset_failed", "destroy_instance", "destroy_failed", "set_keep", "keep_lapsed",
+    "reconfigure_instance", "reconfigured", "reconfigure_failed"})
+ACTIVITY_DETAIL_KEYS = frozenset({"kept", "keep", "images", "error", "failed", "config_name", "changed"})
+SYSTEM_ACTORS = frozenset({"system", "reaper", "sweeper"})
 
 
 class ServiceError(Exception):
@@ -431,6 +450,9 @@ class ControlPlane:
         sealer = self._sealer(who)          # creating touches the user's data: needs an unlocked session
         if config is None:
             config = self.get_config(who, config_name) if config_name else {}
+        else:
+            config_name = None              # an inline config is not the saved one, whatever its name
+        config_name = config_name or None
         # Capabilities are checked NOW, not when the config was saved: a grant may
         # have been withdrawn since.
         user = self._user(who.user_id)
@@ -454,12 +476,15 @@ class ControlPlane:
             # Plaintext, layout included: stop/start/destroy/the reaper and the
             # sweeper must know which layout an instance is with nobody logged in.
             naming = spec.naming().to_dict()
-            d.execute("INSERT INTO instances(id,owner,name,status,naming,spec,config,created_at,updated_at,expires_at,kept) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+            # config_name is plaintext metadata (like the instance's own label): the
+            # NAME of the saved config it came from, never its content.
+            d.execute("INSERT INTO instances(id,owner,name,status,naming,spec,config,created_at,updated_at,expires_at,kept,config_name)"
+                      " VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                       (iid, who.user_id, name[:64], "creating", _json(naming),
                        sealer.seal(_json(spec.to_dict()).encode(), aad(who.user_id, "spec", iid)),
                        sealer.seal(_json(config).encode(), aad(who.user_id, "config-snapshot", iid)),
-                       self.clock(), self.clock(), expires, 1 if keep else 0))
-        self.db.audit(who.user_id, "create_instance", iid, kept=keep, images=sorted(spec.images))
+                       self.clock(), self.clock(), expires, 1 if keep else 0, config_name))
+        self.db.audit(who.user_id, "create_instance", iid, kept=keep, images=sorted(spec.images), config_name=config_name)
         self.runner.submit(self._deploy_job, iid, sealer)
         return self.get_instance(who, iid)
 
@@ -490,8 +515,10 @@ class ControlPlane:
 
     @staticmethod
     def _public(r: dict) -> dict:
+        layout = json.loads(r["naming"]).get("layout", "apps")
         return {"id": r["id"], "name": r["name"], "status": r["status"], "created_at": r["created_at"],
-                "expires_at": r["expires_at"], "kept": bool(r["kept"]), "urls": json.loads(r["urls"]), "error": r["error"]}
+                "expires_at": r["expires_at"], "kept": bool(r["kept"]), "urls": json.loads(r["urls"]), "error": r["error"],
+                "config_name": r.get("config_name"), "layout": layout, "reconfigurable": r["status"] in RECONFIGURABLE}
 
     def list_instances(self, who: Principal, all_users=False) -> list:
         if all_users:
@@ -536,32 +563,162 @@ class ControlPlane:
         r = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
         if not r or r["status"] not in ("creating", "resetting"):
             return
-        spec = self._spec(r, sealer)
-        store = SealedStateStore(self.db, sealer, r["owner"])
         try:
-            with state_mod.workdir(store, iid, subdir=f"fly-{iid}") as scratch:
-                # Per instance and sealed with its state - never the shared, read-only resources.
-                secrets_dir = scratch / f"fly-{iid}" / state_mod.VC_SECRETS_DIR
-                if spec.layout == LAYOUT_SINGLE_MACHINE:
-                    result = deploy_instance_single_machine(
-                        spec, self.fly, spec.naming(), self.resources, machines=self.machines,
-                        rendered_root=scratch, register=self.register, progress=None, registry=self.registry,
-                        secrets_dir=secrets_dir)
-                else:
-                    result = deploy_instance(spec, self.fly, spec.naming(), self.resources, rendered_root=scratch,
-                                             register=self.register, progress=None, secrets_dir=secrets_dir)
+            result = self._deploy(r, self._spec(r, sealer), sealer)
             self._set(iid, status="running", urls=_json(result.urls), error="")
             self.db.audit("system", "deployed", iid)
-        except (DeployError, FlyError, MachinesError, policy_mod.PolicyError, VaultError) as e:
-            self._set(iid, status="failed", error=str(e)[:500])
-            self.db.audit("system", "deploy_failed", iid, error=str(e)[:200])
-        except Exception as e:                              # noqa: BLE001
-            # Anything else (a bug, a read-only file, a missing binary) must still end
-            # the job in a state the owner can see and act on - not 'creating' forever.
-            log.exception("deploy of %s failed unexpectedly", iid)
-            msg = f"internal error during deploy ({type(e).__name__}: {e})"[:500]
+        except Exception as e:                              # noqa: BLE001 - see _failure
+            msg = self._failure(iid, e, "deploy")
             self._set(iid, status="failed", error=msg)
             self.db.audit("system", "deploy_failed", iid, error=msg[:200])
+
+    def _deploy(self, r, spec: InstanceSpec, sealer):
+        """Deploy `spec` as instance `r`, with its sealed state (secrets, PKI, Mongo
+        password) in a scratch directory that is saved back afterwards. Idempotent:
+        a redeploy of a running instance keeps its data and generated state."""
+        iid = r["id"]
+        store = SealedStateStore(self.db, sealer, r["owner"])
+        with state_mod.workdir(store, iid, subdir=f"fly-{iid}") as scratch:
+            # Per instance and sealed with its state - never the shared, read-only resources.
+            secrets_dir = scratch / f"fly-{iid}" / state_mod.VC_SECRETS_DIR
+            if spec.layout == LAYOUT_SINGLE_MACHINE:
+                return deploy_instance_single_machine(
+                    spec, self.fly, spec.naming(), self.resources, machines=self.machines,
+                    rendered_root=scratch, register=self.register, progress=None, registry=self.registry,
+                    secrets_dir=secrets_dir)
+            return deploy_instance(spec, self.fly, spec.naming(), self.resources, rendered_root=scratch,
+                                   register=self.register, progress=None, secrets_dir=secrets_dir)
+
+    @staticmethod
+    def _failure(iid: str, e: Exception, what: str) -> str:
+        """The error text an owner sees. Anything that is not a known deploy failure (a
+        bug, a read-only file, a missing binary) must still end the job in a state the
+        owner can see and act on - not 'creating' forever - and is logged in full."""
+        if isinstance(e, (DeployError, FlyError, MachinesError, policy_mod.PolicyError, VaultError)):
+            return str(e)[:500]
+        log.exception("%s of %s failed unexpectedly", what, iid, exc_info=e)
+        return f"internal error during {what} ({type(e).__name__}: {e})"[:500]
+
+    # ---- reconfiguring: one environment, its config part of it -------------------
+
+    def get_instance_config(self, who: Principal, iid: str) -> dict:
+        """The saved config this instance runs (its own sealed snapshot, not the named
+        saved config, which may have changed since). Needs an unlocked session."""
+        sealer = self._sealer(who)
+        r = self._instance_row(who, iid)
+        return json.loads(sealer.open(bytes(r["config"]), aad(r["owner"], "config-snapshot", iid)))
+
+    def reconfigure_instance(self, who: Principal, iid: str, config: dict = None, config_name: str = None) -> dict:
+        """Apply a new saved config to an existing instance: validate it against the
+        caller's CURRENT capabilities (every problem at once), then redeploy in the
+        background keeping its data and generated state - a normal idempotent redeploy
+        (apps layout: every component again, changed ones restart; single-machine: the
+        machine config is updated, which restarts the machine).
+
+        The working config is never lost: the new spec and config are sealed into
+        `pending_*` and only replace the instance's own when the redeploy succeeded. A
+        failed redeploy leaves the instance 'failed' with a readable error and its
+        previous config still saved, so reconfiguring with that config (or a fixed one)
+        is the way back. Refused for a stopped instance (see RECONFIGURABLE)."""
+        sealer = self._sealer(who)
+        r = self._instance_row(who, iid)
+        if config is None and not config_name:
+            raise ServiceError("give a config or the name of a saved config")
+        if config is None:
+            config = self.get_config(who, config_name)
+        else:
+            config_name = None
+        if r["status"] == "stopped":
+            raise InvalidState("the instance is stopped: start it first, then reconfigure it")
+        if r["status"] not in RECONFIGURABLE:
+            raise InvalidState(f"cannot reconfigure an instance that is {r['status']}")
+        user = self._user(who.user_id)
+        if user["disabled"]:
+            raise Forbidden("this account is disabled")
+        caps = frozenset(json.loads(user["capabilities"]))
+        deployed = self._spec(r, sealer)
+        spec = policy_mod.rebuild_spec(config, deployed, caps, self.platform)      # PolicyError: every problem
+        old_config = json.loads(sealer.open(bytes(r["config"]), aad(r["owner"], "config-snapshot", iid)))
+        changed = sorted(k for k in set(old_config) | set(config) if old_config.get(k) != config.get(k))
+        with self.db.transaction() as d:
+            # Check-and-set: two reconfigures (or a stop) racing must not both proceed.
+            cur = d.one("SELECT status FROM instances WHERE id=?", (iid,))
+            if not cur or cur["status"] not in RECONFIGURABLE:
+                raise InvalidState(f"cannot reconfigure an instance that is {cur['status'] if cur else 'gone'}")
+            d.execute("UPDATE instances SET status='reconfiguring', error='', pending_spec=?, pending_config=?, updated_at=? WHERE id=?",
+                      (sealer.seal(_json(spec.to_dict()).encode(), aad(r["owner"], "spec-pending", iid)),
+                       sealer.seal(_json(config).encode(), aad(r["owner"], "config-pending", iid)), self.clock(), iid))
+        self.db.audit(who.user_id, "reconfigure_instance", iid, config_name=config_name, changed=changed)
+        self.runner.submit(self._reconfigure_job, iid, sealer, config_name)
+        return self.get_instance(who, iid)
+
+    def _reconfigure_job(self, iid: str, sealer, config_name):
+        r = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
+        if not r or r["status"] != "reconfiguring" or r["pending_spec"] is None:
+            return
+        owner = r["owner"]
+        try:
+            spec = InstanceSpec.from_dict(json.loads(sealer.open(bytes(r["pending_spec"]), aad(owner, "spec-pending", iid))))
+            config = json.loads(sealer.open(bytes(r["pending_config"]), aad(owner, "config-pending", iid)))
+            result = self._deploy(r, spec, sealer)
+        except Exception as e:                              # noqa: BLE001 - see _failure
+            msg = self._failure(iid, e, "reconfigure")
+            msg = (f"reconfigure failed: {msg}. The previous config is still this instance's config; reconfigure "
+                   f"again with it (get_instance_config) or with a fixed one.")[:600]
+            self.db.execute("UPDATE instances SET status='failed', error=?, pending_spec=NULL, pending_config=NULL, updated_at=? "
+                            "WHERE id=? AND status='reconfiguring'", (msg, self.clock(), iid))
+            self.db.audit("system", "reconfigure_failed", iid, error=msg[:200])
+            return
+        # Only now does the new config become the instance's. Guarded on the status: a
+        # reaper or destroy that ran meanwhile wins.
+        self.db.execute(
+            "UPDATE instances SET status='running', error='', urls=?, spec=?, config=?, config_name=?, pending_spec=NULL, "
+            "pending_config=NULL, updated_at=? WHERE id=? AND status='reconfiguring'",
+            (_json(result.urls), sealer.seal(_json(spec.to_dict()).encode(), aad(owner, "spec", iid)),
+             sealer.seal(_json(config).encode(), aad(owner, "config-snapshot", iid)), config_name, self.clock(), iid))
+        self.db.audit("system", "reconfigured", iid, config_name=config_name)
+
+    # ---- looking at an instance: status, activity ------------------------------------
+
+    def instance_health(self, who: Principal, iid: str) -> dict:
+        """Live component status from Fly. Metadata only (no unlock, no secrets),
+        bounded in time, and never raises on a Fly problem: `error` says what went wrong."""
+        from sirosid_core.health import instance_health
+        r = self._instance_row(who, iid)
+        out = {"instance": self._public(r), "components": [], "checked_at": self.clock()}
+        if r["status"] == "destroyed":
+            out["error"] = "the instance is destroyed"
+            return out
+        try:
+            report = instance_health(self.machines, self._naming(r))
+        except Exception as e:                              # noqa: BLE001 - e.g. no Machines credential
+            log.warning("health of %s: %s", iid, type(e).__name__)
+            out["error"] = "could not reach Fly"
+            return out
+        out["components"] = report.components
+        if report.error:
+            out["error"] = report.error
+        return out
+
+    def instance_activity(self, who: Principal, iid: str, limit: int = 50) -> list:
+        """What happened to this instance, newest first: [{ts, action, by, detail}].
+        Only instance actions (INSTANCE_ACTIONS) and only allow-listed detail keys, so
+        nothing sealed and nothing about another user can come through."""
+        r = self._instance_row(who, iid)
+        limit = max(1, min(int(limit), 200))
+        acts = sorted(INSTANCE_ACTIONS)
+        rows = self.db.all(f"SELECT * FROM audit WHERE target=? AND ts>=? AND action IN ({','.join('?' * len(acts))}) "
+                           f"ORDER BY id DESC LIMIT ?", (iid, r["created_at"], *acts, limit))
+        out = []
+        for a in rows:
+            try:
+                detail = json.loads(a["detail"] or "{}")
+            except ValueError:
+                detail = {}
+            by = "you" if a["actor"] == who.user_id else "system" if a["actor"] in SYSTEM_ACTORS else "admin"
+            out.append({"ts": a["ts"], "action": a["action"], "by": by,
+                        "detail": {k: v for k, v in detail.items() if k in ACTIVITY_DETAIL_KEYS and v not in (None, "", [])}})
+        return out
 
     def stop_instance(self, who: Principal, iid: str) -> dict:
         r = self._instance_row(who, iid)
