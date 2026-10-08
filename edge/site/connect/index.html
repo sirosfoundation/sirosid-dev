@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect an assistant - SIROS ID Dev</title>
+  <meta name="description" content="Use SIROS ID Dev from an AI assistant through the Model Context Protocol (MCP).">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+@PARTIAL:header@
+<main>
+<div class="container page"><div class="prose">
+<h1 class="page-title">Connect an assistant</h1>
+<p class="page-lead">Let an AI assistant create and manage your instances. SIROS ID Dev is an MCP server: add its address to a client that
+supports remote MCP servers and approve the connection in the console.</p>
+<h2>The address</h2>
+<pre><code>https://console.@DOMAIN@/mcp</code></pre>
+
+<h2>Claude Code</h2>
+<pre><code>claude mcp add --transport http sirosid https://console.@DOMAIN@/mcp</code></pre>
+<p>The first time it is used, the client opens your browser. Sign in with your passkey if asked, check which application is asking, and choose
+<em>Allow</em>.</p>
+
+<h2>Other clients</h2>
+<p>Any client that supports remote (HTTP) MCP servers with OAuth works: it registers itself, sends you to the console to approve, and gets a
+token. There is nothing to copy and paste.</p>
+
+<h2>What it can do</h2>
+<ul>
+  <li>List the starting-point templates and your saved configurations, validate a configuration and save it.</li>
+  <li>Create, inspect, stop, start, reset, keep and destroy your instances.</li>
+  <li>Read an instance's admin credentials when you ask for them.</li>
+</ul>
+<p>It cannot create invites, see other people's data, touch your passkeys or change your account. It uses the same rules as the console:
+your limits, your permissions and your ownership checks apply exactly as they do when you click.</p>
+
+<h2>Staying in control</h2>
+<ul>
+  <li>Access lasts up to eight hours, and ends sooner if you revoke it under <em>Connected applications</em> in the console or if the service restarts.</li>
+  <li>Anyone can register an application under any name, so check the address your browser is sent to before you allow it.</li>
+  <li>Text that an assistant reads from your instances can come from outside. Treat what it does after reading untrusted text with the same care as anything else it does.</li>
+</ul>
+</div></div>
+</main>
+@PARTIAL:footer@
+</body>
+</html>

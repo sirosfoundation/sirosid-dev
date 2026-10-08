@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How it works - SIROS ID Dev</title>
+  <meta name="description" content="From invite to a running instance: register, choose a configuration, create, test.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+@PARTIAL:header@
+<main>
+<div class="container page"><div class="prose">
+<h1 class="page-title">How it works</h1>
+<p class="page-lead">Four steps from an invite to a running instance.</p>
+<ol class="steps">
+  <li><strong>Register.</strong> Open the console, choose <em>Register</em> and enter your invite token. You create a passkey, and it must
+  support the WebAuthn PRF extension (recent security keys and most current platform passkeys do). Add a second passkey on a different device or key
+  afterwards: there is no account recovery.</li>
+  <li><strong>Choose a configuration.</strong> On the <em>Configs</em> tab, start from a template and adjust it. The editor checks the
+  configuration for you and lists every problem at once.</li>
+  <li><strong>Create an instance.</strong> Pick a configuration on the <em>Instances</em> tab and press create. The first deployment takes a few minutes;
+  the card shows its progress and, when it is running, the addresses of the wallet, issuer, verifier and the rest.</li>
+  <li><strong>Test, then stop or discard.</strong> Use the addresses from the console in your wallet, issuer or verifier. Stop an instance to
+  pause it, reset it to erase its data, or destroy it. Anything left alone is removed after three days.</li>
+</ol>
+
+<h2>Starting-point configurations</h2>
+<table>
+  <tr><th>Template</th><th>What it gives you</th></tr>
+  <tr><td>Standard test stack</td><td>The full stack at current versions with the credential types shipped with the platform.</td></tr>
+  <tr><td>Credential types from the SIROS registry</td><td>SD-JWT credential types resolved from registry.siros.org, so the issuer advertises each type's real <code>vct</code>.</td></tr>
+  <tr><td>Wallet attestation</td><td>Turns on wallet-attestation client authentication between wallet and issuer.</td></tr>
+  <tr><td>Digital Credentials API</td><td>Explicitly enables the W3C Digital Credentials API on the verifier.</td></tr>
+  <tr><td>Interop</td><td>The registry, wallet attestation and the Digital Credentials API together.</td></tr>
+  <tr><td>Your own wallet backend</td><td>The standard stack with the wallet backend replaced by an image you name. Needs permission to run custom images.</td></tr>
+</table>
+
+<h2>What an instance contains</h2>
+<p>Each instance gets its own addresses of the form <code>component-id.@DOMAIN@</code>:</p>
+<table>
+  <tr><th>Component</th><th>Role</th></tr>
+  <tr><td><code>wallet-frontend</code></td><td>The web wallet.</td></tr>
+  <tr><td><code>wallet-proxy</code></td><td>Entry point for wallet apps and the wallet backend.</td></tr>
+  <tr><td><code>vc-apigw</code></td><td>The credential issuer's public API.</td></tr>
+  <tr><td><code>vc-verifier</code></td><td>The verifier.</td></tr>
+  <tr><td><code>vc-registry</code></td><td>The credential type registry.</td></tr>
+  <tr><td><code>mini-oidc</code></td><td>A test login provider that stands in for a government identity provider.</td></tr>
+</table>
+
+<h2>Limits</h2>
+<p>By default each person can run two instances at once, and an instance lives for three days. Some people have a keep allowance that lets
+chosen instances outlive that. A stopped instance starts again within a minute or so.</p>
+</div></div>
+</main>
+@PARTIAL:footer@
+</body>
+</html>

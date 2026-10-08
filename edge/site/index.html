@@ -3,14 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>SIROS ID Dev</title>
+  <title>SIROS ID Dev - your own test instance of the SIROS ID wallet stack</title>
+  <meta name="description" content="Invite-only development instances of the SIROS ID wallet, issuer, verifier and trust service.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/site.css">
 </head>
 <body>
-  <main>
-    <h1>SIROS ID Dev</h1>
-    <p>SIROS ID Dev - invite-only development instances.</p>
-    <p><a href="@CONSOLE_URL@/">Go to the console</a></p>
-  </main>
+@PARTIAL:header@
+<main>
+<section class="hero">
+  <img src="/hero-bg.jpg" alt="" class="hero-bg">
+  <div class="hero-overlay"></div>
+  <div class="hero-content">
+    <h1><span class="hero-title-accent">Your own SIROS ID stack,</span> <span class="hero-title-dark">in minutes.</span></h1>
+    <p class="hero-subtitle">Spin up a complete, disposable instance of the SIROS ID wallet, issuer, verifier and trust service to test your wallet, issuer or verifier against. Sign in with a passkey, pick a starting configuration, press create.
+      <strong class="hero-disclaimer">A test bench for partners and developers: everything it issues and verifies is synthetic.</strong></p>
+    <div class="hero-actions">
+      <a href="@CONSOLE_URL@/" class="btn btn-primary">Open the console</a>
+      <a href="/how-it-works/" class="btn btn-secondary">How it works</a>
+    </div>
+  </div>
+</section>
+<div class="container">
+<section class="block">
+  <h2>What you get</h2>
+  <div class="card-grid">
+  <div class="card"><h3>A whole stack</h3><p>Wallet, wallet backend, credential issuer, verifier, credential registry, trust service and a test login provider, wired together and reachable on their own HTTPS addresses.</p></div>
+  <div class="card"><h3>Starting points</h3><p>Ready-made configurations for the standard stack, credential types from the SIROS registry, wallet attestation, the Digital Credentials API and interoperability testing.</p></div>
+  <div class="card"><h3>Disposable by design</h3><p>Instances are removed after three days unless you keep them. Stop, start or reset one whenever you like.</p></div>
+  <div class="card"><h3>Passkeys, no passwords</h3><p>You sign in with a passkey, and that same passkey protects your saved configurations and instance credentials.</p></div>
+  <div class="card"><h3>Works with your assistant</h3><p>Connect an AI assistant such as Claude Code over MCP and let it create and manage your instances for you.</p></div>
+  <div class="card"><h3>By invitation</h3><p>Open to SIROS partners and developers. Ask your SIROS contact for an invite, or write to info@siros.org.</p></div>
+</div>
+</section>
+<section class="block prose">
+<h2>Who it is for</h2>
+<p>Teams that build or integrate wallets, issuers and verifiers and need a realistic counterpart to test with: interoperability
+events, partner integrations, and SIROS's own development. It is a test bench, so everything it issues and verifies is synthetic.</p>
+<div class="disclaimer"><p><strong>Not for production.</strong> Do not put real personal data in an instance. Instances can be erased at any time,
+and the service makes no availability promise.</p></div>
+</section>
+</div>
+</main>
+@PARTIAL:footer@
 </body>
 </html>

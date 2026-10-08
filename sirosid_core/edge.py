@@ -232,6 +232,7 @@ server {{
     server_name {domain} www.{domain};
     root {static_root};
     index index.html;
+    absolute_redirect off;               # /dir -> /dir/ stays relative: this nginx sits behind Fly's TLS
     client_max_body_size 1k;
     error_page 404 /404.html;
 {_nginx_header_lines("    ")}
@@ -293,11 +294,21 @@ primary_region = "{region}"
 """
 
 
-def render_site(files: dict, domain: str) -> dict:
-    """The static site with @CONSOLE_URL@ / @DOMAIN@ filled in. {name: str} -> {name: str}."""
+def render_site(files: dict, domain: str, partials: dict = None) -> dict:
+    """The static site, ready to publish. {path: str} -> {path: str}.
+
+    @PARTIAL:<name>@ is replaced by the shared fragment `partials[name]` (the header and footer),
+    @CUR:<path>@ by ` aria-current="page"` on the page whose path it is (so one header serves every
+    page), then @CONSOLE_URL@ / @DOMAIN@ are filled in."""
     check_domain(domain)
-    return {name: text.replace("@CONSOLE_URL@", f"https://console.{domain}").replace("@DOMAIN@", domain)
-            for name, text in files.items()}
+    partials = partials or {}
+    out = {}
+    for name, text in files.items():
+        for key, body in partials.items():
+            text = text.replace(f"@PARTIAL:{key}@", body)
+        text = re.sub(r"@CUR:([^@\s]+)@", lambda m: ' aria-current="page"' if m.group(1) == name else "", text)
+        out[name] = text.replace("@CONSOLE_URL@", f"https://console.{domain}").replace("@DOMAIN@", domain)
+    return out
 
 
 def dns_records(domain: str, app: str, ipv4: str = "", ipv6: str = "") -> list:

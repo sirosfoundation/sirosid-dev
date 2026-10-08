@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Security and privacy - SIROS ID Dev</title>
+  <meta name="description" content="What SIROS ID Dev protects, what the operators can see, and what to keep out of an instance.">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body>
+@PARTIAL:header@
+<main>
+<div class="container page"><div class="prose">
+<h1 class="page-title">Security and privacy</h1>
+<p class="page-lead">What is protected, from whom, and what to keep out.</p>
+<h2>Your data is sealed with your passkey</h2>
+<p>Your saved configurations, the specification of each instance and its secrets (admin token, keys, database password) are encrypted with a key
+that only your passkey can unlock. The unlocking happens in your browser, and the passkey's secret never leaves it. The service holds your key in memory
+while you are signed in, and drops it after at most 24 hours or when the service restarts.</p>
+<p>So a stolen database or backup, or an administrator who reads the stored data, learns nothing you put into a configuration or an instance. The one exposure is the running service itself while you are signed in, since it holds your key in memory then.</p>
+
+<h2>What the operators can see</h2>
+<ul>
+  <li>Who has an account, their name and email, and which capabilities they were given.</li>
+  <li>That an instance exists, its label, status, expiry and public addresses.</li>
+  <li>An audit log of who did what and when (not the content).</li>
+</ul>
+<p>That is deliberate: it lets expired instances be removed and stopped instances be managed while nobody is signed in.</p>
+
+<h2>No recovery</h2>
+<p>If you lose every passkey, your sealed data cannot be recovered by anyone. Add a second passkey on a different device or key as soon as you register.
+These are throwaway test environments, so losing one costs a few minutes, not an incident.</p>
+
+<h2>Instances are separate from the console</h2>
+<p>The console runs on its own address and its passkeys work only there. Instances run on separate addresses of their own, and an instance cannot ask for, or use, the console's passkeys.
+Instances run what you configure, including images you name if you were given permission, so treat an instance as untrusted from the console's point of view.</p>
+
+<h2>Keep out</h2>
+<ul>
+  <li>Real personal data, real credentials, and anything you would not want a test system to lose.</li>
+  <li>Long-lived secrets. Instance credentials are for the instance's lifetime.</li>
+</ul>
+
+<div class="disclaimer"><p>Found a security problem? Tell your SIROS contact, or write to info@siros.org, before telling anyone else.</p></div>
+</div></div>
+</main>
+@PARTIAL:footer@
+</body>
+</html>
