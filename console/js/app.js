@@ -29,8 +29,15 @@ function toast(msg, bad = false) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (t.className = ""), 5000);
 }
-const fail = (e) => toast(e instanceof ApiError && e.problems.length ? e.problems.map((p) => `${p.path}: ${p.message}`).join("; ") : e.message || String(e), true);
-const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { fail(e); if (e instanceof ApiError && e.status === 423) relock(); } };
+const fail = (e) => {
+  if (e instanceof ApiError && e.status === 401 && state.me) {          // the session ended under us: back to the sign-in page, nothing else
+    state.me = state.mainKey = state.container = null;
+    return start();
+  }
+  if (e instanceof ApiError && e.status === 423 && state.me?.unlocked) return relock();   // the lock screen says it; no toast on top
+  toast(e instanceof ApiError && e.problems.length ? e.problems.map((p) => `${p.path}: ${p.message}`).join("; ") : e.message || String(e), true);
+};
+const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { fail(e); } };
 const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "—");
 const render = (...kids) => { const m = $("main"); m.replaceChildren(...kids.flat().filter((k) => k != null && k !== false)); };
 
@@ -131,24 +138,61 @@ async function logout() {
 
 // ---- screens ---------------------------------------------------------------------------------
 
-function authScreen() {
-  const supported = !!(window.PublicKeyCredential && navigator.credentials);
-  const invite = h("input", { id: "invite", autocomplete: "off", spellcheck: "false" });
+const supportsPasskeys = () => !!(window.PublicKeyCredential && navigator.credentials);
+const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); await start(); } catch (e) { fail(e); } finally { btn.disabled = false; } };
+const registerRoute = () => location.hash.slice(1).startsWith("/register");
+const inviteFromHash = () => new URLSearchParams(location.hash.slice(1).split("?")[1] || "").get("invite") || "";
+const goHome = () => { history.replaceState(null, "", location.pathname + location.search); authRoute(); };
+
+/** Nothing but the way in: no navigation, no account bar. */
+function hideChrome() { $("nav").hidden = true; $("nav").replaceChildren(); $("who").replaceChildren(); }
+
+function authRoute() {
+  hideChrome();
+  return registerRoute() ? registerScreen() : signInScreen();
+}
+
+/** The first page: two buttons. */
+function signInScreen() {
+  const signIn = h("button", { class: "primary big" }, "Sign in with a passkey");
+  const register = h("button", { class: "big", on: { click: () => { location.hash = "#/register"; } } }, "Register");
+  signIn.addEventListener("click", () => busy(signIn, login));
+  render(h("div", { class: "hero" },
+    h("h2", {}, "SIROS ID Dev"),
+    h("p", { class: "muted" }, "Invite-only development instances of the SIROS ID wallet stack."),
+    !supportsPasskeys() && h("p", { class: "bad" }, "This browser does not support passkeys."),
+    h("div", { class: "stack" }, signIn, register)));
+}
+
+/** Registration, on its own page. An invite link (#/register?invite=...) fills the token in; the fragment never reaches the server. */
+function registerScreen() {
+  const invite = h("input", { id: "invite", autocomplete: "off", spellcheck: "false", value: inviteFromHash() });
   const name = h("input", { id: "name", autocomplete: "name" });
   const email = h("input", { id: "email", type: "email", autocomplete: "email" });
-  const busy = async (btn, fn) => { btn.disabled = true; try { await fn(); await start(); } catch (e) { fail(e); } finally { btn.disabled = false; } };
-  const signIn = h("button", { class: "primary" }, "Sign in with a passkey");
-  const join = h("button", {}, "Create account");
-  signIn.addEventListener("click", () => busy(signIn, login));
-  join.addEventListener("click", () => busy(join, () => enroll(invite.value.trim(), name.value.trim(), email.value.trim())));
-  render(
-    !supported && h("p", { class: "bad" }, "This browser does not support passkeys."),
-    h("div", { class: "card" }, h("h2", {}, "Sign in"), h("p", { class: "muted" }, "Your passkey also unlocks your saved configs and instance credentials, which the server stores encrypted."), signIn),
-    h("div", { class: "card" }, h("h2", {}, "Have an invite?"),
-      h("label", { for: "invite" }, "Invite token"), invite,
-      h("label", { for: "name" }, "Your name"), name,
-      h("label", { for: "email" }, "Email (if the invite names one)"), email,
-      h("p", { class: "muted" }, "You need a passkey that supports the PRF extension."), join));
+  const join = h("button", { class: "primary big" }, "Create account");
+  join.addEventListener("click", () => busy(join, async () => {
+    await enroll(invite.value.trim(), name.value.trim(), email.value.trim());
+    history.replaceState(null, "", location.pathname + location.search);   // do not leave the invite in the address bar or history
+  }));
+  render(h("div", { class: "hero left" },
+    h("h2", {}, "Register"),
+    h("p", { class: "muted" }, "You need an invite and a passkey that supports the PRF extension (a recent security key, or a platform passkey that supports it). The passkey also protects your saved configs and instance credentials."),
+    !supportsPasskeys() && h("p", { class: "bad" }, "This browser does not support passkeys."),
+    h("label", { for: "invite" }, "Invite token"), invite,
+    h("label", { for: "name" }, "Your name"), name,
+    h("label", { for: "email" }, "Email (only if the invite names one)"), email,
+    h("div", { class: "stack" }, join, h("button", { class: "big", on: { click: goHome } }, "Back to sign in"))));
+}
+
+/** Signed in but the key is gone (expired, or the server restarted): the same clean page, one way forward. */
+function unlockScreen() {
+  hideChrome();
+  const unlock = h("button", { class: "primary big" }, "Unlock with your passkey");
+  unlock.addEventListener("click", () => busy(unlock, login));
+  render(h("div", { class: "hero" },
+    h("h2", {}, "Sign in again"),
+    h("p", { class: "muted" }, `${state.me.name}, your session needs your passkey to unlock your data.`),
+    h("div", { class: "stack" }, unlock, h("button", { class: "big", on: { click: guard(logout) } }, "Sign out"))));
 }
 
 const NAMES = { instances: "Instances", configs: "Configs", apps: "Connected apps", passkeys: "Passkeys", admin: "Admin" };
@@ -164,6 +208,7 @@ function chrome() {
 
 async function show() {
   stopPolling();
+  if (!state.me.unlocked) return unlockScreen();
   chrome();
   try {
     const pending = authorizeId();
@@ -172,14 +217,7 @@ async function show() {
   } catch (e) {
     if (e instanceof ApiError && e.status === 401) return start();
     fail(e);
-    if (e instanceof ApiError && e.status === 423) relock();
   }
-}
-
-function lockedBanner() {
-  if (state.me.unlocked) return null;
-  return h("div", { class: "card" }, h("b", {}, "Locked. "), "Your data is sealed until you unlock it with a passkey. ",
-    h("button", { class: "primary", on: { click: guard(async () => { await logout(); }) } }, "Sign in again"));
 }
 
 // ---- instances ---------------------------------------------------------------------------------
@@ -198,7 +236,6 @@ async function instancesScreen() {
     show();
   }) } }, "Create instance");
   render(
-    lockedBanner(),
     h("p", { class: "muted" }, `Up to ${lim.max_concurrent} at once. Instances are removed after ${lim.ttl_days} days unless kept (${lim.max_kept} keep allowance).`),
     h("div", { class: "card" }, h("h2", {}, "New instance"),
       configs.length ? [h("label", { for: "cfg" }, "Config"), cfg] : h("p", {}, "Save a config first (Configs tab)."),
@@ -206,7 +243,7 @@ async function instancesScreen() {
       lim.max_kept > 0 && h("label", { class: "inline" }, keep, "Keep (does not expire)"), h("div", { class: "row end" }, create)),
     instances.length ? instances.map(instanceCard) : h("p", { class: "muted" }, "No instances yet."));
   stopPolling();
-  if (instances.some((i) => TRANSIENT.has(i.status))) state.poll = setTimeout(() => instancesScreen().catch(() => {}), 8000);   // one-shot: each pass re-arms at most one timer
+  if (instances.some((i) => TRANSIENT.has(i.status))) state.poll = setTimeout(() => instancesScreen().catch(fail), 8000);   // one-shot: each pass re-arms at most one timer
 }
 
 function instanceCard(i) {
@@ -255,7 +292,6 @@ async function configsScreen() {
   };
   const keys = Object.entries(schema.properties).map(([k, v]) => h("tr", {}, h("td", {}, h("code", {}, k)), h("td", {}, v.type), h("td", { class: "muted" }, v.description)));
   render(
-    lockedBanner(),
     h("div", { class: "card" }, h("h2", {}, "Saved configs"),
       configs.length ? h("table", {}, configs.map((c) => h("tr", {},
         h("td", {}, c.name), h("td", { class: "muted" }, when(c.updated_at)),
@@ -301,7 +337,6 @@ async function appsScreen() {
   const { grants } = await api("GET", "/api/oauth/grants");
   const url = `${location.origin}/mcp`;
   render(
-    lockedBanner(),
     h("div", { class: "card" }, h("h2", {}, "Use from an AI assistant"),
       h("p", {}, "Add this address as an MCP server; you will be asked here to allow it:"), h("pre", {}, url),
       h("p", { class: "muted" }, "Access ends after 8 hours, when you revoke it below, or when the server restarts.")),
@@ -354,13 +389,13 @@ async function start() {
   try {
     state.me = await api("GET", "/api/me");
   } catch (e) {
-    $("nav").hidden = true; $("who").replaceChildren();
-    if (e instanceof ApiError && e.status !== 401) fail(e);
-    return authScreen();
+    state.me = null;
+    if (!(e instanceof ApiError && e.status === 401)) toast(e.message, true);
+    return authRoute();
   }
   if (state.mainKey && !state.me.unlocked) state.mainKey = null;
   show();
 }
 
-window.addEventListener("hashchange", () => { if (state.me) show(); });
+window.addEventListener("hashchange", () => { if (state.me) show(); else authRoute(); });
 start();
