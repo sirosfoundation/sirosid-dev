@@ -358,6 +358,26 @@ def validate(saved: dict, capabilities=(), policy: PlatformPolicy = None) -> Lis
     return problems
 
 
+# The InstanceSpec fields that belong to the platform and to the instance's existence on
+# Fly, never to a saved config. A reconfigure keeps them from the deployed spec: changing
+# the layout, prefix or host pattern would deploy a SECOND instance beside the first, and
+# a Mongo volume pins its app to its region.
+PLATFORM_FIELDS = ("env", "region", "app_prefix", "host_pattern", "scale_to_zero", "env_admin", "layout", "public_ips")
+
+
+def rebuild_spec(saved: dict, deployed: InstanceSpec, capabilities=(), policy: PlatformPolicy = None) -> InstanceSpec:
+    """The spec for applying `saved` to an instance that already exists as `deployed`.
+
+    Validated against `capabilities` and the platform policy exactly as build_spec does,
+    but with the policy's layout taken from the instance (the platform may have switched
+    layouts since it was created), and every PLATFORM_FIELDS value copied from `deployed`.
+    Raises PolicyError listing every problem."""
+    from dataclasses import replace
+    policy = replace(policy or PlatformPolicy(), layout=deployed.layout)
+    spec = build_spec(saved, deployed.env, capabilities, policy)
+    return replace(spec, **{f: getattr(deployed, f) for f in PLATFORM_FIELDS}).validate(component_names())
+
+
 def build_spec(saved: dict, env: str, capabilities=(), policy: PlatformPolicy = None) -> InstanceSpec:
     """The InstanceSpec for a validated saved config, with the platform's own
     settings applied. Raises PolicyError listing every problem."""

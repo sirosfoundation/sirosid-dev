@@ -13,8 +13,9 @@ if HAVE:
     import httpx
     from sirosid_service.api import ApiConfig, create_app
     from sirosid_service.auth import AuthConfig, AuthService
-    from sirosid_service.chat import SYSTEM_PROMPT, ChatConfig, ChatService
+    from sirosid_service.chat import REQUIRES_APPROVAL, SYSTEM_PROMPT, ChatConfig, ChatService
     from sirosid_service.llm import LlmError, OpenRouter
+    from sirosid_core import knowledge
 
 NEEDS = unittest.skipUnless(HAVE, "needs starlette, httpx, webauthn, cbor2")
 
@@ -79,13 +80,16 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(ev[1]["usage"], {"used": 15, "limit": 300_000})
         first = self.llm.calls[0]
         self.assertEqual(first["model"], "test/model")
-        self.assertEqual(first["messages"][0], {"role": "system", "content": SYSTEM_PROMPT})
+        self.assertEqual(first["messages"][0]["role"], "system")
+        self.assertTrue(first["messages"][0]["content"].startswith(SYSTEM_PROMPT))
+        self.assertIn(knowledge.overview(), first["messages"][0]["content"], "the knowledge digest is always there")
+        self.assertNotIn("currently looking at", first["messages"][0]["content"])
         self.assertEqual(first["messages"][1], {"role": "user", "content": "hi"})
 
     def test_tool_calls_run_as_the_user_through_the_real_tools(self):
         self.start(call("save_config", {"name": "mine", "config": {}}), call("list_configs", cid="call_2"), text("Saved and listed."))
         ev = self.say("save an empty config called mine, then list")
-        self.assertEqual([e["type"] for e in ev], ["tool", "tool_result", "tool", "tool_result", "message", "done"])
+        self.assertEqual([e["type"] for e in ev], ["tool", "tool_result", "refresh", "tool", "tool_result", "message", "done"])
         self.assertTrue(all(e["ok"] for e in ev if e["type"] == "tool_result"))
         self.assertEqual([c["name"] for c in self.c.get("/api/configs").json()["configs"]], ["mine"], "the console sees what the assistant did")
         tool_msgs = [m for m in self.llm.calls[-1]["messages"] if m["role"] == "tool"]
@@ -147,7 +151,7 @@ class ChatTests(unittest.TestCase):
         self.assertEqual((ev[1]["name"], ev[1]["args"]), ("destroy_instance", {"id": iid}))
         self.assertEqual(len(self.c.get("/api/instances").json()["instances"]), 1, "nothing happened yet")
         ev2 = self.confirm(ev[1]["conversation_id"], "d1", True)
-        self.assertEqual([e["type"] for e in ev2], ["tool", "tool_result", "message", "done"])
+        self.assertEqual([e["type"] for e in ev2], ["tool", "tool_result", "refresh", "message", "done"])
         self.assertEqual(self.c.get("/api/instances").json()["instances"], [])
 
     def test_denying_runs_nothing_and_tells_the_model(self):
@@ -164,11 +168,82 @@ class ChatTests(unittest.TestCase):
 
     def test_every_destructive_tool_needs_approval(self):
         self.start(call("delete_config", {"name": "a"}, cid="a"), call("destroy_instance", {"id": "i"}, cid="b"), call("reset_instance", {"id": "i"}, cid="c"))
-        for cid in ("a", "b", "c"):
-            self.llm.script = [call({"a": "delete_config", "b": "destroy_instance", "c": "reset_instance"}[cid], {"name": "a", "id": "i"}, cid=cid), text("ok")]
+        names = {"a": "delete_config", "b": "destroy_instance", "c": "reset_instance", "d": "reconfigure_instance"}
+        for cid, name in names.items():
+            self.llm.script = [call(name, {"name": "a"} if name == "delete_config" else {"id": "i"}, cid=cid), text("ok")]
             ev = self.say("do it")
             self.assertEqual(ev[-1]["type"], "confirm", cid)
             self.confirm(ev[-1]["conversation_id"], cid, False)
+        self.assertEqual(REQUIRES_APPROVAL, frozenset(names.values()))
+        for name, tool in self.chat.tools.items():
+            if tool.spec["annotations"]["destructiveHint"]:
+                self.assertIn(name, REQUIRES_APPROVAL, "every destructive tool is gated")
+
+    def test_reconfigure_waits_for_approval_then_refreshes_the_panels(self):
+        self.start(text("x"))
+        iid = self.make_instance()
+        new = {"trusted_issuers": ["https://issuer.example.com"]}
+        self.llm.script = [call("reconfigure_instance", {"id": iid, "config": new}, cid="r1", content="Applying it."),
+                           text("Reconfigured.")]
+        ev = self.say("trust that issuer", active_instance=iid)
+        self.assertEqual(ev[-1]["type"], "confirm")
+        self.assertEqual(ev[-1]["name"], "reconfigure_instance")
+        self.assertEqual(self.c.get(f"/api/instances/{iid}/config").json()["config"], {}, "nothing happened yet")
+        ev2 = self.confirm(ev[-1]["conversation_id"], "r1", True)
+        self.assertEqual([e["type"] for e in ev2], ["tool", "tool_result", "refresh", "message", "done"])
+        self.assertEqual(ev2[2], {"type": "refresh", "what": ["instances", "configs"]})
+        self.assertEqual(self.c.get(f"/api/instances/{iid}/config").json()["config"], new)
+        self.assertIn("currently looking at environment", self.llm.calls[-1]["messages"][0]["content"],
+                      "the approval continues the turn with the same view")
+
+    def test_mutating_tools_emit_refresh_and_reads_do_not(self):
+        self.start(call("save_config", {"name": "mine", "config": {}}), call("list_configs", cid="c2"),
+                   call("save_config", {"name": "bad", "config": {"mystery": 1}}, cid="c3"), text("done"))
+        ev = self.say("save, list, save a bad one")
+        kinds = [e["type"] for e in ev]
+        self.assertEqual(kinds, ["tool", "tool_result", "refresh", "tool", "tool_result", "tool", "tool_result", "refresh",
+                                 "message", "done"])
+
+    # ---- the environment the user is looking at, and focus ------------------------------------------------
+
+    def test_the_active_environment_is_described_by_metadata_only_and_only_if_it_is_yours(self):
+        self.start(text("x"))
+        cfg = {"trusted_issuers": ["https://secret-partner.example.com"]}
+        iid = self.c.post("/api/instances", {"config": cfg, "name": "partner demo"}).json()["id"]
+        other = signed_in(self.cp, self.app, self.admin)
+        theirs = other.post("/api/instances", {"config": {}, "name": "bobs"}).json()["id"]
+        self.llm.script = [text("a"), text("b"), text("c")]
+        self.say("what is this?", active_instance=iid)
+        system = self.llm.calls[-1]["messages"][0]["content"]
+        self.assertIn(f"currently looking at environment {iid}", system)
+        self.assertIn('"partner demo"', system)
+        self.assertIn("status: running", system)
+        self.assertIn("expires ", system)
+        self.assertNotIn("secret-partner", system, "never the config")
+        for not_mine in (theirs, "zzzzzzzz"):
+            self.say("and this?", active_instance=not_mine)
+            system = self.llm.calls[-1]["messages"][0]["content"]
+            self.assertNotIn("currently looking at", system, not_mine)
+            self.assertNotIn("bobs", system)
+
+    def test_focus_environment_is_a_console_only_tool_that_checks_ownership(self):
+        self.start(text("x"))
+        iid = self.make_instance()
+        other = signed_in(self.cp, self.app, self.admin)
+        theirs = other.post("/api/instances", {"config": {}}).json()["id"]
+        self.llm.script = [call("focus_environment", {"id": iid}, cid="f1"), call("focus_environment", {"id": theirs}, cid="f2"),
+                           call("focus_environment", {"id": iid, "x": 1}, cid="f3"), text("there")]
+        ev = self.say("show it")
+        focus = [e for e in ev if e["type"] == "focus"]
+        self.assertEqual(focus, [{"type": "focus", "instance_id": iid}], "only one's own environment is focused")
+        results = [e["ok"] for e in ev if e["type"] == "tool_result"]
+        self.assertEqual(results, [True, False, False])
+        self.assertNotIn("refresh", [e["type"] for e in ev], "focusing changes nothing")
+        offered = {t["function"]["name"] for t in self.llm.calls[0]["tools"]}
+        self.assertIn("focus_environment", offered)
+        self.assertNotIn("focus_environment", self.chat.mcp.tools, "not an MCP tool")
+        for name in ("get_instance_config", "get_instance_health", "get_instance_activity", "reconfigure_instance", "get_knowledge"):
+            self.assertIn(name, offered)
 
     def test_approvals_cannot_be_forged_replayed_or_borrowed(self):
         self.start(text("x"))

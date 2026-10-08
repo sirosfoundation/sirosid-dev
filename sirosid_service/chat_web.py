@@ -2,7 +2,9 @@
 Origin allow-list and the rate limits of Api apply; the turn itself streams server-sent events.
 
 A turn runs in a worker thread (the model call is blocking) and pushes events on a queue; this
-module only forwards them. Events: status, tool, tool_result, confirm, message, error, done."""
+module only forwards them. Events: status, tool, tool_result, confirm, message, error, done, and for the
+console's panels: focus {instance_id} (show this environment) and refresh {what: [instances, configs]}
+(after any mutating tool call). POST /api/chat takes {message, conversation_id?, model?, active_instance?}."""
 import json
 import queue
 import threading
@@ -71,7 +73,9 @@ class ChatWeb:
         c = self.chat
 
         def turn(who, d):
-            return lambda emit: c.turn(who, d.get("conversation_id") or None, str(d.get("message", "")), d.get("model") or None, emit)
+            active = d.get("active_instance")
+            return lambda emit: c.turn(who, d.get("conversation_id") or None, str(d.get("message", "")), d.get("model") or None, emit,
+                                       active_instance=active if isinstance(active, str) else None)
 
         def confirm(who, d):
             return lambda emit: c.confirm(who, str(d.get("conversation_id", "")), str(d.get("call_id", "")), bool(d.get("approve")), emit)
