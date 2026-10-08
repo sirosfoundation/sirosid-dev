@@ -40,6 +40,15 @@ class Static(unittest.TestCase):
             self.assertEqual(r.headers["x-content-type-options"], "nosniff")
         self.assertEqual(self.http.get("/js/app.js").content, (CONSOLE / "js" / "app.js").read_bytes())
 
+    def test_the_siros_brand_images_are_served(self):
+        for path, ctype in (("/img/siros-logo.png", "image/png"), ("/img/hero-bg.jpg", "image/jpeg"), ("/img/favicon.svg", "image/svg+xml")):
+            r = self.http.get(path)
+            self.assertEqual(r.status_code, 200, path)
+            self.assertTrue(r.headers["content-type"].startswith(ctype), path)
+            self.assertEqual(r.content, (CONSOLE / path.lstrip("/")).read_bytes(), path)
+        self.assertEqual(self.http.get("/img/").status_code, 404)
+        self.assertEqual(self.http.get("/img/nothing.png").status_code, 404)
+
     def test_csp_allows_only_self_and_no_inline(self):
         self.assertIn("script-src 'self'", PAGE_CSP)
         self.assertIn("frame-ancestors 'none'", PAGE_CSP)
@@ -91,7 +100,12 @@ class NoInlineCode(unittest.TestCase):
         self.assertNotRegex(html, r"<style\b")
         self.assertNotRegex(html, r"\son[a-z]+\s*=")
         self.assertNotRegex(html, r"\sstyle\s*=")
-        self.assertNotRegex(html, r"https?://")
+        for ref in re.findall(r'(?:src|href)="([^"]+)"', html):                 # nothing is loaded from, or inlined for, another origin
+            self.assertTrue(ref.startswith("/") or ref.startswith(("https://siros.org", "https://sirosid.dev", "https://developers.siros.org",
+                            "https://registry.siros.org", "https://compliance.siros.org", "https://trust.siros.org", "https://circuits.siros.org",
+                            "https://github.com/sirosfoundation", "mailto:info@siros.org")), ref)
+        for tag in re.findall(r"<(?:img|link|script)\b[^>]*>", html):
+            self.assertNotRegex(tag, r'(?:src|href)="https?:', tag)
 
     def test_scripts_never_parse_server_text_as_markup_or_run_it(self):
         for f in (CONSOLE / "js").glob("*.js"):

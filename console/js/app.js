@@ -146,7 +146,7 @@ const inviteFromHash = () => new URLSearchParams(location.hash.slice(1).split("?
 const goHome = () => { history.replaceState(null, "", location.pathname + location.search); authRoute(); };
 
 /** Nothing but the way in: no navigation, no account bar. */
-function hideChrome() { $("nav").hidden = true; $("nav").replaceChildren(); $("who").replaceChildren(); }
+function hideChrome() { document.body.classList.add("auth"); $("nav").hidden = true; $("nav").replaceChildren(); $("who").replaceChildren(); }
 
 function authRoute() {
   hideChrome();
@@ -199,6 +199,7 @@ function unlockScreen() {
 const NAMES = { instances: "Instances", configs: "Configs", assistant: "Assistant", apps: "Connected apps", passkeys: "Passkeys", admin: "Admin" };
 
 function chrome() {
+  document.body.classList.remove("auth");
   const tabs = ["instances", "configs", "assistant", "apps", "passkeys", ...(state.me.role === "admin" ? ["admin"] : [])];
   $("nav").hidden = false;
   $("nav").replaceChildren(...tabs.map((t) => h("button", { "aria-current": t === state.tab ? "page" : false, on: { click: () => { state.tab = t; show(); } } }, NAMES[t])),
