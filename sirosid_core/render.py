@@ -186,7 +186,14 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
     # deployment before). Safe only because allowed_origins above is a
     # specific origin, never "*".
     config["server"]["cors"]["allow_credentials"] = True
-    config["trust"]["pdp_url"] = f"http://{naming.internal('pdp')}:8080"
+    if naming.single_machine:
+        # One network namespace for every container: the defaults (8080/8081/8082)
+        # are taken by vc and the PDP. See naming.SINGLE_MACHINE_PORTS.
+        config["server"]["port"] = naming.port("wallet-backend", "http")
+        config["server"]["admin_port"] = naming.port("wallet-backend", "admin")
+        config["server"]["engine_port"] = naming.port("wallet-backend", "engine")
+        config["server"]["host"] = "127.0.0.1"   # loopback only: see Naming.listen
+    config["trust"]["pdp_url"] = f"http://{naming.addr('pdp')}"
     config["trust"]["registry_url"] = f"{proxy_url}/registry"
     # Authenticated - mongodb's own root user/password (fly-up.py generates
     # one per deploy and sets it via Fly secret + MONGO_INITDB_ROOT_* env
@@ -203,7 +210,7 @@ def patch_wallet_backend_fly(config: dict, env: str, extra_android_apk_key_hashe
         )
     mongo_auth = f"root:{mongo_password}@" if mongo_password else ""
     config["storage"]["mongodb"] = {
-        "uri": f"mongodb://{mongo_auth}{naming.internal('mongodb')}:27017/wallet-backend?authSource=admin",
+        "uri": f"mongodb://{mongo_auth}{naming.addr('mongodb')}/wallet-backend?authSource=admin",
         "tls_enabled": False,
         "database": "wallet-backend",
     }
@@ -539,8 +546,8 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                 # tls: false - the chart wires cert-manager mTLS between k8s
                 # Services; Fly's 6PN is already a private per-environment
                 # network and there are no such certs here.
-                "issuer_client": {"addr": f"{naming.internal('vc-issuer')}:8090", "tls": False},
-                "registry_client": {"addr": f"{naming.internal('vc-registry')}:8090", "tls": False},
+                "issuer_client": {"addr": naming.addr("vc-issuer", "grpc"), "tls": False},
+                "registry_client": {"addr": naming.addr("vc-registry", "grpc"), "tls": False},
                 "delivery": {"openid4vci": {"clients": {
                     # Restated in full, not appended: a list in extraConfig
                     # replaces. This is the client_id fly-up.py's
@@ -568,12 +575,12 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
                 }}},
             }}},
             "core": {"extraConfig": {"issuer": {
-                "registry_client": {"addr": f"{naming.internal('vc-registry')}:8090", "tls": False},
+                "registry_client": {"addr": naming.addr("vc-registry", "grpc"), "tls": False},
             }}},
         },
         "pdp": {
             "default_whitelist": False,
-            "externalUrl": f"http://{naming.internal('pdp')}:8080",
+            "externalUrl": f"http://{naming.addr('pdp')}",
             "extraRegistries": extra_registries,
         },
     }
@@ -583,7 +590,29 @@ def build_fly_values_overlay(env: str, conformance: bool = False,
         # pairs with the wallet-providers whitelist entry above.
         overlay["issuer"]["apigw"]["walletAttestation"] = {"enabled": True}
         overlay.setdefault("verifier", {})["walletAttestation"] = {"enabled": True}
+    if naming.single_machine:
+        overlay = vc_render.deep_merge(overlay, single_machine_listeners(naming))
     return overlay
+
+
+def single_machine_listeners(naming: Naming) -> dict:
+    """Values that move every vc service and the PDP onto its own port, for the
+    single-machine layout (one network namespace: their images all default to
+    8080, and both gRPC servers to 8090). Through the chart's own extraConfig
+    knobs, so the rendered config is still the chart's."""
+    def listen(component, kind="http"):
+        return {"addr": naming.listen(component, kind)}
+    return {
+        "issuer": {
+            "registry": {"extraConfig": {"registry": {
+                "api_server": listen("vc-registry"), "grpc_server": listen("vc-registry", "grpc")}}},
+            "core": {"extraConfig": {"issuer": {
+                "api_server": listen("vc-issuer"), "grpc_server": listen("vc-issuer", "grpc")}}},
+            "apigw": {"extraConfig": {"apigw": {"api_server": listen("vc-apigw")}}},
+        },
+        "verifier": {"extraConfig": {"verifier": {"api_server": listen("vc-verifier")}}},
+        "pdp": {"extraConfig": {"server": {"host": "127.0.0.1", "port": naming.port("pdp")}}},
+    }
 
 
 def patch_registry_sources(config: dict, registries: list) -> dict:
@@ -789,6 +818,9 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         # for this target rather than fixing the image or adding a real Fly
         # volume for what's disposable data.
         registry_cfg.setdefault("cache", {})["path"] = "/tmp/vctm-cache.json"
+        if naming.single_machine and not integrated:
+            # The legacy registry.yaml names wallet-backend's port too.
+            registry_cfg.setdefault("server", {})["port"] = naming.port("wallet-backend", "http")
     if credential_registries:
         registry_cfg = patch_registry_sources(registry_cfg, credential_registries)
     (out_dir / "wallet-backend.yaml").write_text(yaml.dump(backend_cfg, sort_keys=False))

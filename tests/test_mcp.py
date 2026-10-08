@@ -253,7 +253,7 @@ class McpTests(unittest.TestCase):
         self.assertEqual(self.agent.rpc("notifications/initialized", notify=True).status_code, 202)
         self.assertEqual(self.agent.rpc("ping").json()["result"], {})
         tools = {t["name"]: t for t in self.agent.rpc("tools/list").json()["result"]["tools"]}
-        for must in ("list_configs", "save_config", "create_instance", "destroy_instance", "get_instance_credentials"):
+        for must in ("list_config_templates", "list_configs", "save_config", "create_instance", "destroy_instance", "get_instance_credentials"):
             self.assertIn(must, tools)
         for banned in ("create_invite", "grant", "disable_user", "audit", "add_passkey", "set_privatedata", "unlock"):
             self.assertFalse([n for n in tools if banned in n], f"{banned} must not be a tool")
@@ -288,6 +288,13 @@ class McpTests(unittest.TestCase):
         self.assertEqual(a.call("list_instances")["structuredContent"]["instances"], [])
         # the console sees exactly what the agent did: one set of rules
         self.assertEqual([c["name"] for c in self.console.get("/api/configs").json()["configs"]], ["mine"])
+
+    def test_an_agent_can_start_from_a_template(self):
+        a = self.agent
+        templates = a.call("list_config_templates")["structuredContent"]["templates"]
+        self.assertEqual(templates[0]["id"], "standard")
+        self.assertFalse(a.call("save_config", name="from-template", config=templates[1]["config"])["isError"])
+        self.assertEqual(a.call("get_config", name="from-template")["structuredContent"]["config"], templates[1]["config"])
 
     def test_quotas_and_ownership_are_the_control_planes(self):
         a = self.agent

@@ -192,6 +192,28 @@ class InstanceTests(unittest.TestCase):
         self.assertEqual(set(fake.tokens_seen), {"tok"})
         self.assertIn("wallet-frontend", inst["urls"])
 
+    def test_an_unexpected_error_in_the_deploy_job_ends_in_failed_not_creating_forever(self):
+        """Seen on real Fly: a PermissionError (not a DeployError) escaped the job, the
+        thread pool swallowed it and the instance said 'creating' for good."""
+        import unittest.mock as mock
+        import sirosid_service.service as svc
+        cp, fake, _ = make()
+        _, alice = admin_and_user(cp)
+        with mock.patch.object(svc, "deploy_instance", side_effect=PermissionError(13, "Permission denied", "/app/x")), \
+                self.assertLogs("sirosid.service", "ERROR"):
+            inst = cp.create_instance(alice, name="demo")
+        self.assertEqual(inst["status"], "failed")
+        self.assertIn("internal error during deploy (PermissionError", inst["error"])
+        self.assertIn("deploy_failed", [r["action"] for r in cp.db.audit_log()])
+
+    def test_the_thread_runner_logs_what_a_job_raises(self):
+        import sirosid_service.service as svc
+        r = svc.ThreadRunner(workers=1)
+        with self.assertLogs("sirosid.service", "ERROR") as logs:
+            r.submit(lambda: 1 / 0)
+            r._pool.shutdown(wait=True)
+        self.assertIn("ZeroDivisionError", "\n".join(logs.output))
+
     def test_ttl_is_three_days(self):
         cp, _, clock = make()
         _, alice = admin_and_user(cp)
@@ -422,6 +444,105 @@ class SweeperTests(unittest.TestCase):
     def test_tick_runs_everything(self):
         cp, _, _ = make()
         self.assertEqual(sorted(cp.tick()), ["lapsed", "reaped", "sweep"])
+
+
+SINGLE = dict(env_admin=False, layout="single-machine", host_pattern="{component}-{id}.sid.example")
+
+
+def make_single(**platform):
+    """A control plane whose platform deploys single-machine instances, against
+    fake flyctl + a fake Machines API + a fake registry."""
+    from fakemachines import FakeMachines
+    from sirosid_core.machines import MachinesClient
+    from sirosid_core.oci import Registry
+    fake = FakeFly()
+    api = FakeMachines(fake)
+    clock = Clock()
+    fly = FlyClient(org="sandbox", token="tok", runner=fake.runner(),
+                    docker=lambda cmd, **k: subprocess.CompletedProcess(cmd, 0), out=lambda m: None, err=lambda m: None)
+    ids = iter(IDS)
+    db = Database(clock=clock)
+    _OPEN.append(db)
+    registered = []
+    cp = ControlPlane(db, fly, Resources(ROOT), platform=PlatformPolicy(**{**SINGLE, **platform}), clock=clock,
+                      id_generator=lambda: next(ids), machines=MachinesClient("tok", transport=api.transport,
+                                                                                sleep=lambda s: None),
+                      register=lambda *a: registered.append(a) or {"issuer": "registered", "verifier": "registered"},
+                      registry=Registry("registry.fly.io", "x", "tok", transport=api.registry_transport))
+    return cp, fake, api, clock, registered, lambda: None
+
+
+@NEEDS
+class SingleMachineServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.cp, self.fake, self.api, self.clock, self.registered, undo = make_single()
+        self.addCleanup(undo)
+        _, self.alice = admin_and_user(self.cp)
+
+    def test_create_deploys_one_app_and_stores_the_layout_in_plaintext(self):
+        inst = self.cp.create_instance(self.alice)
+        self.assertEqual(inst["status"], "running", inst["error"])
+        self.assertEqual(sorted(self.fake.apps), ["sid-aaaaaaaa"], "one app named sid-<id> (what the edge targets)")
+        self.assertEqual(inst["urls"]["vc-apigw"], "https://vc-apigw-aaaaaaaa.sid.example")
+        row = self.cp.db.one("SELECT naming FROM instances WHERE id=?", ("aaaaaaaa",))
+        self.assertEqual(json.loads(row["naming"])["layout"], "single-machine")
+        self.assertTrue(self.registered)
+
+    def test_stop_start_destroy_need_no_session(self):
+        a = self.cp.create_instance(self.alice)["id"]
+        locked = self.cp.principal_for(self.alice.user_id)          # no session: data is sealed
+        self.assertEqual(self.cp.stop_instance(locked, a)["status"], "stopped")
+        self.assertEqual(self.api.only("sid-aaaaaaaa")["state"], "stopped")
+        self.assertEqual(self.cp.start_instance(locked, a)["status"], "running")
+        self.assertEqual(self.cp.destroy_instance(locked, a)["status"], "destroyed")
+        self.assertEqual(self.fake.apps, {})
+
+    def test_the_reaper_destroys_a_single_machine_instance(self):
+        a = self.cp.create_instance(self.alice)["id"]
+        self.clock.advance(days=4)
+        self.assertEqual(self.cp.reap(), [a])
+        self.assertEqual(self.fake.apps, {})
+
+    def test_reset_drops_data_in_place_and_registers_again(self):
+        a = self.cp.create_instance(self.alice)["id"]
+        n = len(self.registered)
+        token = self.cp.instance_credentials(self.alice, a)["admin_token"]
+        self.assertEqual(self.cp.reset_instance(self.alice, a)["status"], "running")
+        m = self.api.only("sid-aaaaaaaa")
+        self.assertEqual(m["execs"][-1]["container"], "mongodb")
+        self.assertEqual(len(self.registered), n + 1)
+        self.assertEqual(self.registered[-1][1], token)
+        self.assertFalse(any("volumes destroy" in c for c in self.fake.log), "in place: the volume stays")
+
+    def test_the_sweeper_understands_the_single_app_name(self):
+        live = self.cp.create_instance(self.alice)["id"]
+        fly = FlyClient(org="sandbox", token="tok", runner=self.fake.runner(), out=lambda m: None, err=lambda m: None)
+        fly.ensure_app("sid-zzzzzzzz")                 # an orphaned single-machine instance
+        fly.ensure_app("sid-zzzzzzzz-pdp")             # and an apps-layout one with the same id
+        for foreign in ("sid-zzzzzzz", "sid-zzzzzzzzz", "sid-ZZZZZZZZ", "sbx-zzzzzzzz"):
+            fly.ensure_app(foreign)
+        out = self.cp.sweep_orphans()
+        self.assertEqual(out["orphans"], ["zzzzzzzz"])
+        self.clock.advance(seconds=4000)
+        self.assertEqual(self.cp.sweep_orphans()["destroyed"], ["zzzzzzzz"])
+        self.assertNotIn("sid-zzzzzzzz", self.fake.apps)
+        self.assertNotIn("sid-zzzzzzzz-pdp", self.fake.apps)
+        for foreign in ("sid-zzzzzzz", "sid-zzzzzzzzz", "sid-ZZZZZZZZ", "sbx-zzzzzzzz", f"sid-{live}"):
+            self.assertIn(foreign, self.fake.apps)
+
+    def test_edge_mode_allocates_no_public_ips(self):
+        cp, fake, api, _, _, undo = make_single(public_ips=False)
+        self.addCleanup(undo)
+        _, bob = admin_and_user(cp)
+        inst = cp.create_instance(bob)
+        self.assertEqual(inst["status"], "running", inst["error"])
+        self.assertFalse([c for c in fake.log if " ips allocate" in c])
+        self.assertFalse([c for c in fake.log if "--network" in c], "the org's default network, for fly-replay")
+        self.assertNotIn("fly.dev", inst["urls"])
+
+    def test_the_policy_refuses_conformance_in_this_layout(self):
+        with self.assertRaises(PolicyError):
+            self.cp.create_instance(self.alice, config={"conformance": True})
 
 
 class StateStoreTests(unittest.TestCase):

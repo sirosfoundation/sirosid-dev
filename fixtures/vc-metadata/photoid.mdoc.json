@@ -1,0 +1,338 @@
+{
+  "$comment": "EWC RFC013 Photo ID (ISO/IEC TS 23220-4 Annex C) as mso_mdoc. The optional org.iso.23220.dtc.1 namespace (raw eMRTD DG1/DG2/SOD) is deliberately not declared: facetec-api never releases raw chip data. photoid_card.svg is the readable source of the svg_templates data URI. The portrait is deliberately not on the card: the wallet shows it among the claims on the detail page.",
+  "format": "mso_mdoc",
+  "doctype": "eu.europa.ec.eudi.photoid.1",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "Photo ID",
+      "description": "Photo ID derived from an electronic travel document (EWC RFC013)",
+      "background_color": "#1a365d",
+      "text_color": "#ffffff",
+      "rendering": {
+        "svg_templates": [
+          {
+            "uri": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzNjUiIGhlaWdodD0iMjQzIiB2aWV3Qm94PSIwIDAgMzY1IDI0MyI+CjxkZWZzPgo8bGluZWFyR3JhZGllbnQgaWQ9ImJnIiB4MT0iMCIgeTE9IjAiIHgyPSIxIiB5Mj0iMSI+PHN0b3Agb2Zmc2V0PSIwIiBzdG9wLWNvbG9yPSIjMWEzNjVkIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMmM1MjgyIi8+PC9saW5lYXJHcmFkaWVudD4KPC9kZWZzPgo8cmVjdCB3aWR0aD0iMzY1IiBoZWlnaHQ9IjI0MyIgcng9IjE0LjUiIGZpbGw9InVybCgjYmcpIi8+Cjx0ZXh0IHg9IjIyIiB5PSI0MCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMjAiIGZvbnQtd2VpZ2h0PSJib2xkIiBmaWxsPSIjZmZmZmZmIj5QaG90byBJRDwvdGV4dD4KPHRleHQgeD0iMzQzIiB5PSI0MCIgdGV4dC1hbmNob3I9ImVuZCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTEiIGxldHRlci1zcGFjaW5nPSIxLjUiIGZpbGw9IiNiZWUzZjgiPlNJUk9TPC90ZXh0Pgo8ZyBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZmlsbD0iI2ZmZmZmZiI+Cjx0ZXh0IHg9IjIyIiB5PSI3OCIgZm9udC1zaXplPSI5IiBmaWxsPSIjYmVlM2Y4Ij5TVVJOQU1FPC90ZXh0Pgo8dGV4dCB4PSIyMiIgeT0iOTQiIGZvbnQtc2l6ZT0iMTQiIGZvbnQtd2VpZ2h0PSJib2xkIj57e2ZhbWlseV9uYW1lfX08L3RleHQ+Cjx0ZXh0IHg9IjIyIiB5PSIxMTQiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iI2JlZTNmOCI+R0lWRU4gTkFNRVM8L3RleHQ+Cjx0ZXh0IHg9IjIyIiB5PSIxMzAiIGZvbnQtc2l6ZT0iMTQiIGZvbnQtd2VpZ2h0PSJib2xkIj57e2dpdmVuX25hbWV9fTwvdGV4dD4KPHRleHQgeD0iMjIiIHk9IjE1MCIgZm9udC1zaXplPSI5IiBmaWxsPSIjYmVlM2Y4Ij5EQVRFIE9GIEJJUlRIPC90ZXh0Pgo8dGV4dCB4PSIyMiIgeT0iMTY1IiBmb250LXNpemU9IjEyIj57e2JpcnRoX2RhdGV9fTwvdGV4dD4KPHRleHQgeD0iMTYwIiB5PSIxNTAiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iI2JlZTNmOCI+TkFUSU9OQUxJVFk8L3RleHQ+Cjx0ZXh0IHg9IjE2MCIgeT0iMTY1IiBmb250LXNpemU9IjEyIj57e25hdGlvbmFsaXR5fX08L3RleHQ+Cjx0ZXh0IHg9IjIyIiB5PSIxODUiIGZvbnQtc2l6ZT0iOSIgZmlsbD0iI2JlZTNmOCI+VkFMSUQgVU5USUw8L3RleHQ+Cjx0ZXh0IHg9IjIyIiB5PSIyMDAiIGZvbnQtc2l6ZT0iMTIiPnt7ZXhwaXJ5X2RhdGV9fTwvdGV4dD4KPC9nPgo8dGV4dCB4PSIyMiIgeT0iMjI0IiBmb250LWZhbWlseT0iQXJpYWwsIEhlbHZldGljYSwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSI5IiBmaWxsPSIjYmVlM2Y4Ij5JU08vSUVDIFRTIDIzMjIwIMK3IGV1LmV1cm9wYS5lYy5ldWRpLnBob3RvaWQuMTwvdGV4dD4KPC9zdmc+Cg==",
+            "properties": {
+              "orientation": "landscape"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "claims": {
+    "org.iso.23220.1": {
+      "family_name_unicode": {
+        "mandatory": true,
+        "value_type": "tstr",
+        "svg_id": "family_name",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Family name"
+          }
+        ]
+      },
+      "given_name_unicode": {
+        "mandatory": true,
+        "value_type": "tstr",
+        "svg_id": "given_name",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Given names"
+          }
+        ]
+      },
+      "birth_date": {
+        "mandatory": true,
+        "value_type": "full-date",
+        "svg_id": "birth_date",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Date of birth"
+          }
+        ]
+      },
+      "portrait": {
+        "mandatory": true,
+        "value_type": "bstr",
+        "description": "Portrait image of the holder, JPEG.",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Portrait"
+          }
+        ]
+      },
+      "issue_date": {
+        "mandatory": true,
+        "value_type": "full-date",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Date of issue"
+          }
+        ]
+      },
+      "expiry_date": {
+        "mandatory": true,
+        "value_type": "full-date",
+        "svg_id": "expiry_date",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Date of expiry"
+          }
+        ]
+      },
+      "issuing_authority_unicode": {
+        "mandatory": true,
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Issuing authority"
+          }
+        ]
+      },
+      "issuing_country": {
+        "mandatory": true,
+        "value_type": "tstr",
+        "description": "ISO 3166-1 alpha-2 code of the issuing country.",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Issuing country"
+          }
+        ]
+      },
+      "age_over_18": {
+        "mandatory": true,
+        "value_type": "bool",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Age over 18"
+          }
+        ]
+      },
+      "sex": {
+        "value_type": "uint",
+        "description": "ISO/IEC 5218: 0 not known, 1 male, 2 female, 9 not applicable.",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Sex"
+          }
+        ]
+      },
+      "nationality": {
+        "value_type": "tstr",
+        "svg_id": "nationality",
+        "description": "ISO 3166-1 alpha-2 code of the holder's nationality.",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Nationality"
+          }
+        ]
+      },
+      "document_number": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Document number"
+          }
+        ]
+      },
+      "name_at_birth": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Name at birth"
+          }
+        ]
+      },
+      "birthplace": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Place of birth"
+          }
+        ]
+      },
+      "portrait_capture_date": {
+        "value_type": "full-date",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Portrait capture date"
+          }
+        ]
+      },
+      "resident_address_unicode": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident address"
+          }
+        ]
+      },
+      "resident_city_unicode": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident city"
+          }
+        ]
+      },
+      "resident_postal_code": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident postal code"
+          }
+        ]
+      },
+      "resident_country": {
+        "value_type": "tstr",
+        "description": "ISO 3166-1 alpha-2 code of the country of residence.",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident country"
+          }
+        ]
+      },
+      "age_in_years": {
+        "value_type": "uint",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Age in years"
+          }
+        ]
+      },
+      "age_birth_year": {
+        "value_type": "uint",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Year of birth"
+          }
+        ]
+      },
+      "family_name_latin1": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Family name (Latin-1)"
+          }
+        ]
+      },
+      "given_name_latin1": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Given names (Latin-1)"
+          }
+        ]
+      }
+    },
+    "org.iso.23220.photoid.1": {
+      "person_id": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Person identifier"
+          }
+        ]
+      },
+      "birth_country": {
+        "value_type": "tstr",
+        "description": "ISO 3166-1 alpha-2 code of the country of birth.",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Country of birth"
+          }
+        ]
+      },
+      "birth_state": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "State of birth"
+          }
+        ]
+      },
+      "birth_city": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "City of birth"
+          }
+        ]
+      },
+      "administrative_number": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Administrative number"
+          }
+        ]
+      },
+      "resident_street": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident street"
+          }
+        ]
+      },
+      "resident_house_number": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident house number"
+          }
+        ]
+      },
+      "travel_document_number": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Travel document number"
+          }
+        ]
+      },
+      "resident_state": {
+        "value_type": "tstr",
+        "display": [
+          {
+            "locale": "en-US",
+            "name": "Resident state"
+          }
+        ]
+      }
+    }
+  }
+}

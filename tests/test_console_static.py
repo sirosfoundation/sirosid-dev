@@ -19,7 +19,7 @@ if HAVE:
     from test_service import make
 
 CONSOLE = ROOT / "console"
-ORIGIN = "https://sirosid.dev"
+ORIGIN = "https://console.sirosid.dev"
 
 
 @unittest.skipUnless(HAVE, "needs starlette, httpx, webauthn, cbor2")

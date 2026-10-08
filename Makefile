@@ -345,6 +345,10 @@ endif
 # facetec-api (FaceTec SDK <-> vc issuer bridge). Requires VC services for
 # credential issuance via vc-apigw, so it implies VC=yes.
 ifneq ($(call _truthy,$(FACETEC)),)
+  # Set VC itself, not just the compose file: `up`'s VC pre-flight (config
+  # render from the chart, gobuild image, PKI) is gated on $(VC), and without
+  # it FACETEC=yes ran the vc services on stale or missing rendered config.
+  VC := yes
   ifeq ($(findstring $(VC_SERVICES_COMPOSE),$(COMPOSE_FILES)),)
     COMPOSE_FILES += -f $(VC_SERVICES_COMPOSE)
     _VC_LABEL := yes (via facetec)
@@ -845,6 +849,9 @@ ifneq ($(call _truthy,$(FACETEC)),)
 		echo "  export FACETEC_SERVER_URL=\"https://user:pass@your-facetec-server.example.org\""; \
 		exit 1; \
 	fi
+	@# vc-apigw's datastore API requires an admin JWT (scripts/api_auth.py);
+	@# facetec-api reads a static one from ISSUER_API_KEY_PATH.
+	@python3 scripts/facetec_issuer_token.py
 endif
 ifneq ($(call _truthy,$(CONFORMANCE)),)
 	@$(MAKE) --no-print-directory ensure-conformance-hosts
@@ -888,7 +895,7 @@ ifneq ($(GOLDEN),)
 		{ [ -n "$${TUNNEL_VC_APIGW_URL:-}" ] && export ENV_ADMIN_ISSUER_URL="$$TUNNEL_VC_APIGW_URL" || true; } && \
 		{ [ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ] && export ENV_ADMIN_VERIFIER_URL="$$TUNNEL_VC_VERIFIER_URL" || true; } && \
 		{ _ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
-		  [ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; } && \
+		  [ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" WALLET_ANDROID_RP_ORIGINS="$$_ANDROID_ORIGINS" || true; } && \
 	WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --pull always 2>&1 | \
 		grep -E '^\s*(✔|=>|Pulling|Container|Network|Image)' || true
@@ -906,7 +913,7 @@ endif
 	[ -n "$${TUNNEL_VC_APIGW_URL:-}" ] && export ENV_ADMIN_ISSUER_URL="$$TUNNEL_VC_APIGW_URL" || true; \
 	[ -n "$${TUNNEL_VC_VERIFIER_URL:-}" ] && export ENV_ADMIN_VERIFIER_URL="$$TUNNEL_VC_VERIFIER_URL" || true; \
 	_ANDROID_ORIGINS=$$(python3 scripts/android_apps.py --rp-origins $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \
-	[ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" || true; \
+	[ -n "$$_ANDROID_ORIGINS" ] && export WALLET_RP_ORIGINS="http://localhost:3000,$$_ANDROID_ORIGINS" WALLET_ANDROID_RP_ORIGINS="$$_ANDROID_ORIGINS" || true; \
 	FRONTEND_PATH=$(FRONTEND_PATH) BACKEND_PATH=$(BACKEND_PATH) FACETEC_PATH=$(FACETEC_PATH) \
 		WALLET_NAME="$(WALLET_NAME)" \
 		docker compose $(COMPOSE_FILES) up -d --build >$$_LOG 2>&1; \
@@ -1307,23 +1314,24 @@ fly-up: ## Deploy a named Fly.io environment (make fly-up ENV=<name> [REGION=<co
 		$(if $(RICAL_ROOT_CERT),--rical-root-cert "$(RICAL_ROOT_CERT)") \
 		$(if $(call _truthy,$(WALLET_ATTESTATION)),--wallet-attestation) \
 		$(if $(DC_API_ENABLE),--dc-api-enable "$(DC_API_ENABLE)") \
+		$(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine) \
 		$(if $(_REGISTRY_EXTERNAL),--credential-registries "$(CREDENTIAL_REGISTRIES)")
 		$(if $(REGION),--region "$(REGION)")
 
 fly-stop: ## Stop every machine of a Fly environment but keep its apps and data (make fly-stop ENV=<name> [ORG=<org>]); fly-start brings it back
 	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV=<name> is required$(NC)"; exit 1; fi
-	python3 scripts/fly-power.py stop --env "$(ENV)" $(if $(ORG),--org "$(ORG)")
+	python3 scripts/fly-power.py stop --env "$(ENV)" $(if $(ORG),--org "$(ORG)") $(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine)
 
 fly-start: ## Start a stopped Fly environment, in deploy order, waiting for health (make fly-start ENV=<name> [ORG=<org>])
 	@if [ -z "$(ENV)" ]; then echo "$(RED)Error: ENV=<name> is required$(NC)"; exit 1; fi
-	python3 scripts/fly-power.py start --env "$(ENV)" $(if $(ORG),--org "$(ORG)")
+	python3 scripts/fly-power.py start --env "$(ENV)" $(if $(ORG),--org "$(ORG)") $(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine)
 
 fly-down: ## Tear down a named Fly.io environment (make fly-down ENV=<name> [KEEP_DATA=yes] - KEEP_DATA leaves the Mongo apps and their volumes, machines stopped, so the next fly-up finds the data again)
 	@if [ -z "$(ENV)" ]; then \
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-down ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	python3 scripts/fly-down.py --env "$(ENV)" $(if $(call _truthy,$(KEEP_DATA)),--keep-data)
+	python3 scripts/fly-down.py --env "$(ENV)" $(if $(call _truthy,$(KEEP_DATA)),--keep-data) $(if $(call _truthy,$(SINGLE_MACHINE)),--single-machine)
 
 fly-storage-clear: ## Wipe a Fly environment's data through its env-admin app and re-register issuer/verifier (make fly-storage-clear ENV=<name>)
 	@if [ -z "$(ENV)" ]; then \

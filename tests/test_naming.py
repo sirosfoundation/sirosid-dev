@@ -32,5 +32,33 @@ class NamingTests(unittest.TestCase):
         self.assertEqual(n.url("vc-apigw"), "https://k7m2qx4d-vc-apigw.sandbox.example")
 
 
+    def test_addr_in_the_apps_layout_is_the_internal_name_and_image_port(self):
+        n = Naming("gdc")
+        self.assertEqual(n.addr("pdp"), "sirosid-gdc-pdp.internal:8080")
+        self.assertEqual(n.addr("vc-issuer"), "sirosid-gdc-vc-issuer.internal:8081")
+        self.assertEqual(n.addr("vc-issuer", "grpc"), "sirosid-gdc-vc-issuer.internal:8090")
+        self.assertEqual(n.addr("wallet-backend", "admin"), "sirosid-gdc-wallet-backend.internal:8081")
+        self.assertEqual(n.addr("mongodb"), "sirosid-gdc-mongodb.internal:27017")
+
+    def test_single_machine_layout_is_localhost_with_unique_ports(self):
+        from sirosid_core.naming import SINGLE_MACHINE_PORTS
+        n = Naming("t1", app_prefix="sid", host_pattern="{env}-{component}.example", layout="single-machine")
+        self.assertTrue(n.single_machine)
+        self.assertEqual(n.machine_app(), "sid-t1")
+        self.assertEqual(n.addr("pdp"), "127.0.0.1:8104")
+        self.assertEqual(n.addr("vc-registry", "grpc"), "127.0.0.1:8190")
+        ports = [p for kinds in SINGLE_MACHINE_PORTS.values() for p in kinds.values()]
+        self.assertEqual(len(ports), len(set(ports)), "two components would bind the same port")
+
+    def test_layout_round_trips_and_old_rows_mean_apps(self):
+        n = Naming("t1", app_prefix="sid", host_pattern="{env}-{component}.example", layout="single-machine")
+        self.assertEqual(Naming.from_dict(n.to_dict()), n)
+        old = {"env": "t1", "app_prefix": "sid", "host_pattern": "{app}.fly.dev"}
+        self.assertEqual(Naming.from_dict(old).layout, "apps")
+        self.assertNotIn("layout", Naming.from_dict(old).to_dict())
+        with self.assertRaises(ValueError):
+            Naming("x", layout="nope")
+
+
 if __name__ == "__main__":
     unittest.main()

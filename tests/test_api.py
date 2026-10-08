@@ -26,7 +26,7 @@ if HAVE:
 
 NEEDS = unittest.skipUnless(HAVE, "needs starlette, httpx, webauthn, cbor2 (sirosid_service/requirements.txt)")
 NEEDS_HELM = unittest.skipUnless(HAVE and shutil.which("helm") and shutil.which("openssl"), "needs helm and openssl")
-ORIGIN = "https://sirosid.dev"
+ORIGIN = "https://console.sirosid.dev"
 B64 = lambda b: base64.urlsafe_b64encode(b).rstrip(b"=").decode()
 
 
@@ -153,7 +153,8 @@ class WebSecurityTests(unittest.TestCase):
     def test_state_changing_requests_need_an_allowed_origin(self):
         cp, auth, app, admin, *_ = build()
         c = signed_in(cp, app, admin)
-        for origin in (False, "https://evil.example", "null", "http://sirosid.dev", "https://sirosid.dev.evil.example"):
+        for origin in (False, "https://evil.example", "null", "http://console.sirosid.dev", "https://sirosid.dev",
+                       "https://console.sirosid.dev.evil.example"):
             r = c.post("/api/configs/validate", {"config": {}}, origin=origin)
             self.assertEqual(r.status_code, 403, origin)
         self.assertEqual(c.post("/api/configs/validate", {"config": {}}).status_code, 200)
@@ -263,6 +264,21 @@ class ControlPlaneThroughHttpTests(unittest.TestCase):
         self.assertEqual(me.status_code, 200, "still signed in")
         self.assertFalse(me.json()["unlocked"])
         self.assertEqual(c.req("PUT", "/api/configs/x", {"config": {}}).status_code, 423)
+
+    def test_templates_are_offered_by_capability_and_each_one_saves(self):
+        cp, auth, app, admin, *_ = build()
+        plain = signed_in(cp, app, admin)
+        ids = [t["id"] for t in plain.get("/api/templates").json()["templates"]]
+        self.assertEqual(ids[0], "standard")
+        self.assertNotIn("custom-wallet-backend", ids, "needs the custom_images capability")
+        self.assertEqual(Console(app).get("/api/templates").status_code, 401)
+        power = signed_in(cp, app, admin, capabilities=["custom_images"])
+        templates = power.get("/api/templates").json()["templates"]
+        self.assertIn("custom-wallet-backend", [t["id"] for t in templates])
+        for t in templates:
+            self.assertEqual(power.req("PUT", f"/api/configs/{t['id']}", {"config": t["config"]}).status_code, 200, t["id"])
+        for t in plain.get("/api/templates").json()["templates"]:
+            self.assertEqual(plain.req("PUT", f"/api/configs/{t['id']}", {"config": t["config"]}).status_code, 200, t["id"])
 
     def test_policy_problems_come_back_all_at_once_as_a_422(self):
         cp, auth, app, admin, *_ = build()

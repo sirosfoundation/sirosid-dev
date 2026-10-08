@@ -73,6 +73,40 @@ never reads argv, the environment or a developer's disk:
   `FlyClient`'s org and token. `scripts/fly-up.py` is now argument parsing,
   `_spec_from_args()` and the summary.
 
+- `singlemachine.py` (+ `machines.py`, `oci.py`) — the **single-machine layout**
+  (`InstanceSpec.layout="single-machine"`, `fly-up --single-machine`): ONE app
+  `<prefix>-<env>` with ONE multi-container machine made through the Machines API, instead
+  of ~11 apps. Every component listens on its own loopback port (`naming.SINGLE_MACHINE_PORTS`,
+  always reached through `Naming.addr`); a front nginx inside wallet-frontend's nginx routes
+  by Host, so `host_pattern` must be FLAT (`{component}-{id}.<domain>`); large files ship
+  in a per-instance bundle image pushed without docker; secrets reach containers only via an
+  init container (app secrets and `files[].secret_name` do NOT reach API-created
+  containers). Real-Fly limits that shaped it: ~1 MiB config body, and **at most ~12 block
+  devices** (each distinct image, image volume, volume) - a 13th makes Firecracker fail with
+  `ResourceNotAvailable` and the machine sits in `created`. env-admin and conformance are
+  refused. fly-down / fly-power (`stop|start|reset`) need `--single-machine` (no
+  detection: the default path's command sequence is characterized).
+- `edge.py` (+ `edge/`, `scripts/edge-up.py`) - the **shared edge** in front of single-machine
+  instances with no public IPs: one Fly app holding `*.<domain>` + the apex certs, answering
+  `<component>-<id>.<domain>` with `fly-replay: app=sid-<id>;timeout=10s;fallback=prefer_self`
+  and serving the apex/www static site itself (`console.<domain>` is the console's own app, not
+  the edge's). Real-Fly facts it encodes: the replay header comes from a `map` that is empty
+  unless the exact flat shape matches, and is never `add_header ... always` (that would replay
+  404s); the raw Host is checked too ($host drops a trailing dot and a port); a stopped target
+  comes back as `fly-replay-failed` -> a 503 page; instances must stay on the org's DEFAULT
+  network (cross-network replay is refused); the edge never proxies or answers an Upgrade
+  itself; its app name must not start with `sid-`. `tests/test_edge.py` runs an adversarial Host
+  corpus through a Python mirror and through real nginx (docker). Measured through a real edge
+  (2026-10-05): ~2 ms replay overhead; websockets and 20 MB bodies pass intact; **a replay
+  STARTS a stopped machine even with autostart off**, so stopping a single-machine instance
+  cordons it (`lifecycle`) and start/reset/deploy uncordon - only then does a stopped instance
+  get the edge's 503 page (at the 10 s timeout); a replay to an app that does not exist is
+  Fly's empty 502 after ~7 s (no fallback); a client's `X-Forwarded-Proto` reaches the instance
+  verbatim (only `Fly-Client-IP` is replaced), so the behind-edge front sends `https` itself.
+- `tests/test_fly_up_characterization.py`'s vc-*.yaml hashes depend on the gitignored
+  `fixtures/rendered-secrets/vc*` of the checkout that wrote the golden: a fresh worktree
+  fails it until those files match.
+
 To call the deploy from a service:
 `state.workdir(store, id, subdir=f"fly-{env}")` -> `deploy_instance(spec, fly, naming,
 Resources(root), rendered_root=<yielded dir>, register=..., progress=...)`.
@@ -132,9 +166,14 @@ all of it against the fake flyctl.
   (`config.py`: `FLY_API_TOKEN` is required, origins must be https and under the RP ID, the
   host pattern must vary per instance). The first admin gets a **bootstrap invite** from
   `admin-invite` (refused once an admin exists) and enrols a passkey like anyone else.
-- RP ID is the apex **`sirosid.dev`** and is permanent. **Hard rule: nothing untrusted, and
-  in particular no instance content, may ever be served from any subdomain of
-  `sirosid.dev`** - any subdomain page may request passkeys scoped to the apex.
+- The console is **`console.sirosid.dev`** and that SUBDOMAIN is the RP ID (permanent: changing
+  it orphans every passkey). **Hard rule: nothing untrusted, and in particular no instance
+  content, may ever be served at or under `console.sirosid.dev`** - any page there may request
+  the console's passkeys. Instances are its SIBLINGS (`<component>-<id>.sirosid.dev`, through
+  the shared edge), isolated by that RP ID choice and, once submitted, by the PSL; `config.py`
+  refuses (`instance_host_may_be`) any host pattern that could reach the RP ID or an origin host.
+  `SIROSID_LAYOUT=single-machine` defaults the rest of that shape: `SIROSID_INSTANCE_DOMAIN=sirosid.dev`,
+  host pattern `{component}-{id}.<domain>`, `SIROSID_PUBLIC_IPS=false`, apps `sid-<id>`.
 - `console/` — the web UI, served by the service itself (`ApiConfig.console_dir`, env
   `SIROSID_CONSOLE_DIR`; only `index.html`, `js/`, `css/` from a table built at startup, so
   `console/test/` is never reachable). Plain ES modules, **no build step and no dependencies**.
@@ -180,6 +219,12 @@ all of it against the fake flyctl.
   message/error/done`). `tests/test_chat.py` uses a scripted fake model against the real tools and
   HTTP layer; the approval gate, withheld tool, call binding, budget and unlock checks are
   mutation-checked.
+- `sirosid_core/templates.py` — **starting-point configs** (standard stack, SIROS registry, wallet
+  attestation, DC API, interop, custom wallet-backend image). Plain data: a template is a saved config
+  plus a title/description/hints/`requires`; `ControlPlane.templates(who)` offers only those the user's
+  capabilities allow (`GET /api/templates`, MCP `list_config_templates`, the Configs tab's "Start from a
+  template"). `tests/test_templates.py` validates every template through `policy.validate`, so one
+  cannot rot behind a policy change; adding a config key means deciding whether a template shows it.
 - `tests/softauthn.py` is a software authenticator (real authenticator data, COSE keys,
   signed assertions) so passkey verification is exercised, not mocked.
 

@@ -1,0 +1,74 @@
+# Rotates the control plane's Fly org token (its FLY_API_TOKEN secret) every month.
+# The logic, and every failure mode, is scripts/rotate_fly_token.py (tested against
+# tests/fakefly.py): mint a new org token with a bounded expiry -> stage + deploy it as
+# the app's secret -> wait for /healthz -> only then revoke the old one(s). The token
+# is never printed.
+#
+# Credentials (environment secrets):
+#   FLY_ROTATOR_TOKEN   the token of a BOT Fly USER that is a member of ONLY the sirosdev
+#                       org: mints and revokes the sirosdev org token. A user token is
+#                       needed because org tokens cannot mint org tokens (nor deploy
+#                       tokens); a bot in no other org bounds what a leak can reach.
+#   FLY_DEPLOY_TOKEN_CONTROL_PLANE  the app-scoped deploy token for sirosid-console
+#                       (which lives in sirosfoundation, not sirosdev): sets the secret.
+# Setup in deploy/control-plane/README.md ("Token rotation").
+#
+# Environment protection: `control-plane-rotation` (holding both secrets), deployment
+# branches = main only (a scheduled run cannot wait for a reviewer, so do not add
+# required reviewers here; the branch restriction keeps other branches off the secrets).
+name: rotate fly org token
+
+on:
+  schedule:
+    - cron: "17 4 1 * *"        # 04:17 UTC on the 1st of every month
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be rotated, change nothing"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rotate-fly-org-token
+  cancel-in-progress: false
+
+env:
+  ORG: sirosdev
+  APP: sirosid-console
+  HEALTH_URL: https://console.sirosid.dev/healthz
+  # Same pin as deploy/control-plane/Dockerfile (a test keeps the two equal).
+  FLYCTL_VERSION: "0.4.111"
+  FLYCTL_SHA256: "1878d7fb1f8a418039042cf0749e4b7216c6c7018b66ae10611a64c2b6d9aa9e"
+
+jobs:
+  rotate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: control-plane-rotation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install flyctl (pinned, sha256-verified)
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/flyctl.tgz "https://github.com/superfly/flyctl/releases/download/v${FLYCTL_VERSION}/flyctl_${FLYCTL_VERSION}_Linux_x86_64.tar.gz"
+          echo "${FLYCTL_SHA256}  /tmp/flyctl.tgz" | sha256sum -c -
+          mkdir -p "$HOME/.local/bin" && tar -xzf /tmp/flyctl.tgz -C "$HOME/.local/bin" flyctl
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Rotate
+        env:
+          FLY_ROTATOR_TOKEN: ${{ secrets.FLY_ROTATOR_TOKEN }}
+          FLY_APP_TOKEN: ${{ secrets.FLY_DEPLOY_TOKEN_CONTROL_PLANE }}
+          # A scheduled run has no inputs: it rotates for real.
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          args=(--org "$ORG" --app "$APP" --health-url "$HEALTH_URL" --expiry 1440h)
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          python3 scripts/rotate_fly_token.py "${args[@]}"

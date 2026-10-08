@@ -66,7 +66,7 @@ STATIC_DIRS = ("js", "css")
 
 @dataclass
 class ApiConfig:
-    origins: Tuple[str, ...] = ("https://sirosid.dev",)
+    origins: Tuple[str, ...] = ("https://console.sirosid.dev",)
     cookie_max_age: float = 12 * 3600.0
     # Header carrying the real client address behind a trusted proxy (Fly sets
     # Fly-Client-IP). Empty = use the socket peer. Never trust it unless a proxy you
@@ -284,6 +284,7 @@ class Api:
             r("/api/passkeys/{passkey_id}", ["DELETE"], lambda w, d, p, q: a.remove_passkey(w, p["passkey_id"]) or {"ok": True}),
             # --- configs
             r("/api/schema", ["GET"], lambda w, d, p, q: cp.schema()),
+            r("/api/templates", ["GET"], lambda w, d, p, q: {"templates": cp.templates(w)}),
             r("/api/configs/validate", ["POST"], lambda w, d, p, q: {"problems": cp.validate_config(w, d.get("config") or {})}),
             r("/api/configs", ["GET"], lambda w, d, p, q: {"configs": cp.list_configs(w)}),
             r("/api/configs/{name}", ["GET"], lambda w, d, p, q: {"config": cp.get_config(w, p["name"])}),

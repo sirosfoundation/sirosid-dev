@@ -70,6 +70,8 @@ class DeployResult:
     admin_token: str = ""
     mongo_password: str = ""
     rendered_only: bool = False
+    # Single-machine layout only: the Fly app, the machine id and its container states.
+    machine: dict = field(default_factory=dict)
 
 
 def check_pki_consistency(ctx: DeployContext, pki_dir: Path):
@@ -187,6 +189,13 @@ def _vc_service_files(ctx: DeployContext, app: str, service: str, metadata: bool
 
 
 def _wallet_frontend_env(ctx: DeployContext, android_identities: dict = None) -> list:
+    args = []
+    for k, v in wallet_frontend_env(ctx, android_identities).items():
+        args += ["--env", f"{k}={v}"]
+    return args
+
+
+def wallet_frontend_env(ctx: DeployContext, android_identities: dict = None) -> dict:
     naming, docs, wallet_attestation = ctx.naming, ctx.docs, ctx.spec.wallet_attestation
     env = naming.env
     proxy = naming.url("wallet-proxy")
@@ -271,10 +280,36 @@ def _wallet_frontend_env(ctx: DeployContext, android_identities: dict = None) ->
         # OAuth-Client-Attestation headers vc-apigw is now configured to
         # accept never get sent.
         values["WIA_ENABLED"] = "true"
-    args = []
-    for k, v in values.items():
-        args += ["--env", f"{k}={v}"]
-    return args
+    return values
+
+
+def mini_oidc_env(naming: Naming) -> dict:
+    """mini-oidc's environment (both layouts), in the order the apps layout passes it."""
+    return {
+        # mini-oidc's own binary defaults CONFIG_FILE to the relative
+        # path configs/config.yaml, which doesn't exist in the image at
+        # that cwd - docker-compose.vc-services.yml sets this explicitly
+        # too, easy to miss since the file mounted below already lives
+        # at the "right" path and looks like it should just be picked up.
+        "CONFIG_FILE": "/etc/mini-oidc/configs/config.production.yaml",
+        "USERS_FILE": "/etc/mini-oidc/users.yaml",
+        "ISSUER": naming.url("mini-oidc"),
+        # RP_BASE_URL/CLIENT_ID only back the mini-oidc-rp test client
+        # (mini_oidc_config's first `clients` entry) - mini-oidc-rp itself
+        # isn't deployed here (a standalone harness for testing the OP,
+        # not part of vc-apigw's real flow), so these are unused but must
+        # be set to something for ${VAR} expansion to produce valid YAML.
+        "RP_BASE_URL": naming.url("mini-oidc"),
+        "CLIENT_ID": "mini-oidc-rp",
+        # Must match apigw's auth_providers.oidc.redirect_uri, set to the
+        # same value the rendered apigw config carries.
+        "APIGW_REDIRECT_URI": f"{naming.url('vc-apigw')}/oidcrp/callback",
+        # Explicit, not relying on mini_oidc_config()'s own defaults to
+        # coincidentally match what the rendered config sets on apigw's
+        # side - see fly_common.MINI_OIDC_APIGW_CLIENT_ID/_SECRET.
+        "APIGW_CLIENT_ID": MINI_OIDC_APIGW_CLIENT_ID,
+        "APIGW_CLIENT_SECRET": MINI_OIDC_APIGW_CLIENT_SECRET,
+    }
 
 
 def resolve_mongo_password(fly: FlyClient, naming: Naming, out_dir: Path, say=print) -> str:
@@ -464,33 +499,9 @@ def deploy_component(ctx: DeployContext, comp: dict):
     elif name == "mini-oidc":
         config_path = out_dir / "mini-oidc-config.yaml"
         config_path.write_text(mini_oidc_config(env, naming))
-        apigw_redirect = f"{naming.url('vc-apigw')}/oidcrp/callback"
-        deploy_args += [
-            # mini-oidc's own binary defaults CONFIG_FILE to the relative
-            # path configs/config.yaml, which doesn't exist in the image at
-            # that cwd - docker-compose.vc-services.yml sets this explicitly
-            # too, easy to miss since the file mounted below already lives
-            # at the "right" path and looks like it should just be picked up.
-            "--env", "CONFIG_FILE=/etc/mini-oidc/configs/config.production.yaml",
-            "--env", "USERS_FILE=/etc/mini-oidc/users.yaml",
-            "--env", f"ISSUER={naming.url('mini-oidc')}",
-            # RP_BASE_URL/CLIENT_ID only back the mini-oidc-rp test client
-            # (mini_oidc_config's first `clients` entry) - mini-oidc-rp itself
-            # isn't deployed here (a standalone harness for testing the OP,
-            # not part of vc-apigw's real flow), so these are unused but must
-            # be set to something for ${VAR} expansion to produce valid YAML.
-            "--env", f"RP_BASE_URL={naming.url('mini-oidc')}",
-            "--env", "CLIENT_ID=mini-oidc-rp",
-            # Must match apigw's auth_providers.oidc.redirect_uri, set to the
-            # same value the rendered apigw config carries.
-            "--env", f"APIGW_REDIRECT_URI={apigw_redirect}",
-            # Explicit, not relying on mini_oidc_config()'s own defaults to
-            # coincidentally match what the rendered config sets on apigw's
-            # side - see fly_common.MINI_OIDC_APIGW_CLIENT_ID/_SECRET.
-            "--env", f"APIGW_CLIENT_ID={MINI_OIDC_APIGW_CLIENT_ID}",
-            "--env", f"APIGW_CLIENT_SECRET={MINI_OIDC_APIGW_CLIENT_SECRET}",
-            "--file-local", f"/etc/mini-oidc/configs/config.production.yaml={config_path}",
-        ]
+        for k, v in mini_oidc_env(naming).items():
+            deploy_args += ["--env", f"{k}={v}"]
+        deploy_args += ["--file-local", f"/etc/mini-oidc/configs/config.production.yaml={config_path}"]
     elif name == "vc-registry":
         deploy_args += _vc_service_files(ctx, app, "vc-registry", metadata=False)
     elif name == "vc-issuer":
@@ -638,7 +649,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
         fly.ensure_secret(app, "flyApiTokens", json.dumps(tokens), force=True)
         fly.ensure_secret(app, "envAdminToken", persistent_secret(out_dir, "adminToken"))
         fly.ensure_secret(app, "mongoUri",
-                      f"mongodb://root:{mongo_password}@{naming.internal('mongodb')}:27017/?authSource=admin",
+                      f"mongodb://root:{mongo_password}@{naming.addr('mongodb')}/?authSource=admin",
                       force=True)
         deploy_args += [
             "--env", "ENV_ADMIN_PLATFORM=fly",
@@ -676,6 +687,10 @@ def deploy_component(ctx: DeployContext, comp: dict):
             # from inside a Fly machine. Override with 6PN .internal
             # addresses (reachable regardless of whether the target has a
             # public Fly URL too - vc-issuer doesn't, see COMPONENTS).
+            # KNOWN BUG, left as-is on purpose: vc-issuer's HTTP API is on 8081
+            # (naming.addr('vc-issuer')), not 8080. Fixing it changes the
+            # conformance characterization golden, so it needs its own reviewed
+            # change; conformance is refused in the single-machine layout.
             "--env", f"VC_ISSUER_URL=http://{naming.internal('vc-issuer')}:8080",
             "--env", f"VC_VERIFIER_URL=http://{naming.internal('vc-verifier')}:8080",
             "--env", f"VC_APIGW_URL=http://{naming.internal('vc-apigw')}:8080",
@@ -705,7 +720,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
         say(f"{name}: {naming.url(name)}")
 
 
-def register_vc_services(naming: Naming, admin_token: str, register, say=print, sleep=None):
+def register_vc_services(naming: Naming, admin_token: str, register, say=print, sleep=None, admin_url: str = ""):
     """Register this instance's vc-apigw and vc-verifier with wallet-backend's
     default tenant, through the caller's `register` callable (scripts/bootstrap.py
     in the CLI - the same code `make up` and env-admin's storage reset run, so the
@@ -724,7 +739,10 @@ def register_vc_services(naming: Naming, admin_token: str, register, say=print, 
     reported success.
     """
     env = naming.env
-    proxy_url = naming.url("wallet-proxy")
+    # admin_url: where wallet-backend's admin routes are reachable from HERE when
+    # that is not the wallet-proxy host (a single-machine instance whose hostnames
+    # are not in DNS yet still answers on <app>.fly.dev).
+    proxy_url = admin_url or naming.url("wallet-proxy")
     apigw_url = naming.url("vc-apigw")
     verifier_url = naming.url("vc-verifier")
     last_err = None
@@ -784,13 +802,18 @@ def deploy_order(components: list, conformance: bool, env_admin: bool = True) ->
 def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resources: Resources, *,
                     chart_dir: Path = None, rendered_root: Path = None, identities: list = None,
                     components: list = None, register=None, progress=print,
-                    render_only: bool = False) -> DeployResult:
+                    render_only: bool = False, secrets_dir: Path = None) -> DeployResult:
     """Deploy the instance `spec` describes.
 
     identities: Android signing identities (from identities_from_entries or the
     CLI's local files); default is spec.android_apps alone. components: the
     registry to deploy, default built from the pins in values-fly.yaml.
     render_only: render config and resolve images, deploy nothing.
+    secrets_dir: where the vc services' generated secrets (state.VC_SECRETS_DIR's
+    files) are kept. Default: resources.rendered_secrets, the CLI's one directory
+    shared by every target - right for a developer, wrong for a service, where
+    resources are read-only and instances must not share secrets: a service
+    passes <rendered_root>/fly-<env>/vc-secrets, which state.py saves.
 
     Idempotent: a redeploy reuses the state in rendered_root/fly-<env> (see
     state.py), creates nothing that exists and never rotates a generated secret.
@@ -838,7 +861,7 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
                       zk_circuits_sources=spec.zk_circuits_sources, dc_api_enable=spec.dc_api_enable,
                       credential_registries=spec.credential_registries, env_values=spec.values,
                       bbs_secret_key=spec.bbs_secret_key or None, naming=naming, resources=resources,
-                      say=say, warn=say)
+                      say=say, warn=say, secrets_dir=secrets_dir)
     except HelmError as e:
         raise DeployError(str(e)) from e
     mongo_version = extract_image(docs, "mongoCommunityVersion")

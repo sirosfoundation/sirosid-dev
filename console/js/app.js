@@ -235,10 +235,20 @@ function instanceCard(i) {
 // ---- configs -----------------------------------------------------------------------------------
 
 async function configsScreen() {
-  const [{ configs }, schema] = await Promise.all([api("GET", "/api/configs"), api("GET", "/api/schema")]);
+  const [{ configs }, schema, { templates }] = await Promise.all([api("GET", "/api/configs"), api("GET", "/api/schema"), api("GET", "/api/templates")]);
   const name = h("input", { id: "cname", placeholder: "name" });
   const doc = h("textarea", { id: "cdoc", spellcheck: "false" }, "{}");
   const problems = h("div", { class: "bad" });
+  const tplInfo = h("div", { class: "muted" });
+  const tpl = h("select", { id: "ctpl", "aria-label": "Template" }, [h("option", { value: "" }, "Choose a template…"), ...templates.map((t) => h("option", { value: t.id }, t.title))]);
+  tpl.addEventListener("change", () => {
+    const t = templates.find((x) => x.id === tpl.value);
+    tplInfo.replaceChildren(...(t ? [h("p", {}, t.description), ...t.hints.map((x) => h("p", { class: "muted" }, `Tip: ${x}`))] : []));
+    if (!t) return;
+    doc.value = JSON.stringify(t.config, null, 2);
+    if (!name.value.trim()) name.value = t.id;
+    problems.replaceChildren();
+  });
   const check = async () => {
     const { problems: p } = await api("POST", "/api/configs/validate", { config: JSON.parse(doc.value || "{}") });
     problems.replaceChildren(...p.map((x) => h("div", {}, x)));
@@ -253,7 +263,9 @@ async function configsScreen() {
         h("td", { class: "row end" },
           h("button", { on: { click: guard(async () => { const r = await api("GET", `/api/configs/${encodeURIComponent(c.name)}`); name.value = c.name; doc.value = JSON.stringify(r.config, null, 2); }) } }, "Edit"),
           h("button", { class: "danger", on: { click: guard(async () => { if (confirm(`Delete ${c.name}?`)) { await api("DELETE", `/api/configs/${encodeURIComponent(c.name)}`); show(); } }) } }, "Delete"))))) : h("p", { class: "muted" }, "None yet.")),
-    h("div", { class: "card" }, h("h2", {}, "Edit"), h("label", { for: "cname" }, "Name"), name, h("label", { for: "cdoc" }, "Config (JSON)"), doc, problems,
+    h("div", { class: "card" }, h("h2", {}, "Edit"),
+      h("label", { for: "ctpl" }, "Start from a template"), tpl, tplInfo,
+      h("label", { for: "cname" }, "Name"), name, h("label", { for: "cdoc" }, "Config (JSON)"), doc, problems,
       h("div", { class: "row end" },
         h("button", { on: { click: guard(async () => { if (await check()) toast("Valid"); }) } }, "Validate"),
         h("button", { class: "primary", on: { click: guard(async () => {

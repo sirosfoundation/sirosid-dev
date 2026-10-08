@@ -343,7 +343,7 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
                               f"for env '{env}'. Only consistent within the fly-up.py run that set the "
                               f"matching Fly secret; for a one-off, re-run 'make fly-up ENV={env}'.")
         auth = f"root:{mongo_password}@" if mongo_password else ""
-        uri = f"mongodb://{auth}{(naming or Naming(env)).internal('mongodb')}:27017/?authSource=admin"
+        uri = f"mongodb://{auth}{(naming or Naming(env)).addr('mongodb')}/?authSource=admin"
     config.setdefault("common", {})["mongo"] = {"uri": uri}
     return config
 

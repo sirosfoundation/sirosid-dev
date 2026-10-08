@@ -9,6 +9,7 @@ org with its own credential. Slow work (deploy, reset) runs through an injected
 Runner: threads in production, inline in tests.
 """
 import json
+import logging
 import re
 import secrets
 import time
@@ -19,16 +20,20 @@ from typing import Callable, List, Optional
 from sirosid_core import policy as policy_mod
 from sirosid_core import state as state_mod
 from sirosid_core.components import component_names
-from sirosid_core.deploy import DeployError, deploy_instance
+from sirosid_core.deploy import DeployError, deploy_instance, register_vc_services
 from sirosid_core.fly import FlyClient, FlyError
-from sirosid_core.lifecycle import destroy_instance, start_instance, stop_instance
-from sirosid_core.naming import Naming
+from sirosid_core.lifecycle import destroy_instance, reset_single_machine, start_instance, stop_instance
+from sirosid_core.machines import MachinesClient, MachinesError
+from sirosid_core.naming import LAYOUT_SINGLE_MACHINE, Naming
+from sirosid_core.singlemachine import deploy_instance_single_machine
 from sirosid_core.policy import PlatformPolicy, PolicyError
 from sirosid_core.resources import Resources
 from sirosid_core.spec import InstanceSpec
 
 from .db import Database, SealedStateStore, delete_state, hash_token
 from .vault import KEY_CHECK_PLAINTEXT, Locked, SessionKeys, VaultError, aad
+
+log = logging.getLogger("sirosid.service")
 
 DAY = 86400.0
 ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz234567"
@@ -105,7 +110,15 @@ class ThreadRunner:
         self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="cp-job")
 
     def submit(self, fn, *args):
-        self._pool.submit(fn, *args)
+        self._pool.submit(self._run, fn, *args)
+
+    @staticmethod
+    def _run(fn, *args):
+        # A pool swallows a job's exception into a Future nobody reads: log it.
+        try:
+            fn(*args)
+        except Exception:                                   # noqa: BLE001
+            log.exception("background job %s failed", getattr(fn, "__name__", fn))
 
 
 def generate_instance_id(rng=secrets) -> str:
@@ -119,7 +132,7 @@ def _json(v):
 class ControlPlane:
     def __init__(self, db: Database, fly: FlyClient, resources: Resources, platform: PlatformPolicy = None,
                  limits: Limits = None, runner=None, register: Callable = None, clock=None,
-                 id_generator: Callable[[], str] = None):
+                 id_generator: Callable[[], str] = None, machines=None, registry=None):
         self.db = db
         self.fly = fly
         self.resources = resources
@@ -130,6 +143,18 @@ class ControlPlane:
         self.clock = clock or db.clock
         self._new_id = id_generator or generate_instance_id
         self.keys = SessionKeys(self.clock)
+        # The Machines API client for single-machine instances: the same org
+        # credential as `fly`. Built lazily so an apps-layout service needs none.
+        self._machines = machines
+        # Where single-machine config bundles are pushed (sirosid_core.oci.Registry);
+        # None = registry.fly.io with a credential minted per push.
+        self.registry = registry
+
+    @property
+    def machines(self) -> MachinesClient:
+        if self._machines is None:
+            self._machines = MachinesClient(self.fly.token)
+        return self._machines
 
     # ---- principals -------------------------------------------------------
 
@@ -354,6 +379,11 @@ class ControlPlane:
     def schema(self) -> dict:
         return policy_mod.schema()
 
+    def templates(self, who: Principal) -> list:
+        """Starting-point configs this user can save (those needing a capability they lack are left out)."""
+        from sirosid_core.templates import available_templates
+        return available_templates(who.capabilities, self.resources)
+
     def validate_config(self, who: Principal, doc: dict) -> list:
         return [str(p) for p in policy_mod.validate(doc, who.capabilities, self.platform)]
 
@@ -421,7 +451,9 @@ class ControlPlane:
                 expires = None
             iid = self._unused_id(d)
             spec = policy_mod.build_spec(config, iid, caps, self.platform)
-            naming = {"env": spec.env, "app_prefix": spec.app_prefix, "host_pattern": spec.host_pattern}
+            # Plaintext, layout included: stop/start/destroy/the reaper and the
+            # sweeper must know which layout an instance is with nobody logged in.
+            naming = spec.naming().to_dict()
             d.execute("INSERT INTO instances(id,owner,name,status,naming,spec,config,created_at,updated_at,expires_at,kept) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                       (iid, who.user_id, name[:64], "creating", _json(naming),
                        sealer.seal(_json(spec.to_dict()).encode(), aad(who.user_id, "spec", iid)),
@@ -489,8 +521,10 @@ class ControlPlane:
     def _naming(self, r) -> Naming:
         """From the plaintext column: stop, start, destroy, the reaper and the
         sweeper must work with nobody logged in, so they never need the sealed spec."""
-        n = json.loads(r["naming"])
-        return Naming(n["env"], app_prefix=n["app_prefix"], host_pattern=n["host_pattern"])
+        return Naming.from_dict(json.loads(r["naming"]))
+
+    def _machines_for(self, r):
+        return self.machines if self._naming(r).single_machine else None
 
     def _spec(self, r, sealer) -> InstanceSpec:
         return InstanceSpec.from_dict(json.loads(sealer.open(bytes(r["spec"]), aad(r["owner"], "spec", r["id"]))))
@@ -506,19 +540,34 @@ class ControlPlane:
         store = SealedStateStore(self.db, sealer, r["owner"])
         try:
             with state_mod.workdir(store, iid, subdir=f"fly-{iid}") as scratch:
-                result = deploy_instance(spec, self.fly, spec.naming(), self.resources, rendered_root=scratch,
-                                         register=self.register, progress=None)
+                # Per instance and sealed with its state - never the shared, read-only resources.
+                secrets_dir = scratch / f"fly-{iid}" / state_mod.VC_SECRETS_DIR
+                if spec.layout == LAYOUT_SINGLE_MACHINE:
+                    result = deploy_instance_single_machine(
+                        spec, self.fly, spec.naming(), self.resources, machines=self.machines,
+                        rendered_root=scratch, register=self.register, progress=None, registry=self.registry,
+                        secrets_dir=secrets_dir)
+                else:
+                    result = deploy_instance(spec, self.fly, spec.naming(), self.resources, rendered_root=scratch,
+                                             register=self.register, progress=None, secrets_dir=secrets_dir)
             self._set(iid, status="running", urls=_json(result.urls), error="")
             self.db.audit("system", "deployed", iid)
-        except (DeployError, FlyError, policy_mod.PolicyError, VaultError) as e:
+        except (DeployError, FlyError, MachinesError, policy_mod.PolicyError, VaultError) as e:
             self._set(iid, status="failed", error=str(e)[:500])
             self.db.audit("system", "deploy_failed", iid, error=str(e)[:200])
+        except Exception as e:                              # noqa: BLE001
+            # Anything else (a bug, a read-only file, a missing binary) must still end
+            # the job in a state the owner can see and act on - not 'creating' forever.
+            log.exception("deploy of %s failed unexpectedly", iid)
+            msg = f"internal error during deploy ({type(e).__name__}: {e})"[:500]
+            self._set(iid, status="failed", error=msg)
+            self.db.audit("system", "deploy_failed", iid, error=msg[:200])
 
     def stop_instance(self, who: Principal, iid: str) -> dict:
         r = self._instance_row(who, iid)
         if r["status"] not in ("running", "failed"):
             raise InvalidState(f"cannot stop an instance that is {r['status']}")
-        report = stop_instance(self.fly, self._naming(r))
+        report = stop_instance(self.fly, self._naming(r), machines=self._machines_for(r))
         self._set(iid, status="stopped" if report.ok else "failed", error="" if report.ok else str(report.failed)[:300])
         self.db.audit(who.user_id, "stop_instance", iid)
         return self.get_instance(who, iid)
@@ -527,7 +576,7 @@ class ControlPlane:
         r = self._instance_row(who, iid)
         if r["status"] not in ("stopped", "failed"):
             raise InvalidState(f"cannot start an instance that is {r['status']}")
-        report = start_instance(self.fly, self._naming(r))
+        report = start_instance(self.fly, self._naming(r), machines=self._machines_for(r))
         self._set(iid, status="running" if report.ok else "failed", error="" if report.ok else str(report.failed)[:300])
         self.db.audit(who.user_id, "start_instance", iid)
         return self.get_instance(who, iid)
@@ -541,7 +590,7 @@ class ControlPlane:
             return self._public(r)
         # No intermediate status on purpose: if the process dies mid-teardown the
         # instance still looks live and past its time, so the reaper simply retries.
-        report = destroy_instance(self.fly, self._naming(r))
+        report = destroy_instance(self.fly, self._naming(r), machines=self._machines_for(r))
         if report.ok:
             self._set(r["id"], status="destroyed", urls="{}")
             delete_state(self.db, r["id"])
@@ -561,6 +610,13 @@ class ControlPlane:
         if r["status"] not in ("running", "stopped", "failed"):
             raise InvalidState(f"cannot reset an instance that is {r['status']}")
         naming = self._naming(r)
+        if naming.single_machine:
+            # In place: drop the databases inside the mongodb container, restart
+            # the one machine, register the issuer and verifier again.
+            self._set(iid, status="resetting", error="")
+            self.db.audit(who.user_id, "reset_instance", iid)
+            self.runner.submit(self._reset_single_job, iid, sealer)
+            return self.get_instance(who, iid)
         app = naming.app("mongodb")
         self._set(iid, status="resetting", error="")
         stop_instance(self.fly, naming)
@@ -572,6 +628,30 @@ class ControlPlane:
         self.db.audit(who.user_id, "reset_instance", iid)
         self.runner.submit(self._deploy_job, iid, sealer)
         return self.get_instance(who, iid)
+
+    def _reset_single_job(self, iid: str, sealer):
+        r = self.db.one("SELECT * FROM instances WHERE id=?", (iid,))
+        if not r or r["status"] != "resetting":
+            return
+        naming = self._naming(r)
+        report = reset_single_machine(self.fly, self.machines, naming)
+        if not report.ok:
+            self._set(iid, status="failed", error=("reset failed: " + str(report.failed))[:500])
+            self.db.audit("system", "reset_failed", iid)
+            return
+        try:
+            if self.register is not None:
+                spec = self._spec(r, sealer)
+                token = SealedStateStore(self.db, sealer, r["owner"]).load(iid).get("adminToken", b"").decode().strip()
+                register_vc_services(naming, token, self.register, lambda m: None,
+                                     admin_url=f"https://{naming.machine_app()}.fly.dev" if spec.public_ips else "")
+            self._set(iid, status="running", error="")
+            self.db.audit("system", "reset_done", iid)
+        except (DeployError, VaultError) as e:
+            self._set(iid, status="failed", error=str(e)[:500])
+        except Exception as e:                              # noqa: BLE001
+            log.exception("reset of %s failed unexpectedly", iid)
+            self._set(iid, status="failed", error=f"internal error during reset ({type(e).__name__}: {e})"[:500])
 
     def set_keep(self, who: Principal, iid: str, keep: bool) -> dict:
         r = self._instance_row(who, iid)
@@ -613,19 +693,27 @@ class ControlPlane:
         comps = "|".join(re.escape(c) for c in sorted(component_names(), key=len, reverse=True))
         return re.compile(rf"^{re.escape(self.platform.app_prefix)}-([a-z2-7]{{{ID_LENGTH}}})-({comps})$")
 
+    def _machine_app_pattern(self):
+        """A single-machine instance's one app: <prefix>-<8 id chars>, nothing after."""
+        return re.compile(rf"^{re.escape(self.platform.app_prefix)}-([a-z2-7]{{{ID_LENGTH}}})$")
+
     def sweep_orphans(self) -> dict:
         """Find apps in the org that look like ours but belong to no live instance and
         destroy them after a grace period. Only apps matching exactly
-        <prefix>-<8 id chars>-<known component> are ever considered, so anything else
-        in the org is invisible to this."""
+        <prefix>-<8 id chars>-<known component> (the apps layout) or
+        <prefix>-<8 id chars> (the single-machine layout's one app) are ever
+        considered, so anything else in the org is invisible to this. Both shapes
+        are recognised whatever the platform deploys now, so switching layouts
+        never strands an instance."""
         now = self.clock()
-        pat = self._app_pattern()
+        pat, single = self._app_pattern(), self._machine_app_pattern()
         live = {r["id"] for r in self.db.all(f"SELECT id FROM instances WHERE status IN ({','.join('?' * len(LIVE))})", LIVE)}
-        found = {}
+        found, layouts = {}, {}
         for app in self.fly.list_apps():
-            m = pat.match(app)
+            m = pat.match(app) or single.match(app)
             if m and m.group(1) not in live:
                 found.setdefault(m.group(1), []).append(app)
+                layouts.setdefault(m.group(1), set()).add("apps" if m.re is pat else LAYOUT_SINGLE_MACHINE)
         seen = {r["app"]: r["first_seen"] for r in self.db.all("SELECT * FROM orphans")}
         current = {a for apps in found.values() for a in apps}
         for gone in set(seen) - current:
@@ -636,9 +724,13 @@ class ControlPlane:
                 self.db.execute("INSERT OR IGNORE INTO orphans(app, first_seen) VALUES(?,?)", (a, now))
             first = min(self.db.one("SELECT first_seen FROM orphans WHERE app=?", (a,))["first_seen"] for a in apps)
             if now - first >= self.limits.sweep_grace_seconds:
-                report = destroy_instance(self.fly, Naming(iid, app_prefix=self.platform.app_prefix))
-                self.db.audit("sweeper", "destroy_orphan", iid, apps=apps, ok=report.ok)
-                if report.ok:
+                ok = True
+                for layout in sorted(layouts[iid]):
+                    naming = Naming(iid, app_prefix=self.platform.app_prefix, layout=layout)
+                    ok = destroy_instance(self.fly, naming,
+                                          machines=self.machines if naming.single_machine else None).ok and ok
+                self.db.audit("sweeper", "destroy_orphan", iid, apps=apps, ok=ok)
+                if ok:
                     destroyed.append(iid)
                     for a in apps:
                         self.db.execute("DELETE FROM orphans WHERE app=?", (a,))
