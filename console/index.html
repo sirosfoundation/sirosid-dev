@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <title>SIROS ID Dev</title>
 <link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/css/console.css">
@@ -11,12 +11,19 @@
 <header class="site-header">
   <div class="container">
     <a href="/" class="logo"><img src="/img/siros-logo.png" alt="SIROS Foundation" class="logo-image"><span>ID Dev</span></a>
-    <nav id="nav" class="main-nav" aria-label="Main navigation" hidden></nav>
-    <span id="who"></span>
+    <span class="grow"></span>
+    <div id="account" class="account" hidden>
+      <button id="account-btn" class="account-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu"></button>
+      <div id="account-menu" class="menu" role="menu" aria-labelledby="account-btn" hidden>
+        <a id="docs-link" role="menuitem" href="https://sirosid.dev" target="_blank" rel="noopener noreferrer">Documentation ↗</a>
+        <button id="signout" role="menuitem">Sign out</button>
+      </div>
+    </div>
   </div>
 </header>
 <div class="stage" aria-hidden="true"></div>
 <main id="main" class="container"><p class="muted">Loading…</p></main>
+<nav id="tabbar" class="tabbar" aria-label="Panes" hidden></nav>
 <div id="toast" role="status" aria-live="polite"></div>
 <footer class="site-footer">
   <div class="container">
