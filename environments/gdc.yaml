@@ -28,52 +28,24 @@ credential_registries:
   - https://registry.siros.org
 
 images:
-  # Built locally from SUNET/vc upstream main plus the three fixes this
-  # environment needed, all of them found here:
-  #   #667 (MERGED) keep the VCTM raw bytes whatever their source - without it
-  #        apigw sends the issuer an empty vctm and every POST /credential
-  #        fails validation, since gdc resolves its types from registry.siros.org
-  #   #668 raise the metadata signing limit (and the gRPC limit under it) -
-  #        this issuer publishes 2.19 MiB of metadata and could not sign it,
-  #        so it served it unsigned
-  #   #669 serve type metadata for registry-resolved scopes - the wallet
-  #        checks vct#integrity against the document it resolves, and with
-  #        /type-metadata/<scope> answering 500 it had nothing matching to
-  #        check against and refused to store the credential
-  # Replace these with a published tag once all three are merged and released.
+  # vc: BUILT LOCALLY from SUNET/vc upstream main - commit dc4c08e4f (2026-10-07, merge of #751).
+  # Every fix this environment once needed is merged upstream now (#667 VCTM raw bytes, #668 metadata
+  # signing limit, #669 type metadata for registry-resolved scopes, #722 Vega ZK 32-byte salt), so this is
+  # plain main with no patches. Build recipe, per service (registry issuer verifier apigw):
+  #   docker build -f dockerfiles/worker --build-arg SERVICE_NAME=<svc> \
+  #     -t registry.fly.io/sirosid-gdc-vc-<svc>:local-<epoch> .   # then docker push (flyctl auth docker)
+  # THE VERIFIER NEEDS `--target runtime-verifier`: a bare build selects the default (last) stage, which has
+  # no libzk_cred_longfellow.so / libzk_cred_vega.so, and the verifier dies at start with "error while
+  # loading shared libraries" (found on the 2026-10-08 refresh).
+  # The Dockerfile's default GOBUILD_IMAGE is golang:1.27.1-bookworm now, matching its runtime stage's
+  # glibc, so no override is needed (an older default built binaries that died with "GLIBC_2.39 not found").
   #
-  # These replaced an integration branch carrying upstream PRs #620 (native
-  # Vega ZK/PPID verification) and #626 (config-driven preset buttons). Both
-  # merged upstream on 2026-09-09, so that branch is obsolete - upstream main
-  # carries the Vega verifier, the worker Dockerfile builds its native library,
-  # and the preset category/order/featured fields are in the chart-facing
-  # config. Do not resurrect it.
-  #
-  # Built with GOBUILD_IMAGE=golang:1.27.1-bookworm. The Dockerfile's default
-  # builder tag now resolves to Debian 13 (glibc 2.41) while its runtime stage
-  # is distroless cc-debian12 (glibc 2.36), so a default build produces
-  # binaries that die with "GLIBC_2.39 not found" at startup.
-  #
-  # All four vc-services MUST be bumped together: they share one config shape
-  # unmarshaled into the same model.Cfg, so leaving one on an older binary
-  # while another expects a newer shape crash-loops it on startup.
-  #
-  # 2026-10-01 bump: SUNET/vc#722 (merged upstream, commit 74d464a82) fixes
-  # a real Vega ZK presentation bug found via this exact environment - the
-  # issuer sized each IssuerSignedItem's `random` salt at 16 bytes (tuned
-  # for zk-cred-longfellow's own item-size ceiling), but zk-cred-vega's r12
-  # circuit hardcodes a byte offset that only works with a 32-byte salt,
-  # so every Vega presentation failed verification with InvalidSumcheckProof
-  # regardless of digest ID or claim content. Fixed via an opt-in
-  # `zk_salt_bytes` MDDLSchema field (see fixtures/vc-metadata/
-  # mdl_zk4.mdoc.json's own `"zk_salt_bytes": 32`) - confirmed end-to-end on
-  # a real device against this redeploy before the PR was even merged;
-  # these four pins are simply the same fix rebuilt from the real merged
-  # upstream commit instead of the PR's feature-branch tip.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1790861609
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1790861651
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1790861559
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1790861522
+  # All four vc-services MUST be bumped together: they share one config shape unmarshaled into the same
+  # model.Cfg, so leaving one on an older binary while another expects a newer shape crash-loops it.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1791454606
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1791453929
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1791453929
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1791453929
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -105,7 +77,18 @@ images:
   # down (#357). The shared default moved to 0.22.1 in the same change; this
   # pin stays because it is what stopped gdc drifting the last time the
   # shared one moved under it.
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.22.1
+  # 0.22.1 -> 0.22.3 (2026-10-08 refresh: the last released versions of everything but vc).
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.22.3
+
+  # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
+  # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
+  #   go-trust (the PDP): 0.20.7 -> 0.24.1. The unknown-config-key warning announced in 0.23.0 did not
+  #     become a startup error in 0.24.0, so the rendered pdp config is unaffected.
+  pdp: ghcr.io/sirosfoundation/go-trust:0.24.1
+  #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
+  #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
+  #   mini-oidc 0.0.5 and env-admin 0.1.1 are already the newest releases (the values-fly.yaml pins).
 
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
 # mdoc issuer - trusted here so a wallet can receive a credential from it
