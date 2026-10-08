@@ -1,0 +1,4 @@
+- id: spin-up-standard
+  title: Spin up a standard test stack
+  category: get-started
+  prompt: Create a standard test environment for me and tell me when it is ready.
