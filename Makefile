@@ -561,7 +561,7 @@ help: ## Show this help
 	@echo "                     baseline: go-wallet-backend's own real policy (rules/default.rules) -"
 	@echo "                     use only when directly testing AS rule behavior"
 	@echo ""
-	@echo "  $(YELLOW)REGISTRY=$(NC)<vendored|external>
+	@echo "  $(YELLOW)REGISTRY=$(NC)<vendored|external>"
 	@echo "                     Where credential type metadata comes from (also honored by fly-up)"
 	@echo "                     default: $(GREEN)vendored$(NC) - documents in fixtures/vc-metadata"
 	@echo "                     external: vc and wallet-backend both resolve types from"

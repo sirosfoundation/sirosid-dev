@@ -328,10 +328,15 @@ def preflight(opts: dict) -> list:
     def check(name, ok, detail=""):
         checks.append({"name": name, "ok": bool(ok), "detail": detail})
 
+    # GOLDEN= swaps wallet-frontend, wallet-backend and go-trust for pre-built ghcr.io images
+    # (docker-compose.golden*.yml reset their `build:`), so no sibling checkout is used for them.
+    # The vc services still build from ../vc, so that check below is NOT skipped.
+    golden = bool(opts["golden"])
     check("docker", shutil.which("docker"), "docker CLI on PATH")
-    for name, rel in (("wallet-frontend", "../wallet-frontend"), ("go-wallet-backend", "../go-wallet-backend")):
-        check(f"{name} checkout", (root / rel).is_dir(), f"{rel} - run `make setup`")
-    if opts["pdp"] in ("allow", "whitelist", "deny", "helm"):
+    if not golden:
+        for name, rel in (("wallet-frontend", "../wallet-frontend"), ("go-wallet-backend", "../go-wallet-backend")):
+            check(f"{name} checkout", (root / rel).is_dir(), f"{rel} - run `make setup`")
+    if opts["pdp"] in ("allow", "whitelist", "deny", "helm") and not golden:
         check("go-trust checkout", (root / "../go-trust").is_dir(), "../go-trust - run `make setup`")
     if opts["vc"] or opts["conformance"] or opts["facetec"]:
         check("vc checkout", (root / "../vc").is_dir(), "../vc - run `make setup`")
