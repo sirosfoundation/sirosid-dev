@@ -5,9 +5,11 @@ volume with continuous backup is plenty. Everything is plain rows and JSON; no O
 Times are epoch seconds.
 
 What is sealed (see vault.py) and what is not: a user's saved configs, an instance's
-full spec and config, and its secrets (admin token, PKI, Mongo password) are sealed
-under the owner's key; ids, owners, names, status, expiry, public URLs and the
-`naming` (env, app prefix, hostname pattern) stay plaintext, because stop, start,
+full spec and config (and the pending ones of a reconfigure in progress), and its
+secrets (admin token, PKI, Mongo password) are sealed under the owner's key; ids,
+owners, names, status, expiry, public URLs, the NAME of the saved config an instance
+was made from (never its content) and the `naming` (env, app prefix, hostname
+pattern, layout) stay plaintext, because stop, start,
 destroy, the reaper and the sweeper must work with nobody logged in. So a database
 dump or a backup reveals who has which instances and when they expire, and nothing
 the users put in them.
@@ -37,7 +39,8 @@ CREATE TABLE IF NOT EXISTS configs(
 CREATE TABLE IF NOT EXISTS instances(
   id TEXT PRIMARY KEY, owner TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
   naming TEXT NOT NULL, spec BLOB NOT NULL, config BLOB NOT NULL, created_at REAL NOT NULL, updated_at REAL NOT NULL,
-  expires_at REAL, kept INTEGER NOT NULL DEFAULT 0, urls TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '');
+  expires_at REAL, kept INTEGER NOT NULL DEFAULT 0, urls TEXT NOT NULL DEFAULT '{}', error TEXT NOT NULL DEFAULT '',
+  config_name TEXT, pending_spec BLOB, pending_config BLOB);
 CREATE INDEX IF NOT EXISTS instances_owner ON instances(owner);
 CREATE TABLE IF NOT EXISTS state(
   instance_id TEXT NOT NULL, path TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY(instance_id, path));
@@ -74,6 +77,18 @@ class Database:
                 self._c.execute("PRAGMA busy_timeout=5000")
                 self._c.execute("PRAGMA journal_mode=WAL")
             self._c.executescript(SCHEMA)
+            self._migrate()
+
+    # Columns added after the first release: CREATE TABLE IF NOT EXISTS leaves an
+    # existing table alone, so a database restored from a backup gets them here.
+    ADDED_COLUMNS = {"instances": (("config_name", "TEXT"), ("pending_spec", "BLOB"), ("pending_config", "BLOB"))}
+
+    def _migrate(self):
+        for table, cols in self.ADDED_COLUMNS.items():
+            have = {r[1] for r in self._c.execute(f"PRAGMA table_info({table})").fetchall()}
+            for name, kind in cols:
+                if name not in have:
+                    self._c.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
 
     def close(self):
         with self._lock:

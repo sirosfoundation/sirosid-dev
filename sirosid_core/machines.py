@@ -69,14 +69,15 @@ class MachinesClient:
 
     # ---- plumbing -------------------------------------------------------------
 
-    def _call(self, method, path, body=None, ok=(200, 201, 202, 204), quiet=False, timeout=None):
+    def _call(self, method, path, body=None, ok=(200, 201, 202, 204), quiet=False, timeout=None, retry=True):
         data = json.dumps(body).encode() if body is not None else None
         headers = {"Authorization": authorization(self._token), "Accept": "application/json"}
         if data is not None:
             headers["Content-Type"] = "application/json"
         # A read is retried on a network error (a DNS hiccup must not fail a
         # 10-minute deploy or a reaper pass); a write is not - it may have landed.
-        attempts = 3 if method == "GET" else 1
+        # retry=False: a status probe that must answer quickly instead.
+        attempts = 3 if method == "GET" and retry else 1
         for attempt in range(attempts):
             try:
                 status, raw = self._transport(method, self.base_url + path, headers, data, timeout or self.timeout)
@@ -101,12 +102,12 @@ class MachinesClient:
 
     # ---- machines ---------------------------------------------------------------
 
-    def list_machines(self, app: str) -> list:
-        out = self._call("GET", f"/apps/{self._q(app)}/machines")
+    def list_machines(self, app: str, timeout: float = None, retry: bool = True) -> list:
+        out = self._call("GET", f"/apps/{self._q(app)}/machines", timeout=timeout, retry=retry)
         return out if isinstance(out, list) else []
 
-    def get_machine(self, app: str, machine_id: str) -> dict:
-        return self._call("GET", f"/apps/{self._q(app)}/machines/{self._q(machine_id)}")
+    def get_machine(self, app: str, machine_id: str, timeout: float = None, retry: bool = True) -> dict:
+        return self._call("GET", f"/apps/{self._q(app)}/machines/{self._q(machine_id)}", timeout=timeout, retry=retry)
 
     def create_machine(self, app: str, config: dict, region: str = "", name: str = "",
                        min_secrets_version: int = None, skip_launch: bool = False) -> dict:

@@ -182,7 +182,7 @@ all of it against the fake flyctl.
   `js/container.js` is the key container (the privatedata-spec key layer, WebCrypto only;
   our own HKDF info string so a PRF output is never confusable with the wallet's);
   `js/webauthn.js` converts options and **strips the PRF output from everything sent to the
-  server**; `js/app.js` builds the DOM with `createElement`/`textContent` only. Enrolment refuses
+  server**; the page is flat ES modules in `js/` (the server serves no subdirectories): `app.js` (sign-in pages and the chat | environment | library workspace), `store.js` (state, bus, 401/423 handling, the ~4 s status poll), `ui.js` (`h()`, modal with focus trap, popover, toast), `keys.js` (passkeys + container), `chat.js`/`chatlogic.js` (the assistant pane; the queue and approval gate are pure and mutation-tested), `env.js`, `library.js`, `settings.js`, `format.js`; the DOM is built with `createElement`/`textContent` only and a newer endpoint that 404s without an API error code is treated as absent (its tab is hidden). Enrolment refuses
   an authenticator without `prf.enabled` before finish, then takes a second touch for the PRF
   output. Adding a passkey stores the new container *before* registering the credential, so a
   failure never leaves a passkey that cannot open it. The main key lives in page memory only: a
@@ -203,6 +203,44 @@ all of it against the fake flyctl.
   key container are deliberately not tools. `/mcp` refuses a browser `Origin` that is not ours
   (DNS rebinding). `tests/test_mcp.py` covers the flow and is mutation-checked (PKCE, redirect,
   origin, replay and key-session revocation each fail a test when removed).
+  Besides tools the server offers **resources** (`sirosid://knowledge/<topic>` text/markdown,
+  `sirosid://templates/<id>` JSON - only the templates the user's capabilities allow -,
+  `sirosid://schema/config`; an unknown URI is JSON-RPC `-32002`) and **prompts = the platform's
+  skills** (`skills.py`: `spin-up-environment`, `reconfigure-environment`, `add-trusted-party`,
+  `test-android-passkeys`, `diagnose-environment`, `clean-up-environments`): each renders a runbook
+  naming the tools to call in order. A runbook names only tools in the table (a test parses every
+  backticked name against the tool table and the config schema - **renaming a tool means fixing
+  `skills.py`**) and only knowledge topics that exist at render time, always with a search step, so
+  it stays right while the knowledge base changes. Prompt arguments are strings, validated (bad =
+  `-32602`). `initialize`'s `instructions` tell clients to read the knowledge and prompts first.
+- **Environments** (the console's one concept; the API calls them instances, and an instance's config
+  is part of it): `ControlPlane.reconfigure_instance(who, id, config | config_name)` validates the new
+  config against the caller's CURRENT capabilities (all problems at once, 422), rebuilds the spec with
+  `policy.rebuild_spec` - which keeps the deployed spec's `PLATFORM_FIELDS` (env, region, prefix, host
+  pattern, layout, public IPs, ...), so a platform that switched layouts never deploys a second copy -
+  and redeploys in the background through the same job as create/reset, keeping data and generated
+  state (apps: every component redeploys, changed ones restart; single-machine: the machine config is
+  updated, which restarts the machine). **The working config is never lost**: the new spec/config are
+  sealed into `pending_*` columns and replace the instance's own only after the redeploy succeeded; a
+  failure ends `failed` with an error saying the previous config is still in place (reconfigure again
+  with it to go back), and the commit is guarded on `status='reconfiguring'` so a destroy or the reaper
+  meanwhile wins. Allowed from `running`/`failed`; **a stopped instance is refused ("start it first")**
+  because a redeploy starts every machine (`ensure_running`, the machine update) - applying a config
+  would silently start and bill it. Statuses: creating, running, stopped, resetting, reconfiguring,
+  failed, destroyed (stopping/starting reserved). The public instance dict carries `config_name` (the
+  NAME of the saved config it was made from or last reconfigured with, plaintext like the label; null
+  for an inline config), `layout` and `reconfigurable`. Reads: `get_instance_config` (the instance's
+  own sealed snapshot; needs the unlock), `instance_health` (`sirosid_core/health.py`: Machines API for
+  both layouts, apps probed in parallel, per-call timeout, no retries, an overall budget; never raises -
+  `components: []` + `error`; names and states only, never machine config) and `instance_activity`
+  (audit rows allow-listed by action AND detail key: a target is a bare string, and a saved config may
+  be named like an instance id). Routes: `GET /api/instances/{id}/config|health|activity`, `POST
+  /api/instances/{id}/reconfigure` (202), `GET /api/examples`, `GET /api/knowledge[/{id}]`. Older
+  databases get the new columns from `Database._migrate`.
+- `sirosid_core/knowledge/` - **what the platform knows** (Markdown topics with front matter +
+  `examples.yaml`; `list_topics/get_topic/search/overview/examples`), served to the console, to MCP
+  (tool `get_knowledge`, resources) and folded into the assistant's system prompt (`overview()`). It
+  is package DATA: `tests/test_control_plane_deploy.py` rebuilds the image tree and loads it there.
 - `llm.py`, `chat.py`, `chat_web.py` — the **assistant** (console "Assistant" tab), enabled when
   `OPENROUTER_API_KEY` (a Fly secret) is set; `SIROSID_CHAT_MODELS` (comma list, first is default)
   defaults to `openrouter/auto` (OpenRouter's router picks per request; whether it always routes to a
@@ -211,14 +249,18 @@ all of it against the fake flyctl.
   It is the MCP tool table driven by a model, acting only as the unlocked signed-in user, so it can
   do nothing the console cannot. What is special: a model provider sees the user's messages and tool
   results (requests ask OpenRouter for `data_collection: deny`; the UI says so); the credentials
-  tool is **not offered** and admin actions are not tools; destructive tools (`destructiveHint`:
-  destroy, reset, delete config) **pause for an Approve click** bound to the exact tool call id
-  (`confirm` is single-use, per user); tool output is data (system prompt says so) and the console
-  renders everything as text. One running turn per user, step limit, bounded history/tool output.
-  Conversations are server memory only. The turn streams SSE (`status/tool/tool_result/confirm/
-  message/error/done`). `tests/test_chat.py` uses a scripted fake model against the real tools and
-  HTTP layer; the approval gate, withheld tool, call binding, budget and unlock checks are
-  mutation-checked.
+  tool is **not offered** and admin actions are not tools; `chat.REQUIRES_APPROVAL` (reconfigure,
+  reset, destroy, delete config) and every `destructiveHint` tool **pause for an Approve click** bound
+  to the exact tool call id (`confirm` is single-use, per user); tool output is data (system prompt
+  says so) and the console renders everything as text. One running turn per user, step limit,
+  bounded history/tool output. Conversations are server memory only. The system prompt adds
+  `knowledge.overview()` and, when `POST /api/chat` carries `active_instance` and the user owns it, one
+  line of that environment's METADATA (id, label, status, expiry - never config). `focus_environment`
+  is a console-only tool (not in the MCP table; ownership-checked). The turn streams SSE (`status/tool/
+  tool_result/confirm/message/error/done`, plus `focus {instance_id}` and, after every mutating tool
+  call, `refresh {what: ["instances","configs"]}`). `tests/test_chat.py` uses a scripted fake model
+  against the real tools and HTTP layer; the approval gate (reconfigure included), withheld tool, call
+  binding, focus/active-instance ownership, refresh, budget and unlock checks are mutation-checked.
 - `sirosid_core/templates.py` — **starting-point configs** (standard stack, SIROS registry, wallet
   attestation, DC API, interop, custom wallet-backend image). Plain data: a template is a saved config
   plus a title/description/hints/`requires`; `ControlPlane.templates(who)` offers only those the user's

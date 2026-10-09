@@ -30,8 +30,9 @@ class Static(unittest.TestCase):
         self.http = TestClient(app, base_url=ORIGIN, raise_server_exceptions=False)
 
     def test_pages_and_scripts_are_served_with_the_page_csp(self):
-        for path, ctype in (("/", "text/html"), ("/index.html", "text/html"), ("/js/app.js", "text/javascript"),
-                            ("/js/container.js", "text/javascript"), ("/css/console.css", "text/css")):
+        modules = [("/js/" + f.name, "text/javascript") for f in sorted((CONSOLE / "js").glob("*.js"))]
+        self.assertGreaterEqual(len(modules), 10)
+        for path, ctype in [("/", "text/html"), ("/index.html", "text/html"), ("/css/console.css", "text/css")] + modules:
             r = self.http.get(path)
             self.assertEqual(r.status_code, 200, path)
             self.assertTrue(r.headers["content-type"].startswith(ctype), path)
@@ -39,6 +40,15 @@ class Static(unittest.TestCase):
             self.assertEqual(r.headers["cache-control"], "no-store")
             self.assertEqual(r.headers["x-content-type-options"], "nosniff")
         self.assertEqual(self.http.get("/js/app.js").content, (CONSOLE / "js" / "app.js").read_bytes())
+
+    def test_the_siros_brand_images_are_served(self):
+        for path, ctype in (("/img/siros-logo.png", "image/png"), ("/img/hero-bg.jpg", "image/jpeg"), ("/img/favicon.svg", "image/svg+xml")):
+            r = self.http.get(path)
+            self.assertEqual(r.status_code, 200, path)
+            self.assertTrue(r.headers["content-type"].startswith(ctype), path)
+            self.assertEqual(r.content, (CONSOLE / path.lstrip("/")).read_bytes(), path)
+        self.assertEqual(self.http.get("/img/").status_code, 404)
+        self.assertEqual(self.http.get("/img/nothing.png").status_code, 404)
 
     def test_csp_allows_only_self_and_no_inline(self):
         self.assertIn("script-src 'self'", PAGE_CSP)
@@ -91,7 +101,12 @@ class NoInlineCode(unittest.TestCase):
         self.assertNotRegex(html, r"<style\b")
         self.assertNotRegex(html, r"\son[a-z]+\s*=")
         self.assertNotRegex(html, r"\sstyle\s*=")
-        self.assertNotRegex(html, r"https?://")
+        for ref in re.findall(r'(?:src|href)="([^"]+)"', html):                 # nothing is loaded from, or inlined for, another origin
+            self.assertTrue(ref.startswith("/") or ref.startswith(("https://siros.org", "https://sirosid.dev", "https://developers.siros.org",
+                            "https://registry.siros.org", "https://compliance.siros.org", "https://trust.siros.org", "https://circuits.siros.org",
+                            "https://github.com/sirosfoundation", "mailto:info@siros.org")), ref)
+        for tag in re.findall(r"<(?:img|link|script)\b[^>]*>", html):
+            self.assertNotRegex(tag, r'(?:src|href)="https?:', tag)
 
     def test_scripts_never_parse_server_text_as_markup_or_run_it(self):
         for f in (CONSOLE / "js").glob("*.js"):
@@ -104,16 +119,43 @@ class NoInlineCode(unittest.TestCase):
     def test_polling_cannot_leak_timers_and_null_is_never_rendered(self):
         """Regressions found by the browser run: setInterval re-armed from its own tick made an
         exponential request flood, and a null child rendered as the text 'null'."""
-        src = (CONSOLE / "js" / "app.js").read_text()
-        self.assertNotIn("setInterval", src)
-        self.assertIn("setTimeout", src)
-        self.assertRegex(src, r"replaceChildren\(\.\.\.kids\.flat\(\)\.filter")
+        for f in (CONSOLE / "js").glob("*.js"):
+            self.assertNotIn("setInterval", f.read_text(), f.name)
+        store = (CONSOLE / "js" / "store.js").read_text()
+        self.assertIn("clearTimeout(pollTimer)", store, "the status poll is one re-armed timer")
+        self.assertRegex((CONSOLE / "js" / "ui.js").read_text(), r"replaceChildren\(\.\.\.kids\.flat\(Infinity\)\.filter")
 
     def test_the_prf_output_is_never_sent(self):
-        src = (CONSOLE / "js" / "app.js").read_text()
-        self.assertNotRegex(src, r"credentialToJSON\([^)]*prf", "the PRF output must not be passed into a request")
-        self.assertNotIn("localStorage", src)
-        self.assertNotIn("sessionStorage", src)
+        for f in (CONSOLE / "js").glob("*.js"):
+            src = f.read_text()
+            self.assertNotRegex(src, r"credentialToJSON\([^)]*prf", f"{f.name}: the PRF output must not be passed into a request")
+            self.assertNotIn("localStorage", src, f.name)
+            self.assertNotIn("sessionStorage", src, f.name)
+            self.assertNotIn("indexedDB", src, f.name)
+
+    def test_scripts_are_flat_and_all_reached_from_app_js(self):
+        """The server serves console/js/* only (no subdirectories), so every module must be there, and
+        every module the page imports must exist (a missing one is a blank page in the browser)."""
+        js = CONSOLE / "js"
+        self.assertEqual([p.name for p in js.iterdir() if p.is_dir()], [])
+        names = {f.name for f in js.glob("*.js")}
+        seen, todo = set(), ["app.js"]
+        while todo:
+            n = todo.pop()
+            if n in seen:
+                continue
+            seen.add(n)
+            self.assertIn(n, names, f"imported but missing: {n}")
+            for imp in re.findall(r"""from\s+["']\./([\w.-]+\.js)["']""", (js / n).read_text()):
+                todo.append(imp)
+        self.assertEqual(names - seen, set(), "modules nothing imports")
+
+    def test_the_assistant_output_and_tool_text_are_never_markup(self):
+        """The chat renders the assistant's words, tool summaries and approval arguments with h()/textContent."""
+        chat = (CONSOLE / "js" / "chat.js").read_text()
+        self.assertIn("it.text", chat)
+        self.assertNotRegex(chat, r"\.(innerHTML|outerHTML)\b")
+        self.assertIn('"aria-live": "polite"', chat)
 
 
 if __name__ == "__main__":

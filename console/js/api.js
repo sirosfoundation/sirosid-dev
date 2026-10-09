@@ -49,3 +49,12 @@ export async function stream(path, body, onEvent) {
     }
   }
 }
+
+/** A route this server does not have (an older server): the framework's own 404/405, which carries
+ *  no JSON error code. A 404 from the API itself ({"error": "not_found"}) is a missing OBJECT. */
+export const isMissingEndpoint = (e) => e instanceof ApiError && (e.status === 404 || e.status === 405) && !e.code;
+
+/** GET an optional endpoint: null when the server does not have it, otherwise the body (or a throw). */
+export async function optional(path) {
+  try { return await api("GET", path); } catch (e) { if (isMissingEndpoint(e)) return null; throw e; }
+}

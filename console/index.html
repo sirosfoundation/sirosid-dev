@@ -2,14 +2,50 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
 <title>SIROS ID Dev</title>
+<link rel="icon" href="/img/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/css/console.css">
 </head>
 <body>
-<header><h1>SIROS ID Dev</h1><nav id="nav" hidden></nav><span id="who"></span></header>
-<main id="main"><p>Loading…</p></main>
+<header class="site-header">
+  <div class="container">
+    <a href="/" class="logo"><img src="/img/siros-logo.png" alt="SIROS Foundation" class="logo-image"><span>ID Dev</span></a>
+    <span class="grow"></span>
+    <div id="account" class="account" hidden>
+      <button id="account-btn" class="account-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="account-menu"></button>
+      <div id="account-menu" class="menu" role="menu" aria-labelledby="account-btn" hidden>
+        <a id="docs-link" role="menuitem" href="https://sirosid.dev" target="_blank" rel="noopener noreferrer">Documentation ↗</a>
+        <button id="signout" role="menuitem">Sign out</button>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="stage" aria-hidden="true"></div>
+<main id="main" class="container"><p class="muted">Loading…</p></main>
+<nav id="tabbar" class="tabbar" aria-label="Panes" hidden></nav>
 <div id="toast" role="status" aria-live="polite"></div>
+<footer class="site-footer">
+  <div class="container">
+    <div>
+      <div class="footer-address">
+        <p class="footer-org"><a href="https://siros.org">SIROS Foundation</a></p>
+        <a href="mailto:info@siros.org">info@siros.org</a>
+        <address>Bredgränd 4<br>111 30 Stockholm<br>Sweden</address>
+      </div>
+      <p class="footer-note">SIROS ID Dev is a test and development service. It is not a production service and carries no availability or data-retention promise.</p>
+    </div>
+    <nav class="footer-nav" aria-label="Footer navigation">
+      <a href="https://sirosid.dev">About SIROS ID Dev</a>
+      <a href="https://developers.siros.org">Developer Docs</a>
+      <a href="https://registry.siros.org">Credential Registry</a>
+      <a href="https://compliance.siros.org">Compliance</a>
+      <a href="https://trust.siros.org">Trust Lists</a>
+      <a href="https://circuits.siros.org">ZK Circuits</a>
+      <a href="https://github.com/sirosfoundation" aria-label="SIROS Foundation on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 .5C5.73.5.66 5.57.66 11.84c0 5.02 3.25 9.27 7.76 10.77.57.1.78-.25.78-.55 0-.27-.01-1-.02-1.96-3.16.69-3.83-1.52-3.83-1.52-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.69.08-.69 1.15.08 1.76 1.18 1.76 1.18 1.02 1.76 2.69 1.25 3.34.96.1-.74.4-1.25.72-1.54-2.52-.29-5.18-1.26-5.18-5.6 0-1.24.44-2.25 1.17-3.04-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.15 1.16.91-.25 1.89-.38 2.86-.38.97 0 1.95.13 2.86.38 2.18-1.47 3.14-1.16 3.14-1.16.62 1.57.23 2.73.11 3.02.73.79 1.17 1.8 1.17 3.04 0 4.35-2.67 5.31-5.21 5.59.41.35.78 1.05.78 2.12 0 1.53-.01 2.76-.01 3.14 0 .31.21.66.79.55 4.5-1.5 7.75-5.75 7.75-10.77C23.34 5.57 18.27.5 12 .5Z"/></svg></a>
+    </nav>
+  </div>
+</footer>
 <script type="module" src="/js/app.js"></script>
 </body>
 </html>
