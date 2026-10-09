@@ -542,5 +542,37 @@ class WorkflowTests(unittest.TestCase):
             self.assertIn("sha256sum -c -", p.read_text())
 
 
+class ImageDependencyTests(unittest.TestCase):
+    """The image installs ONLY requirements.lock. A module that imports something else works in every test and
+    takes the whole console down at start-up in production (it did: llm.py imported httpx, which the tests have and
+    the image does not, the moment the assistant was switched on)."""
+
+    # import name -> distribution name in requirements.lock
+    DIST = {"cryptography": "cryptography", "starlette": "starlette", "uvicorn": "uvicorn", "webauthn": "webauthn", "yaml": "pyyaml", "cbor2": "cbor2"}
+    LOCAL = {"bootstrap"}              # scripts/bootstrap.py, imported from the resources tree at run time
+
+    def test_every_third_party_import_in_the_service_and_core_is_in_the_lock(self):
+        import ast
+        import sys
+        lock = (DEPLOY / "requirements.lock").read_text().lower()
+        locked = {line.split("==")[0].strip() for line in lock.splitlines() if "==" in line and not line.startswith((" ", "#"))}
+        stdlib = set(sys.stdlib_module_names)
+        missing = []
+        for root in ("sirosid_service", "sirosid_core"):
+            for path in (ROOT / root).rglob("*.py"):
+                for node in ast.walk(ast.parse(path.read_text())):
+                    names = []
+                    if isinstance(node, ast.Import):
+                        names = [a.name.split(".")[0] for a in node.names]
+                    elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                        names = [node.module.split(".")[0]]
+                    for m in names:
+                        if m in stdlib or m in ("sirosid_service", "sirosid_core") or m in self.LOCAL:
+                            continue
+                        if self.DIST.get(m, m).lower() not in locked:
+                            missing.append(f"{path.relative_to(ROOT)} imports {m!r}, which requirements.lock does not install")
+        self.assertEqual(missing, [])
+
+
 if __name__ == "__main__":
     unittest.main()

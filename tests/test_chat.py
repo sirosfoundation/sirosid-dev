@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_api import HAVE, ORIGIN, Console, build, signed_in  # noqa: E402
 
 if HAVE:
-    import httpx
     from sirosid_service.api import ApiConfig, create_app
     from sirosid_service.auth import AuthConfig, AuthService
     from sirosid_service.chat import REQUIRES_APPROVAL, SYSTEM_PROMPT, ChatConfig, ChatService
@@ -391,27 +390,34 @@ class ChatTests(unittest.TestCase):
         self.assertEqual(self.say("again")[0]["type"], "message", "a failed turn does not wedge the user's slot")
 
 
-@NEEDS
 class OpenRouterTests(unittest.TestCase):
-    def client(self, handler, **kw):
-        return OpenRouter("sk-secret", client=httpx.Client(transport=httpx.MockTransport(handler)), **kw)
+    """The client talks through an injectable transport (the default is stdlib urllib: the image has no HTTP library)."""
+
+    @staticmethod
+    def ok(content="hi", usage=None):
+        return json.dumps({"choices": [{"message": {"role": "assistant", "content": content}}], "model": "m",
+                           "usage": usage or {"prompt_tokens": 3, "completion_tokens": 4}}).encode()
+
+    def client(self, transport, **kw):
+        return OpenRouter("sk-secret", transport=transport, **kw)
 
     def test_request_shape_and_privacy_defaults(self):
         seen = {}
 
-        def handler(request):
-            seen["req"], seen["body"] = request, json.loads(request.content)
-            return httpx.Response(200, json={"choices": [{"message": {"role": "assistant", "content": "hi"}}], "model": "m", "usage": {"prompt_tokens": 3, "completion_tokens": 4}})
-        out = self.client(handler, referer="https://sirosid.dev").complete("m", [{"role": "user", "content": "x"}], [{"type": "function", "function": {"name": "t"}}])
-        self.assertEqual(seen["req"].url, "https://openrouter.ai/api/v1/chat/completions")
-        self.assertEqual(seen["req"].headers["authorization"], "Bearer sk-secret")
+        def transport(url, body, headers, timeout):
+            seen.update(url=url, body=json.loads(body), headers=headers, timeout=timeout)
+            return 200, self.ok()
+        out = self.client(transport, referer="https://sirosid.dev").complete("m", [{"role": "user", "content": "x"}], [{"type": "function", "function": {"name": "t"}}])
+        self.assertEqual(seen["url"], "https://openrouter.ai/api/v1/chat/completions")
+        self.assertEqual(seen["headers"]["Authorization"], "Bearer sk-secret")
+        self.assertEqual(seen["headers"]["HTTP-Referer"], "https://sirosid.dev")
         self.assertEqual(seen["body"]["provider"], {"data_collection": "deny"})
         self.assertEqual(seen["body"]["tool_choice"], "auto")
         self.assertEqual(out["usage"], {"prompt_tokens": 3, "completion_tokens": 4})
 
     def test_errors_never_carry_provider_text_or_the_key(self):
         for status, expect in ((401, "credentials"), (402, "credit"), (429, "rate"), (500, "failed")):
-            c = self.client(lambda r, s=status: httpx.Response(s, text="LEAK sk-secret and the prompt"))
+            c = self.client(lambda u, b, h, t, s=status: (s, b"LEAK sk-secret and the prompt"))
             with self.assertRaises(LlmError) as cm:
                 c.complete("m", [], [])
             self.assertIn(expect, cm.exception.user_message)
@@ -419,16 +425,34 @@ class OpenRouterTests(unittest.TestCase):
             self.assertNotIn("sk-secret", cm.exception.user_message)
 
     def test_unreadable_and_network_failures(self):
-        for handler in (lambda r: httpx.Response(200, text="not json"), lambda r: httpx.Response(200, json={"choices": []})):
+        for body in (b"not json", b'{"choices": []}', b"[]"):
             with self.assertRaises(LlmError):
-                self.client(handler).complete("m", [], [])
+                self.client(lambda u, b, h, t, body=body: (200, body)).complete("m", [], [])
 
-        def boom(request):
-            raise httpx.ConnectError("down")
+        def down(url, body, headers, timeout):
+            raise LlmError("could not reach the model provider")
         with self.assertRaises(LlmError):
-            self.client(boom).complete("m", [], [])
+            self.client(down).complete("m", [], [])
         with self.assertRaises(ValueError):
             OpenRouter("")
+
+    def test_the_default_transport_is_stdlib_and_maps_failures(self):
+        """No third-party HTTP client: the control-plane image ships only what requirements.lock pins."""
+        import urllib.error
+        from unittest import mock
+        from sirosid_service import llm
+        self.assertNotIn("httpx", open(llm.__file__).read())
+        with mock.patch("urllib.request.urlopen", side_effect=urllib.error.URLError("boom")):
+            with self.assertRaises(LlmError) as cm:
+                llm.urllib_transport("https://x.example/", b"{}", {}, 1)
+            self.assertIn("could not reach", cm.exception.user_message)
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError()):
+            with self.assertRaises(LlmError) as cm:
+                llm.urllib_transport("https://x.example/", b"{}", {}, 1)
+            self.assertIn("too long", cm.exception.user_message)
+        err = urllib.error.HTTPError("https://x.example/", 429, "slow", {}, __import__("io").BytesIO(b"body"))
+        with mock.patch("urllib.request.urlopen", side_effect=err):
+            self.assertEqual(llm.urllib_transport("https://x.example/", b"{}", {}, 1), (429, b"body"))
 
 
 if __name__ == "__main__":
