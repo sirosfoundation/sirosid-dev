@@ -66,6 +66,24 @@ class ConfigTests(unittest.TestCase):
                 settings(SIROSID_ORIGINS=origin)
         self.assertEqual(settings(SIROSID_ORIGINS="https://console.sirosid.dev").origins, ("https://console.sirosid.dev",))
 
+    def test_the_service_starts_with_the_assistant_on_without_httpx(self):
+        """Production start-up with OPENROUTER_API_KEY set, in an interpreter that cannot import httpx (the image
+        installs only requirements.lock): it crashed the console for eight minutes when the key was first set."""
+        import sys
+        from unittest import mock
+        gone = {k: None for k in ("httpx",)}
+        for mod in [m for m in sys.modules if m.startswith(("sirosid_service.llm", "sirosid_service.chat"))]:
+            sys.modules.pop(mod)
+        try:
+            with mock.patch.dict(sys.modules, gone):
+                from sirosid_service.__main__ import build
+                s = settings(OPENROUTER_API_KEY="k")
+                cp, _, app = build(s)
+                self.assertTrue(any(getattr(r, "path", "") == "/api/chat" for r in app.routes), "the chat routes are mounted")
+        finally:
+            for mod in [m for m in sys.modules if m.startswith(("sirosid_service.llm", "sirosid_service.chat"))]:
+                sys.modules.pop(mod)
+
     def test_single_machine_defaults_are_the_edge_shape(self):
         s = settings(SIROSID_LAYOUT="single-machine")
         self.assertEqual((s.layout, s.instance_domain, s.host_pattern, s.public_ips, s.app_prefix),
