@@ -101,6 +101,46 @@ features:
         source: datastore
         authOptions:
           claims: [given_name, family_name]
+    # --- pre-authorized offer variants -------------------------------------------------------
+    # `<type>_offer` is the SAME credential as `<type>` (same vct/doctype, same metadata) issued from
+    # its own copy of the documents under auth_provider: preauth. vc's /api/v1/datastore/preauth_offer
+    # refuses any scope that is not preauth (so an offer can never bypass a type's login), and one scope
+    # has one provider - hence a second scope. `make datastore-offer SCOPE=<type>` mints against it, for
+    # a wallet on another device. Verifier presets/DCQL do not list these (see 04-verifier.yaml), and
+    # tests/test_fixture_integrity.py holds the copies equal to their source.
+    # Only the types that are tested from a phone, plus pid_mdoc and photoid, which cannot authenticate
+    # on vc main at all (see nym_auth) and so can ONLY be issued this way.
+    pid_1_8_offer:
+      vct: "urn:eudi:pid:arf-1.8:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_pid_arf_1_8.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    pid_mdoc_offer:
+      vct: "eu.europa.ec.eudi.pid.1"
+      doctype: "eu.europa.ec.eudi.pid.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/pid_mdoc.mdoc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    mdl_offer:
+      vct: "org.iso.18013.5.1.mDL"
+      doctype: "org.iso.18013.5.1.mDL"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/mdl.mdoc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    photoid_offer:
+      vct: "eu.europa.ec.eudi.photoid.1"
+      doctype: "eu.europa.ec.eudi.photoid.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/photoid.mdoc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
     # EU Business Wallet attestations (WE BUILD rulebooks ds001/ds004/ds007;
     # VCTMs published in registry.siros.org under webuild-consortium/).
     #
@@ -357,6 +397,10 @@ issuer:
       pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
       siros_id: {file: fixtures/vc-bootstrapping/siros_id.json}
       photoid: {file: fixtures/vc-bootstrapping/photoid.json}
+      pid_1_8_offer: {file: fixtures/vc-bootstrapping/pid_1_8_offer.json}
+      pid_mdoc_offer: {file: fixtures/vc-bootstrapping/pid_mdoc_offer.json}
+      mdl_offer: {file: fixtures/vc-bootstrapping/mdl_offer.json}
+      photoid_offer: {file: fixtures/vc-bootstrapping/photoid_offer.json}
       # EU Business Wallet documents for the mini-oidc company users -
       # PID-authenticated issuance (see features.credentialTypes.ebw_oid/eucc/eu_poa).
       ebw_oid: {file: fixtures/vc-bootstrapping/ebw_oid.json}

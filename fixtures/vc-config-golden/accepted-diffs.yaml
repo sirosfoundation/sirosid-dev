@@ -32,6 +32,18 @@ _shared: &shared
   # Nym-authentication attestation (values-base.yaml nym_auth, nym_auth_rulebook v0.3). Its other footprints -
   # credential_metadata, the derived OpenID4VCI/OpenID4VP client scopes and the verifier's supported_credentials -
   # fall under the whole-path entries below; the datastore scope is the only one the goldens name scope by scope.
+  - path: apigw.data_sources.datastore.scopes.pid_1_8_offer
+    kind: added
+    reason: "pre-authorized twin of pid_1_8 for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.pid_mdoc_offer
+    kind: added
+    reason: "pre-authorized twin of pid_mdoc for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.mdl_offer
+    kind: added
+    reason: "pre-authorized twin of mdl for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.photoid_offer
+    kind: added
+    reason: "pre-authorized twin of photoid for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
   - path: apigw.data_sources.datastore.scopes.nym_auth
     kind: added
     reason: >-

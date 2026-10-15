@@ -189,8 +189,11 @@ policy: {{- toYamlPretty . | nindent 2 }}
 {{/* The list of supported credential scopes
 */}}
 {{- define "siros-id.vc.credentialScopes" -}}
-{{- range $id, $_ := .Values.features.credentialTypes }}
+{{- range $id, $data := .Values.features.credentialTypes }}
+{{- /* A preauth scope has no login flow to request it by: it is minted as an offer only. */}}
+{{- if ne $data.issuance.authProvider "preauth" }}
 - {{ $id | quote }}
+{{- end }}
 {{- end }}
 {{- end -}}
 

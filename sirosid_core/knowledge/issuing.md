@@ -46,6 +46,10 @@ mandatory ones):
 | `pid_mdoc` | mso_mdoc | alice-001 | bob-002 |
 | `mdl_zk4` | mso_mdoc | alice-001 | bob-002 |
 | `photoid` | mso_mdoc | alice-001, bob-002 | carol-003 |
+| `pid_1_8_offer` | dc+sd-jwt | as `pid_1_8` | as `pid_1_8` |
+| `pid_mdoc_offer` | mso_mdoc | as `pid_mdoc` | as `pid_mdoc` |
+| `mdl_offer` | mso_mdoc | as `mdl` | as `mdl` |
+| `photoid_offer` | mso_mdoc | as `photoid` | as `photoid` |
 | `ebw_oid` | dc+sd-jwt | erik-010, maria-011 | sophie-013 |
 | `eucc` | dc+sd-jwt | erik-010, maria-011, jan-012 | sophie-013 |
 | `eu_poa` | dc+sd-jwt | jan-012 | sophie-013 |
@@ -107,6 +111,6 @@ The issuer found no document for the identity. Check in this order:
   issuer list.
 - The developer CLI has `make datastore-offer` to mint a pre-authorized offer for one document. It needs
   the environment's admin-API key held by whoever deployed it, so it is not available for hosted
-  instances, and it is reported not to work against current vc main (unverified here). Do not offer it.
+  instances, and it works only for pid_1_8, pid_mdoc, mdl and photoid (their `_offer` twins). Do not offer it.
 
 Sources: `README.md`, `CLAUDE.md`, `values-base.yaml`, `fixtures/vc-bootstrapping/identity_mappings.json`, `fixtures/vc-bootstrapping/pid_1_8.json`, `fixtures/vc-bootstrapping/nym_auth.json`, `fixtures/vc-metadata/nym_auth.mdoc.json`, `sirosid_core/render.py`, `sirosid_core/deploy.py`, `scripts/bootstrap.py`, `scripts/datastore.py`, `../mini-oidc/README.md`
