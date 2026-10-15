@@ -1,0 +1,48 @@
+{
+  "alice-001": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "nym_auth_offer",
+      "document_id": "document_id_nym_auth_offer_alice-001",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "alice-001"
+    ],
+    "document_data": {
+      "birth_date": "1990-01-15",
+      "ssc": "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE="
+    }
+  },
+  "bob-002": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "nym_auth_offer",
+      "document_id": "document_id_nym_auth_offer_bob-002",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "bob-002"
+    ],
+    "document_data": {
+      "birth_date": "1985-06-20",
+      "ssc": "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE="
+    }
+  },
+  "carol-003": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "nym_auth_offer",
+      "document_id": "document_id_nym_auth_offer_carol-003-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "carol-003"
+    ],
+    "document_data": {
+      "birth_date": "1978-11-03",
+      "ssc": "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE=",
+      "psc": "/C4scwcr+ivaA/+TB0ct69PMgQUCioqeI141uo0uN/Q="
+    }
+  }
+}

@@ -698,8 +698,8 @@ brought gdc up to the reworked fixtures (12 documents added, 10 replaced, 7
 renamed away, 3 identity mappings given the birth dates the PID match needs).
 
 **Issuing to a wallet on another device (no browser on the phone, no OIDC
-login there):** vc-apigw mints a pre-authorized credential offer for any
-datastore document, and the offer carries its own code, so the wallet that
+login there):** vc-apigw mints a pre-authorized credential offer for a
+datastore document of a `preauth` scope, and the offer carries its own code, so the wallet that
 scans it needs no session of its own:
 
 ```bash
@@ -713,6 +713,18 @@ works for the PID-authenticated types too: the document is named here rather
 than resolved from a presented PID, which is the whole point of the
 pre-authorized grant. The code expires 5 minutes after minting, so generate
 it when the phone is in your hand.
+
+vc main refuses to mint an offer for a scope that is not `auth_provider:
+preauth` (`requirePreAuthScope`), and a scope has one provider, so each
+datastore-sourced type has a twin: `pid_1_8_offer`, `eucc_offer`, ...
+(values-base.yaml) - the same vct/doctype and metadata, its own
+copy of the documents (`fixtures/vc-bootstrapping/<type>_offer.json`, held equal
+to the source by `tests/test_fixture_integrity.py`). `SCOPE=pid_1_8` means
+`pid_1_8_offer`. The verifier does not list the twins. `pid_mdoc` and `photoid`
+cannot authenticate on vc main at all (see `nym_auth`), so this is the only way
+to issue them. A new datastore type needs its twin: one twin entry, one copied
+fixture, one `datastoreImport` line, one accepted-diffs entry; an existing
+environment needs `make datastore-sync` for the twin's documents.
 
 **The issuer and the verifier show the SUNET logo:** they are showing vc's
 built-in assets, which means `common.branding` never reached them. The chart

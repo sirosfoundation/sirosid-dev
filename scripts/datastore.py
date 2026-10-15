@@ -113,10 +113,16 @@ def offer(target: "Target", scope: str, document_id: str = None, authentic_sourc
     PID-authenticated types too - the document is chosen here rather than
     resolved from a presented PID.
     """
+    # vc mints an offer only for a scope declared auth_provider: preauth (SUNET/vc requirePreAuthScope), and a
+    # scope has one provider, so the chart declares `<type>_offer` twins; `SCOPE=pid_1_8` means `pid_1_8_offer`.
+    if not scope.endswith("_offer"):
+        scope += "_offer"
     docs = target.request("GET", "/api/v1/datastore/search",
                           query={"scope": scope, "limit": 200})["data"]
     if not docs:
-        sys.exit(f"no documents in scope {scope} - `search` to see what is there")
+        sys.exit(f"no documents in scope {scope} - only types with an `_offer` twin in values-base.yaml can be "
+                 f"offered; `search --scope {scope}` shows what is there (an existing environment needs "
+                 f"`make datastore-sync` to get the twin's documents)")
     if document_id:
         match = [d for d in docs if d["meta"]["document_id"] == document_id]
         if not match:

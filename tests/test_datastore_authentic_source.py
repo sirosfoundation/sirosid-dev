@@ -36,6 +36,8 @@ class DatastoreAuthenticSource(unittest.TestCase):
         scopes = apigw_scopes()
         self.assertTrue(scopes)
         for name, sc in scopes.items():
+            if sc.get("auth_provider") == "preauth":
+                continue                                    # see test_preauth_scopes_never_get_one
             self.assertEqual(sc.get("authentic_source"), "mini-oidc", f"{name} ({sc.get('auth_provider')})")
 
     def test_the_namespace_is_the_one_the_fixture_mappings_are_imported_under(self):
@@ -46,7 +48,8 @@ class DatastoreAuthenticSource(unittest.TestCase):
 
     def test_it_can_be_overridden_and_switched_off_for_older_vc(self):
         for name, sc in apigw_scopes({"issuer": {"datastoreAuthenticSource": "SUNET"}}).items():
-            self.assertEqual(sc["authentic_source"], "SUNET", name)
+            if sc.get("auth_provider") != "preauth":
+                self.assertEqual(sc["authentic_source"], "SUNET", name)
         for name, sc in apigw_scopes({"issuer": {"datastoreAuthenticSource": ""}}).items():
             self.assertNotIn("authentic_source", sc, name)
 
@@ -54,6 +57,10 @@ class DatastoreAuthenticSource(unittest.TestCase):
         # preauth carries the identifier in the offer; vc documents authentic_source as unused there
         tmpl = (ROOT / "chart" / "templates" / "04-issuer.yaml").read_text()
         self.assertIn('ne $data.issuance.authProvider "preauth"', tmpl)
+        preauth = [n for n, sc in apigw_scopes().items() if sc.get("auth_provider") == "preauth"]
+        self.assertTrue(preauth, "the chart declares pre-authorized scopes")
+        for name in preauth:
+            self.assertNotIn("authentic_source", apigw_scopes()[name], name)
 
 
 if __name__ == "__main__":

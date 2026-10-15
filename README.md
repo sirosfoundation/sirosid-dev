@@ -401,6 +401,7 @@ picks between them.
 | `pid_mdoc` | alice-001 | bob-002 |
 | `mdl_zk4` | alice-001 | bob-002 |
 | `photoid` | alice-001, bob-002 | carol-003 |
+| `<type>_offer` for every row above | as their source | as their source (pre-authorized twins for `make datastore-offer`; copies, kept equal by a test) |
 | `ebw_oid` | erik-010, maria-011 | sophie-013 |
 | `eucc` | erik-010, maria-011, jan-012 | sophie-013 |
 | `eu_poa` | jan-012 | sophie-013 |

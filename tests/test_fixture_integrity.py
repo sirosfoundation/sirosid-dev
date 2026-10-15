@@ -62,7 +62,7 @@ ASSERTION_SOURCED = {"pid_1_5", "ehic"}
 # unrelated identity. That divergence is deliberate and pre-existing - the
 # documents are real EBSI/ELM sample data - so the claim-coverage and identity
 # checks skip it. It still has to obey the `-full` marking convention.
-EMBEDDED_VC_SCOPES = {"diploma"}
+EMBEDDED_VC_SCOPES = {"diploma", "diploma_offer"}
 
 # Which claim in a document carries which attribute from identity_mappings.json.
 # Keyed by scope; a path is a tuple, so nested claims can be named too.
@@ -704,3 +704,37 @@ def normalise_full_date(value):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PreAuthorizedTwins(FixtureCase):
+    """`<type>_offer` is the same credential as `<type>` behind auth_provider: preauth, so a pre-authorized
+    offer can be minted (vc refuses any other scope). The copies must not drift from their source."""
+
+    def twins(self):
+        return [s for s in self.types if s.endswith("_offer")]
+
+    def test_there_are_twins(self):
+        self.assertTrue(self.twins())
+
+    def test_every_datastore_type_has_a_twin(self):
+        for s, d in self.types.items():
+            if s.endswith("_offer") or d["issuance"]["source"] != "datastore":
+                continue
+            self.assertIn(s + "_offer", self.types, f"{s} is datastore-sourced but cannot be offered: no {s}_offer twin")
+
+    def test_twin_is_preauth_and_the_same_credential(self):
+        for s in self.twins():
+            src = s[: -len("_offer")]
+            self.assertEqual(self.types[s]["issuance"]["authProvider"], "preauth", s)
+            for k in ("vct", "doctype", "format", "vctm", "mdocSchema"):
+                self.assertEqual(self.types[s].get(k), self.types[src].get(k), f"{s}.{k} differs from {src}")
+
+    def test_twin_documents_equal_the_sources(self):
+        for s in self.twins():
+            src = s[: -len("_offer")]
+            self.assertEqual(set(self.documents[s]), set(self.documents[src]), f"{s} holders")
+            for holder, doc in self.documents[s].items():
+                want = json.loads(json.dumps(self.documents[src][holder]))
+                want["meta"]["scope"] = s
+                want["meta"]["document_id"] = want["meta"]["document_id"].replace(f"_{src}_", f"_{s}_", 1)
+                self.assertEqual(doc, want, f"{s}/{holder} drifted from {src}")
