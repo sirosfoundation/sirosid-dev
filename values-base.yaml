@@ -108,8 +108,8 @@ features:
     # has one provider - hence a second scope. `make datastore-offer SCOPE=<type>` mints against it, for
     # a wallet on another device. Verifier presets/DCQL do not list these (see 04-verifier.yaml), and
     # tests/test_fixture_integrity.py holds the copies equal to their source.
-    # Only the types that are tested from a phone, plus pid_mdoc and photoid, which cannot authenticate
-    # on vc main at all (see nym_auth) and so can ONLY be issued this way.
+    # Every datastore-sourced type has one (assertion-sourced types have no document to offer). pid_mdoc and
+    # photoid cannot authenticate on vc main at all (see nym_auth), so this is the ONLY way to issue them.
     pid_1_8_offer:
       vct: "urn:eudi:pid:arf-1.8:1"
       format: dc+sd-jwt
@@ -138,6 +138,64 @@ features:
       doctype: "eu.europa.ec.eudi.photoid.1"
       format: mso_mdoc
       mdocSchema: {file: fixtures/vc-metadata/photoid.mdoc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    diploma_offer:
+      vct: "urn:eudi:diploma:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_diploma.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    siros_id_offer:
+      vct: "https://registry.siros.org/sirosfoundation/siros_id.vctm.json"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_siros_id.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    mdl_zk4_offer:
+      vct: "org.iso.18013.5.1.mDL"
+      doctype: "org.iso.18013.5.1.mDL"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/mdl_zk4.mdoc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    ebw_oid_offer:
+      vct: "uri:eu.ebw.oid.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_ebw_oid.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    eucc_offer:
+      vct: "urn:eudi:eucc:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_eucc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    eu_poa_offer:
+      vct: "uri:eu.eudi.eu-poa.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_eu_poa.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    iban_ov_offer:
+      vct: "eu.we-build.iban-ov.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_iban_ov.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    nym_auth_offer:
+      vct: "eu.europa.ec.eudi.nym_auth.1"
+      doctype: "eu.europa.ec.eudi.nym_auth.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/nym_auth.mdoc.json}
       issuance:
         authProvider: preauth
         source: datastore
@@ -410,6 +468,14 @@ issuer:
       # One per natural person; PID/mDL/Photo ID-authenticated (see
       # features.credentialTypes.nym_auth). README.md lists the test seeds.
       nym_auth: {file: fixtures/vc-bootstrapping/nym_auth.json}
+      diploma_offer: {file: fixtures/vc-bootstrapping/diploma_offer.json}
+      siros_id_offer: {file: fixtures/vc-bootstrapping/siros_id_offer.json}
+      mdl_zk4_offer: {file: fixtures/vc-bootstrapping/mdl_zk4_offer.json}
+      ebw_oid_offer: {file: fixtures/vc-bootstrapping/ebw_oid_offer.json}
+      eucc_offer: {file: fixtures/vc-bootstrapping/eucc_offer.json}
+      eu_poa_offer: {file: fixtures/vc-bootstrapping/eu_poa_offer.json}
+      iban_ov_offer: {file: fixtures/vc-bootstrapping/iban_ov_offer.json}
+      nym_auth_offer: {file: fixtures/vc-bootstrapping/nym_auth_offer.json}
 
   apigw:
     cors:

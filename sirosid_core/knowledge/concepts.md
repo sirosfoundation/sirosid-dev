@@ -45,7 +45,7 @@ a user from a list; there are no passwords. It is the only "identity provider" i
 | `mso_mdoc` | ISO/IEC 18013-5 mdoc (CBOR, COSE-signed) | `doctype` | `mdl` (`org.iso.18013.5.1.mDL`), `pid_mdoc` (`eu.europa.ec.eudi.pid.1`), `photoid`, `mdl_zk4`, `nym_auth` (`eu.europa.ec.eudi.nym_auth.1`) |
 
 `mdl_zk4` is a 4-claim mDL variant used for Vega zero-knowledge proof tests.
-`pid_1_8_offer`, `pid_mdoc_offer`, `mdl_offer` and `photoid_offer` are not separate credentials: each is the same
+The `_offer` scopes (`pid_1_8_offer`, `pid_mdoc_offer`, `mdl_offer`, `mdl_zk4_offer`, `photoid_offer`, `diploma_offer`, `siros_id_offer`, `ebw_oid_offer`, `eucc_offer`, `eu_poa_offer`, `iban_ov_offer`, `nym_auth_offer`) are not separate credentials: each is the same
 credential as its source, issued by a pre-authorized offer (no login) for the developer CLI's `make datastore-offer`. A credential *scope*
 (`pid_1_8`, `mdl`, ...) is the OpenID4VCI scope and the key used throughout the configs.
 

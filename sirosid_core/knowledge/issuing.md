@@ -50,6 +50,14 @@ mandatory ones):
 | `pid_mdoc_offer` | mso_mdoc | as `pid_mdoc` | as `pid_mdoc` |
 | `mdl_offer` | mso_mdoc | as `mdl` | as `mdl` |
 | `photoid_offer` | mso_mdoc | as `photoid` | as `photoid` |
+| `diploma_offer` | dc+sd-jwt | as `diploma` | as `diploma` |
+| `siros_id_offer` | dc+sd-jwt | as `siros_id` | as `siros_id` |
+| `mdl_zk4_offer` | mso_mdoc | as `mdl_zk4` | as `mdl_zk4` |
+| `ebw_oid_offer` | dc+sd-jwt | as `ebw_oid` | as `ebw_oid` |
+| `eucc_offer` | dc+sd-jwt | as `eucc` | as `eucc` |
+| `eu_poa_offer` | dc+sd-jwt | as `eu_poa` | as `eu_poa` |
+| `iban_ov_offer` | dc+sd-jwt | as `iban_ov` | as `iban_ov` |
+| `nym_auth_offer` | mso_mdoc | as `nym_auth` | as `nym_auth` |
 | `ebw_oid` | dc+sd-jwt | erik-010, maria-011 | sophie-013 |
 | `eucc` | dc+sd-jwt | erik-010, maria-011, jan-012 | sophie-013 |
 | `eu_poa` | dc+sd-jwt | jan-012 | sophie-013 |
@@ -111,6 +119,6 @@ The issuer found no document for the identity. Check in this order:
   issuer list.
 - The developer CLI has `make datastore-offer` to mint a pre-authorized offer for one document. It needs
   the environment's admin-API key held by whoever deployed it, so it is not available for hosted
-  instances, and it works only for pid_1_8, pid_mdoc, mdl and photoid (their `_offer` twins). Do not offer it.
+  instances, and it works for every type issued from datastore documents (through its `_offer` twin). Do not offer it.
 
 Sources: `README.md`, `CLAUDE.md`, `values-base.yaml`, `fixtures/vc-bootstrapping/identity_mappings.json`, `fixtures/vc-bootstrapping/pid_1_8.json`, `fixtures/vc-bootstrapping/nym_auth.json`, `fixtures/vc-metadata/nym_auth.mdoc.json`, `sirosid_core/render.py`, `sirosid_core/deploy.py`, `scripts/bootstrap.py`, `scripts/datastore.py`, `../mini-oidc/README.md`

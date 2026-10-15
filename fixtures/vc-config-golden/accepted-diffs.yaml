@@ -44,6 +44,30 @@ _shared: &shared
   - path: apigw.data_sources.datastore.scopes.photoid_offer
     kind: added
     reason: "pre-authorized twin of photoid for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.diploma_offer
+    kind: added
+    reason: "pre-authorized twin of diploma for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.siros_id_offer
+    kind: added
+    reason: "pre-authorized twin of siros_id for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.mdl_zk4_offer
+    kind: added
+    reason: "pre-authorized twin of mdl_zk4 for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.ebw_oid_offer
+    kind: added
+    reason: "pre-authorized twin of ebw_oid for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.eucc_offer
+    kind: added
+    reason: "pre-authorized twin of eucc for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.eu_poa_offer
+    kind: added
+    reason: "pre-authorized twin of eu_poa for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.iban_ov_offer
+    kind: added
+    reason: "pre-authorized twin of iban_ov for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.nym_auth_offer
+    kind: added
+    reason: "pre-authorized twin of nym_auth for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
   - path: apigw.data_sources.datastore.scopes.nym_auth
     kind: added
     reason: >-

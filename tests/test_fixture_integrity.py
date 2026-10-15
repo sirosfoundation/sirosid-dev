@@ -62,7 +62,7 @@ ASSERTION_SOURCED = {"pid_1_5", "ehic"}
 # unrelated identity. That divergence is deliberate and pre-existing - the
 # documents are real EBSI/ELM sample data - so the claim-coverage and identity
 # checks skip it. It still has to obey the `-full` marking convention.
-EMBEDDED_VC_SCOPES = {"diploma"}
+EMBEDDED_VC_SCOPES = {"diploma", "diploma_offer"}
 
 # Which claim in a document carries which attribute from identity_mappings.json.
 # Keyed by scope; a path is a tuple, so nested claims can be named too.
@@ -715,6 +715,12 @@ class PreAuthorizedTwins(FixtureCase):
 
     def test_there_are_twins(self):
         self.assertTrue(self.twins())
+
+    def test_every_datastore_type_has_a_twin(self):
+        for s, d in self.types.items():
+            if s.endswith("_offer") or d["issuance"]["source"] != "datastore":
+                continue
+            self.assertIn(s + "_offer", self.types, f"{s} is datastore-sourced but cannot be offered: no {s}_offer twin")
 
     def test_twin_is_preauth_and_the_same_credential(self):
         for s in self.twins():

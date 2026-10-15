@@ -716,13 +716,13 @@ it when the phone is in your hand.
 
 vc main refuses to mint an offer for a scope that is not `auth_provider:
 preauth` (`requirePreAuthScope`), and a scope has one provider, so each
-offerable type has a twin: `pid_1_8_offer`, `pid_mdoc_offer`, `mdl_offer`,
-`photoid_offer` (values-base.yaml) - the same vct/doctype and metadata, its own
+datastore-sourced type has a twin: `pid_1_8_offer`, `eucc_offer`, ...
+(values-base.yaml) - the same vct/doctype and metadata, its own
 copy of the documents (`fixtures/vc-bootstrapping/<type>_offer.json`, held equal
 to the source by `tests/test_fixture_integrity.py`). `SCOPE=pid_1_8` means
 `pid_1_8_offer`. The verifier does not list the twins. `pid_mdoc` and `photoid`
 cannot authenticate on vc main at all (see `nym_auth`), so this is the only way
-to issue them. Adding a type to the offerable set = one twin entry, one copied
+to issue them. A new datastore type needs its twin: one twin entry, one copied
 fixture, one `datastoreImport` line, one accepted-diffs entry; an existing
 environment needs `make datastore-sync` for the twin's documents.
 
