@@ -248,6 +248,8 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
 
     containers.append(_container(
         "pdp", images["pdp"], cmd=["--config", "/main-config/config.yaml"],
+        # go-trust >= 0.25.0's image sets GT_PORT=6001, which beats the config file's port (see deploy.py).
+        env={"GT_HOST": "127.0.0.1", "GT_PORT": str(p("pdp"))},
         files=[_file("/main-config/config.yaml", (out_dir / "pdp.yaml").read_text())],
         healthchecks=[_http_check("pdp", p("pdp"), "/healthz", grace=30)]))
 

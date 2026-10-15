@@ -141,6 +141,12 @@ class MachineConfigTests(unittest.TestCase):
         checks = [hc.get("http", hc.get("tcp"))["port"] for c in self.cfg["containers"] for hc in c.get("healthchecks", [])]
         self.assertEqual(len(checks), len(set(checks)), checks)
 
+    def test_the_pdp_listens_where_its_config_says_whatever_the_image_defaults(self):
+        """go-trust >= 0.25.0's image sets GT_PORT=6001 and the environment beats the config file."""
+        pdp = yaml.safe_load((self.h.root / "fly-k7m2qx4d" / "pdp.yaml").read_text())["server"]
+        env = container(self.cfg, "pdp")["env"]
+        self.assertEqual((env["GT_HOST"], env["GT_PORT"]), (pdp["host"], str(pdp["port"])))
+
     def test_nothing_points_at_another_app(self):
         text = everything_as_text(self.cfg)
         self.assertNotIn(".internal", text)
