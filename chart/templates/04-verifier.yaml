@@ -78,9 +78,12 @@ verifier:
       {{- with .Values.features.credentialTypes }}
       supported_credentials:
         {{- range $id, $data := . }}
+        {{- /* A preauth scope is an issuance-only twin of a type listed here already. */}}
+        {{- if ne $data.issuance.authProvider "preauth" }}
         - vct: {{ $data.vct | quote }}
           scopes:
             - {{ $id | quote }}
+        {{- end }}
         {{- end }}
       {{- end }}
   {{- if .Values.verifier.digitalCredentials.enabled }}
