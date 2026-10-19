@@ -511,7 +511,11 @@ def deploy_component(ctx: DeployContext, comp: dict):
     elif name == "vc-apigw":
         deploy_args += _vc_service_files(ctx, app, "vc-apigw", metadata=True, bootstrapping=True)
     elif name == "pdp":
-        deploy_args += ["--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
+        # go-trust >= 0.25.0's image sets GT_HOST=0.0.0.0 GT_PORT=6001, and the environment beats the
+        # config file: without these the PDP listens on 6001 while everything (config, health check,
+        # wallet-backend and vc) addresses it on 8080. Found by running 0.25.0 with the rendered config.
+        deploy_args += ["--env", "GT_HOST=0.0.0.0", "--env", "GT_PORT=8080",
+                        "--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
     elif name == "wallet-backend":
         deploy_args += [
             "--file-local", f"/app/config.yaml={out_dir / 'wallet-backend.yaml'}",

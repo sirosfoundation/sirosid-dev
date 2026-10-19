@@ -71,6 +71,14 @@ class DeployInstanceTests(unittest.TestCase):
                          "every flyctl call - including the deploys - carries the client's token")
         self.assertTrue(any(c.startswith("flyctl deploy") for c in fake.log))
 
+    def test_the_pdp_listens_on_8080_whatever_the_image_defaults(self):
+        """go-trust >= 0.25.0's image sets GT_PORT=6001 and the environment beats the config file, while
+        the config, the health check and every caller use 8080."""
+        fake, _, _ = self.deploy()
+        pdp = [c for c in fake.log if c.startswith("flyctl deploy") and "-pdp " in c + " "]
+        self.assertTrue(pdp)
+        self.assertTrue(all("--env GT_PORT=8080" in c and "--env GT_HOST=0.0.0.0" in c for c in pdp), pdp)
+
     def test_everything_is_named_from_the_naming_it_was_given(self):
         fake, result, root = self.deploy()
         apps = [c.split()[3] for c in fake.log if " apps create " in c]

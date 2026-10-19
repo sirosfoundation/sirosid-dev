@@ -28,8 +28,12 @@ credential_registries:
   - https://registry.siros.org
 
 images:
-  # vc: BUILT LOCALLY from SUNET/vc upstream main - commit 4bba38e61 (2026-10-13, #787), a plain
-  # main build with no local branches on top. Since 78740eff2 it adds #777 (types/metadata for Interactive Authorization),
+  # vc: BUILT LOCALLY from SUNET/vc upstream main - commit 4bba38e61 (2026-10-13, #787) PLUS ONE PATCH: SUNET/vc#813
+  # (identity_attributes / document_claims on auth scopes, commit 2ed573aa = c7a9e0b9 cherry-picked from #813's base
+  # 45b71b31 - deliberately NOT built on current main, which also has #809 (mdoc DeviceAuthentication per ISO
+  # 18013-5, which our SDKs do not produce yet) and #790 (SD-JWT holder-binding verification)). Drop the patch
+  # and rebase this pin onto main once #813 is merged and those two have been looked at. Before the patch it was
+  # a plain main build with no local branches on top. Since 78740eff2 it adds #777 (types/metadata for Interactive Authorization),
   # #782 (presets visible without a featured one), #783 (unified browser error page), #787 (wallet URLs on /dashboard) and a
   # fix that makes a signed dc_api request name its expected origin (taken from configuration). It carries #770 (same-device wallet launch), #772 (the
   # consent credential UX), #774 (invalid_tx_code), #776/#780 (the well-known URL) and #779 (wallet
@@ -61,10 +65,10 @@ images:
   # makes the ZK Proofs presets visible on the verifier's landing page -
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1791897498
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1791897498
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1791897498
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1791897498
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792093480
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792093480
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792093480
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792093480
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -97,13 +101,20 @@ images:
   # pin stays because it is what stopped gdc drifting the last time the
   # shared one moved under it.
   # 0.22.1 -> 0.22.3 (2026-10-08 refresh: the last released versions of everything but vc).
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.22.3
+  # 2026-10-15: 0.22.3 -> 0.23.0 (the security overhaul: token revocation by family, PDP-first verifier trust,
+  # as.audiences defaulted, the registry as a role). The rendered config loads unchanged; it still mounts the now
+  # DEPRECATED /app/registry.yaml (a warning, to be removed in the next release - move it into config.yaml's
+  # `registry:` section, which the deploy already supports by not rendering wallet-backend-registry.yaml).
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.23.0
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
   #   go-trust (the PDP): 0.20.7 -> 0.24.1. The unknown-config-key warning announced in 0.23.0 did not
   #     become a startup error in 0.24.0, so the rendered pdp config is unaffected.
-  pdp: ghcr.io/sirosfoundation/go-trust:0.24.1
+  # 2026-10-15: 0.24.1 -> 0.25.0. Its image sets GT_HOST=0.0.0.0 GT_PORT=6001 and the environment BEATS the
+  # config file, so the PDP listened on 6001 while everything addresses 8080; fly-up now sets GT_PORT/GT_HOST
+  # itself (deploy.py, singlemachine.py). The LoTE verify_jws change is not used here.
+  pdp: ghcr.io/sirosfoundation/go-trust:0.25.0
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
