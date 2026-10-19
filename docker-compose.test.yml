@@ -62,7 +62,14 @@ services:
       - DISPLAY_CONSOLE=true
       # Credentials
       - LOGIN_WITH_PASSWORD=false
+      # The wallet defaults to HAIP, which binds the Holder's raw key - what every SIROS
+      # issuer accepts today. This stack opts in to DIIP so the profile is exercised; drop
+      # the line to get the default back.
+      - INTEROP_PROFILE=diip
+      # Which did:key flavour a HAIP wallet mints. Ignored under DIIP, which requires did:jwk.
       - DID_KEY_VERSION=jwk_jcs-pub
+      # DIIP v5 mandates the `jwt` proof type; key attestation stays preferred where the
+      # issuer supports it, since DIIP does not exclude it.
       - OPENID4VCI_PROOF_TYPE_PRECEDENCE=attestation,jwt
       - OPENID4VP_SAN_DNS_CHECK=false
       - OPENID4VP_SAN_DNS_CHECK_SSL_CERTS=false

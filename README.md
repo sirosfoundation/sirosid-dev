@@ -609,10 +609,11 @@ and generates a `.env.golden` file with the resolved image tags.
 
 **Note:** When using `GOLDEN=yes VC=yes`, the wallet and go-trust services
 use golden images but VC services are still built from local source. This is
-because the VC configuration format (`fixtures/vc-config.yaml`) evolves
-between releases, making golden VC images incompatible with the current
-config. The golden VC overlay (`docker-compose.golden-vc.yml`) is available
-for future use once configs are version-aligned.
+because the VC config rendered from the chart (`values-base.yaml` into
+`fixtures/rendered/vc-*.yaml`) is written for current source and evolves
+between releases, making golden VC images incompatible with it. The golden VC
+overlay (`docker-compose.golden-vc.yml`) is available for future use once
+configs are version-aligned.
 
 Images are pulled from `ghcr.io/sirosfoundation/*` — you may need
 `docker login ghcr.io` if the images are not public.
@@ -645,6 +646,55 @@ cd ../sirosid-tests && make test-conformance
 
 # Conformance UI: https://localhost.emobix.co.uk:8443/
 ```
+
+## DIIP v5 Compliance
+
+The wallet targets the [Decentralized Identity Interop Profile
+v5](https://github.com/FIDEScommunity/DIIP/blob/main/spec/spec.md). See
+[DIIP-V5.md](DIIP-V5.md) for the requirement-by-requirement matrix and how to exercise each
+part locally.
+
+The wallet defaults to the **HAIP** profile, which binds the Holder's raw key — the proof
+shape every SIROS issuer accepts today. DIIP is opt-in, so this stack sets
+`INTEROP_PROFILE=diip` in `docker-compose.test.yml` and holder keys are `did:jwk`; drop that
+line to get the default back. `DID_KEY_VERSION` then selects which `did:key` flavour a HAIP
+wallet mints, and is ignored under DIIP.
+
+An Issuer that publishes `cryptographic_binding_methods_supported` on a credential
+configuration overrides both — `vc` advertises `["jwk"]` unconfigured and
+`["did:jwk", "jwk"]` once configured — so negotiation, not the local setting, is normally what
+decides. That path needs the engine to forward the field first; see
+[DIIP-V5.md](DIIP-V5.md).
+
+DIIP mandates the IETF Token Status List for revocation, and `vc-registry` publishes real ones
+under `make up VC=yes` — no fixture needed. It implements the draft directly, signing tokens
+with the `registry.token_status_lists.key_config` keys rendered into
+`fixtures/rendered/vc-registry.yaml` (from `values-base.yaml`), and `vc-apigw` allocates each
+issued credential a section/index so its `status.status_list.uri` already points at a live
+list:
+
+```bash
+# Aggregation of all Status List Token URIs (draft §9.3)
+curl http://localhost:9004/statuslists
+
+# An individual Status List Token (draft §8.1), as application/statuslist+jwt
+curl http://localhost:9004/statuslists/0
+```
+
+Both `application/statuslist+jwt` and `application/statuslist+cwt` are supported. To flip a
+credential to revoked or suspended, use the registry's admin GUI at
+<http://localhost:9004/admin/login> (`admin`, with the password from
+`fixtures/rendered-secrets/vcAdminGuiPassword` — generated per checkout, no longer a fixed
+literal).
+
+The tokens' `iss`/`sub` — and the `status.status_list.uri` written into issued credentials —
+come from `registry.public_url`, which is the registry's own host-reachable address
+(`http://vc-registry.localhost:9004`), so a plain `make up VC=yes` is enough to fetch a
+credential's status list from the host browser. This used to be `https://vc-proxy:8445`, a host
+only defined in `docker-compose.conformance.yml`, which made those URIs unresolvable outside
+`CONFORMANCE=yes`; see `fixtures/vc-config-golden/accepted-diffs.yaml` for the correction. The
+wallet still treats an unfetchable status list as a warning rather than a failure (see
+[DIIP-V5.md](DIIP-V5.md)).
 
 ## R2PS (Remote PAKE-Protected Signing)
 

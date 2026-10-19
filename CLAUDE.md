@@ -397,8 +397,9 @@ dropping a field this repo depends on.
   device testing (custom LAN hostname vs. real-TLS Cloudflare quick tunnels).
 - `GOLDEN=yes|<release>` — pre-built images from `siros-conformance`'s
   `golden-releases.yaml` instead of local builds (see below). VC services
-  still build from source even with `GOLDEN=yes VC=yes` — `fixtures/vc-config.yaml`
-  evolves between releases, so golden VC images aren't config-compatible yet
+  still build from source even with `GOLDEN=yes VC=yes` — the VC config the
+  chart renders is written for current source and evolves between releases,
+  so golden VC images aren't config-compatible yet
   (`docker-compose.golden-vc.yml` exists but is deliberately unused, per an
   explicit comment in the Makefile — don't "fix" this without checking
   config/image version alignment first).
@@ -803,8 +804,9 @@ instead — see `fixtures/trusted-roots/README.md` for a worked example.
 
 **vc-apigw/vc-issuer crash-looping on Fly with an `mdl`/mdoc-schema config
 error (`unexpected end of JSON input` / `vctm_file_path ... required_without`):**
-the deployed image is older than the `MDDLSchema` support
-`fixtures/vc-config.yaml`'s `mdl` scope needs (`mddl_file_path`). Check
+the deployed image is older than the `MDDLSchema` support the `mdl` scope
+needs (`values-base.yaml`'s `mdl.mdocSchema`, rendered as `mddl_file_path`).
+Check
 `values-fly.yaml`'s current `images.issuer*`/`verifier` pins — they should be
 a published tag that includes `sirosfoundation/vc#23`
 (`feature/support-mdoc-schema-driven`, merged upstream into `SUNET/vc`'s
