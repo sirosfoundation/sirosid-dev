@@ -727,7 +727,11 @@ to the source by `tests/test_fixture_integrity.py`). `SCOPE=pid_1_8` means
 cannot authenticate on vc main at all (see `nym_auth`), so this is the only way
 to issue them. A new datastore type needs its twin: one twin entry, one copied
 fixture, one `datastoreImport` line, one accepted-diffs entry; an existing
-environment needs `make datastore-sync` for the twin's documents.
+environment needs `make datastore-sync` for the twin's documents. A twin has `metadataFrom: <source>`: it reads
+the source's VCTM/MDDL file and ships no copy of it, and on **Fly** its documents are neither shipped nor imported
+(`vc_render.drop_twin_imports`) - Fly caps a machine's config body near 1 MiB, base64 counted, and the copies tipped
+the apigw over it (`http: request body too large`, gdc 2026-10-20; `tests/test_fly_payload.py` guards it). So on Fly
+`make datastore-sync` is what adds the twins' documents, also after a storage clear.
 
 **The issuer and the verifier show the SUNET logo:** they are showing vc's
 built-in assets, which means `common.branding` never reached them. The chart

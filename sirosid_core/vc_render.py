@@ -349,6 +349,28 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
     return config
 
 
+TWIN_DOCUMENT_SUFFIX = "_offer.json"
+
+
+def is_twin_document(name: str) -> bool:
+    """A pre-authorized twin's bootstrapping document (<type>_offer.json)."""
+    return name.endswith(TWIN_DOCUMENT_SUFFIX)
+
+
+def drop_twin_imports(config: dict) -> dict:
+    """Fly: the twins' documents are not shipped with the apigw, so they must not be imported either.
+
+    Fly caps a machine's config body near 1 MiB and every file we ship counts base64-encoded; the twins'
+    copies of the documents tipped the apigw over it (found deploying gdc, 2026-10-20: 'http: request body too
+    large'). The apigw only imports bootstrapping documents into an EMPTY datastore anyway; the twins are added
+    to a running environment by `make datastore-sync`, which is also what a cleared one needs afterwards.
+    Compose has no such cap and keeps importing them."""
+    paths = ((((config.get("apigw") or {}).get("data_sources") or {}).get("datastore") or {}).get("import") or {})
+    if paths.get("file_paths"):
+        paths["file_paths"] = [p for p in paths["file_paths"] if not is_twin_document(p)]
+    return config
+
+
 def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen_secret,
                   overrides: dict = None) -> dict:
     """Do the secrets-renderer initContainer's job, but merge the result into
@@ -455,6 +477,8 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
         if (config.get("common") or {}).get("mongo"):
             config = patch_vc_mongo(config, target, env, mongo_password, naming, warn)
         config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides)
+        if target == "fly":
+            drop_twin_imports(config)
         config = strip_unrenderable(config)
         if credential_registries:
             config = use_credential_registry(config, credential_types or {}, credential_registries)

@@ -157,14 +157,16 @@ the file extension is what distinguishes them on disk.
 {{- $_ := required "You must define credential types in the value features.credentialTypes" $root.Values.features.credentialTypes -}}
 {{- range $id, $data := $root.Values.features.credentialTypes }}
 {{ $id | quote }}:
+  {{- /* A pre-authorized twin reads its source's metadata file (see features.credentialTypes.<id>_offer). */}}
+  {{- $file := $data.metadataFrom | default $id }}
   {{- if $data.mdocSchema }}
-  mddl_file_path: /vctms/{{ $id }}.mdoc.json
+  mddl_file_path: /vctms/{{ $file }}.mdoc.json
   {{- else if $data.mddlUrl }}
   mddl_url: {{ $data.mddlUrl | quote }}
   {{- else if $data.vctmUrl }}
   vctm_url: {{ $data.vctmUrl | quote }}
   {{- else }}
-  vctm_file_path: /vctms/{{ $id }}.json
+  vctm_file_path: /vctms/{{ $file }}.json
   {{- end }}
   {{- with $data.doctype }}
   doctype: {{ . | quote }}

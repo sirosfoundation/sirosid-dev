@@ -25,6 +25,7 @@ from .components import (CONFORMANCE_COMPONENTS, MINI_OIDC_APIGW_CLIENT_ID, MINI
 from .fly import FlyClient, FlyDeployError, FlyError
 from .helm import HelmError, extract_configmap_data, extract_image
 from .naming import Naming
+from . import vc_render
 from .render import render
 from .resources import Resources
 from .spec import InstanceSpec
@@ -181,6 +182,8 @@ def _vc_service_files(ctx: DeployContext, app: str, service: str, metadata: bool
         args += ["--file-local", f"/branding-assets/{f.name}={f}"]
     if bootstrapping:
         for f in sorted((out_dir / "documents").glob("*")):
+            if vc_render.is_twin_document(f.name):
+                continue                    # not imported on Fly (see vc_render.drop_twin_imports): the body cap
             args += ["--file-local", f"/documents/{f.name}={f}"]
         # apigw is also the one service with an admin API: its Bearer-JWT
         # verification key (public, so --file-local) - scripts/api_auth.py.
