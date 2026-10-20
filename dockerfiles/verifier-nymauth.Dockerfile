@@ -24,6 +24,11 @@ RUN set -e; \
     [ "$(wc -c < /nym_auth-ssc.bin)" = "${ARTIFACT_BYTES}" ] || { echo "artifact is not ${ARTIFACT_BYTES} bytes (decompressed?)"; exit 1; }; \
     echo "${ARTIFACT_SHA256}  /nym_auth-ssc.bin" | sha256sum -c -
 
+# Staged with its directories here: a distroless runtime has no shell to chmod with, and `COPY --chmod` gives the
+# directories it creates the FILE's mode (0444: no x bit), which makes the artifact unreadable to the non-root user
+# ("open /etc/vc/circuits/nym_auth-ssc.bin: permission denied" at startup).
+RUN mkdir -p /out/etc/vc/circuits && cp /nym_auth-ssc.bin /out/etc/vc/circuits/nym_auth-ssc.bin \
+    && chmod 0755 /out/etc /out/etc/vc /out/etc/vc/circuits && chmod 0444 /out/etc/vc/circuits/nym_auth-ssc.bin
+
 FROM ${BASE}
-# A distroless runtime has no shell: COPY only, readable by whatever user the image runs as.
-COPY --from=check --chmod=0444 /nym_auth-ssc.bin /etc/vc/circuits/nym_auth-ssc.bin
+COPY --from=check /out/ /
