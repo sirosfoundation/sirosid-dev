@@ -98,6 +98,10 @@ class SeedCommitments(unittest.TestCase):
         self.assertIn(vc_render.CREDENTIAL_ENCRYPTION_PATH, singlemachine.SECRET_PATHS["vc"])
         self.assertIn(f"vc-secrets/{vc_render.CREDENTIAL_ENCRYPTION_FILE}", [s for s, _ in singlemachine.SECRETS.values()])
 
+    def test_the_issuer_advertises_its_notification_endpoint(self):
+        meta = self.cfg["vc-apigw"]["apigw"]["issuer_metadata"]
+        self.assertTrue(meta["notification_endpoint"].endswith("/notification"))
+
     def test_the_seed_secret_is_permanent_across_renders(self):
         before = (self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text()
         rendered(self.tmp / "secrets")

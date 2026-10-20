@@ -137,6 +137,10 @@ apigw:
     # for an mDL from its issuer's metadata instead of denying with "issuer
     # does not publish mdoc_iacas_uri".
     mdoc_iacas_uri: https://{{ $hostnameIssuer }}/iacas
+    # Advertised so a wallet reports the outcome (credential_accepted/failure/deleted) of an issuance; the endpoint is
+    # served regardless, but a wallet that finds it in no metadata registers no notification context and drops the
+    # event (found on the first Pixel run, 2026-10-20). A seed-delivering scope REQUIRES it at startup (SUNET/vc#821).
+    notification_endpoint: https://{{ $hostnameIssuer }}/notification
     display:
       - locale: en-US
         name: {{ include "siros-id.displayName" . }}
