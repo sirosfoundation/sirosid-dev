@@ -132,6 +132,11 @@ def generate_pki(ctx: DeployContext) -> Path:
         "PKI_DIR_OVERRIDE": str(pki_dir),
         "SIGNING_CERT_ISSUER_URL": naming.url("vc-apigw"),
     }
+    # Opt-in per environment (values.verifier.signingCertDnsSan): re-issues the signing leaf (same key and root)
+    # once so the verifier's client_id, x509_san_dns:<its host>, appears in the SAN of the certificate it signs
+    # request objects with. Unset, an environment's certificate is left exactly as it is.
+    if ((ctx.spec.values or {}).get("verifier") or {}).get("signingCertDnsSan"):
+        env_vars["SIGNING_CERT_VERIFIER_HOST"] = naming.host("vc-verifier")
     fly.exec(["bash", "./create-pki.sh"], cwd=resources.fixtures, env=env_vars)
     return pki_dir
 
