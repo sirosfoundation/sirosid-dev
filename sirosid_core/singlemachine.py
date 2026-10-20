@@ -104,6 +104,8 @@ SECRETS = {
     # (state.VC_SECRETS_DIR). A new seed name needs an entry here and in SECRET_PATHS: test_seed_commitments_render
     # fails when the chart has a seed this layout cannot mount.
     "SIROSID_VC_APIGW_SEED_PRIMARY": ("vc-secrets/vcApigwSeedPrimary", [("vc", "apigwSeedPrimary")]),
+    "SIROSID_VC_CREDENTIAL_ENCRYPTION_KEY": ("vc-secrets/vcCredentialEncryption.pem",
+                                             [("vc", "credentialEncryption.pem")]),
     "SIROSID_JWT_SECRET": ("jwtSecret", [("wallet_backend", "jwtSecret")]),
     "SIROSID_ADMIN_TOKEN": ("adminToken", [("wallet_backend", "adminToken")]),
     "SIROSID_WALLET_PROVIDER_KEY": ("vc-pki/wallet_provider_ec_private.pem",
@@ -115,7 +117,8 @@ SECRET_GROUP = {"mongodb": "mongodb", "wallet-backend": "wallet_backend",
 # Absolute paths of the apps layout that became something else here.
 SECRET_PATHS = {
     "vc": {"/pki/signing_ec_private.pem": f"{SECRETS_DIR}/signing_ec_private.pem",
-           "/seeds/primary": f"{SECRETS_DIR}/apigwSeedPrimary"},
+           "/seeds/primary": f"{SECRETS_DIR}/apigwSeedPrimary",
+           "/credential-encryption/primary.pem": f"{SECRETS_DIR}/credentialEncryption.pem"},
     "wallet_backend": {"/main-secrets/jwtSecret": f"{SECRETS_DIR}/jwtSecret",
                        "/main-secrets/adminToken": f"{SECRETS_DIR}/adminToken",
                        "/main-secrets/walletProviderKey": f"{SECRETS_DIR}/walletProviderKey",

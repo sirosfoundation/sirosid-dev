@@ -82,6 +82,22 @@ class SeedCommitments(unittest.TestCase):
         delivery = self.cfg["vc-apigw"]["apigw"].get("delivery") or {}
         self.assertFalse(delivery.get("emit_credential_metadata_on_response", False))
 
+    def test_the_issuer_publishes_credential_encryption_from_a_mounted_key(self):
+        """A wallet asked to receive a delivered seed refuses an issuer that advertises no
+        credential_response_encryption (found on the first Pixel run, 2026-10-20)."""
+        enc = self.cfg["vc-apigw"]["apigw"]["issuer_metadata"]["credential_encryption"]
+        self.assertEqual([k["private_key_path"] for k in enc["keys"]], [vc_render.CREDENTIAL_ENCRYPTION_PATH])
+        self.assertFalse(enc["response_encryption_required"], "wallets that do no JWE must keep working")
+        pem = (self.tmp / "secrets" / vc_render.CREDENTIAL_ENCRYPTION_FILE).read_text()
+        self.assertIn("EC PRIVATE KEY", pem)
+        for name in ("vc-issuer", "vc-verifier", "vc-registry"):
+            self.assertNotIn("credential_encryption", (self.cfg[name].get("apigw") or {}).get("issuer_metadata") or {})
+
+    def test_the_single_machine_layout_can_mount_the_encryption_key(self):
+        from sirosid_core import singlemachine
+        self.assertIn(vc_render.CREDENTIAL_ENCRYPTION_PATH, singlemachine.SECRET_PATHS["vc"])
+        self.assertIn(f"vc-secrets/{vc_render.CREDENTIAL_ENCRYPTION_FILE}", [s for s, _ in singlemachine.SECRETS.values()])
+
     def test_the_seed_secret_is_permanent_across_renders(self):
         before = (self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text()
         rendered(self.tmp / "secrets")

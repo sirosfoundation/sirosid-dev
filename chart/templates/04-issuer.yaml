@@ -143,6 +143,16 @@ apigw:
         logo:
           uri: {{ include "siros-id.branding.logoDataUrl" . | quote }}
           alt_text: Logotype for issuer
+    {{- if .Values.issuer.apigw.credentialEncryption.enabled }}
+    {{- /* OpenID4VCI §8.3 JWE of the Credential Request/Response (ECDH-ES+A256KW / A256GCM, P-256). A wallet that
+           is asked to receive a delivered seed (SUNET/vc#821) refuses to proceed against an issuer that does not
+           advertise it. The key is a FILE the deploy mounts (generated once, never in the config). */}}
+    credential_encryption:
+      keys:
+        - private_key_path: /credential-encryption/primary.pem
+      request_encryption_required: {{ .Values.issuer.apigw.credentialEncryption.requestEncryptionRequired }}
+      response_encryption_required: {{ .Values.issuer.apigw.credentialEncryption.responseEncryptionRequired }}
+    {{- end }}
   {{- if (or .Values.issuer.identitymappingImport.identities .Values.issuer.identitymappingImport.users) }}
   identity_mapping_import:
     file_paths:

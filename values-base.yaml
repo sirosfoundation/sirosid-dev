@@ -516,6 +516,10 @@ issuer:
     seeds:
       primary:
         model: derived
+    # Published so a wallet can ask for an ENCRYPTED credential response, which seed delivery requires. The key is
+    # generated once per environment (vc_render) and mounted as /credential-encryption/primary.pem.
+    credentialEncryption:
+      enabled: true
     cors:
       allowedMethods: [GET, POST, OPTIONS]
       allowedHeaders: [Authorization, Content-Type]

@@ -75,6 +75,10 @@ COMPOSE_PLAIN_HTTP_HOSTS = {
 SEED_SECRET_LENGTH = 64     # characters; base64url, so 48 bytes decoded (vc needs >= 32)
 
 
+CREDENTIAL_ENCRYPTION_FILE = "vcCredentialEncryption.pem"
+CREDENTIAL_ENCRYPTION_PATH = "/credential-encryption/primary.pem"     # where every layout mounts it
+
+
 def seed_secret_file(name: str) -> str:
     """File name (in the secrets dir) of the seed secret behind apigw.seeds.<name>."""
     return f"vcApigwSeed{name.capitalize()}"
@@ -405,6 +409,12 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
     # mount. Which seeds exist is read off the rendered config, so `issuer.apigw.seeds` is the single list.
     for name in ((config.get("apigw") or {}).get("seeds") or {}):
         gen_secret(secrets_dir / seed_secret_file(name), SEED_SECRET_LENGTH)
+    # The credential-encryption key (apigw.issuer_metadata.credential_encryption, OpenID4VCI §8.3): an EC P-256 key
+    # pair generated once, mounted as a file like the seeds. Rotating it only needs a redeploy (wallets re-read the
+    # published JWKS), unlike a seed secret.
+    if (((config.get("apigw") or {}).get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys"):
+        from . import api_auth
+        api_auth.ensure_key(secrets_dir / CREDENTIAL_ENCRYPTION_FILE)
     # A few of these aren't ours to generate: the apigw's OIDC client secret
     # has to be the one mini-oidc was actually configured with, on both
     # targets (fly_common sets the same constants as mini-oidc's own

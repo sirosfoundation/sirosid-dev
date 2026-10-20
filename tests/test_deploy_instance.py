@@ -86,6 +86,7 @@ class DeployInstanceTests(unittest.TestCase):
         apigw = [c for c in fake.log if c.startswith("flyctl deploy") and "-vc-apigw " in c + " "]
         self.assertTrue(apigw)
         self.assertTrue(all("--file-secret /seeds/primary=vcApigwSeedPrimary" in c for c in apigw), apigw)
+        self.assertTrue(all("--file-secret /credential-encryption/primary.pem=vcCredentialEncryption" in c for c in apigw), apigw)
         self.assertFalse([c for c in fake.log if c.startswith("flyctl deploy") and "-vc-issuer " in c + " " and "/seeds/" in c])
 
     def test_everything_is_named_from_the_naming_it_was_given(self):
