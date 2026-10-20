@@ -101,7 +101,7 @@ class VerifierSan(unittest.TestCase):
 
 
 class DeployPassThrough(unittest.TestCase):
-    def test_generate_pki_hands_the_script_the_verifiers_public_host(self):
+    def generate(self, values):
         from sirosid_core import deploy
         from sirosid_core.naming import Naming
 
@@ -114,14 +114,29 @@ class DeployPassThrough(unittest.TestCase):
             def app_exists(self, app):
                 return False
 
-        naming = Naming(env="gdc")
-        ctx = deploy.DeployContext(fly=Fly(), naming=naming, resources=type("R", (), {"fixtures": Path("/x")})(),
-                                   spec=None, out_dir=Path(tempfile.mkdtemp()))
+        spec = type("S", (), {"values": values})()
+        ctx = deploy.DeployContext(fly=Fly(), naming=Naming(env="gdc"), resources=type("R", (), {"fixtures": Path("/x")})(),
+                                   spec=spec, out_dir=Path(tempfile.mkdtemp()))
         self.addCleanup(shutil.rmtree, ctx.out_dir, ignore_errors=True)
         deploy.generate_pki(ctx)
-        self.assertEqual(seen["env"]["SIGNING_CERT_VERIFIER_HOST"], "sirosid-gdc-vc-verifier.fly.dev",
+        return seen["env"]
+
+    def test_opted_in_environment_hands_the_script_the_verifiers_public_host(self):
+        env = self.generate({"verifier": {"signingCertDnsSan": True}})
+        self.assertEqual(env["SIGNING_CERT_VERIFIER_HOST"], "sirosid-gdc-vc-verifier.fly.dev",
                          "the host is the client_id's x509_san_dns value")
-        self.assertEqual(seen["env"]["SIGNING_CERT_ISSUER_URL"], "https://sirosid-gdc-vc-apigw.fly.dev")
+        self.assertEqual(env["SIGNING_CERT_ISSUER_URL"], "https://sirosid-gdc-vc-apigw.fly.dev")
+
+    def test_every_other_environment_is_unchanged(self):
+        for values in ({}, {"verifier": {}}, {"verifier": {"signingCertDnsSan": False}}, None):
+            self.assertNotIn("SIGNING_CERT_VERIFIER_HOST", self.generate(values), values)
+
+    def test_gdc_opts_in_and_nothing_else_does(self):
+        import yaml
+        for env_file in sorted((ROOT / "environments").glob("*.yaml")):
+            cfg = yaml.safe_load(env_file.read_text()) or {}
+            on = (((cfg.get("values") or {}).get("verifier") or {}).get("signingCertDnsSan"))
+            self.assertEqual(bool(on), env_file.stem == "gdc", env_file.name)
 
 
 if __name__ == "__main__":

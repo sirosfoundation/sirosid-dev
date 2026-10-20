@@ -283,6 +283,9 @@ values:
         description: "did:web DID document resolution"
         timeout: 10s
   verifier:
+    # The verifier's client_id is x509_san_dns:sirosid-gdc-vc-verifier.fly.dev; put that host in the SAN of the
+    # certificate it signs request objects with (re-issued once from the same key and root; see create-pki.sh).
+    signingCertDnsSan: true
     # Selectable options in the verifier's own presentation-definition UI.
     # NOT the same thing as presentation-request templates, which are only
     # reachable through a real OIDC /authorize?scope=... request.
