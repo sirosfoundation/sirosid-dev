@@ -37,7 +37,7 @@ images:
   # #790 (SD-JWT holder binding). The nymauth VERIFIER wiring (V2) is NOT in it: issuance and seed
   # delivery are testable, nymauth verification waits for the next SHA. The verifier is built with the two
   # native ZK libraries pinned by FULL SHA (--build-arg ZK_CRED_LONGFELLOW_REF=cf2eba99..., ZK_CRED_VEGA_REF=
-  # d6f0955b...: a shallow fetch needs all 40 characters), --target runtime-verifier.
+  # d6f0955b...: a shallow fetch needs all 40 characters), --target runtime-verifier, and --build-arg GOBUILD_IMAGE=golang:1.27.2-bookworm (the branch needs Go 1.27.2; the Dockerfile default is still 1.27.1 and fails with "go.mod requires go >= 1.27.2").
   #
   # Before this: plain main @ 4bba38e61 (2026-10-13) + #813; before that a879fcb9a (unmerged #771).
   # It must be newer than dc4c08e4f: that one had #507/#751 (an OIDC login with an empty
@@ -63,10 +63,10 @@ images:
   # makes the ZK Proofs presets visible on the verifier's landing page -
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792454045
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792454045
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792454045
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792454045
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792455884
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792455884
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792455884
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792455884
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
