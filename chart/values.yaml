@@ -179,6 +179,11 @@ issuer:
   # OpenID4VCI face, core is an internal gRPC signing service, registry holds
   # the token status lists.
   apigw:
+    # Seed sources for seed-backed commitment claims (SUNET/vc#793): name -> {model: derived, seed_bytes: 16}.
+    # A credential type uses one through its `commitments` block (features.credentialTypes.<id>.commitments).
+    # The secret behind each name is generated once per environment (vc_render.apply_secrets) and substituted
+    # into the apigw secrets; it is permanent - replacing it repseudonymises everyone.
+    seeds: {}
     cors:
       # allowed_origins is derived from the wallet frontend plus
       # features.extraWallets; these are appended to that, for origins that

@@ -72,6 +72,7 @@ COMPOSE_PLAIN_HTTP_HOSTS = {
 # placeholders. Generated once into fixtures/rendered-secrets/ and reused,
 # exactly like WALLET_BACKEND_SECRETS - a rotated subject_salt would
 # invalidate every previously issued pairwise pseudonym.
+SEED_SECRET_LENGTH = 64     # characters; base64url, so 48 bytes decoded (vc needs >= 32)
 VC_SECRETS = {
     "OIDC_PROVIDER_SUBJECT_SALT": "vcOidcProviderSubjectSalt",
     "ADMIN_GUI_PASSWORD": "vcAdminGuiPassword",
@@ -367,6 +368,14 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
     not published anywhere the secrets file wouldn't be.
     """
     values = {var: gen_secret(secrets_dir / name) for var, name in VC_SECRETS.items()}
+    # Seed secrets (apigw.seeds.<name>.secret, SUNET/vc#793): base64url and at least 32 bytes DECODED, which
+    # a 64-character alphanumeric string is (48 bytes). PERMANENT, like the subject salt above: every
+    # commitment ever issued is a function of it, so a replaced secret repseudonymises everyone and a lost
+    # one makes every issued pseudonym unrecoverable. Which seeds exist is read off the template, so the
+    # chart's `issuer.apigw.seeds` is the single list.
+    template_text = extract_configmap_data(docs, cm_name).get("secrets.yaml.template") or ""
+    for seed in sorted(set(re.findall(r"\$\{APIGW_SEED_(\w+)\}", template_text))):
+        values[f"APIGW_SEED_{seed}"] = gen_secret(secrets_dir / f"vcApigwSeed{seed.capitalize()}", SEED_SECRET_LENGTH)
     # A few of these aren't ours to generate: the apigw's OIDC client secret
     # has to be the one mini-oidc was actually configured with, on both
     # targets (fly_common sets the same constants as mini-oidc's own

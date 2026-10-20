@@ -114,7 +114,10 @@ class NymAuthRender(unittest.TestCase):
     def test_credential_metadata_and_documents(self):
         for _, configs, files in self.each():
             for svc in ("vc-apigw", "vc-issuer"):
-                meta = configs[svc]["common"]["credential_metadata"][SCOPE]
+                meta = dict(configs[svc]["common"]["credential_metadata"][SCOPE])
+                # The seed-backed ssc (commitments) is the apigw's alone; test_seed_commitments_render holds it.
+                commitments = meta.pop("commitments", None)
+                self.assertEqual(commitments is not None, svc == "vc-apigw", svc)
                 self.assertEqual(meta, {"mddl_file_path": f"/vctms/{SCOPE}.mdoc.json", "doctype": DOCTYPE,
                                         "format": "mso_mdoc"}, svc)
             self.assertEqual(files["mddl"], (ROOT / "fixtures" / "vc-metadata" / f"{SCOPE}.mdoc.json").read_bytes())

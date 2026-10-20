@@ -28,22 +28,22 @@ credential_registries:
   - https://registry.siros.org
 
 images:
-  # vc: BUILT LOCALLY from SUNET/vc upstream main - commit 4bba38e61 (2026-10-13, #787) PLUS ONE PATCH: SUNET/vc#813
-  # (identity_attributes / document_claims on auth scopes, commit 2ed573aa = c7a9e0b9 cherry-picked from #813's base
-  # 45b71b31 - deliberately NOT built on current main, which also has #809 (mdoc DeviceAuthentication per ISO
-  # 18013-5, which our SDKs do not produce yet) and #790 (SD-JWT holder-binding verification)). Drop the patch
-  # and rebase this pin onto main once #813 is merged and those two have been looked at. Before the patch it was
-  # a plain main build with no local branches on top. Since 78740eff2 it adds #777 (types/metadata for Interactive Authorization),
-  # #782 (presets visible without a featured one), #783 (unified browser error page), #787 (wallet URLs on /dashboard) and a
-  # fix that makes a signed dc_api request name its expected origin (taken from configuration). It carries #770 (same-device wallet launch), #772 (the
-  # consent credential UX), #774 (invalid_tx_code), #776/#780 (the well-known URL) and #779 (wallet
-  # client auth), plus the earlier #744/#745/#763. Previously a879fcb9a, whose apigw carried an
-  # unmerged #771. It must be newer than dc4c08e4f: that one had #507/#751 (an OIDC login with an empty
+  # vc: BUILT LOCALLY (2026-10-20) from sirosfoundation/vc `integration/gdc-nymauth` @
+  # 65d694febeb4099320b720478f661878ed4e88ef = SUNET/vc main + #793 (seed derivation in the apigw,
+  # `apigw.seeds`: BREAKING - an image without it silently ignores the key and issues no ssc) + #796 +
+  # #820 (verifier V1) + #821 (seed delivery: `deliver: true`, advertises org.siros.secret_seed) + #813
+  # (identity_attributes / document_claims). NOT for upstream merge. Because it is built on current main
+  # it also brings #809 (mdoc DeviceAuthentication per ISO 18013-5, which our SDKs do not produce yet) and
+  # #790 (SD-JWT holder binding). The nymauth VERIFIER wiring (V2) is NOT in it: issuance and seed
+  # delivery are testable, nymauth verification waits for the next SHA. The verifier is built with the two
+  # native ZK libraries pinned by FULL SHA (--build-arg ZK_CRED_LONGFELLOW_REF=cf2eba99..., ZK_CRED_VEGA_REF=
+  # d6f0955b...: a shallow fetch needs all 40 characters), --target runtime-verifier.
+  #
+  # Before this: plain main @ 4bba38e61 (2026-10-13) + #813; before that a879fcb9a (unmerged #771).
+  # It must be newer than dc4c08e4f: that one had #507/#751 (an OIDC login with an empty
   # identity-mapping namespace is refused, IDENTITY_MAPPING_NAMESPACE_REQUIRED) without #735 (the per-scope authentic_source
   # key; values-base.yaml issuer.datastoreAuthenticSource supplies it), so every issuance failed on it.
-  # Every fix this environment once needed is merged upstream now (#667 VCTM raw bytes, #668 metadata
-  # signing limit, #669 type metadata for registry-resolved scopes, #722 Vega ZK 32-byte salt), so this is
-  # plain main with no patches. Build recipe, per service (registry issuer verifier apigw):
+  # Build recipe, per service (registry issuer verifier apigw):
   #   docker build -f dockerfiles/worker --build-arg SERVICE_NAME=<svc> \
   #     -t registry.fly.io/sirosid-gdc-vc-<svc>:local-<epoch> .   # then docker push (flyctl auth docker)
   # `make docker-build VERSION=<tag>` builds all four; the images are then retagged to
@@ -57,18 +57,16 @@ images:
   #
   # All four vc-services MUST be bumped together: they share one config shape unmarshaled into the same
   # model.Cfg, so leaving one on an older binary while another expects a newer shape crash-loops it.
-  # All four from one plain upstream-main build. The consent-page work that
-  # apigw used to carry as an unmerged branch (#771) is on main now as #772,
-  # so nothing here is a local branch any more.
+  # All four come from the one integration build above.
   #
   # Not yet on main, and therefore NOT in this build: SUNET/vc#782, which
   # makes the ZK Proofs presets visible on the verifier's landing page -
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792093480
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792093480
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792093480
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792093480
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792454045
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792454045
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792454045
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792454045
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -101,11 +99,13 @@ images:
   # pin stays because it is what stopped gdc drifting the last time the
   # shared one moved under it.
   # 0.22.1 -> 0.22.3 (2026-10-08 refresh: the last released versions of everything but vc).
-  # 2026-10-15: 0.22.3 -> 0.23.0 (the security overhaul: token revocation by family, PDP-first verifier trust,
+  # 2026-10-20: 0.23.0 -> 0.24.0 (relays the OID4VCI 1.1 response-level credential_metadata - the seed delivery
+  # - and requires an encrypted response when the issuer advertises it; config unchanged, checked against the
+  # rendered gdc config). 2026-10-15: 0.22.3 -> 0.23.0 (the security overhaul: token revocation by family, PDP-first verifier trust,
   # as.audiences defaulted, the registry as a role). The rendered config loads unchanged; it still mounts the now
   # DEPRECATED /app/registry.yaml (a warning, to be removed in the next release - move it into config.yaml's
   # `registry:` section, which the deploy already supports by not rendering wallet-backend-registry.yaml).
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.23.0
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.24.0
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.

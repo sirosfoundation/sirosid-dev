@@ -539,9 +539,11 @@ into a datastore document, so the chart renders
 `auth_scopes.<x>.document_claims`/`identity_attributes` for a proposed vc
 change and vc main ignores them; until then the document's own `birth_date`
 is issued, and `tests/test_fixture_integrity.py` (`NymAuth`) holds it equal to
-the birth date in every credential that person can present. Its `ssc`/`psc`
-are TEMPORARY fixed test commitments (README.md lists the seeds) until vc
-supports per-holder seeds.
+the birth date in every credential that person can present. Its `ssc` is issuer-generated
+from `issuer.apigw.seeds` (a PERMANENT per-environment secret, `vc_render.apply_secrets`) over the
+document's `issuing_country` + `personal_administrative_number`, and its seed is delivered to the wallet
+(`commitments.ssc.deliver`); the stored documents must not carry `ssc` (vc refuses it) and `psc` is
+holder-supplied. Needs vc with SUNET/vc#793/#821; an older image ignores `apigw.seeds` and issues no `ssc`.
 
 Derived age claims are recomputed from the birth date at test time, so they
 fail the suite rather than rot. Adding or changing a document needs a
