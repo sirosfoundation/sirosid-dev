@@ -283,6 +283,40 @@ values:
         description: "did:web DID document resolution"
         timeout: 10s
   verifier:
+    # nym_auth pseudonym verification (SUNET/vc#827/#829/#830/#832). Needs a vc verifier BUILT WITH the zknative tag
+    # and the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile); an older verifier ignores these
+    # keys (non-strict unmarshal) and simply cannot answer a circuit_zk request.
+    #
+    # verifier_id is BARE and scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. It must
+    # be the verifier's own client_id identifier without the `x509_san_dns:` prefix (public_url's host). CHANGING IT
+    # CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
+    # src/nymauth/profile.rs (authoritative); do NOT take the digest from docs/CONFIGURATION.md, whose example is a
+    # placeholder with 52 zeros in the middle.
+    #
+    # trust.pdp_url is already set by the chart and MUST stay: nym_auth takes the issuer key from the HOLDER's own
+    # certificate chain, so the PDP is the only check that key belongs to a real issuer (the verifier refuses to
+    # start without it). Checked against this environment's PDP 2026-10-20: the gdc issuer's chain is trusted for
+    # eu.europa.ec.eudi.nym_auth.1 (action mdoc-issuer, the mDOC IACA registry) and a self-signed chain with the same
+    # SAN is not.
+    extraConfig:
+      verifier:
+        nym_auth:
+          enable: true
+          verifier_id: sirosid-gdc-vc-verifier.fly.dev
+          circuits:
+            allow:
+              - config: known-offender-matching-ssc
+                hash_circuit_id: 5f8c75ae5c3893ef6ab6a079628cb385ba85e95a85437d58570c455289d75729
+                sig_circuit_id: 00513797c75b2eab1a9db75004977c15317d4e40c0db1d00674523431baa75cb
+                block_enc_hash: 6983
+                block_enc_sig: 4679
+                artifact_path: /etc/vc/circuits/nym_auth-ssc.bin
+                artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
+                artifact_bytes: 1062842
+        preferred_vp_formats:
+          circuit_zk:
+            circuit_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
+            circuit_proof_system_values: ["longfellow-libzk-v1"]
     # Selectable options in the verifier's own presentation-definition UI.
     # NOT the same thing as presentation-request templates, which are only
     # reachable through a real OIDC /authorize?scope=... request.

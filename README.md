@@ -517,6 +517,19 @@ in:** holder-supplied commitments (the `known-offender-matching-psc` configurati
 lands, REMOVE the fixed `psc` from `nym_auth*.json`: the issuer refuses any document that already carries a value
 for a configured commitment claim.
 
+**Verifying a pseudonym (gdc config; image comes with vc's verifier release).** `environments/gdc.yaml`
+`values.verifier.extraConfig` carries `verifier.nym_auth` (SUNET/vc#832): the allowlist entry
+`known-offender-matching-ssc` (circuit ids, Ligero block parameters, artifact size and SHA-256 from
+zk-cred-longfellow `src/nymauth/profile.rs`; do not copy the digest from vc's `docs/CONFIGURATION.md`, whose
+example has 52 zeros in the middle) and `preferred_vp_formats.circuit_zk`. The ~1 MB decompressed artifact cannot
+travel as a Fly secret and is not in the vc repo, so `dockerfiles/verifier-nymauth.Dockerfile` bakes it into the
+verifier image at `/etc/vc/circuits/nym_auth-ssc.bin`, checking size and digest at build time (build input:
+`fixtures/nym-auth-circuits/nym_auth-ssc.bin`, gitignored; the recipe is in the file). The verifier needs the
+`zknative` build and refuses to start without `trust.pdp_url`: it takes the issuer key from the HOLDER's own
+chain, so the PDP is the only check that key belongs to an issuer (here: action `mdoc-issuer`, the mDOC IACA
+registry; a self-signed chain with the same SAN gets decision false). **`verifier_id` is the bare host of the
+verifier's `public_url` and scopes every pseudonym: changing it changes every pseudonym this verifier reports.**
+
 ### Service Architecture
 
 ```

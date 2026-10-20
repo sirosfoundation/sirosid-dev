@@ -287,3 +287,6 @@ fly-gdc:
   - path: verifier.zk_circuits
     reason: "now driven by environments/<name>.yaml's zk_circuits_sources rather than a CLI-only flag"
 
+  - path: verifier.nym_auth
+    kind: added
+    reason: "gdc verifies nym_auth pseudonym proofs (SUNET/vc#832; environments/gdc.yaml verifier.extraConfig). Needs a zknative verifier image with the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile)."

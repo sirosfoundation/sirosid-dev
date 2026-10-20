@@ -519,6 +519,18 @@ def write_as_rules(docs: list, out_dir: Path) -> Path:
     return _write_documents(docs, out_dir, "wallet-backend-as-rules", "as-rules")
 
 
+def integral_nym_auth_numbers(config: dict) -> dict:
+    """Helm renders an integer of a million or more as a float (artifact_bytes 1062842 becomes `1.062842e+06`,
+    which PyYAML then dumps as `1062842.0`), and vc's allowlist wants an integer there. Only the allowlist's
+    numeric fields are touched, and only when the float is integral."""
+    allow = (((config.get("verifier") or {}).get("nym_auth") or {}).get("circuits") or {}).get("allow") or []
+    for entry in allow:
+        for key in ("artifact_bytes", "block_enc_hash", "block_enc_sig"):
+            if isinstance(entry.get(key), float) and entry[key].is_integer():
+                entry[key] = int(entry[key])
+    return config
+
+
 def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_secret,
               plain_http_hosts: set = None, secret_overrides: dict = None,
               env: str = None, mongo_password: str = None,
@@ -539,7 +551,7 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
             seeds_enabled = bool((config.get("apigw") or {}).get("seeds"))
         if target == "fly":
             drop_twin_imports(config)
-        config = strip_unrenderable(config)
+        config = integral_nym_auth_numbers(strip_unrenderable(config))
         if credential_registries:
             config = use_credential_registry(config, credential_types or {}, credential_registries)
         (out_dir / filename).write_text(yaml.dump(config, sort_keys=False))
