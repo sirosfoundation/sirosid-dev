@@ -175,7 +175,7 @@ the file extension is what distinguishes them on disk.
   {{- with $data.disclosurePolicy }}
   disclosure_policy: {{- toYamlPretty . | nindent 4 }}
   {{- end }}
-  {{- if $withCommitments }}
+  {{- if and $withCommitments $root.Values.issuer.apigw.seeds }}
   {{- with $data.commitments }}
   commitments: {{- toYamlPretty . | nindent 4 }}
   {{- end }}

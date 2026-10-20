@@ -31,6 +31,7 @@ from . import vc_render
 from .render import render
 from .resources import Resources
 from .spec import InstanceSpec
+from . import state as state_mod
 from .state import persistent_secret
 
 
@@ -61,7 +62,6 @@ class DeployContext:
     pki_dir: Path = None
     assetlinks_path: Path = None
     mongo_password: str = ""
-    secrets_dir: Path = None        # where the vc services' generated secrets (seeds) live
 
 
 @dataclass
@@ -189,12 +189,12 @@ def _vc_service_files(ctx: DeployContext, app: str, service: str, metadata: bool
         # which `flyctl config show` can read). ensure_secret never rotates: the secret is permanent.
         for name, seed in sorted((apigw.get("seeds") or {}).items()):
             secret = vc_render.seed_secret_file(name)
-            fly.ensure_secret(app, secret, (ctx.secrets_dir / secret).read_text().strip())
+            fly.ensure_secret(app, secret, (out_dir / state_mod.VC_SECRETS_DIR / secret).read_text().strip())
             args += ["--file-secret", f"{seed['secret_path']}={secret}"]
         # The credential-encryption key (see vc_render): a Fly secret mounted as a file, set once.
         if ((apigw.get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys"):
             fly.ensure_secret(app, "vcCredentialEncryption",
-                              (ctx.secrets_dir / vc_render.CREDENTIAL_ENCRYPTION_FILE).read_text())
+                              (out_dir / state_mod.VC_SECRETS_DIR / vc_render.CREDENTIAL_ENCRYPTION_FILE).read_text())
             args += ["--file-secret", f"{vc_render.CREDENTIAL_ENCRYPTION_PATH}=vcCredentialEncryption"]
     if bootstrapping:
         for f in sorted((out_dir / "documents").glob("*")):
@@ -896,8 +896,7 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
         return result
 
     ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say, docs=docs,
-                        mongo_version=mongo_version, out_dir=out_dir, mongo_password=mongo_password,
-                        secrets_dir=Path(secrets_dir) if secrets_dir else resources.rendered_secrets)
+                        mongo_version=mongo_version, out_dir=out_dir, mongo_password=mongo_password)
     say("=== Generating per-environment PKI ===")
     ctx.pki_dir = generate_pki(ctx)
     say("=== Generating Android assetlinks.json ===")

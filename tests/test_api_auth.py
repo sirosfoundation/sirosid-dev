@@ -94,15 +94,21 @@ class SPOCPSubject(unittest.TestCase):
 class FakeTarget:
     """Records what `sync` would send, and answers searches from a fixed state."""
 
+    SEARCH_CAP = 50         # the real endpoint returns at most 50 documents whatever `limit` says
+
     def __init__(self, documents=(), mappings=()):
         self.documents = list(documents)
         self.mappings = list(mappings)
         self.sent = []
+        self.queries = []
 
     def request(self, method, path, body=None, query=None):
         self.sent.append((method, path, body))
         if path == "/api/v1/datastore/search":
-            return {"data": self.documents}
+            self.queries.append(dict(query or {}))
+            scope = (query or {}).get("scope")
+            found = [d for d in self.documents if not scope or d["meta"]["scope"] == scope]
+            return {"data": found[:self.SEARCH_CAP]}
         if path == "/api/v1/identity/mapping/search":
             return {"data": self.mappings}
         return None
@@ -152,13 +158,23 @@ class DatastoreSync(unittest.TestCase):
         self.write("mdl", {"alice-001": document("mdl", "mdl-alice")})
         target = FakeTarget(documents=[document("mdl", "mdl-alice")])
         datastore.sync(target, self.tmp)
-        self.assertEqual([p for _, p, _ in target.sent], ["/api/v1/datastore/search"])
+        self.assertEqual([m for m, _, _ in target.sent], ["GET", "GET"], "searches only, no write")
+        self.assertIn({"scope": "mdl", "limit": 1000}, target.queries, "asks per scope")
+
+    def test_a_datastore_beyond_the_search_cap_is_still_seen_whole(self):
+        """gdc held 78 documents and one unscoped search saw 50, so 28 existing documents were reported as
+        missing (and would have been added again)."""
+        for i in range(60):
+            self.write(f"s{i:02d}", {"alice-001": document(f"s{i:02d}", f"d{i:02d}")})
+        target = FakeTarget(documents=[document(f"s{i:02d}", f"d{i:02d}") for i in range(60)])
+        datastore.sync(target, self.tmp)
+        self.assertEqual([m for m, _, _ in target.sent if m != "GET"], [], "nothing is added or removed")
 
     def test_dry_run_sends_nothing(self):
         self.write("mdl", {"alice-001": document("mdl", "mdl-alice")})
         target = FakeTarget()
         datastore.sync(target, self.tmp, dry_run=True)
-        self.assertEqual([m for m, _, _ in target.sent], ["GET"])
+        self.assertEqual({m for m, _, _ in target.sent}, {"GET"})
 
     def test_identity_mappings_are_reconciled_too(self):
         # A mapping that lags the fixtures fails issuance with "no documents",

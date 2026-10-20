@@ -79,10 +79,19 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertTrue(pdp)
         self.assertTrue(all("--env GT_PORT=8080" in c and "--env GT_HOST=0.0.0.0" in c for c in pdp), pdp)
 
+    def test_without_seeds_the_apigw_gets_no_secret_mounts(self):
+        fake, _, _ = self.deploy()
+        apigw = [c for c in fake.log if c.startswith("flyctl deploy") and "-vc-apigw " in c + " "]
+        self.assertTrue(apigw)
+        self.assertFalse([c for c in apigw if "/seeds/" in c or "/credential-encryption/" in c])
+
     def test_the_apigw_gets_its_seed_secret_as_a_mounted_file(self):
         """apigw.seeds.primary names /seeds/primary (vc reads a seed `secret` only from a secrets file it would
         refuse); the deploy sets it as a Fly secret and mounts it there. Without it the apigw panics at start."""
-        fake, _, _ = self.deploy()
+        spec = InstanceSpec(env=NAMING.env, region="arn", app_prefix="sid", host_pattern=NAMING.host_pattern,
+                            values={"issuer": {"apigw": {"seeds": {"primary": {"model": "derived"}},
+                                                         "credentialEncryption": {"enabled": True}}}})
+        fake, _, _ = self.deploy(spec=spec)
         apigw = [c for c in fake.log if c.startswith("flyctl deploy") and "-vc-apigw " in c + " "]
         self.assertTrue(apigw)
         self.assertTrue(all("--file-secret /seeds/primary=vcApigwSeedPrimary" in c for c in apigw), apigw)

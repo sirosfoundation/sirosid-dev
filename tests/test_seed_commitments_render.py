@@ -3,6 +3,7 @@
 source with a usable secret, and the credential types the commitment block. An image without #793 ignores
 `apigw.seeds` silently and issues a credential with no ssc, so what we render is the only line of defence."""
 import base64
+import json
 import shutil
 import sys
 import tempfile
@@ -21,14 +22,21 @@ from sirosid_core.resources import Resources  # noqa: E402
 NEEDS = unittest.skipUnless(shutil.which("helm"), "needs helm")
 
 
-def rendered(secrets_dir=None):
+# What environments/gdc.yaml switches on (the default is off: it needs a vc image with SUNET/vc#793/#821).
+GDC_VALUES = {"issuer": {"apigw": {"seeds": {"primary": {"model": "derived"}}, "credentialEncryption": {"enabled": True}}}}
+
+
+def rendered(secrets_dir=None, env_values=None, documents=False):
     tmp = Path(tempfile.mkdtemp())
     out = {}
     try:
         render("compose", ROOT / "chart", resources=Resources(ROOT), out_dir=tmp / "out",
-               secrets_dir=secrets_dir or tmp / "secrets", env_values={}, say=lambda *a, **k: None, mongo_password="x")
+               secrets_dir=secrets_dir or tmp / "secrets", env_values=env_values or {}, say=lambda *a, **k: None,
+               mongo_password="x")
         for f in ("vc-apigw", "vc-issuer", "vc-verifier", "vc-registry"):
             out[f] = yaml.safe_load((tmp / "out" / f"{f}.yaml").read_text())
+        if documents:
+            out["documents"] = {p.name: json.loads(p.read_text()) for p in (tmp / "out" / "documents").glob("nym_auth*.json")}
         return out
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -39,7 +47,7 @@ class SeedCommitments(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = Path(tempfile.mkdtemp())
-        cls.cfg = rendered(cls.tmp / "secrets")
+        cls.cfg = rendered(cls.tmp / "secrets", env_values=GDC_VALUES)
 
     @classmethod
     def tearDownClass(cls):
@@ -104,10 +112,58 @@ class SeedCommitments(unittest.TestCase):
 
     def test_the_seed_secret_is_permanent_across_renders(self):
         before = (self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text()
-        rendered(self.tmp / "secrets")
+        rendered(self.tmp / "secrets", env_values=GDC_VALUES)
         self.assertEqual((self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text(), before,
                          "a replaced seed secret repseudonymises everyone")
 
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@NEEDS
+class WithoutSeedSupport(unittest.TestCase):
+    """The default: an environment whose vc image predates SUNET/vc#793 (the shared Fly pin is one) ignores
+    `apigw.seeds` silently and would issue nym_auth with no ssc at all, so nothing is rendered for it and the
+    documents keep the legacy public test ssc."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.tmp = Path(tempfile.mkdtemp())
+        cls.cfg = rendered(cls.tmp / "secrets", documents=True)
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp, ignore_errors=True)
+
+    def test_no_seeds_commitments_or_encryption_are_rendered(self):
+        apigw = self.cfg["vc-apigw"]["apigw"]
+        self.assertNotIn("seeds", apigw)
+        self.assertNotIn("credential_encryption", apigw["issuer_metadata"])
+        for scope, meta in self.cfg["vc-apigw"]["common"]["credential_metadata"].items():
+            self.assertNotIn("commitments", meta, scope)
+        self.assertEqual([p.name for p in (self.tmp / "secrets").iterdir()
+                          if p.name.startswith("vcApigwSeed") and p.stat().st_size], [], "no real seed secret")
+
+    def test_compose_still_has_files_for_its_bind_mounts(self):
+        """docker-compose.vc-services.yml mounts both unconditionally; a missing source becomes a DIRECTORY."""
+        for name in (vc_render.seed_secret_file("primary"), vc_render.CREDENTIAL_ENCRYPTION_FILE):
+            path = self.tmp / "secrets" / name
+            self.assertTrue(path.is_file(), name)
+            self.assertEqual(path.stat().st_size, 0, f"{name} is only a placeholder while the feature is off")
+
+    def test_the_nym_auth_documents_carry_the_legacy_ssc(self):
+        self.assertEqual(set(self.cfg["documents"]), {"nym_auth.json", "nym_auth_offer.json"})
+        for name, docs in self.cfg["documents"].items():
+            for holder, doc in docs.items():
+                self.assertEqual(doc["document_data"]["ssc"], vc_render.LEGACY_NYM_AUTH_SSC, f"{name}/{holder}")
+
+    def test_the_source_fixtures_never_carry_it(self):
+        for name in ("nym_auth.json", "nym_auth_offer.json"):
+            for doc in json.loads((ROOT / "fixtures" / "vc-bootstrapping" / name).read_text()).values():
+                self.assertNotIn("ssc", doc["document_data"], "an environment with seeds is refused a pre-set ssc")
+
+    def test_the_legacy_ssc_is_the_documented_public_test_commitment(self):
+        import hashlib
+        self.assertEqual(base64.b64decode(vc_render.LEGACY_NYM_AUTH_SSC),
+                         hashlib.sha256(bytes(range(16))).digest())

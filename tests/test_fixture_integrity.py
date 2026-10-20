@@ -606,7 +606,8 @@ class NymAuth(FixtureCase):
             ssc = (self.types[scope].get("commitments") or {}).get("ssc")
             self.assertIsNotNone(ssc, f"{scope} has no ssc commitment")
             self.assertTrue(ssc.get("deliver"), f"{scope}: the wallet needs the seed delivered")
-            self.assertIn(ssc["seed"], self.values["issuer"]["apigw"]["seeds"], scope)
+            gdc = yaml.safe_load((ROOT / "environments" / "gdc.yaml").read_text(encoding="utf-8"))
+            self.assertIn(ssc["seed"], gdc["values"]["issuer"]["apigw"]["seeds"], scope)   # switched on per environment
             self.assertEqual(ssc, self.spec.get("commitments", {}).get("ssc"),
                              f"{scope} must derive the same seed as {self.SCOPE}: one person, one pseudonym")
         self.assertIn("ssc", self.schema["claims"][self.NAMESPACE], "the schema must declare the claim, or the signer drops it")

@@ -510,16 +510,17 @@ issuer:
       nym_auth_offer: {file: fixtures/vc-bootstrapping/nym_auth_offer.json}
 
   apigw:
-    # The seed source behind nym_auth's `ssc` (and its pre-authorized twin): the issuer derives each
-    # person's seed from this secret and the person's identifiers, commits to it, and delivers the SEED
-    # to the wallet. The secret is generated once per environment and is PERMANENT.
-    seeds:
-      primary:
-        model: derived
-    # Published so a wallet can ask for an ENCRYPTED credential response, which seed delivery requires. The key is
-    # generated once per environment (vc_render) and mounted as /credential-encryption/primary.pem.
+    # Seed sources for nym_auth's `ssc` (SUNET/vc#793: the issuer derives each person's seed from a secret and the
+    # person's identifiers, commits to it, and delivers the SEED to the wallet). EMPTY by default: it needs a vc image
+    # with #793/#821 (an older one ignores `apigw.seeds` and would issue no ssc at all, and the shared Fly pin
+    # `vc/apigw:0.7.0-sirosid.1` is one), so an environment that runs such an image switches it on in its own file
+    # (environments/gdc.yaml) with `issuer.apigw.seeds.primary: {model: derived}` and credentialEncryption below.
+    # Without it the nym_auth documents get the legacy public test ssc (vc_render.inject_legacy_ssc).
+    seeds: {}
+    # Publish credential_request_encryption / credential_response_encryption, which a wallet needs to receive a
+    # delivered seed (OpenID4VCI section 8.3). Off by default for the same reason as `seeds`.
     credentialEncryption:
-      enabled: true
+      enabled: false
     cors:
       allowedMethods: [GET, POST, OPTIONS]
       allowedHeaders: [Authorization, Content-Type]

@@ -126,6 +126,21 @@ SECRET_PATHS = {
 }
 
 
+# Secrets that exist only when the rendered apigw config asks for them (apigw.seeds.primary, the
+# credential-encryption key): listing them unconditionally would read a file that was never generated.
+_OPTIONAL_SECRETS = {
+    "SIROSID_VC_APIGW_SEED_PRIMARY": lambda apigw: "primary" in (apigw.get("seeds") or {}),
+    "SIROSID_VC_CREDENTIAL_ENCRYPTION_KEY":
+        lambda apigw: bool(((apigw.get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys")),
+}
+
+
+def active_secrets(out_dir: Path) -> dict:
+    """SECRETS minus the optional ones this rendered config does not use."""
+    apigw = (yaml.safe_load((Path(out_dir) / "vc-apigw.yaml").read_text()) or {}).get("apigw") or {}
+    return {k: v for k, v in SECRETS.items() if k not in _OPTIONAL_SECRETS or _OPTIONAL_SECRETS[k](apigw)}
+
+
 def _b64(data) -> str:
     return base64.b64encode(data if isinstance(data, bytes) else data.encode()).decode()
 
@@ -205,9 +220,10 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
     containers = []
 
     # -- init: decode the app secrets this machine needs into per-group volumes
-    groups = sorted({g for _, targets in SECRETS.values() for g, _ in targets})
+    secrets = active_secrets(out_dir)
+    groups = sorted({g for _, targets in secrets.values() for g, _ in targets})
     script = ["set -e"]
-    for secret, (_, targets) in SECRETS.items():
+    for secret, (_, targets) in secrets.items():
         for group, fname in targets:
             script.append(f'printf %s "${secret}" | base64 -d > /out/{group}/{fname}')
     script += ["chmod -R a+rX /out", "echo secrets-init: done"]
@@ -215,7 +231,7 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
         # The mongo image (it has sh and base64): a distinct init image would
         # cost one of the machine's few block devices (see MAX_BLOCK_DEVICES).
         "name": "secrets-init", "image": images["mongodb"], "cmd": ["sh", "-c", "\n".join(script)],
-        "secrets": [{"env_var": s, "name": s} for s in SECRETS],
+        "secrets": [{"env_var": s, "name": s} for s in secrets],
         "mounts": [{"name": f"sec_{g}", "path": f"/out/{g}"} for g in groups],
         "restart": {"policy": "no"},
     })
@@ -519,8 +535,7 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
         step("volume")
 
         say("=== Setting secrets ===")
-        version = _set_secrets(fly, machines, app, out_dir, force_mongo=bool(volume.get("created")),
-                               vc_secrets_dir=Path(secrets_dir) if secrets_dir else resources.rendered_secrets)
+        version = _set_secrets(fly, machines, app, out_dir, force_mongo=bool(volume.get("created")))
         step("secrets")
 
         say(f"=== Pushing the config bundle ({len(files)} files) ===")
@@ -638,19 +653,16 @@ def _check_signing_key(fly: FlyClient, naming: Naming, pki_dir: Path):
             component="pki")
 
 
-def _set_secrets(fly: FlyClient, machines: MachinesClient, app: str, out_dir: Path, force_mongo: bool,
-                 vc_secrets_dir: Path = None):
+def _set_secrets(fly: FlyClient, machines: MachinesClient, app: str, out_dir: Path, force_mongo: bool):
     """Set each secret that is not set yet (never rotate one - Fly cannot give it
     back, and the state files hold the values). Returns the highest secrets
     version written, or None if nothing changed."""
     existing = fly.existing_secret_names(app)
     version = None
-    for name, (source, _) in SECRETS.items():
+    for name, (source, _) in active_secrets(out_dir).items():
         if name in existing and not (force_mongo and name == "SIROSID_MONGO_ROOT_PASSWORD"):
             continue
-        if source.startswith("vc-secrets/"):    # a vc service's generated secret, wherever the caller keeps them
-            content = (Path(vc_secrets_dir) / source.split("/", 1)[1]).read_bytes()
-        elif "/" in source:                     # a PKI file: exact bytes
+        if "/" in source:                       # a PKI file / a vc secret in the state dir: exact bytes
             content = (out_dir / source).read_bytes()
         else:                                   # a generated-once value (state.STATE_FILES)
             content = persistent_secret(out_dir, source).encode()

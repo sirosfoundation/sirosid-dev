@@ -254,6 +254,17 @@ rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
 # environments/README.md. Anything the chart can express is reachable here
 # without a code change anywhere else.
 values:
+  issuer:
+    apigw:
+      # nym_auth's seed-backed ssc and its delivery (SUNET/vc#793/#821; the integration build pinned above):
+      # the issuer derives each person's seed from a per-environment secret (generated once, PERMANENT) and the
+      # wallet receives it encrypted, which needs the published credential-encryption key. Verified end to end on a
+      # Pixel 2026-10-20 (sirosid-dev PR 78). The other environments run images without it, so it is off by default.
+      seeds:
+        primary:
+          model: derived
+      credentialEncryption:
+        enabled: true
   pdp:
     # Resolve entities identified by did:web, so a presentation from a wallet
     # to - or an issuer identified by - a did:web subject can be evaluated at

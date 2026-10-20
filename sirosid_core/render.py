@@ -61,7 +61,7 @@ from pathlib import Path
 
 import yaml
 
-from . import api_auth, vc_render
+from . import api_auth, state as state_mod, vc_render
 from .components import MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET
 from .helm import extract_configmap_data, helm_template, load_manifest_docs
 from .naming import Naming
@@ -889,7 +889,10 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                         },
                         env=env, mongo_password=mongo_password,
                         credential_types=(base.get("features") or {}).get("credentialTypes") or {},
-                        credential_registries=credential_registries, naming=naming, say=say, warn=warn)
+                        credential_registries=credential_registries, naming=naming, say=say, warn=warn,
+                        # fly: this ENVIRONMENT's own directory (a seed secret must not be shared between environments
+                        # deployed from one checkout); compose: one local stack, the shared secrets dir
+                        state_dir=(out_dir / state_mod.VC_SECRETS_DIR) if target == "fly" else None)
 
     if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
