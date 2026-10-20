@@ -131,6 +131,8 @@ def generate_pki(ctx: DeployContext) -> Path:
         **os.environ,
         "PKI_DIR_OVERRIDE": str(pki_dir),
         "SIGNING_CERT_ISSUER_URL": naming.url("vc-apigw"),
+        # The verifier's client_id is x509_san_dns:<this host> and it signs with this same certificate.
+        "SIGNING_CERT_VERIFIER_HOST": naming.host("vc-verifier"),
     }
     fly.exec(["bash", "./create-pki.sh"], cwd=resources.fixtures, env=env_vars)
     return pki_dir
