@@ -109,7 +109,15 @@ images:
   # as.audiences defaulted, the registry as a role). The rendered config loads unchanged; it still mounts the now
   # DEPRECATED /app/registry.yaml (a warning, to be removed in the next release - move it into config.yaml's
   # `registry:` section, which the deploy already supports by not rendering wallet-backend-registry.yaml).
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.24.0
+  # 2026-10-20: BUILT LOCALLY from sirosfoundation/go-wallet-backend `feat/oid4vci-request-encryption` @
+  # 4e93c15873ca2d34aabc3e0443f96f0adc4dac55 (PR #469, not merged; base main cb42861 = 0.24.0 + the refactor merge):
+  # the engine encrypts the credential REQUEST as a JWE to credential_request_encryption.jwks (OID4VCI 1.0 section 10)
+  # and negotiates ECDH-ES+A256KW for the response - what seed delivery needs (the issuer refuses a plain request for
+  # a delivering scope). No config keys added; checked against the rendered gdc config. Back to the released image
+  # (ghcr.io/sirosfoundation/go-wallet-backend:<release containing #469>) once it is merged and released.
+  # Build: docker build -f Dockerfile --build-arg VERSION=0.24.0-reqenc.4e93c15 --build-arg COMMIT=<sha> \
+  #   -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .   # then docker push (flyctl auth docker)
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792472470
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
