@@ -100,6 +100,12 @@ SECRETS = {
     "SIROSID_MONGO_ROOT_PASSWORD": ("mongoRootPassword", [("mongodb", "mongoRootPassword")]),
     "SIROSID_VC_SIGNING_KEY": ("vc-pki/signing_ec_private.pem",
                                [("vc", "signing_ec_private.pem"), ("wallet_backend", "asSigningKey")]),
+    # apigw.seeds.primary's secret (SUNET/vc#793), kept with the vc services' other generated secrets
+    # (state.VC_SECRETS_DIR). A new seed name needs an entry here and in SECRET_PATHS: test_seed_commitments_render
+    # fails when the chart has a seed this layout cannot mount.
+    "SIROSID_VC_APIGW_SEED_PRIMARY": ("vc-secrets/vcApigwSeedPrimary", [("vc", "apigwSeedPrimary")]),
+    "SIROSID_VC_CREDENTIAL_ENCRYPTION_KEY": ("vc-secrets/vcCredentialEncryption.pem",
+                                             [("vc", "credentialEncryption.pem")]),
     "SIROSID_JWT_SECRET": ("jwtSecret", [("wallet_backend", "jwtSecret")]),
     "SIROSID_ADMIN_TOKEN": ("adminToken", [("wallet_backend", "adminToken")]),
     "SIROSID_WALLET_PROVIDER_KEY": ("vc-pki/wallet_provider_ec_private.pem",
@@ -110,12 +116,29 @@ SECRET_GROUP = {"mongodb": "mongodb", "wallet-backend": "wallet_backend",
 
 # Absolute paths of the apps layout that became something else here.
 SECRET_PATHS = {
-    "vc": {"/pki/signing_ec_private.pem": f"{SECRETS_DIR}/signing_ec_private.pem"},
+    "vc": {"/pki/signing_ec_private.pem": f"{SECRETS_DIR}/signing_ec_private.pem",
+           "/seeds/primary": f"{SECRETS_DIR}/apigwSeedPrimary",
+           "/credential-encryption/primary.pem": f"{SECRETS_DIR}/credentialEncryption.pem"},
     "wallet_backend": {"/main-secrets/jwtSecret": f"{SECRETS_DIR}/jwtSecret",
                        "/main-secrets/adminToken": f"{SECRETS_DIR}/adminToken",
                        "/main-secrets/walletProviderKey": f"{SECRETS_DIR}/walletProviderKey",
                        "/as-cert/tls.key": f"{SECRETS_DIR}/asSigningKey"},
 }
+
+
+# Secrets that exist only when the rendered apigw config asks for them (apigw.seeds.primary, the
+# credential-encryption key): listing them unconditionally would read a file that was never generated.
+_OPTIONAL_SECRETS = {
+    "SIROSID_VC_APIGW_SEED_PRIMARY": lambda apigw: "primary" in (apigw.get("seeds") or {}),
+    "SIROSID_VC_CREDENTIAL_ENCRYPTION_KEY":
+        lambda apigw: bool(((apigw.get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys")),
+}
+
+
+def active_secrets(out_dir: Path) -> dict:
+    """SECRETS minus the optional ones this rendered config does not use."""
+    apigw = (yaml.safe_load((Path(out_dir) / "vc-apigw.yaml").read_text()) or {}).get("apigw") or {}
+    return {k: v for k, v in SECRETS.items() if k not in _OPTIONAL_SECRETS or _OPTIONAL_SECRETS[k](apigw)}
 
 
 def _b64(data) -> str:
@@ -197,9 +220,10 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
     containers = []
 
     # -- init: decode the app secrets this machine needs into per-group volumes
-    groups = sorted({g for _, targets in SECRETS.values() for g, _ in targets})
+    secrets = active_secrets(out_dir)
+    groups = sorted({g for _, targets in secrets.values() for g, _ in targets})
     script = ["set -e"]
-    for secret, (_, targets) in SECRETS.items():
+    for secret, (_, targets) in secrets.items():
         for group, fname in targets:
             script.append(f'printf %s "${secret}" | base64 -d > /out/{group}/{fname}')
     script += ["chmod -R a+rX /out", "echo secrets-init: done"]
@@ -207,7 +231,7 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
         # The mongo image (it has sh and base64): a distinct init image would
         # cost one of the machine's few block devices (see MAX_BLOCK_DEVICES).
         "name": "secrets-init", "image": images["mongodb"], "cmd": ["sh", "-c", "\n".join(script)],
-        "secrets": [{"env_var": s, "name": s} for s in SECRETS],
+        "secrets": [{"env_var": s, "name": s} for s in secrets],
         "mounts": [{"name": f"sec_{g}", "path": f"/out/{g}"} for g in groups],
         "restart": {"policy": "no"},
     })
@@ -635,10 +659,10 @@ def _set_secrets(fly: FlyClient, machines: MachinesClient, app: str, out_dir: Pa
     version written, or None if nothing changed."""
     existing = fly.existing_secret_names(app)
     version = None
-    for name, (source, _) in SECRETS.items():
+    for name, (source, _) in active_secrets(out_dir).items():
         if name in existing and not (force_mongo and name == "SIROSID_MONGO_ROOT_PASSWORD"):
             continue
-        if "/" in source:                       # a PKI file: exact bytes
+        if "/" in source:                       # a PKI file / a vc secret in the state dir: exact bytes
             content = (out_dir / source).read_bytes()
         else:                                   # a generated-once value (state.STATE_FILES)
             content = persistent_secret(out_dir, source).encode()

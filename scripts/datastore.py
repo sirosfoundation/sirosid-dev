@@ -211,12 +211,18 @@ def sync(target: "Target", fixtures: Path, scopes: list = None, dry_run: bool = 
         for holder, doc in json.loads(path.read_text()).items():
             wanted[(doc["meta"]["scope"], doc["meta"]["document_id"])] = (holder, doc)
 
+    # The search endpoint returns at most 50 documents whatever `limit` says (and ignores `offset`), so one
+    # unscoped call stopped seeing the whole datastore once it held more than 50 documents - the twins pushed
+    # gdc to 78, and the next dry run reported 28 existing documents as "to add". Ask per scope, as the
+    # fixtures name them; the unscoped call still finds documents of scopes the fixtures no longer have.
     have = {}
-    for d in target.request("GET", "/api/v1/datastore/search", query={"limit": 1000})["data"]:
-        meta = d["meta"]
-        if scopes and meta["scope"] not in scopes:
-            continue
-        have[(meta["scope"], meta["document_id"])] = d
+    queries = [{"limit": 1000}] + [{"scope": s, "limit": 1000} for s in sorted({s for s, _ in wanted})]
+    for query in queries:
+        for d in target.request("GET", "/api/v1/datastore/search", query=query)["data"]:
+            meta = d["meta"]
+            if scopes and meta["scope"] not in scopes:
+                continue
+            have[(meta["scope"], meta["document_id"])] = d
 
     add = [k for k in wanted if k not in have]
     gone = [k for k in have if k not in wanted]

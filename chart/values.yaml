@@ -179,6 +179,19 @@ issuer:
   # OpenID4VCI face, core is an internal gRPC signing service, registry holds
   # the token status lists.
   apigw:
+    # Seed sources for seed-backed commitment claims (SUNET/vc#793): name -> {model: derived, seed_bytes: 16}.
+    # A credential type uses one through its `commitments` block (features.credentialTypes.<id>.commitments).
+    # The secret behind each name is generated once per environment (vc_render.apply_secrets) and substituted
+    # into the apigw secrets; it is permanent - replacing it repseudonymises everyone.
+    seeds: {}
+    # JWE of the Credential Request/Response (OpenID4VCI 1.0 §8.3): publishes credential_request_encryption /
+    # credential_response_encryption in the issuer metadata from an EC P-256 key generated once per environment
+    # and mounted as a file. Needed for seed delivery (a wallet refuses a seed it cannot receive encrypted).
+    # `...Required` makes a plain request an error; false (default) lets wallets that do no JWE keep working.
+    credentialEncryption:
+      enabled: false
+      requestEncryptionRequired: false
+      responseEncryptionRequired: false
     cors:
       # allowed_origins is derived from the wallet frontend plus
       # features.extraWallets; these are appended to that, for origins that

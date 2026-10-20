@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 from .android import identities_from_entries
 from .assets import (assetlinks_json, mini_oidc_config, wallet_frontend_conf, wallet_frontend_dashboard_html,
                      wallet_proxy_conf, write_fly_toml)
@@ -25,9 +27,11 @@ from .components import (CONFORMANCE_COMPONENTS, MINI_OIDC_APIGW_CLIENT_ID, MINI
 from .fly import FlyClient, FlyDeployError, FlyError
 from .helm import HelmError, extract_configmap_data, extract_image
 from .naming import Naming
+from . import vc_render
 from .render import render
 from .resources import Resources
 from .spec import InstanceSpec
+from . import state as state_mod
 from .state import persistent_secret
 
 
@@ -179,8 +183,23 @@ def _vc_service_files(ctx: DeployContext, app: str, service: str, metadata: bool
     # services read is identical either way.
     for f in sorted((out_dir / "branding-assets").glob("*.png")):
         args += ["--file-local", f"/branding-assets/{f.name}={f}"]
+    if service == "vc-apigw":
+        apigw = (yaml.safe_load((out_dir / "vc-apigw.yaml").read_text()).get("apigw") or {})
+        # apigw.seeds.<name>.secret_path: the seed secret as a Fly secret mounted as a file (never in the config,
+        # which `flyctl config show` can read). ensure_secret never rotates: the secret is permanent.
+        for name, seed in sorted((apigw.get("seeds") or {}).items()):
+            secret = vc_render.seed_secret_file(name)
+            fly.ensure_secret(app, secret, (out_dir / state_mod.VC_SECRETS_DIR / secret).read_text().strip())
+            args += ["--file-secret", f"{seed['secret_path']}={secret}"]
+        # The credential-encryption key (see vc_render): a Fly secret mounted as a file, set once.
+        if ((apigw.get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys"):
+            fly.ensure_secret(app, "vcCredentialEncryption",
+                              (out_dir / state_mod.VC_SECRETS_DIR / vc_render.CREDENTIAL_ENCRYPTION_FILE).read_text())
+            args += ["--file-secret", f"{vc_render.CREDENTIAL_ENCRYPTION_PATH}=vcCredentialEncryption"]
     if bootstrapping:
         for f in sorted((out_dir / "documents").glob("*")):
+            if vc_render.is_twin_document(f.name):
+                continue                    # not imported on Fly (see vc_render.drop_twin_imports): the body cap
             args += ["--file-local", f"/documents/{f.name}={f}"]
         # apigw is also the one service with an admin API: its Bearer-JWT
         # verification key (public, so --file-local) - scripts/api_auth.py.

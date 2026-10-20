@@ -11,7 +11,8 @@
     ],
     "document_data": {
       "birth_date": "1990-01-15",
-      "ssc": "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE="
+      "issuing_country": "SE",
+      "personal_administrative_number": "pan-100"
     }
   },
   "bob-002": {
@@ -26,7 +27,8 @@
     ],
     "document_data": {
       "birth_date": "1985-06-20",
-      "ssc": "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE="
+      "issuing_country": "SE",
+      "personal_administrative_number": "pan-101"
     }
   },
   "carol-003": {
@@ -41,7 +43,8 @@
     ],
     "document_data": {
       "birth_date": "1978-11-03",
-      "ssc": "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE=",
+      "issuing_country": "SE",
+      "personal_administrative_number": "pan-102",
       "psc": "/C4scwcr+ivaA/+TB0ct69PMgQUCioqeI141uo0uN/Q="
     }
   }

@@ -10,7 +10,10 @@ metadata:
 data:
   .empty: "I am here so that the configmap won't ever be empty"
   {{- range $id, $data := .Values.features.credentialTypes }}
-  {{- if $data.mdocSchema }}
+  {{- /* A twin's metadata IS its source's file (metadataFrom): a second copy only doubles what every vc service
+         ships to Fly, whose machine config body is capped near 1 MiB. */}}
+  {{- if $data.metadataFrom }}
+  {{- else if $data.mdocSchema }}
   {{/* An ISO 18013-5 mdoc type carries an MDDL schema instead of a VCTM.
        The .mdoc.json suffix is what siros-id.vc.credentialMetadata points
        mddl_file_path at, and is the only thing distinguishing the two on

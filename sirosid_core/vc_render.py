@@ -30,6 +30,8 @@ handled here:
     applied here for the compose target only.
 """
 import base64
+import json
+import os
 import re
 import shutil
 import sys
@@ -72,6 +74,17 @@ COMPOSE_PLAIN_HTTP_HOSTS = {
 # placeholders. Generated once into fixtures/rendered-secrets/ and reused,
 # exactly like WALLET_BACKEND_SECRETS - a rotated subject_salt would
 # invalidate every previously issued pairwise pseudonym.
+SEED_SECRET_LENGTH = 64     # characters; base64url, so 48 bytes decoded (vc needs >= 32)
+
+
+CREDENTIAL_ENCRYPTION_FILE = "vcCredentialEncryption.pem"
+CREDENTIAL_ENCRYPTION_PATH = "/credential-encryption/primary.pem"     # where every layout mounts it
+
+
+def seed_secret_file(name: str) -> str:
+    """File name (in the secrets dir) of the seed secret behind apigw.seeds.<name>."""
+    return f"vcApigwSeed{name.capitalize()}"
+
 VC_SECRETS = {
     "OIDC_PROVIDER_SUBJECT_SALT": "vcOidcProviderSubjectSalt",
     "ADMIN_GUI_PASSWORD": "vcAdminGuiPassword",
@@ -348,8 +361,47 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
     return config
 
 
+# nym_auth's LEGACY `ssc` for an environment with no seed source (issuer.apigw.seeds empty): SHA-256 of the public test
+# seed 000102030405060708090a0b0c0d0e0f, standard base64 as the datastore stores a bstr - the value every document
+# carried before the issuer could generate it. The same for every holder, so every holder derives the same
+# pseudonyms: enough for testing a circuit, useless for unlinkability. An environment WITH seeds must not carry it
+# (the issuer refuses a pre-set value for a commitment claim), so the source fixtures do not and this is added only
+# to the rendered copy.
+LEGACY_NYM_AUTH_SSC = "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE="
+
+
+def inject_legacy_ssc(documents_dir: Path) -> None:
+    for path in sorted(Path(documents_dir).glob("nym_auth*.json")):
+        docs = json.loads(path.read_text())
+        for doc in docs.values():
+            doc["document_data"].setdefault("ssc", LEGACY_NYM_AUTH_SSC)
+        path.write_text(json.dumps(docs, indent=2) + "\n")
+
+
+TWIN_DOCUMENT_SUFFIX = "_offer.json"
+
+
+def is_twin_document(name: str) -> bool:
+    """A pre-authorized twin's bootstrapping document (<type>_offer.json)."""
+    return name.endswith(TWIN_DOCUMENT_SUFFIX)
+
+
+def drop_twin_imports(config: dict) -> dict:
+    """Fly: the twins' documents are not shipped with the apigw, so they must not be imported either.
+
+    Fly caps a machine's config body near 1 MiB and every file we ship counts base64-encoded; the twins'
+    copies of the documents tipped the apigw over it (found deploying gdc, 2026-10-20: 'http: request body too
+    large'). The apigw only imports bootstrapping documents into an EMPTY datastore anyway; the twins are added
+    to a running environment by `make datastore-sync`, which is also what a cleared one needs afterwards.
+    Compose has no such cap and keeps importing them."""
+    paths = ((((config.get("apigw") or {}).get("data_sources") or {}).get("datastore") or {}).get("import") or {})
+    if paths.get("file_paths"):
+        paths["file_paths"] = [p for p in paths["file_paths"] if not is_twin_document(p)]
+    return config
+
+
 def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen_secret,
-                  overrides: dict = None) -> dict:
+                  overrides: dict = None, state_dir: Path = None, world_readable: bool = False) -> dict:
     """Do the secrets-renderer initContainer's job, but merge the result into
     the config rather than leaving it in a separate file.
 
@@ -367,6 +419,41 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
     not published anywhere the secrets file wouldn't be.
     """
     values = {var: gen_secret(secrets_dir / name) for var, name in VC_SECRETS.items()}
+    # Seed secrets (apigw.seeds.<name>, SUNET/vc#793): base64url and at least 32 bytes DECODED, which a
+    # 64-character alphanumeric string is (48 bytes). PERMANENT, like the subject salt above: every commitment
+    # ever issued is a function of it, so a replaced secret repseudonymises everyone and a lost one makes every
+    # issued pseudonym unrecoverable. NOT inlined into the config: vc reads `secret` only from its secrets file,
+    # which it refuses unless group/world-unreadable (the problem described below), so the config names a file
+    # (`secret_path`, /seeds/<name>) and the deploy mounts it - `make fly-up` as a Fly secret, compose as a bind
+    # mount. Which seeds exist is read off the rendered config, so `issuer.apigw.seeds` is the single list.
+    # Kept in `state_dir` (per ENVIRONMENT, unlike the shared secrets_dir above): two environments deployed from
+    # one checkout must not share a derivation secret.
+    state_dir = Path(state_dir) if state_dir else secrets_dir
+    if world_readable and (config.get("apigw") is not None):
+        # compose bind-mounts both files unconditionally, and Docker turns a MISSING bind-mount source into a
+        # directory (the "is a directory" crash of issue #30): keep an empty placeholder where the feature is off.
+        # An empty placeholder is not a secret, so it is replaced the moment the feature is switched on.
+        for needed, name in ((bool((config["apigw"].get("seeds") or {})), seed_secret_file("primary")),
+                             (bool((((config["apigw"].get("issuer_metadata") or {}).get("credential_encryption") or {})
+                                    .get("keys"))), CREDENTIAL_ENCRYPTION_FILE)):
+            path = state_dir / name
+            if needed and path.exists() and path.stat().st_size == 0:
+                path.unlink()
+            elif not needed and not path.exists():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch(mode=0o644)
+    for name in ((config.get("apigw") or {}).get("seeds") or {}):
+        gen_secret(state_dir / seed_secret_file(name), SEED_SECRET_LENGTH)
+    # The credential-encryption key (apigw.issuer_metadata.credential_encryption, OpenID4VCI section 8.3): an EC
+    # P-256 key pair generated once, mounted as a file like the seeds. Rotating it only needs a redeploy (wallets
+    # re-read the published JWKS), unlike a seed secret.
+    if (((config.get("apigw") or {}).get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys"):
+        from . import api_auth
+        key = api_auth.ensure_key(state_dir / CREDENTIAL_ENCRYPTION_FILE)
+        if world_readable:
+            # compose bind-mounts it into a non-root container whose uid is not the host user's; a local dev
+            # stack's key in a git-ignored directory, as create-pki.sh does for the signing key (#32)
+            os.chmod(key, 0o644)
     # A few of these aren't ours to generate: the apigw's OIDC client secret
     # has to be the one mini-oidc was actually configured with, on both
     # targets (fly_common sets the same constants as mini-oidc's own
@@ -436,8 +523,9 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
               plain_http_hosts: set = None, secret_overrides: dict = None,
               env: str = None, mongo_password: str = None,
               credential_types: dict = None, credential_registries: list = None,
-              naming: Naming = None, say=print, warn=None) -> None:
+              naming: Naming = None, say=print, warn=None, state_dir: Path = None) -> None:
     """Extract every vc service's config plus the directories it mounts."""
+    seeds_enabled = False
     for cm_name, filename in VC_CONFIGMAPS.items():
         config = yaml.safe_load(extract_configmap_data(docs, cm_name)["config.yaml"])
         if target == "compose":
@@ -445,7 +533,12 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
         # issuer-core is the one service with no mongo of its own.
         if (config.get("common") or {}).get("mongo"):
             config = patch_vc_mongo(config, target, env, mongo_password, naming, warn)
-        config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides)
+        config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides,
+                               state_dir=state_dir, world_readable=(target == "compose"))
+        if cm_name == "issuer-apigw-main":
+            seeds_enabled = bool((config.get("apigw") or {}).get("seeds"))
+        if target == "fly":
+            drop_twin_imports(config)
         config = strip_unrenderable(config)
         if credential_registries:
             config = use_credential_registry(config, credential_types or {}, credential_registries)
@@ -463,6 +556,8 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
     # point is the same name in both worlds.
     _write_documents(docs, out_dir, "vctms", "vctms")
     _write_documents(docs, out_dir, "issuer-documents", "documents")
+    if not seeds_enabled:
+        inject_legacy_ssc(out_dir / "documents")
 
     # The verifier reads presentation_requests_dir as a directory of template
     # files; the chart renders them into a single pres-reqs.yaml.

@@ -80,9 +80,20 @@ common:
   branding:
     favicon_path: /branding-assets/favicon.png
     logo_path: /branding-assets/logo.png
-  credential_metadata: {{- include "siros-id.vc.credentialMetadata" . | nindent 4 }}
+  credential_metadata: {{- include "siros-id.vc.credentialMetadataApigw" . | nindent 4 }}
 apigw:
   public_url: https://{{ $hostnameIssuer }}
+  {{- with .Values.issuer.apigw.seeds }}
+  {{- /* Seed sources for the commitments a credential type declares (SUNET/vc#793). The secret itself
+         is NOT here: the config names a file (`secret_path`) the deploy mounts - vc reads `secret` only from a
+         secrets file, which it refuses unless it is mode-restricted, and we cannot give it one (see apply_secrets). */}}
+  seeds:
+    {{- range $name, $seed := . }}
+    {{ $name }}:
+      {{- toYamlPretty $seed | nindent 6 }}
+      secret_path: /seeds/{{ $name }}
+    {{- end }}
+  {{- end }}
   api_server:
     addr: ":8080"
     cors:
@@ -126,12 +137,26 @@ apigw:
     # for an mDL from its issuer's metadata instead of denying with "issuer
     # does not publish mdoc_iacas_uri".
     mdoc_iacas_uri: https://{{ $hostnameIssuer }}/iacas
+    # Advertised so a wallet reports the outcome (credential_accepted/failure/deleted) of an issuance; the endpoint is
+    # served regardless, but a wallet that finds it in no metadata registers no notification context and drops the
+    # event (found on the first Pixel run, 2026-10-20). A seed-delivering scope REQUIRES it at startup (SUNET/vc#821).
+    notification_endpoint: https://{{ $hostnameIssuer }}/notification
     display:
       - locale: en-US
         name: {{ include "siros-id.displayName" . }}
         logo:
           uri: {{ include "siros-id.branding.logoDataUrl" . | quote }}
           alt_text: Logotype for issuer
+    {{- if .Values.issuer.apigw.credentialEncryption.enabled }}
+    {{- /* OpenID4VCI §8.3 JWE of the Credential Request/Response (ECDH-ES+A256KW / A256GCM, P-256). A wallet that
+           is asked to receive a delivered seed (SUNET/vc#821) refuses to proceed against an issuer that does not
+           advertise it. The key is a FILE the deploy mounts (generated once, never in the config). */}}
+    credential_encryption:
+      keys:
+        - private_key_path: /credential-encryption/primary.pem
+      request_encryption_required: {{ .Values.issuer.apigw.credentialEncryption.requestEncryptionRequired }}
+      response_encryption_required: {{ .Values.issuer.apigw.credentialEncryption.responseEncryptionRequired }}
+    {{- end }}
   {{- if (or .Values.issuer.identitymappingImport.identities .Values.issuer.identitymappingImport.users) }}
   identity_mapping_import:
     file_paths:

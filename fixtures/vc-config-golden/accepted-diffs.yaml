@@ -68,6 +68,9 @@ _shared: &shared
   - path: apigw.data_sources.datastore.scopes.nym_auth_offer
     kind: added
     reason: "pre-authorized twin of nym_auth for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.seeds
+    kind: added
+    reason: "seed source for nym_auth's issuer-generated ssc (SUNET/vc#793); the secret is generated per environment and substituted from secrets.yaml.template, so it differs per render by design"
   - path: apigw.data_sources.datastore.scopes.nym_auth
     kind: added
     reason: >-

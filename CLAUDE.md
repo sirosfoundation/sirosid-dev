@@ -488,12 +488,12 @@ The identifiers each scope switches to are read out of
 already renders `supported_credentials` and the VCTM mounts from, so the
 vendored and registry-resolved paths cannot drift apart while both exist.
 
-Both paths use each registry's legacy `.well-known/vctm-registry.json` index,
-**not** its TS11 `/api/v1/schemas.json` endpoint. TS11 lists only fully
-TS11-compliant credentials — 26 entries on registry.siros.org today against 37
-in the legacy index — so switching would silently drop every type not migrated
-yet. That is the obvious "modernisation" to reach for; don't, until the two
-agree.
+Both paths use each registry's TS11 API (`/api/v1/schemas.json`) and nothing else: vc through go-ts11client,
+wallet-backend through `registry.sources` with `mode: ts11` (`render.patch_registry_sources`). Do not go back to the
+legacy `.well-known/vctm-registry.json` index: it fetches only each entry's VCTM, which mdoc-only entries do not
+have, so the backend answered 404 on `/registry/type-metadata?vct=<doctype>` for every mdoc type (mDL, pid_mdoc,
+photoid, nym_auth) - found on the first nym_auth Pixel run (2026-10-20). TS11 keys an mdoc schema by its doctype;
+all 13 identifiers values-base.yaml declares resolve from TS11 alone.
 
 ### Synthetic documents: what `fixtures/vc-bootstrapping` guarantees
 
@@ -539,9 +539,11 @@ into a datastore document, so the chart renders
 `auth_scopes.<x>.document_claims`/`identity_attributes` for a proposed vc
 change and vc main ignores them; until then the document's own `birth_date`
 is issued, and `tests/test_fixture_integrity.py` (`NymAuth`) holds it equal to
-the birth date in every credential that person can present. Its `ssc`/`psc`
-are TEMPORARY fixed test commitments (README.md lists the seeds) until vc
-supports per-holder seeds.
+the birth date in every credential that person can present. Its `ssc` is issuer-generated
+from `issuer.apigw.seeds` (a PERMANENT per-environment secret, `vc_render.apply_secrets`) over the
+document's `issuing_country` + `personal_administrative_number`, and its seed is delivered to the wallet
+(`commitments.ssc.deliver`); the stored documents must not carry `ssc` (vc refuses it) and `psc` is
+holder-supplied. Needs vc with SUNET/vc#793/#821; an older image ignores `apigw.seeds` and issues no `ssc`.
 
 Derived age claims are recomputed from the birth date at test time, so they
 fail the suite rather than rot. Adding or changing a document needs a
@@ -725,7 +727,11 @@ to the source by `tests/test_fixture_integrity.py`). `SCOPE=pid_1_8` means
 cannot authenticate on vc main at all (see `nym_auth`), so this is the only way
 to issue them. A new datastore type needs its twin: one twin entry, one copied
 fixture, one `datastoreImport` line, one accepted-diffs entry; an existing
-environment needs `make datastore-sync` for the twin's documents.
+environment needs `make datastore-sync` for the twin's documents. A twin has `metadataFrom: <source>`: it reads
+the source's VCTM/MDDL file and ships no copy of it, and on **Fly** its documents are neither shipped nor imported
+(`vc_render.drop_twin_imports`) - Fly caps a machine's config body near 1 MiB, base64 counted, and the copies tipped
+the apigw over it (`http: request body too large`, gdc 2026-10-20; `tests/test_fly_payload.py` guards it). So on Fly
+`make datastore-sync` is what adds the twins' documents, also after a storage clear.
 
 **The issuer and the verifier show the SUNET logo:** they are showing vc's
 built-in assets, which means `common.branding` never reached them. The chart

@@ -61,7 +61,7 @@ from pathlib import Path
 
 import yaml
 
-from . import api_auth, vc_render
+from . import api_auth, state as state_mod, vc_render
 from .components import MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET
 from .helm import extract_configmap_data, helm_template, load_manifest_docs
 from .naming import Naming
@@ -632,17 +632,18 @@ def patch_registry_sources(config: dict, registries: list) -> dict:
     registry is that nothing is vendored and an override would silently
     outrank it.
 
-    Kept on each registry's legacy .well-known index rather than its TS11
-    /api/v1/schemas.json endpoint: TS11 lists only fully TS11-compliant
-    credentials - 26 entries on registry.siros.org today against 37 in the
-    legacy index - so switching would silently drop every type not migrated
-    yet. This is the obvious "modernisation" someone will reach for; don't,
-    until the two agree.
+    The TS11 API (`<registry>/api/v1/schemas.json`) is the ONLY interface used, as it is for vc
+    (go-ts11client): every format's schema document is fetched and keyed by its own identifier, so an
+    mso_mdoc type is served by its DOCTYPE (`/registry/type-metadata?vct=<doctype>`). The legacy
+    `.well-known/vctm-registry.json` index fetches only each entry's VCTM, which mdoc-only entries do not have:
+    through it gdc's backend answered 404 for every mdoc type (mDL, pid_mdoc, photoid, nym_auth; 'legacy fetch
+    complete ... errors 7'). The old reason to prefer it - TS11 once listed fewer types - no longer holds:
+    measured 2026-10-20 against the engine image, all 13 identifiers values-base.yaml declares resolve (200) from
+    TS11 alone (32 schemas fetched, 0 errors).
     """
     config.pop("source", None)
     config["sources"] = [
-        {"url": f"{u.rstrip('/')}/.well-known/vctm-registry.json", "mode": "registry",
-         "timeout": "30s"}
+        {"url": u.rstrip("/"), "mode": "ts11", "timeout": "30s"}
         for u in registries
     ]
     config.setdefault("dynamic_cache", {})["enabled"] = True
@@ -888,7 +889,10 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                         },
                         env=env, mongo_password=mongo_password,
                         credential_types=(base.get("features") or {}).get("credentialTypes") or {},
-                        credential_registries=credential_registries, naming=naming, say=say, warn=warn)
+                        credential_registries=credential_registries, naming=naming, say=say, warn=warn,
+                        # fly: this ENVIRONMENT's own directory (a seed secret must not be shared between environments
+                        # deployed from one checkout); compose: one local stack, the shared secrets dir
+                        state_dir=(out_dir / state_mod.VC_SECRETS_DIR) if target == "fly" else None)
 
     if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
