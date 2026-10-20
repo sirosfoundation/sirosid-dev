@@ -505,7 +505,17 @@ issued), commits to it (`ssc` = SHA-256 of the seed) and, because the type sets 
 `org.siros.nym_auth`; the engine requires an encrypted response for that). The stored documents therefore
 carry **no** `ssc`, and vc refuses a document that does. `nym_auth_offer` (the pre-authorized twin) has the
 same block and derives the **same** seed for the same person: one person, one pseudonym, whichever way the
-credential was obtained. `psc` is supplied by the holder, not stored.
+credential was obtained.
+
+**`psc` is a PLACEHOLDER for now.** It is the commitment to a `private_seed` the **wallet** generates (from
+its container key); the issuer cannot know it. The `-full` document (carol-003) carries a fixed one only so
+the optional claim is exercised and the plumbing stays in place: `psc` = SHA-256 of the public test seed
+`101112131415161718191a1b1c1d1e1f`, standard base64 `/C4scwcr+ivaA/+TB0ct69PMgQUCioqeI141uo0uN/Q=`. Nothing
+may depend on it - it commits to a seed no wallet holds - and no smoke test asserts on it. **Where it plugs
+in:** holder-supplied commitments (the `known-offender-matching-psc` configuration, a `commitments` entry with
+`source: holder`, SUNET/vc's PR 2 - the issuer refuses it at startup until it has a store for it). The day that
+lands, REMOVE the fixed `psc` from `nym_auth*.json`: the issuer refuses any document that already carries a value
+for a configured commitment claim.
 
 ### Service Architecture
 

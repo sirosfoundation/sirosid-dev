@@ -577,7 +577,29 @@ class NymAuth(FixtureCase):
         # stored; issuing_country and personal_administrative_number are the seed's inputs.
         want = {"birth_date", "issuing_country", "personal_administrative_number"}
         for holder, doc in self.docs.items():
-            self.assertEqual(set(doc["document_data"]), want, holder)
+            extra = {"psc"} if doc["meta"]["document_id"].endswith("-full") else set()
+            self.assertEqual(set(doc["document_data"]), want | extra, holder)
+
+    # psc is a PLACEHOLDER until holder-supplied commitments exist (a `commitments` entry with source: holder,
+    # known-offender-matching-psc; the WALLET generates private_seed and supplies psc). The -full document keeps
+    # a fixed one so the optional claim is exercised and the plumbing stays in place; it is not a commitment to
+    # any seed a wallet holds, nothing may depend on it, and it must go the day psc support lands - the issuer
+    # refuses a document that already carries a value for a configured commitment claim.
+    PSC_PLACEHOLDER_SEED = bytes(range(16, 32))      # 101112131415161718191a1b1c1d1e1f
+
+    def test_psc_is_the_documented_placeholder_and_only_in_the_full_document(self):
+        import base64
+        import hashlib
+        want = hashlib.sha256(self.PSC_PLACEHOLDER_SEED).digest()
+        for holder, doc in self.docs.items():
+            if not doc["meta"]["document_id"].endswith("-full"):
+                self.assertNotIn("psc", doc["document_data"], holder)
+                continue
+            raw = base64.b64decode(doc["document_data"]["psc"], validate=True)   # standard base64, bstr .size 32
+            self.assertEqual(raw, want, f"{holder}.psc is not the documented placeholder")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(self.PSC_PLACEHOLDER_SEED.hex(), readme)
+        self.assertIn("PLACEHOLDER", readme)
 
     def test_ssc_is_issuer_generated_from_a_seed_for_both_scopes(self):
         for scope in (self.SCOPE, self.SCOPE + "_offer"):
