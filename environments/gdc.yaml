@@ -53,7 +53,7 @@ images:
   # libzk_cred_longfellow.so / libzk_cred_vega.so and it died at start with "error while loading
   # shared libraries" (2026-10-08). dockerfiles/worker has ONE runtime stage now and ships both,
   # verified in the 2026-10-12 image; drop this note once nobody remembers the old shape.
-  # The Dockerfile's default GOBUILD_IMAGE is golang:1.27.1-bookworm now, matching its runtime stage's
+  # The Dockerfile's default GOBUILD_IMAGE is golang:1.27.2-bookworm now (6c3ac47 and later), matching its runtime stage's
   # glibc, so no override is needed (an older default built binaries that died with "GLIBC_2.39 not found").
   #
   # All four vc-services MUST be bumped together: they share one config shape unmarshaled into the same
