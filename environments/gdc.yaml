@@ -28,16 +28,19 @@ credential_registries:
   - https://registry.siros.org
 
 images:
-  # vc: BUILT LOCALLY (2026-10-20) from sirosfoundation/vc `integration/gdc-nymauth` @
-  # 6c3ac4765605ee8f09b7b0512d8589c72520bbda = SUNET/vc main + #793 (seed derivation in the apigw,
-  # `apigw.seeds`: BREAKING - an image without it silently ignores the key and issues no ssc) + #796 +
-  # #820 (verifier V1) + #821 (seed delivery: `deliver: true`, advertises org.siros.secret_seed) + #813
-  # (identity_attributes / document_claims). NOT for upstream merge. Because it is built on current main
-  # it also brings #809 (mdoc DeviceAuthentication per ISO 18013-5, which our SDKs do not produce yet) and
-  # #790 (SD-JWT holder binding). The nymauth VERIFIER wiring (V2) is NOT in it: issuance and seed
-  # delivery are testable, nymauth verification waits for the next SHA. The verifier is built with the two
-  # native ZK libraries pinned by FULL SHA (--build-arg ZK_CRED_LONGFELLOW_REF=cf2eba99..., ZK_CRED_VEGA_REF=
-  # d6f0955b...: a shallow fetch needs all 40 characters), --target runtime-verifier.
+  # vc: BUILT LOCALLY (2026-10-20). The ISSUER side (registry, issuer, apigw) is sirosfoundation/vc
+  # `integration/gdc-nymauth-v3` @ 20ab021920c1deac734f7ea449f98e7ce004303d = SUNET/vc main + #793 (seed derivation
+  # in the apigw, `apigw.seeds`: BREAKING - an image without it silently ignores the key and issues no ssc) + #796 +
+  # #820 (verifier V1) + #821 (seed delivery: `deliver: true`, advertises org.siros.secret_seed; v3 fixes a leak:
+  # before 52e4ad2db a delivered seed could overwrite the PUBLISHED issuer metadata when
+  # emit_credential_metadata_on_response was true, and a refused delivery burned a status-list index) + #813
+  # (identity_attributes / document_claims). NOT for upstream merge. Built on current main, so it also brings #809
+  # (mdoc DeviceAuthentication per ISO 18013-5, which our SDKs do not produce yet) and #790 (SD-JWT holder
+  # binding). The VERIFIER stays at the 6c3ac47 build (local-1792456320, same ZK pins) until someone wants the
+  # nymauth library build on gdc: V2/v3 add NO verifier config or service wiring, so it verifies no nym_auth yet.
+  # emit_credential_metadata_on_response stays OFF (default): seed delivery does not need it. The verifier is
+  # built with the two native ZK libraries pinned by FULL SHA (--build-arg ZK_CRED_LONGFELLOW_REF=cf2eba99...,
+  # ZK_CRED_VEGA_REF=d6f0955b...: a shallow fetch needs all 40 characters), --target runtime-verifier.
   #
   # Build the first image alone: `make install-tools` in the shared gobuild stage failed when four builds raced it.
   # Before this: plain main @ 4bba38e61 (2026-10-13) + #813; before that a879fcb9a (unmerged #771).
@@ -65,9 +68,9 @@ images:
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
   vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792456320
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792456320
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792456320
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792456320
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792469885
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792469885
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792469885
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
