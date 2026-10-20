@@ -75,6 +75,13 @@ class SeedCommitments(unittest.TestCase):
             for scope, meta in (cfg.get("common", {}).get("credential_metadata") or {}).items():
                 self.assertNotIn("commitments", meta, f"{name}/{scope}")
 
+    def test_the_response_metadata_echo_stays_off_until_vc_has_the_aliasing_fix(self):
+        """vc 6c3ac47/c123c32 can write a delivered seed over the PUBLISHED issuer metadata when
+        apigw.delivery.emit_credential_metadata_on_response is true (fixed in SUNET/vc#821 52e4ad2db). It
+        defaults to false and nothing here may switch it on while gdc runs an image without that fix."""
+        delivery = self.cfg["vc-apigw"]["apigw"].get("delivery") or {}
+        self.assertFalse(delivery.get("emit_credential_metadata_on_response", False))
+
     def test_the_seed_secret_is_permanent_across_renders(self):
         before = (self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text()
         rendered(self.tmp / "secrets")
