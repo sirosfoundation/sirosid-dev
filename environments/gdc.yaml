@@ -29,7 +29,8 @@ credential_registries:
 
 images:
   # vc: BUILT LOCALLY (2026-10-20). The ISSUER side (registry, issuer, apigw) is sirosfoundation/vc
-  # `integration/gdc-nymauth-v3` @ 20ab021920c1deac734f7ea449f98e7ce004303d = SUNET/vc main + #793 (seed derivation
+  # `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (v3 20ab021 + startup refusals for a delivering
+  # scope without notification_endpoint / credential_encryption.keys + a 'Delivered a secret seed' INFO log line) = SUNET/vc main + #793 (seed derivation
   # in the apigw, `apigw.seeds`: BREAKING - an image without it silently ignores the key and issues no ssc) + #796 +
   # #820 (verifier V1) + #821 (seed delivery: `deliver: true`, advertises org.siros.secret_seed; v3 fixes a leak:
   # before 52e4ad2db a delivered seed could overwrite the PUBLISHED issuer metadata when
@@ -68,9 +69,9 @@ images:
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
   vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792456320
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792469885
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792469885
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792469885
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -110,14 +111,14 @@ images:
   # DEPRECATED /app/registry.yaml (a warning, to be removed in the next release - move it into config.yaml's
   # `registry:` section, which the deploy already supports by not rendering wallet-backend-registry.yaml).
   # 2026-10-20: BUILT LOCALLY from sirosfoundation/go-wallet-backend `feat/oid4vci-request-encryption` @
-  # 4e93c15873ca2d34aabc3e0443f96f0adc4dac55 (PR #469, not merged; base main cb42861 = 0.24.0 + the refactor merge):
+  # e4e0bc3bd1fd800a7507a50d33b1703c6224100b (PR #469, not merged; base main cb42861 = 0.24.0 + the refactor merge; replaced 4e93c15 after review):
   # the engine encrypts the credential REQUEST as a JWE to credential_request_encryption.jwks (OID4VCI 1.0 section 10)
-  # and negotiates ECDH-ES+A256KW for the response - what seed delivery needs (the issuer refuses a plain request for
+  # and negotiates the response encryption (all ECDH-ES(+KW) x GCM/CBC pairs) - what seed delivery needs (the issuer refuses a plain request for
   # a delivering scope). No config keys added; checked against the rendered gdc config. Back to the released image
   # (ghcr.io/sirosfoundation/go-wallet-backend:<release containing #469>) once it is merged and released.
-  # Build: docker build -f Dockerfile --build-arg VERSION=0.24.0-reqenc.4e93c15 --build-arg COMMIT=<sha> \
+  # Build: docker build -f Dockerfile --build-arg VERSION=0.24.0-reqenc.e4e0bc3 --build-arg COMMIT=<sha> \
   #   -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .   # then docker push (flyctl auth docker)
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792472470
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
