@@ -80,12 +80,12 @@ class GdcNymAuthVerifier(unittest.TestCase):
         for k in ("hash_circuit_id", "sig_circuit_id", "artifact_sha256"):
             self.assertIsInstance(entry[k], str, k)
 
-    def test_verifier_id_is_the_bare_client_id_identifier(self):
-        """client_id is x509_san_dns:<host of public_url>; verifier_id is that host, never prefixed. Changing it
-        changes every pseudonym."""
+    def test_verifier_id_is_the_published_client_id(self):
+        """Rulebook v0.4: verifier_id is the client_id exactly as published, x509_san_dns:<host of public_url>, prefix
+        included (the bare host was the rule before v0.4 and is the NOT-a-verifier_id value now: it yields a
+        pseudonym no other implementation reports). Changing it changes every pseudonym."""
         vid = self.cfg["nym_auth"]["verifier_id"]
-        self.assertEqual(vid, re.sub(r"^https://", "", self.cfg["public_url"]))
-        self.assertNotIn(":", vid)
+        self.assertEqual(vid, "x509_san_dns:" + re.sub(r"^https://", "", self.cfg["public_url"]))
 
     def test_the_artifact_path_is_where_the_overlay_image_puts_it(self):
         self.assertEqual(self.cfg["nym_auth"]["circuits"]["allow"][0]["artifact_path"], "/etc/vc/circuits/nym_auth-ssc.bin")
@@ -98,10 +98,16 @@ class GdcNymAuthVerifier(unittest.TestCase):
         self.assertTrue(self.cfg["trust"]["pdp_url"], "nym_auth takes the issuer key from the holder's chain; no PDP = refuse to start")
 
     def test_the_request_may_name_only_what_this_verifier_offers(self):
-        zk = self.cfg["preferred_vp_formats"]["circuit_zk"]
-        self.assertEqual(zk["circuit_id_values"], ["urn:circuits:longfellow:nym_auth:v1"])
-        self.assertEqual(zk["circuit_proof_system_values"], ["longfellow-libzk-v1"])
-        self.assertIn("dc+sd-jwt", self.cfg["preferred_vp_formats"], "adding circuit_zk must not drop the existing formats")
+        zk = self.cfg["preferred_vp_formats"]["zkp_req"]
+        self.assertEqual(zk["system_id_values"], ["urn:circuits:longfellow:nym_auth:v1"])
+        self.assertEqual(zk["proof_system_values"], ["longfellow-libzk-v1"])
+        self.assertIn("dc+sd-jwt", self.cfg["preferred_vp_formats"], "adding zkp_req must not drop the existing formats")
+
+    def test_no_pre_v0_4_names_remain(self):
+        """vc fails startup on circuit_zk / circuit_id_values / circuit_proof_system_values, naming the replacement."""
+        text = self.text
+        for old in ("circuit_zk", "circuit_id_values", "circuit_proof_system_values"):
+            self.assertNotIn(old, text, old)
 
 
 if __name__ == "__main__":

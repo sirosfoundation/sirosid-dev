@@ -69,8 +69,8 @@ images:
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
   # vc-verifier (2026-10-20, UNMERGED upstream work: re-pin when it is released): BUILT LOCALLY from
-  # sirosfoundation/vc `integration/gdc-nymauth-v5` @ 2a30a60946bca7f77c759e654d2ab27d29ee7a53 = v4 + the nym_auth
-  # verifier stack (SUNET/vc #827/#829/#830 incl. the allow-all-PDP fix, #831, #832, the time-binding diagnostics),
+  # sirosfoundation/vc `integration/gdc-nymauth-v5` @ ae33687f1a865a07f2464d72abcdfd1f2ca049d9 (rulebook v0.4 port) = v4 + the nym_auth
+  # verifier stack (SUNET/vc #827/#829/#830 incl. the allow-all-PDP fix, #831, #832, the time-binding diagnostics, the v0.4 zkp_req names),
   # with the native libs pinned by immutable tags (full SHAs: a shallow fetch needs all 40 characters):
   #   ZK_CRED_LONGFELLOW_REF=58de20f07487bbb6ebe32148feec3bef4d92677e (v0.1.2)
   #   ZK_CRED_VEGA_REF=8e7be172e9010e8b47f3192f046d5f990f602790 (v0.0.7)
@@ -85,7 +85,7 @@ images:
   # between wallet and verifier (spec decision pending); that is not a config problem.
   # This branch contains sirosid-dev PRs 79 and 80, NEITHER merged when it was deployed; the pin goes back to a
   # released vc verifier image once SUNET/vc releases the verifier stack.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792485810
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792523015
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
@@ -302,11 +302,12 @@ values:
   verifier:
     # nym_auth pseudonym verification (SUNET/vc#827/#829/#830/#832). Needs a vc verifier BUILT WITH the zknative tag
     # and the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile); an older verifier ignores these
-    # keys (non-strict unmarshal) and simply cannot answer a circuit_zk request.
+    # keys (non-strict unmarshal) and simply cannot answer a zkp_req request.
     #
-    # verifier_id is BARE and scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. It must
-    # be the verifier's own client_id identifier without the `x509_san_dns:` prefix (public_url's host). CHANGING IT
-    # CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
+    # verifier_id scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. Since rulebook v0.4
+    # (vc 2026-10-20, integration/gdc-nymauth-v5 @ fd562f10) it is the verifier's client_id EXACTLY AS PUBLISHED,
+    # prefix and all: x509_san_dns:<public_url's host> (it was the bare host before v0.4, and vc refused the prefix).
+    # CHANGING IT CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
     # src/nymauth/profile.rs (authoritative); do NOT take the digest from docs/CONFIGURATION.md, whose example is a
     # placeholder with 52 zeros in the middle.
     #
@@ -319,7 +320,7 @@ values:
       verifier:
         nym_auth:
           enable: true
-          verifier_id: sirosid-gdc-vc-verifier.fly.dev
+          verifier_id: x509_san_dns:sirosid-gdc-vc-verifier.fly.dev
           circuits:
             allow:
               - config: known-offender-matching-ssc
@@ -331,9 +332,10 @@ values:
                 artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
                 artifact_bytes: 1062842
         preferred_vp_formats:
-          circuit_zk:
-            circuit_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
-            circuit_proof_system_values: ["longfellow-libzk-v1"]
+          # v0.4 names (circuit_zk / circuit_id_values / circuit_proof_system_values fail startup, naming these)
+          zkp_req:
+            system_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
+            proof_system_values: ["longfellow-libzk-v1"]
     # The verifier's client_id is x509_san_dns:sirosid-gdc-vc-verifier.fly.dev; put that host in the SAN of the
     # certificate it signs request objects with (re-issued once from the same key and root; see create-pki.sh).
     signingCertDnsSan: true
