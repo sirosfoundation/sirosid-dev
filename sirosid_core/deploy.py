@@ -17,6 +17,8 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import yaml
+
 from .android import identities_from_entries
 from .assets import (assetlinks_json, mini_oidc_config, wallet_frontend_conf, wallet_frontend_dashboard_html,
                      wallet_proxy_conf, write_fly_toml)
@@ -59,6 +61,7 @@ class DeployContext:
     pki_dir: Path = None
     assetlinks_path: Path = None
     mongo_password: str = ""
+    secrets_dir: Path = None        # where the vc services' generated secrets (seeds) live
 
 
 @dataclass
@@ -180,6 +183,14 @@ def _vc_service_files(ctx: DeployContext, app: str, service: str, metadata: bool
     # services read is identical either way.
     for f in sorted((out_dir / "branding-assets").glob("*.png")):
         args += ["--file-local", f"/branding-assets/{f.name}={f}"]
+    if service == "vc-apigw":
+        # apigw.seeds.<name>.secret_path: the seed secret as a Fly secret mounted as a file (never in the config,
+        # which `flyctl config show` can read). ensure_secret never rotates: the secret is permanent.
+        seeds = ((yaml.safe_load((out_dir / "vc-apigw.yaml").read_text()).get("apigw") or {}).get("seeds") or {})
+        for name, seed in sorted(seeds.items()):
+            secret = vc_render.seed_secret_file(name)
+            fly.ensure_secret(app, secret, (ctx.secrets_dir / secret).read_text().strip())
+            args += ["--file-secret", f"{seed['secret_path']}={secret}"]
     if bootstrapping:
         for f in sorted((out_dir / "documents").glob("*")):
             if vc_render.is_twin_document(f.name):
@@ -880,7 +891,8 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
         return result
 
     ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say, docs=docs,
-                        mongo_version=mongo_version, out_dir=out_dir, mongo_password=mongo_password)
+                        mongo_version=mongo_version, out_dir=out_dir, mongo_password=mongo_password,
+                        secrets_dir=Path(secrets_dir) if secrets_dir else resources.rendered_secrets)
     say("=== Generating per-environment PKI ===")
     ctx.pki_dir = generate_pki(ctx)
     say("=== Generating Android assetlinks.json ===")

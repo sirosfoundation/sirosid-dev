@@ -100,6 +100,10 @@ SECRETS = {
     "SIROSID_MONGO_ROOT_PASSWORD": ("mongoRootPassword", [("mongodb", "mongoRootPassword")]),
     "SIROSID_VC_SIGNING_KEY": ("vc-pki/signing_ec_private.pem",
                                [("vc", "signing_ec_private.pem"), ("wallet_backend", "asSigningKey")]),
+    # apigw.seeds.primary's secret (SUNET/vc#793), kept with the vc services' other generated secrets
+    # (state.VC_SECRETS_DIR). A new seed name needs an entry here and in SECRET_PATHS: test_seed_commitments_render
+    # fails when the chart has a seed this layout cannot mount.
+    "SIROSID_VC_APIGW_SEED_PRIMARY": ("vc-secrets/vcApigwSeedPrimary", [("vc", "apigwSeedPrimary")]),
     "SIROSID_JWT_SECRET": ("jwtSecret", [("wallet_backend", "jwtSecret")]),
     "SIROSID_ADMIN_TOKEN": ("adminToken", [("wallet_backend", "adminToken")]),
     "SIROSID_WALLET_PROVIDER_KEY": ("vc-pki/wallet_provider_ec_private.pem",
@@ -110,7 +114,8 @@ SECRET_GROUP = {"mongodb": "mongodb", "wallet-backend": "wallet_backend",
 
 # Absolute paths of the apps layout that became something else here.
 SECRET_PATHS = {
-    "vc": {"/pki/signing_ec_private.pem": f"{SECRETS_DIR}/signing_ec_private.pem"},
+    "vc": {"/pki/signing_ec_private.pem": f"{SECRETS_DIR}/signing_ec_private.pem",
+           "/seeds/primary": f"{SECRETS_DIR}/apigwSeedPrimary"},
     "wallet_backend": {"/main-secrets/jwtSecret": f"{SECRETS_DIR}/jwtSecret",
                        "/main-secrets/adminToken": f"{SECRETS_DIR}/adminToken",
                        "/main-secrets/walletProviderKey": f"{SECRETS_DIR}/walletProviderKey",
@@ -511,7 +516,8 @@ def deploy_instance_single_machine(spec: InstanceSpec, fly: FlyClient, naming: N
         step("volume")
 
         say("=== Setting secrets ===")
-        version = _set_secrets(fly, machines, app, out_dir, force_mongo=bool(volume.get("created")))
+        version = _set_secrets(fly, machines, app, out_dir, force_mongo=bool(volume.get("created")),
+                               vc_secrets_dir=Path(secrets_dir) if secrets_dir else resources.rendered_secrets)
         step("secrets")
 
         say(f"=== Pushing the config bundle ({len(files)} files) ===")
@@ -629,7 +635,8 @@ def _check_signing_key(fly: FlyClient, naming: Naming, pki_dir: Path):
             component="pki")
 
 
-def _set_secrets(fly: FlyClient, machines: MachinesClient, app: str, out_dir: Path, force_mongo: bool):
+def _set_secrets(fly: FlyClient, machines: MachinesClient, app: str, out_dir: Path, force_mongo: bool,
+                 vc_secrets_dir: Path = None):
     """Set each secret that is not set yet (never rotate one - Fly cannot give it
     back, and the state files hold the values). Returns the highest secrets
     version written, or None if nothing changed."""
@@ -638,7 +645,9 @@ def _set_secrets(fly: FlyClient, machines: MachinesClient, app: str, out_dir: Pa
     for name, (source, _) in SECRETS.items():
         if name in existing and not (force_mongo and name == "SIROSID_MONGO_ROOT_PASSWORD"):
             continue
-        if "/" in source:                       # a PKI file: exact bytes
+        if source.startswith("vc-secrets/"):    # a vc service's generated secret, wherever the caller keeps them
+            content = (Path(vc_secrets_dir) / source.split("/", 1)[1]).read_bytes()
+        elif "/" in source:                     # a PKI file: exact bytes
             content = (out_dir / source).read_bytes()
         else:                                   # a generated-once value (state.STATE_FILES)
             content = persistent_secret(out_dir, source).encode()

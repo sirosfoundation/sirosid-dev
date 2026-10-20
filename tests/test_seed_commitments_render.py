@@ -14,6 +14,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from sirosid_core import vc_render  # noqa: E402
 from sirosid_core.render import render  # noqa: E402
 from sirosid_core.resources import Resources  # noqa: E402
 
@@ -44,11 +45,20 @@ class SeedCommitments(unittest.TestCase):
     def tearDownClass(cls):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def test_the_apigw_has_a_derived_seed_with_a_usable_secret(self):
+    def test_the_apigw_has_a_derived_seed_whose_secret_is_a_file_not_config(self):
         seed = self.cfg["vc-apigw"]["apigw"]["seeds"]["primary"]
         self.assertEqual(seed["model"], "derived")
-        raw = base64.urlsafe_b64decode(seed["secret"])      # base64url, as vc reads it
+        self.assertEqual(seed["secret_path"], "/seeds/primary")
+        self.assertNotIn("secret", seed, "vc reads `secret` only from its secrets file; inlined it is not found (and would sit in `flyctl config show`)")
+        raw = base64.urlsafe_b64decode((self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text())
         self.assertGreaterEqual(len(raw), 32, "vc refuses a seed secret under 32 bytes decoded")
+
+    def test_every_seed_can_be_mounted_by_the_single_machine_layout(self):
+        from sirosid_core import singlemachine
+        for name in self.cfg["vc-apigw"]["apigw"]["seeds"]:
+            path = self.cfg["vc-apigw"]["apigw"]["seeds"][name]["secret_path"]
+            self.assertIn(path, singlemachine.SECRET_PATHS["vc"], f"{name}: the single-machine layout cannot mount {path}")
+            self.assertIn(f"vc-secrets/{vc_render.seed_secret_file(name)}", [s for s, _ in singlemachine.SECRETS.values()], name)
 
     def test_nym_auth_and_its_twin_commit_to_the_same_delivered_seed(self):
         meta = self.cfg["vc-apigw"]["common"]["credential_metadata"]
@@ -66,9 +76,9 @@ class SeedCommitments(unittest.TestCase):
                 self.assertNotIn("commitments", meta, f"{name}/{scope}")
 
     def test_the_seed_secret_is_permanent_across_renders(self):
-        again = rendered(self.tmp / "secrets")
-        self.assertEqual(again["vc-apigw"]["apigw"]["seeds"]["primary"]["secret"],
-                         self.cfg["vc-apigw"]["apigw"]["seeds"]["primary"]["secret"],
+        before = (self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text()
+        rendered(self.tmp / "secrets")
+        self.assertEqual((self.tmp / "secrets" / vc_render.seed_secret_file("primary")).read_text(), before,
                          "a replaced seed secret repseudonymises everyone")
 
 
