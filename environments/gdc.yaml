@@ -285,11 +285,12 @@ values:
   verifier:
     # nym_auth pseudonym verification (SUNET/vc#827/#829/#830/#832). Needs a vc verifier BUILT WITH the zknative tag
     # and the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile); an older verifier ignores these
-    # keys (non-strict unmarshal) and simply cannot answer a circuit_zk request.
+    # keys (non-strict unmarshal) and simply cannot answer a zkp_req request.
     #
-    # verifier_id is BARE and scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. It must
-    # be the verifier's own client_id identifier without the `x509_san_dns:` prefix (public_url's host). CHANGING IT
-    # CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
+    # verifier_id scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. Since rulebook v0.4
+    # (vc 2026-10-20, integration/gdc-nymauth-v5 @ fd562f10) it is the verifier's client_id EXACTLY AS PUBLISHED,
+    # prefix and all: x509_san_dns:<public_url's host> (it was the bare host before v0.4, and vc refused the prefix).
+    # CHANGING IT CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
     # src/nymauth/profile.rs (authoritative); do NOT take the digest from docs/CONFIGURATION.md, whose example is a
     # placeholder with 52 zeros in the middle.
     #
@@ -302,7 +303,7 @@ values:
       verifier:
         nym_auth:
           enable: true
-          verifier_id: sirosid-gdc-vc-verifier.fly.dev
+          verifier_id: x509_san_dns:sirosid-gdc-vc-verifier.fly.dev
           circuits:
             allow:
               - config: known-offender-matching-ssc
@@ -314,9 +315,10 @@ values:
                 artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
                 artifact_bytes: 1062842
         preferred_vp_formats:
-          circuit_zk:
-            circuit_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
-            circuit_proof_system_values: ["longfellow-libzk-v1"]
+          # v0.4 names (circuit_zk / circuit_id_values / circuit_proof_system_values fail startup, naming these)
+          zkp_req:
+            system_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
+            proof_system_values: ["longfellow-libzk-v1"]
     # Selectable options in the verifier's own presentation-definition UI.
     # NOT the same thing as presentation-request templates, which are only
     # reachable through a real OIDC /authorize?scope=... request.

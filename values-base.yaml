@@ -353,7 +353,7 @@ features:
           claims: [given_name, family_name]
     # Nym-authentication attestation (sirosfoundation/nym_auth_rulebook v0.3):
     # birth_date + ssc (SHA-256 of a 16-byte secret seed shared by issuer and
-    # prover) + optional psc, for circuit_zk pseudonym and age-predicate
+    # prover) + optional psc, for zkp_req (formerly circuit_zk) pseudonym and age-predicate
     # presentations. doctype and namespace are both eu.europa.ec.eudi.nym_auth.1.
     #
     # fixtures/vc-metadata/nym_auth.mdoc.json is a byte-for-byte COPY of the
