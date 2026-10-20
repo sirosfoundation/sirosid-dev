@@ -632,17 +632,18 @@ def patch_registry_sources(config: dict, registries: list) -> dict:
     registry is that nothing is vendored and an override would silently
     outrank it.
 
-    Kept on each registry's legacy .well-known index rather than its TS11
-    /api/v1/schemas.json endpoint: TS11 lists only fully TS11-compliant
-    credentials - 26 entries on registry.siros.org today against 37 in the
-    legacy index - so switching would silently drop every type not migrated
-    yet. This is the obvious "modernisation" someone will reach for; don't,
-    until the two agree.
+    The TS11 API (`<registry>/api/v1/schemas.json`) is the ONLY interface used, as it is for vc
+    (go-ts11client): every format's schema document is fetched and keyed by its own identifier, so an
+    mso_mdoc type is served by its DOCTYPE (`/registry/type-metadata?vct=<doctype>`). The legacy
+    `.well-known/vctm-registry.json` index fetches only each entry's VCTM, which mdoc-only entries do not have:
+    through it gdc's backend answered 404 for every mdoc type (mDL, pid_mdoc, photoid, nym_auth; 'legacy fetch
+    complete ... errors 7'). The old reason to prefer it - TS11 once listed fewer types - no longer holds:
+    measured 2026-10-20 against the engine image, all 13 identifiers values-base.yaml declares resolve (200) from
+    TS11 alone (32 schemas fetched, 0 errors).
     """
     config.pop("source", None)
     config["sources"] = [
-        {"url": f"{u.rstrip('/')}/.well-known/vctm-registry.json", "mode": "registry",
-         "timeout": "30s"}
+        {"url": u.rstrip("/"), "mode": "ts11", "timeout": "30s"}
         for u in registries
     ]
     config.setdefault("dynamic_cache", {})["enabled"] = True

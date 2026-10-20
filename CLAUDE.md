@@ -488,12 +488,12 @@ The identifiers each scope switches to are read out of
 already renders `supported_credentials` and the VCTM mounts from, so the
 vendored and registry-resolved paths cannot drift apart while both exist.
 
-Both paths use each registry's legacy `.well-known/vctm-registry.json` index,
-**not** its TS11 `/api/v1/schemas.json` endpoint. TS11 lists only fully
-TS11-compliant credentials — 26 entries on registry.siros.org today against 37
-in the legacy index — so switching would silently drop every type not migrated
-yet. That is the obvious "modernisation" to reach for; don't, until the two
-agree.
+Both paths use each registry's TS11 API (`/api/v1/schemas.json`) and nothing else: vc through go-ts11client,
+wallet-backend through `registry.sources` with `mode: ts11` (`render.patch_registry_sources`). Do not go back to the
+legacy `.well-known/vctm-registry.json` index: it fetches only each entry's VCTM, which mdoc-only entries do not
+have, so the backend answered 404 on `/registry/type-metadata?vct=<doctype>` for every mdoc type (mDL, pid_mdoc,
+photoid, nym_auth) - found on the first nym_auth Pixel run (2026-10-20). TS11 keys an mdoc schema by its doctype;
+all 13 identifiers values-base.yaml declares resolve from TS11 alone.
 
 ### Synthetic documents: what `fixtures/vc-bootstrapping` guarantees
 

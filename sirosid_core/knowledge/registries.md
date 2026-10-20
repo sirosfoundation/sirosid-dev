@@ -35,9 +35,8 @@ registries, for vc and the wallet backend in one render. The issuer then adverti
 Rules:
 - entries must be public https base URLs; at most 50;
 - order matters: a later registry overrides an earlier one for the same type;
-- the registry's legacy `.well-known/vctm-registry.json` index is used, not its newer TS11
-  `/api/v1/schemas.json` (which lists fewer types: 26 against 37 on registry.siros.org when last
-  counted);
+- the registry's TS11 API (`/api/v1/schemas.json`) is the only interface used, by vc and by the wallet backend;
+  an mdoc type is served by its doctype;
 - **mdoc types stay vendored** even in external mode: mdocs have no `vct` to mismatch, and a local
   variant such as `mdl_zk4` shares its doctype with the full mDL, so resolving it from a registry would
   silently turn it into the full one;
