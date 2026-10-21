@@ -508,9 +508,9 @@ PID carries, stored in `nym_auth.json` as inputs only: the schema does not decla
 issued), commits to it (`ssc` = SHA-256 of the seed) and, because the type sets `deliver: true`, hands the
 **seed** to the wallet in the credential response (`credential_metadata`, namespace
 `org.siros.nym_auth`; the engine requires an encrypted response for that). The stored documents therefore
-carry **no** `ssc`, and vc refuses a document that does. `nym_auth_offer` (the pre-authorized twin) has the
-same block and derives the **same** seed for the same person: one person, one pseudonym, whichever way the
-credential was obtained.
+carry **no** `ssc`, and vc refuses a document that does. An offer (the pre-authorized grant: `make datastore-offer SCOPE=nym_auth`, or the
+`nym_auth_offer` twin where an environment still has twins) derives the **same** seed for the same person: one person,
+one pseudonym, whichever way the credential was obtained.
 
 **`psc` is a PLACEHOLDER for now.** It is the commitment to a `private_seed` the **wallet** generates (from
 its container key); the issuer cannot know it. The `-full` document (carol-003) carries a fixed one only so
