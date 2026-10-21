@@ -135,7 +135,19 @@ images:
   # (ghcr.io/sirosfoundation/go-wallet-backend:<release containing #469>) once it is merged and released.
   # Build: docker build -f Dockerfile --build-arg VERSION=0.24.0-reqenc.e4e0bc3 --build-arg COMMIT=<sha> \
   #   -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .   # then docker push (flyctl auth docker)
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792473614
+  # 2026-10-21: REPLACED the #469-only build below by a LOCAL INTEGRATION build, go-wallet-backend
+  # local/gdc-nymauth-integration @ faa5e63d2777c1cfe3d7c60bf0ade6d4232bea7b (a local branch that is NEVER pushed;
+  # fetched by full SHA from a local worktree). Signed --no-ff merges on origin/main cb42861b6: #469 @ e4e0bc3b
+  # (request encryption), #471 @ 28a6fa50 (client_metadata / thumbprint), #163 @ 71a07f80 (WMP, go-wmp v0.7.0), #472 @
+  # be69e2e7 (sign-stage refusal). NONE of these are merged upstream; #470 is not included. Build, with GIT_REF left
+  # EMPTY (a non-empty GIT_REF makes the Dockerfile git-clone that ref over HTTPS, which fails for an unpushed branch):
+  #   docker build -f Dockerfile --build-arg VERSION=0.24.0-nymauth.faa5e63   #     --build-arg COMMIT=faa5e63d2777c1cfe3d7c60bf0ade6d4232bea7b -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .
+  # (image id f3b6c030fabe, the same id the go-wallet-backend session got). Config: no key added, renamed or removed.
+  # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
+  # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
+  # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792560364
+  # previous pin (PR 469 only): registry.fly.io/sirosid-gdc-wallet-backend:local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
