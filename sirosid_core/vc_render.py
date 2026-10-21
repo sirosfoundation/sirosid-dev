@@ -386,6 +386,20 @@ def is_twin_document(name: str) -> bool:
     return name.endswith(TWIN_DOCUMENT_SUFFIX)
 
 
+def drop_offer_twins(values: dict) -> dict:
+    """An environment that sets issuer.allowPreauthOffer (SUNET/vc#840) needs no `<type>_offer` twins: its base scopes can
+    be offered directly. Remove them from the base values - the credential types whose issuance.authProvider is
+    preauth and their bootstrapping documents - so the issuer's credential_configurations_supported, the datastore
+    scopes and the verifier's lists each carry one entry per type. Every other environment keeps them."""
+    types = values.get("features", {}).get("credentialTypes") or {}
+    for name in [n for n, t in types.items() if (t.get("issuance") or {}).get("authProvider") == "preauth"]:
+        del types[name]
+    docs = ((values.get("issuer") or {}).get("datastoreImport") or {}).get("documents") or {}
+    for name in [n for n in docs if n.endswith("_offer")]:
+        del docs[name]
+    return values
+
+
 def drop_twin_imports(config: dict) -> dict:
     """Fly: the twins' documents are not shipped with the apigw, so they must not be imported either.
 

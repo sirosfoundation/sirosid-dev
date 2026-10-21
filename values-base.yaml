@@ -471,6 +471,14 @@ issuer:
   # under (fixtures/vc-bootstrapping/identity_mappings.json: mini-oidc). Older vc images read config with a plain
   # yaml.Unmarshal and ignore the key, so this is safe as the default for every environment.
   datastoreAuthenticSource: mini-oidc
+  # SUNET/vc#840 (`allow_preauth_offer`): let the admin mint endpoint make a pre-authorized offer for a LOGIN-GATED
+  # datastore scope, so a type needs no `<type>_offer` twin. Rendered on every datastore scope whose auth_provider is
+  # not preauth. OFF by default: a vc image with #840 REFUSES TO START with the flag set unless
+  # apigw.api_server.api_auth configures jwks or oidc (and, with the admin UI on, oidc), and an older image ignores
+  # it silently (so minting for the base scope fails with invalid_scope there). Environments whose apigw image carries
+  # #840 and satisfies that guard turn it on (environments/gdc.yaml). `make datastore-offer` then mints against the
+  # base scope; see scripts/datastore.py.
+  allowPreauthOffer: false
   # One file per datastore-sourced scope, keyed by holder. Each scope has at
   # least one document covering only that type's mandatory claims and exactly
   # one whose `meta.document_id` ends in `-full`, covering mandatory AND every
