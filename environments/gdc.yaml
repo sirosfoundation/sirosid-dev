@@ -344,6 +344,12 @@ rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
 # without a code change anywhere else.
 values:
   issuer:
+    # SUNET/vc#840: mint pre-authorized offers for the BASE scopes (no `<type>_offer` twin needed). Needs an apigw image
+    # that carries #840 - an older one ignores the key, so minting for a base scope fails with invalid_scope there and
+    # `make datastore-offer SCOPE=<type>_offer` (the twin) keeps working - and a startup guard in that image requires
+    # api_auth.jwks (or oidc) AND the admin UI off or oidc enabled. gdc: api_auth.jwks.enable true and
+    # admin_ui_enable false (its default), so the guard passes.
+    allowPreauthOffer: true
     apigw:
       # nym_auth's seed-backed ssc and its delivery (SUNET/vc#793/#821; the integration build pinned above):
       # the issuer derives each person's seed from a per-environment secret (generated once, PERMANENT) and the

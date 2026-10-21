@@ -290,3 +290,18 @@ fly-gdc:
   - path: verifier.nym_auth
     kind: added
     reason: "gdc verifies nym_auth pseudonym proofs (SUNET/vc#832; environments/gdc.yaml verifier.extraConfig). Needs a zknative verifier image with the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile)."
+  - path: apigw.data_sources.datastore.scopes.diploma.allow_preauth_offer
+    kind: added
+    reason: "gdc sets issuer.allowPreauthOffer (SUNET/vc#840): an offer can be minted for the base scope, so no <type>_offer twin is needed"
+  - path: apigw.data_sources.datastore.scopes.mdl.allow_preauth_offer
+    kind: added
+    reason: "gdc sets issuer.allowPreauthOffer (SUNET/vc#840): an offer can be minted for the base scope, so no <type>_offer twin is needed"
+  - path: apigw.data_sources.datastore.scopes.mdl_zk4.allow_preauth_offer
+    kind: added
+    reason: "gdc sets issuer.allowPreauthOffer (SUNET/vc#840): an offer can be minted for the base scope, so no <type>_offer twin is needed"
+  - path: apigw.data_sources.datastore.scopes.pid_1_8.allow_preauth_offer
+    kind: added
+    reason: "gdc sets issuer.allowPreauthOffer (SUNET/vc#840): an offer can be minted for the base scope, so no <type>_offer twin is needed"
+  - path: apigw.data_sources.datastore.scopes.pid_mdoc.allow_preauth_offer
+    kind: added
+    reason: "gdc sets issuer.allowPreauthOffer (SUNET/vc#840): an offer can be minted for the base scope, so no <type>_offer twin is needed"
