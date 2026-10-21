@@ -712,6 +712,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     vc_render.inline_file_refs(base, resources.root)
     vc_render.resolve_branding_refs(base, resources.root)
     vc_render.expand_presentation_request_templates(base, resources.root)
+    if ((env_values or {}).get("issuer") or {}).get("allowPreauthOffer"):
+        vc_render.drop_offer_twins(base)
     base_path = out_dir / "values.base-inlined.yaml"
     base_path.write_text(yaml.dump(base, sort_keys=False))
 
