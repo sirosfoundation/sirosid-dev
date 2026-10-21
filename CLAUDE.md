@@ -733,6 +733,19 @@ the source's VCTM/MDDL file and ships no copy of it, and on **Fly** its document
 the apigw over it (`http: request body too large`, gdc 2026-10-20; `tests/test_fly_payload.py` guards it). So on Fly
 `make datastore-sync` is what adds the twins' documents, also after a storage clear.
 
+**Without twins (SUNET/vc#840, per environment).** An environment that sets `issuer.allowPreauthOffer: true` (gdc, once its
+apigw image carries #840) gets `allow_preauth_offer: true` on every login-gated datastore scope, and the chart DROPS the
+twins for it (`vc_render.drop_offer_twins`, applied to the base values in `render.py`: the `<type>_offer` credential types
+and their bootstrapping documents), so the issuer's `credential_configurations_supported`, the datastore scopes and the
+verifier lists carry one entry per type. `make datastore-offer SCOPE=<type>` then mints against the base scope: the
+command follows the RENDERED apigw config (`scripts/datastore.py offer_scope`): a flagged base scope is used as it is, an
+unflagged one uses its twin, a named `<type>_offer` is never rewritten, and a twin-style DOCUMENT_ID is mapped to the base
+document id. The flag is OFF by default: a vc image with #840 refuses to start with it set unless `apigw.api_server.api_auth`
+has `jwks.enable` (and the admin UI off) or `oidc.enable`, and an older image ignores it. Migration order on an
+environment: flag + the new image, move minting, verify an offer for the base scope redeems, THEN drop the twins (an
+offer naming a configuration id the issuer no longer publishes is unredeemable). Twin documents already in a live datastore
+stay there until removed (`search --scope <type>_offer`).
+
 **The issuer and the verifier show the SUNET logo:** they are showing vc's
 built-in assets, which means `common.branding` never reached them. The chart
 points `logo_path`/`favicon_path` at `/branding-assets/*.png` and expects an
