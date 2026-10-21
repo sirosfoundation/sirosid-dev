@@ -39,9 +39,9 @@ images:
   # engine, PDP and issuer images below (verifier vc a56c4be9e = local-1792603698, engine 9cb6e57 = local-1792564143,
   # PDP go-trust 0.26.0 with the verifier_ids policies, apigw/issuer/registry local-1792473614), zk-cred-longfellow v0.1.2
   # and zk-cred-vega v0.0.7, matcher https://github.com/sirosfoundation/siros-dc-matcher v0.11.0 on the wallet side, and the
-  # circuit catalog https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 (zk-circuits.fly.dev). The next
-  # vc build (c8c5b1ea: classified zkp_req refusals + https://github.com/SUNET/vc/pull/840 allow_preauth_offer) is NOT in this
-  # set yet. environments/nymauth.yaml reproduces this set on its own hosts (docs/NYMAUTH-TESTING.md).
+  # circuit catalog https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 (zk-circuits.fly.dev). The vc build
+  # below (c8c5b1ea: classified zkp_req refusals + https://github.com/SUNET/vc/pull/840 allow_preauth_offer, twins removed) is the
+  # NEXT set and is not proven by a Pixel run yet. environments/nymauth.yaml reproduces this set on its own hosts (docs/NYMAUTH-TESTING.md).
   #
   # NYMAUTH-CRITICAL SETTINGS in this file (each one broke the flow when wrong; see docs/NYMAUTH-TESTING.md, gotchas):
   #   verifier.nym_auth.verifier_id = the PREFIXED client_id x509_san_dns:<verifier host>; verifier.preferred_vp_formats.zkp_req
@@ -50,42 +50,35 @@ images:
   #   delivery); signingCertDnsSan (the verifier's host in the request-signing cert); the engine image (request encryption,
   #   client_metadata, WMP) with the config unchanged (dcql_consent_check default).
   #
-  # vc-verifier   registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
-  #   digest sha256:96c41f16dd9324da6890c76b9faa7810d4c8259cf142ffd16360e413c8ca8945
-  #   source  sirosfoundation/vc `integration/gdc-nymauth-v5` @ a56c4be9ec42ef394d536f5ea08d80b50f2a95a0 (merge base
-  #           SUNET/vc main 4bba38e614e1; integration of the stack below, NOT for upstream merge), --target
-  #           runtime-verifier, zknative, + the nym_auth circuit artifact overlay (dockerfiles/verifier-nymauth.Dockerfile)
+  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792609658
+  #   digests verifier sha256:9385f5bf1b676b87f2fe6891769fafbc2cd6bd84c65b10bc614104512233891a (+ the circuit artifact overlay)
+  #           apigw    sha256:bb1a46f329211124e32e33421aa9526a96170bb3fa5e10dc082dab4535fef6c7
+  #           issuer   sha256:9064f735c12d4d97962eed55c54db9c6ce123197eb38f9de3a197709ca57ea48
+  #           registry sha256:afa31586c9a8c17711c963ba21d17b7ff1bb80d3ddc90b27eeb18823dbdeb4f9
+  #   source  sirosfoundation/vc `integration/gdc-nymauth-v5` @ c8c5b1eafd0ff08c14ca3cf8ebaceaa4473533f0 (NOT for upstream merge);
+  #           the verifier is --target runtime-verifier with zknative; all four are built from this one SHA
   #   PRs     https://github.com/SUNET/vc/pull/827 @ 80d6ee9ef (nym_auth circuit allowlist; open)
-  #           https://github.com/SUNET/vc/pull/829 @ 55a8c9d7f (validate a zkp_req response against the request; open)
-  #           https://github.com/SUNET/vc/pull/830 @ 770885f31 (dispatch a zkp_req presentation to the nym_auth verifier,
-  #             incl. the allow-all-PDP fix; open)
-  #           https://github.com/SUNET/vc/pull/831 @ deb0c19b6 (bind a redirect-delivered presentation to its handover; open)
-  #           https://github.com/SUNET/vc/pull/832 @ 6649047e4 (operator docs; open)
-  #           plus the rulebook v0.4 port, the verifier UI fixes (req-schema.js `fn_id`, posted `req` vs wire `_req`) and
-  #           the meta.source_format fix, all on that integration branch
+  #           https://github.com/SUNET/vc/pull/829 @ 19efd24c7 (validate a zkp_req response; open)
+  #           https://github.com/SUNET/vc/pull/830 @ 90f227fcd (dispatch to the nym_auth verifier, allow-all-PDP fix, classified
+  #             refusals: HTTP 400 with a stable code, e.g. zkp_req_issuer_key_set_size; open)
+  #           https://github.com/SUNET/vc/pull/831 @ 0364b170b (bind a redirect-delivered presentation to its handover; open)
+  #           https://github.com/SUNET/vc/pull/832 @ 3f8efba54 (operator docs; open)
+  #           https://github.com/SUNET/vc/pull/839 @ 94a6e6732 (v0.4 conversion of main's pkg/nymauth; open)
+  #           https://github.com/SUNET/vc/pull/840 @ 952426dc5 (`allow_preauth_offer`: an offer for a login-gated scope, no twin; open)
+  #           plus upstream SUNET/vc main 6130eed28, which brings https://github.com/SUNET/vc/pull/793 (seed-backed
+  #           commitments), https://github.com/SUNET/vc/pull/819, https://github.com/SUNET/vc/pull/836,
+  #           https://github.com/SUNET/vc/pull/837 and https://github.com/SUNET/vc/pull/838 (all merged upstream); the apigw seed
+  #           delivery rides on https://github.com/SUNET/vc/pull/821 as before (in the v4 line this branch superseded)
   #   ZK libs https://github.com/sirosfoundation/zk-cred-longfellow v0.1.2 @ 58de20f07487bbb6ebe32148feec3bef4d92677e and
   #           https://github.com/sirosfoundation/zk-cred-vega v0.0.7 @ 8e7be172e9010e8b47f3192f046d5f990f602790
-  #   matcher https://github.com/sirosfoundation/siros-dc-matcher v0.11.0 (the wallet side's request matcher; not in this
-  #           image); circuit catalog https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 is served
-  #           from zk-circuits.fly.dev (values.verifier.zkCircuits)
-  #   previous pins: local-1792603698 (vc 253a17e92), local-1792532233 (094549cc; cannot answer a zkp_req request, never
-  #           deployed), local-1792523015 (ae33687f), local-1792485810 (2a30a609, never deployed), local-1792456320
-  #           (6c3ac47)
-  #
-  # vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792473614
-  #   digests apigw sha256:6d532929f7a5238d16767fe071d928880b68634d8b1c0065510779206c92eb27
-  #           issuer sha256:c0efa58f3f72bccc73f750be3bf89cfc5f331386e78908520340c4023c758b58
-  #           registry sha256:458cb70c8b9918fd9841b06fcfbf6954b39030c05500ff0a717c377a6a453268
-  #   source  sirosfoundation/vc `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (NOT for upstream
-  #           merge), on SUNET/vc main as of 2026-10-20, so it also carries upstream #809 (mdoc DeviceAuthentication per ISO
-  #           18013-5) and #790 (SD-JWT holder binding)
-  #   PRs     https://github.com/SUNET/vc/pull/793 @ 3bfa96b6e (seed-backed commitment claims; MERGED upstream since)
-  #           https://github.com/SUNET/vc/pull/821 @ fd078a057 (deliver the secret seed in credential_metadata; open)
-  #           https://github.com/SUNET/vc/pull/813 @ 2e69dd2b4 (identity_attributes / document_claims; closed)
-  #           https://github.com/SUNET/vc/pull/796 @ 62c93fa01 and https://github.com/SUNET/vc/pull/820 @ 6db9dd19b (verifier
-  #             V1 / circuit_zk request; both closed, superseded by the verifier stack above)
-  #           plus startup refusals for a delivering scope without notification_endpoint / credential_encryption.keys and a
-  #           'Delivered a secret seed' INFO line
+  #   matcher https://github.com/sirosfoundation/siros-dc-matcher v0.11.0 (wallet side; not in the image); circuit catalog
+  #           https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 served from zk-circuits.fly.dev
+  #   STANDARD PRACTICE until https://github.com/SUNET/vc/pull/840 is merged to vc main: every vc image pinned for an environment
+  #           that sets issuer.allowPreauthOffer MUST be built from a vc SHA that contains it (an image without it ignores the flag
+  #           silently, so a pre-authorized offer for a base scope fails with invalid_scope). tests/test_pins_carry_840.py checks
+  #           that this block names #840 whenever the flag is on. Re-pin to released images once #840 and the stack are released.
+  #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
+  #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
   # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143
   #   digest sha256:285a7ca4ee1eaa27cacbe45435965ba08b15e2e98b680636a29ee5073da97749
@@ -162,10 +155,10 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792609658
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792609658
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792609658
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792609658
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -361,11 +354,11 @@ rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
 # without a code change anywhere else.
 values:
   issuer:
-    # SUNET/vc#840: mint pre-authorized offers for the BASE scopes (no `<type>_offer` twin needed). Needs an apigw image
-    # that carries #840 - an older one ignores the key, so minting for a base scope fails with invalid_scope there and
-    # `make datastore-offer SCOPE=<type>_offer` (the twin) keeps working - and a startup guard in that image requires
-    # api_auth.jwks (or oidc) AND the admin UI off or oidc enabled. gdc: api_auth.jwks.enable true and
-    # admin_ui_enable false (its default), so the guard passes.
+    # SUNET/vc#840: mint pre-authorized offers for the BASE scopes, so there are no `<type>_offer` twins (the chart drops them
+    # for an environment that sets this, sirosid_core/vc_render.py drop_offer_twins). Needs vc images built from a SHA that
+    # contains #840 (see PIN PROVENANCE: standard practice until #840 is merged to vc main; an older image ignores the key and
+    # a base-scope mint fails with invalid_scope), and #840's startup guard needs api_auth.jwks (or oidc) AND the admin UI
+    # off or oidc enabled. gdc: api_auth.jwks.enable true and admin_ui_enable false (its default), so the guard passes.
     allowPreauthOffer: true
     apigw:
       # nym_auth's seed-backed ssc and its delivery (SUNET/vc#793/#821; the integration build pinned above):
