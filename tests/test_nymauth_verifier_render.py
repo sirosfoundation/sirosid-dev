@@ -55,6 +55,7 @@ class GdcNymAuthVerifier(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.text, cfg = render_gdc_verifier()
+        cls.full = cfg
         cls.cfg = cfg["verifier"]
 
     def test_enabled_with_exactly_the_profile_the_circuit_ships(self):
@@ -102,6 +103,31 @@ class GdcNymAuthVerifier(unittest.TestCase):
         self.assertEqual(zk["system_id_values"], ["urn:circuits:longfellow:nym_auth:v1"])
         self.assertEqual(zk["proof_system_values"], ["longfellow-libzk-v1"])
         self.assertIn("dc+sd-jwt", self.cfg["preferred_vp_formats"], "adding zkp_req must not drop the existing formats")
+
+    def test_the_nym_auth_presets_are_shaped_as_vc_reads_them(self):
+        """vc's brief (SUNET/vc#832): preset key `req` (the WIRE member `_req` was silently accepted and left empty),
+        item key fn_id, ver and prf required, no source_format / doctype_value (both derive from the scope's
+        credential_metadata, so a scope key that is not that entry reproduces invalid_meta in every wallet)."""
+        presets = self.cfg["presets"]
+        scopes = self.full["common"]["credential_metadata"]
+        for label in ("nym_auth_pseudonym", "nym_auth_pseudonym_age"):
+            self.assertEqual(list(presets[label]["credentials"]), ["nym_auth"], label)
+            self.assertIn("nym_auth", scopes, "the preset's scope key must be a common.credential_metadata scope")
+            self.assertEqual(scopes["nym_auth"]["format"], "mso_mdoc")
+            cred = presets[label]["credentials"]["nym_auth"]
+            self.assertEqual((cred["format"], cred["validate"]), ("zkp_req", "nym_auth"))
+            self.assertNotIn("_req", cred)
+            for banned in ("source_format", "doctype_value"):
+                self.assertNotIn(banned, cred, banned)
+            first = cred["req"][0]
+            self.assertEqual((first["fn_id"], first["params"]["ver"], first["params"]["prf"]), ("pseudonym", 1, "sha-256"))
+            self.assertEqual(first["params"]["config"], "known-offender-matching-ssc")
+            for item in cred["req"]:
+                self.assertIn("fn_id", item)
+                self.assertNotIn("id", item, "`id` was the pre-v0.4 item key")
+        ages = [i for i in presets["nym_auth_pseudonym_age"]["credentials"]["nym_auth"]["req"] if i["fn_id"] == "age_check"]
+        self.assertEqual(len(ages), 1)
+        self.assertEqual(len(presets["nym_auth_pseudonym"]["credentials"]["nym_auth"]["req"]), 1)
 
     def test_no_pre_v0_4_names_remain(self):
         """vc fails startup on circuit_zk / circuit_id_values / circuit_proof_system_values, naming the replacement."""
