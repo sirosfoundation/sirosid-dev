@@ -335,6 +335,46 @@ values:
     # (category/credentials/zk_system_type) is only understood by the vc build
     # pinned in environments/gdc.yaml, not by vc main.
     presets:
+      # nym_auth pseudonym request (rulebook v0.4 zkp_req; needs preferred_vp_formats.zkp_req and verifier.nym_auth
+      # above, else the preset is not published). `req` items are {fn_id, return, params}; ver and prf are required.
+      # The scope key is the verifier's own credential_metadata scope for nym_auth, which supplies meta.source_format
+      # (mso_mdoc). `validate: nym_auth` makes vc refuse this preset AT STARTUP if it breaks the rulebook. The
+      # pseudonym is scoped by verifier.nym_auth.verifier_id: changing that changes every pseudonym.
+      # nym_auth_pseudonym_age adds an age_check; its bounds are vc's example (see there).
+      "nym_auth_pseudonym":
+        category: "ZK Proofs"
+        credentials:
+          nym_auth:
+            format: "zkp_req"
+            validate: "nym_auth"
+            req:
+              - fn_id: pseudonym
+                return: nym
+                params:
+                  config: known-offender-matching-ssc
+                  ver: 1
+                  prf: sha-256
+      "nym_auth_pseudonym_age":
+        category: "ZK Proofs"
+        credentials:
+          nym_auth:
+            format: "zkp_req"
+            validate: "nym_auth"
+            req:
+              - fn_id: pseudonym
+                return: nym
+                params:
+                  config: known-offender-matching-ssc
+                  ver: 1
+                  prf: sha-256
+              - fn_id: age_check
+                return: age
+                # The range must span at least 365 days (a narrower one is an exact birth date) and must suit the
+                # holder: alice-001 was born 1990-01-15, so this window (born 2008-10-10..2013-10-09, from vc's
+                # example) is NOT satisfiable by her; use it to test refusal, or change it for a positive test.
+                params:
+                  ge: "2008-10-10"
+                  le: "2013-10-09"
       "PID (mdoc) - ZK Proof (Vega)":
         category: "ZK Proofs"
         credentials:
