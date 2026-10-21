@@ -7,7 +7,8 @@ what that needs; `diff environments/gdc.yaml environments/nymauth.yaml` shows ex
 
 **Status.** The flow below was proven live on `gdc` (a Pixel, the Kotlin sample app): issuance with seed delivery and
 notification; same-device presentation of both presets; cross-device presentation by scanning the verifier page's QR in a
-browser. **Nobody has deployed `ENV=nymauth` yet**; it reproduces the same pins on its own hostnames.
+browser. **Nobody has deployed `ENV=nymauth` yet**; it reproduces gdc's pins on its own hostnames. (The vc images were rebuilt
+from vc `c8c5b1ea` - classified refusals and #840 - after the proven run; the Pixel run on exactly that set is the next step.)
 
 > **Every pinned image except the PDP and the frontend is a local build of UNMERGED pull requests.** Re-pin them to
 > released images when the PRs land. What went into each build (tags, digests, base commits, PR heads) is the
@@ -31,8 +32,7 @@ sample app and a browser.
 ### Deploy
 ```sh
 flyctl auth docker                 # registry login (expires in minutes: run it right before)
-make fly-up ENV=nymauth
-make datastore-sync ENV=nymauth    # puts the offer twins' documents into the datastore (once, and after a storage clear)
+make fly-up ENV=nymauth            # a fresh datastore imports the fixtures on first start: nothing else to run
 ```
 `make fly-up ENV=nymauth` would create, in the org's `arn` region: **11 apps** - `sirosid-nymauth-` + `mongodb`, `mini-oidc`,
 `pdp`, `vc-registry`, `vc-issuer`, `vc-apigw`, `vc-verifier`, `wallet-backend`, `wallet-proxy`, `wallet-frontend`,
@@ -51,11 +51,12 @@ Do not run these unless you mean to create those resources.
 
 ### Mint an offer for alice-001
 ```sh
-make datastore-offer SCOPE=nym_auth DOCUMENT_ID=document_id_nym_auth_offer_alice-001 ENV=nymauth
+make datastore-offer SCOPE=nym_auth DOCUMENT_ID=document_id_nym_auth_alice-001 ENV=nymauth
 ```
 It prints an `openid-credential-offer://...` URL (add `QR=yes` for a terminal QR). **The code is valid for 5 minutes and
-single use**: mint it when the phone is in your hand. `nym_auth_offer` is the pre-authorized twin of `nym_auth`; once the
-twins migration lands (PRs for SUNET/vc#840, see sirosid-dev PR list) the same command mints against `nym_auth` itself.
+single use**: mint it when the phone is in your hand. The offer names the `nym_auth` configuration itself: this environment
+has no `<type>_offer` twins, because its vc images carry SUNET/vc#840 (`allow_preauth_offer`) and the chart sets
+`issuer.allowPreauthOffer` (a standing rule until #840 is merged to vc main: pin vc images built from a SHA that contains it).
 
 ---
 
@@ -120,6 +121,7 @@ wallet's engine connection is thrashing (two client connections replacing each o
 | a verifier request is refused as untrusted | the verifier's request-signing certificate lacks the verifier host as a DNS SAN | `values.verifier.signingCertDnsSan: true` (set) re-issues it on deploy |
 | the debug APK shows a 16 KB page-size alignment dialog on first start | a debug-build notice | dismiss it |
 | offer redeem fails with invalid/expired code | the code is single use and valid 5 minutes | mint a new one |
+| minting an offer fails with `invalid_scope` | the apigw image lacks SUNET/vc#840 (it ignores `allow_preauth_offer`) | pin vc images built from a SHA that contains #840 |
 
 ---
 
@@ -178,9 +180,9 @@ URL, x5c = the DS leaf) is true from the mDOC IACA registry with the leaf alone.
 ### The pins
 | component | pin | built from |
 |---|---|---|
-| vc-verifier | `registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698` | vc `integration/gdc-nymauth-v5` @ `a56c4be9e` + circuit-artifact overlay |
-| vc-apigw / issuer / registry | `...:local-1792473614` | vc `integration/gdc-nymauth-v4` @ `5e546b2d` |
+| vc-verifier / apigw / issuer / registry | `registry.fly.io/sirosid-gdc-vc-<svc>:local-1792609658` | vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` (includes #840; verifier + circuit-artifact overlay) |
 | wallet-backend (engine) | `registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143` | go-wallet-backend local branch @ `9cb6e57` (#469, #471, #163, #472; #473 inside #471) |
 | pdp | `ghcr.io/sirosfoundation/go-trust:0.26.0` | released (go-trust#218) |
 
-Next vc build (not in the proven set): `c8c5b1ea` with classified zkp_req refusals and SUNET/vc#840 (`allow_preauth_offer`).
+The previously PROVEN vc build was `a56c4be9e` (verifier `local-1792603698`) with apigw/issuer/registry `local-1792473614`; the current pins
+add the classified zkp_req refusals (HTTP 400 with a stable code) and #840, and are not yet proven by a Pixel run.

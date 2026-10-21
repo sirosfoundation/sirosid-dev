@@ -18,8 +18,9 @@
 #     pinned verifier image was proven with them), wallet attestation, the sample app's signing keys.
 #
 # EVERY pinned image except the PDP and the frontend is a LOCAL BUILD OF UNMERGED PULL REQUESTS; re-pin to released images
-# when they land (list in gdc.yaml's PIN PROVENANCE block). Twins: allowPreauthOffer is NOT set here (the pinned apigw
-# lacks SUNET/vc#840), so `make datastore-offer SCOPE=nym_auth` mints against the nym_auth_offer twin.
+# when they land (list in gdc.yaml's PIN PROVENANCE block). allowPreauthOffer is set (as in gdc) and the pinned vc images
+# are built from a SHA that contains SUNET/vc#840, so there are NO `<type>_offer` twins and `make datastore-offer
+# SCOPE=nym_auth` mints against nym_auth itself.
 
 region: arn
 
@@ -38,10 +39,10 @@ credential_registries:
 
 images:
   # Same pins as gdc (PIN PROVENANCE in environments/gdc.yaml): tag, digest, base commit and PR heads of every build.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698      # vc a56c4be9e + artifact overlay (zkp_req)
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614            # vc v4 5e546b2d (seed delivery)
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792609658      # vc c8c5b1ea + artifact overlay (zkp_req, #840)
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792609658            # vc c8c5b1ea (seed delivery, #840)
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792609658
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792609658
   wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143  # engine 9cb6e57 (#469/#471/#163/#472)
   pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
@@ -82,6 +83,12 @@ wallet_attestation: true
 # without a code change anywhere else.
 values:
   issuer:
+    # SUNET/vc#840: mint pre-authorized offers for the BASE scopes, so there are no `<type>_offer` twins (the chart drops them
+    # for an environment that sets this, sirosid_core/vc_render.py drop_offer_twins). Needs vc images built from a SHA that
+    # contains #840 (see PIN PROVENANCE: standard practice until #840 is merged to vc main; an older image ignores the key and
+    # a base-scope mint fails with invalid_scope), and #840's startup guard needs api_auth.jwks (or oidc) AND the admin UI
+    # off or oidc enabled. gdc: api_auth.jwks.enable true and admin_ui_enable false (its default), so the guard passes.
+    allowPreauthOffer: true
     apigw:
       # nym_auth's seed-backed ssc and its delivery (SUNET/vc#793/#821; the integration build pinned above):
       # the issuer derives each person's seed from a per-environment secret (generated once, PERMANENT) and the

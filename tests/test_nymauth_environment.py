@@ -91,7 +91,9 @@ class RenderedNymAuthEnvironment(unittest.TestCase):
         self.assertEqual(apigw["seeds"]["primary"]["model"], "derived")
         self.assertIn("credential_encryption", apigw["issuer_metadata"])
         self.assertEqual(apigw["issuer_metadata"]["notification_endpoint"], "https://sirosid-nymauth-vc-apigw.fly.dev/notification")
-        self.assertIn("nym_auth_offer", self.cfg["vc-apigw"]["common"]["credential_metadata"], "twins stay: no #840 in the pinned apigw")
+        meta = self.cfg["vc-apigw"]["common"]["credential_metadata"]
+        self.assertNotIn("nym_auth_offer", meta, "no twins: the pinned vc images carry SUNET/vc#840")
+        self.assertTrue(self.cfg["vc-apigw"]["apigw"]["data_sources"]["datastore"]["scopes"]["nym_auth"]["allow_preauth_offer"])
 
     def test_no_other_environments_hostname_leaks_into_the_configs(self):
         for name, cfg in self.cfg.items():

@@ -192,6 +192,9 @@ apigw:
         {{- range $id, $data := . }}
         {{ $id | quote }}:
           auth_provider: {{ $data.issuance.authProvider | quote }}
+          {{- if and $.Values.issuer.allowPreauthOffer (ne $data.issuance.authProvider "preauth") }}
+          allow_preauth_offer: true
+          {{- end }}
           {{- if and $.Values.issuer.datastoreAuthenticSource (ne $data.issuance.authProvider "preauth") }}
           authentic_source: {{ $.Values.issuer.datastoreAuthenticSource | quote }}
           {{- end }}

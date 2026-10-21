@@ -57,6 +57,7 @@ class Target:
             where = f"make fly-up ENV={env}" if env else "make up VC=yes"
             sys.exit(f"{config_path} or {self.key} missing - render this target first ({where})")
         config = yaml.safe_load(config_path.read_text())
+        self.datastore_scopes = (((config["apigw"].get("data_sources") or {}).get("datastore") or {}).get("scopes")) or {}
         api_server = config["apigw"]["api_server"]
         self.auth = api_server["api_auth"]["jwks"]
         self.subject = spocp_subject(api_server["api_auth"].get("rules") or [])
@@ -103,6 +104,25 @@ def spocp_subject(rules: list) -> str:
     sys.exit("no SPOCP rule with a concrete subject for /api/v1/* in the rendered api_auth block")
 
 
+def offer_scope(scopes: dict, scope: str, document_id: str = None) -> tuple:
+    """The scope (and document id) an offer is minted against.
+
+    vc mints an offer for a scope declared auth_provider: preauth (SUNET/vc requirePreAuthScope) or, from SUNET/vc#840,
+    a login-gated scope marked `allow_preauth_offer`. `scopes` is the RENDERED apigw datastore scope map, so this
+    follows what the environment's config says: a base scope with the flag is used as it is; otherwise the chart's
+    `<type>_offer` twin is (`SCOPE=pid_1_8` means `pid_1_8_offer`); naming a twin always selects it. The twins'
+    documents carry `_offer_` in their ids (document_id_nym_auth_offer_alice-001); against the base scope the same
+    request names document_id_nym_auth_alice-001.
+    """
+    if scope.endswith("_offer"):
+        return scope, document_id
+    if (scopes.get(scope) or {}).get("allow_preauth_offer"):
+        if document_id:
+            document_id = document_id.replace(f"_{scope}_offer_", f"_{scope}_", 1)
+        return scope, document_id
+    return scope + "_offer", document_id
+
+
 def offer(target: "Target", scope: str, document_id: str = None, authentic_source: str = None,
           qr: bool = False) -> None:
     """A pre-authorized credential offer for one datastore document.
@@ -113,16 +133,13 @@ def offer(target: "Target", scope: str, document_id: str = None, authentic_sourc
     PID-authenticated types too - the document is chosen here rather than
     resolved from a presented PID.
     """
-    # vc mints an offer only for a scope declared auth_provider: preauth (SUNET/vc requirePreAuthScope), and a
-    # scope has one provider, so the chart declares `<type>_offer` twins; `SCOPE=pid_1_8` means `pid_1_8_offer`.
-    if not scope.endswith("_offer"):
-        scope += "_offer"
+    scope, document_id = offer_scope(target.datastore_scopes, scope, document_id)
     docs = target.request("GET", "/api/v1/datastore/search",
                           query={"scope": scope, "limit": 200})["data"]
     if not docs:
-        sys.exit(f"no documents in scope {scope} - only types with an `_offer` twin in values-base.yaml can be "
-                 f"offered; `search --scope {scope}` shows what is there (an existing environment needs "
-                 f"`make datastore-sync` to get the twin's documents)")
+        sys.exit(f"no documents in scope {scope} - only datastore-sourced types can be offered (a type with an "
+                 f"`_offer` twin, or a base scope marked allow_preauth_offer); `search --scope {scope}` shows what "
+                 f"is there (an existing environment needs `make datastore-sync` to get the twin's documents)")
     if document_id:
         match = [d for d in docs if d["meta"]["document_id"] == document_id]
         if not match:
