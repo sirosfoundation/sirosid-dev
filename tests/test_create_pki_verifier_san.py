@@ -131,12 +131,12 @@ class DeployPassThrough(unittest.TestCase):
         for values in ({}, {"verifier": {}}, {"verifier": {"signingCertDnsSan": False}}, None):
             self.assertNotIn("SIGNING_CERT_VERIFIER_HOST", self.generate(values), values)
 
-    def test_gdc_opts_in_and_nothing_else_does(self):
+    def test_gdc_and_its_nym_auth_derivative_opt_in_and_nothing_else_does(self):
         import yaml
         for env_file in sorted((ROOT / "environments").glob("*.yaml")):
             cfg = yaml.safe_load(env_file.read_text()) or {}
             on = (((cfg.get("values") or {}).get("verifier") or {}).get("signingCertDnsSan"))
-            self.assertEqual(bool(on), env_file.stem == "gdc", env_file.name)
+            self.assertEqual(bool(on), env_file.stem in ("gdc", "nymauth"), env_file.name)
 
 
 if __name__ == "__main__":

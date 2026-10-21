@@ -33,6 +33,23 @@ images:
   # exists only in registry.fly.io/sirosid-gdc-* and must be re-pinned to a RELEASED image when its PRs are merged and
   # released. "Heads" are the PR head commits that were built.
   #
+  # KNOWN-GOOD SET (2026-10-21). The nym_auth flow was PROVEN end to end on this gdc, on a Pixel with the Kotlin sample app:
+  # issuance with seed delivery and notification, and same-device (nym_auth_pseudonym and nym_auth_pseudonym_age) and
+  # cross-device browser-QR (pseudonym) presentations with a verified, stable pseudonym, with EXACTLY: the verifier,
+  # engine, PDP and issuer images below (verifier vc a56c4be9e = local-1792603698, engine 9cb6e57 = local-1792564143,
+  # PDP go-trust 0.26.0 with the verifier_ids policies, apigw/issuer/registry local-1792473614), zk-cred-longfellow v0.1.2
+  # and zk-cred-vega v0.0.7, matcher https://github.com/sirosfoundation/siros-dc-matcher v0.11.0 on the wallet side, and the
+  # circuit catalog https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 (zk-circuits.fly.dev). The next
+  # vc build (c8c5b1ea: classified zkp_req refusals + https://github.com/SUNET/vc/pull/840 allow_preauth_offer) is NOT in this
+  # set yet. environments/nymauth.yaml reproduces this set on its own hosts (docs/NYMAUTH-TESTING.md).
+  #
+  # NYMAUTH-CRITICAL SETTINGS in this file (each one broke the flow when wrong; see docs/NYMAUTH-TESTING.md, gotchas):
+  #   verifier.nym_auth.verifier_id = the PREFIXED client_id x509_san_dns:<verifier host>; verifier.preferred_vp_formats.zkp_req
+  #   (system_id_values / proof_system_values); the presets (key `req`, fn_id, ver, prf); the artifact baked into the verifier
+  #   image; verifier.trust.pdp_url; pdp.extraConfig.policies (verifier_ids); issuer.apigw.seeds + credentialEncryption (seed
+  #   delivery); signingCertDnsSan (the verifier's host in the request-signing cert); the engine image (request encryption,
+  #   client_metadata, WMP) with the config unchanged (dcql_consent_check default).
+  #
   # vc-verifier   registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
   #   digest sha256:96c41f16dd9324da6890c76b9faa7810d4c8259cf142ffd16360e413c8ca8945
   #   source  sirosfoundation/vc `integration/gdc-nymauth-v5` @ a56c4be9ec42ef394d536f5ea08d80b50f2a95a0 (merge base
