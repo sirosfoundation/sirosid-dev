@@ -30,7 +30,7 @@ common:
   branding:
     favicon_path: /branding-assets/favicon.png
     logo_path: /branding-assets/logo.png
-  credential_metadata: {{- include "siros-id.vc.credentialMetadata" . | nindent 4 }}
+  credential_metadata: {{- include "siros-id.vc.credentialMetadataVerifier" . | nindent 4 }}
 verifier:
   public_url: https://{{ $hostnameVerifier }}
   api_server:
