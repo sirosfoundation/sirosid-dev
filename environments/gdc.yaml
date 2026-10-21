@@ -28,6 +28,72 @@ credential_registries:
   - https://registry.siros.org
 
 images:
+  # ===========================================================================================================
+  # PIN PROVENANCE (2026-10-21). Every `local-<epoch>` image below is a LOCAL BUILD OF UNMERGED PULL REQUESTS: it
+  # exists only in registry.fly.io/sirosid-gdc-* and must be re-pinned to a RELEASED image when its PRs are merged and
+  # released. "Heads" are the PR head commits that were built.
+  #
+  # vc-verifier   registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
+  #   digest sha256:96c41f16dd9324da6890c76b9faa7810d4c8259cf142ffd16360e413c8ca8945
+  #   source  sirosfoundation/vc `integration/gdc-nymauth-v5` @ a56c4be9ec42ef394d536f5ea08d80b50f2a95a0 (merge base
+  #           SUNET/vc main 4bba38e614e1; integration of the stack below, NOT for upstream merge), --target
+  #           runtime-verifier, zknative, + the nym_auth circuit artifact overlay (dockerfiles/verifier-nymauth.Dockerfile)
+  #   PRs     https://github.com/SUNET/vc/pull/827 @ 80d6ee9ef (nym_auth circuit allowlist; open)
+  #           https://github.com/SUNET/vc/pull/829 @ 55a8c9d7f (validate a zkp_req response against the request; open)
+  #           https://github.com/SUNET/vc/pull/830 @ 770885f31 (dispatch a zkp_req presentation to the nym_auth verifier,
+  #             incl. the allow-all-PDP fix; open)
+  #           https://github.com/SUNET/vc/pull/831 @ deb0c19b6 (bind a redirect-delivered presentation to its handover; open)
+  #           https://github.com/SUNET/vc/pull/832 @ 6649047e4 (operator docs; open)
+  #           plus the rulebook v0.4 port, the verifier UI fixes (req-schema.js `fn_id`, posted `req` vs wire `_req`) and
+  #           the meta.source_format fix, all on that integration branch
+  #   ZK libs https://github.com/sirosfoundation/zk-cred-longfellow v0.1.2 @ 58de20f07487bbb6ebe32148feec3bef4d92677e and
+  #           https://github.com/sirosfoundation/zk-cred-vega v0.0.7 @ 8e7be172e9010e8b47f3192f046d5f990f602790
+  #   matcher https://github.com/sirosfoundation/siros-dc-matcher v0.11.0 (the wallet side's request matcher; not in this
+  #           image); circuit catalog https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 is served
+  #           from zk-circuits.fly.dev (values.verifier.zkCircuits)
+  #   previous pins: local-1792603698 (vc 253a17e92), local-1792532233 (094549cc; cannot answer a zkp_req request, never
+  #           deployed), local-1792523015 (ae33687f), local-1792485810 (2a30a609, never deployed), local-1792456320
+  #           (6c3ac47)
+  #
+  # vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792473614
+  #   digests apigw sha256:6d532929f7a5238d16767fe071d928880b68634d8b1c0065510779206c92eb27
+  #           issuer sha256:c0efa58f3f72bccc73f750be3bf89cfc5f331386e78908520340c4023c758b58
+  #           registry sha256:458cb70c8b9918fd9841b06fcfbf6954b39030c05500ff0a717c377a6a453268
+  #   source  sirosfoundation/vc `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (NOT for upstream
+  #           merge), on SUNET/vc main as of 2026-10-20, so it also carries upstream #809 (mdoc DeviceAuthentication per ISO
+  #           18013-5) and #790 (SD-JWT holder binding)
+  #   PRs     https://github.com/SUNET/vc/pull/793 @ 3bfa96b6e (seed-backed commitment claims; MERGED upstream since)
+  #           https://github.com/SUNET/vc/pull/821 @ fd078a057 (deliver the secret seed in credential_metadata; open)
+  #           https://github.com/SUNET/vc/pull/813 @ 2e69dd2b4 (identity_attributes / document_claims; closed)
+  #           https://github.com/SUNET/vc/pull/796 @ 62c93fa01 and https://github.com/SUNET/vc/pull/820 @ 6db9dd19b (verifier
+  #             V1 / circuit_zk request; both closed, superseded by the verifier stack above)
+  #           plus startup refusals for a delivering scope without notification_endpoint / credential_encryption.keys and a
+  #           'Delivered a secret seed' INFO line
+  #
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143
+  #   digest sha256:285a7ca4ee1eaa27cacbe45435965ba08b15e2e98b680636a29ee5073da97749
+  #   source  go-wallet-backend `local/gdc-nymauth-integration-3` @ 9cb6e57d8498f0a1efa024254a6e99e2dbf278ab: a LOCAL branch,
+  #           NEVER pushed (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.9cb6e57, GIT_REF empty. Base
+  #           origin/main cb42861b6d640ea17166e6491f69761f58a5f172, plus signed --no-ff merges of:
+  #   PRs     https://github.com/sirosfoundation/go-wallet-backend/pull/469 @ e4e0bc3bd1fd800a7507a50d33b1703c6224100b
+  #             (OID4VCI credential request encryption)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/471 @ f1362658c9891e1cbbbb2642898f9c6413fcc531
+  #             (client_metadata / verifier_jwk_thumbprint / verifier trust context, incl. the fail-closed verifier-trust fix
+  #             of https://github.com/sirosfoundation/go-wallet-backend/pull/473)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/163 @ 71a07f8037c00c0faf139f23707c26a207ab7a8c
+  #             (WMP, go-wmp v0.7.0)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/472 @ be69e2e70a7d00e7bdef85ea99792d7651cd2ec5
+  #             (sign-stage refusal)
+  #           none merged; human review pending. NOT included: https://github.com/sirosfoundation/go-wallet-backend/pull/470.
+  #   rollback pins: local-1792560364 (faa5e63), local-1792473614 (#469 only, e4e0bc3)
+  #
+  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.25.0 (RELEASED). Next: v0.26.0, which contains
+  #   https://github.com/sirosfoundation/go-trust/pull/218 (verifier_ids from the whitelist, system_cert_pool and
+  #   mdoc_rical registries); its image build was still running when this was written. The policies that use it are
+  #   PREPARED on branch prep/gdc-pdp-verifier-ids and are deployed together with that bump, not before.
+  #
+  # Other images are released versions (wallet-frontend, mini-oidc, env-admin).
+  # ===========================================================================================================
   # vc: BUILT LOCALLY (2026-10-20). The ISSUER side (registry, issuer, apigw) is sirosfoundation/vc
   # `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (v3 20ab021 + startup refusals for a delivering
   # scope without notification_endpoint / credential_encryption.keys + a 'Delivered a secret seed' INFO log line) = SUNET/vc main + #793 (seed derivation
@@ -68,24 +134,16 @@ images:
   # makes the ZK Proofs presets visible on the verifier's landing page -
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
-  # vc-verifier (2026-10-20, UNMERGED upstream work: re-pin when it is released): BUILT LOCALLY from
-  # sirosfoundation/vc `integration/gdc-nymauth-v5` @ 253a17e92af49255b9c2597d092a71950abff14e (rulebook v0.4 port; writes meta.source_format, validates ver/prf, refuses a bare verifier_id and a `_req` preset) = v4 + the nym_auth
-  # verifier stack (SUNET/vc #827/#829/#830 incl. the allow-all-PDP fix, #831, #832, the time-binding diagnostics, the v0.4 zkp_req names),
-  # with the native libs pinned by immutable tags (full SHAs: a shallow fetch needs all 40 characters):
-  #   ZK_CRED_LONGFELLOW_REF=58de20f07487bbb6ebe32148feec3bef4d92677e (v0.1.2)
-  #   ZK_CRED_VEGA_REF=8e7be172e9010e8b47f3192f046d5f990f602790 (v0.0.7)
-  # then OVERLAID with the nym_auth circuit artifact (dockerfiles/verifier-nymauth.Dockerfile, sha256 + size checked
-  # at build time):
+  # vc-verifier: see PIN PROVENANCE above. Build recipe (a local build; the circuit artifact overlay is checked for size
+  # and sha256 at build time):
   #   docker build -f dockerfiles/worker --target runtime-verifier --build-arg SERVICE_NAME=verifier \
-  #     --build-arg ZK_CRED_LONGFELLOW_REF=<sha> --build-arg ZK_CRED_VEGA_REF=<sha> -t <base> .
+  #     --build-arg ZK_CRED_LONGFELLOW_REF=<full sha> --build-arg ZK_CRED_VEGA_REF=<full sha> -t <base> .
   #   docker build -f dockerfiles/verifier-nymauth.Dockerfile --build-arg BASE=<base> \
   #     -t registry.fly.io/sirosid-gdc-vc-verifier:local-<epoch> .   # then docker push (flyctl auth docker)
-  # The verifier config (verifier.nym_auth, circuit_zk formats, trust.pdp_url) is under values.verifier below. A
-  # real wallet presentation is expected to fail proof verification until the verification time T is agreed
-  # between wallet and verifier (spec decision pending); that is not a config problem.
-  # This branch contains sirosid-dev PRs 79 and 80, NEITHER merged when it was deployed; the pin goes back to a
-  # released vc verifier image once SUNET/vc releases the verifier stack.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792542047
+  # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
+  # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
+  # wallet and verifier (spec decision pending); that is not a config problem.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
