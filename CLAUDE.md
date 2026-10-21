@@ -717,7 +717,13 @@ than resolved from a presented PID, which is the whole point of the
 pre-authorized grant. The code expires 5 minutes after minting, so generate
 it when the phone is in your hand.
 
-vc main refuses to mint an offer for a scope that is not `auth_provider:
+**No sync step in environments with SUNET/vc#840 (gdc, nymauth).** They set `issuer.allowPreauthOffer`, have NO twins, and
+a fresh datastore imports every document on first start, so `make datastore-offer SCOPE=<type>` works right after
+`make fly-up` with nothing else to run. `make datastore-sync` is then only for changing the fixtures of an existing
+environment (it reconciles the whole of `fixtures/vc-bootstrapping`, as above). The rest of this paragraph is about
+environments WITHOUT the flag (compose, Fly environments on released vc images), which still have twins.
+
+For an environment without the flag: vc main refuses to mint an offer for a scope that is not `auth_provider:
 preauth` (`requirePreAuthScope`), and a scope has one provider, so each
 datastore-sourced type has a twin: `pid_1_8_offer`, `eucc_offer`, ...
 (values-base.yaml) - the same vct/doctype and metadata, its own
@@ -727,7 +733,7 @@ to the source by `tests/test_fixture_integrity.py`). `SCOPE=pid_1_8` means
 cannot authenticate on vc main at all (see `nym_auth`), so this is the only way
 to issue them. A new datastore type needs its twin: one twin entry, one copied
 fixture, one `datastoreImport` line, one accepted-diffs entry; an existing
-environment needs `make datastore-sync` for the twin's documents. A twin has `metadataFrom: <source>`: it reads
+environment needs `make datastore-sync` for the twin's documents (twins only; see above). A twin has `metadataFrom: <source>`: it reads
 the source's VCTM/MDDL file and ships no copy of it, and on **Fly** its documents are neither shipped nor imported
 (`vc_render.drop_twin_imports`) - Fly caps a machine's config body near 1 MiB, base64 counted, and the copies tipped
 the apigw over it (`http: request body too large`, gdc 2026-10-20; `tests/test_fly_payload.py` guards it). So on Fly
