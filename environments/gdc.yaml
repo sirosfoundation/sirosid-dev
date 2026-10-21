@@ -87,10 +87,12 @@ images:
   #           none merged; human review pending. NOT included: https://github.com/sirosfoundation/go-wallet-backend/pull/470.
   #   rollback pins: local-1792560364 (faa5e63), local-1792473614 (#469 only, e4e0bc3)
   #
-  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.25.0 (RELEASED). Next: v0.26.0, which contains
-  #   https://github.com/sirosfoundation/go-trust/pull/218 (verifier_ids from the whitelist, system_cert_pool and
-  #   mdoc_rical registries); its image build was still running when this was written. The policies that use it are
-  #   PREPARED on branch prep/gdc-pdp-verifier-ids and are deployed together with that bump, not before.
+  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.0 (RELEASED, tag v0.26.0, commit 621b03f4)
+  #   index digest sha256:73d994eaabcf27d68837c12ef42cbb16072c87562c6abe5cf7e2332a8068cf1e
+  #   contains https://github.com/sirosfoundation/go-trust/pull/218 (merged): verifier_ids from the whitelist,
+  #   system_cert_pool and mdoc_rical registries, carried through all strategies and composites. values.pdp.extraConfig
+  #   below sets policies for the two verifier actions ONLY (x509_san_dns), so a verifier-path evaluation returns
+  #   context.verifier_ids and every other action is evaluated as before. Previous pin: 0.25.0.
   #
   # Other images are released versions (wallet-frontend, mini-oidc, env-admin).
   # ===========================================================================================================
@@ -214,7 +216,7 @@ images:
   # 2026-10-15: 0.24.1 -> 0.25.0. Its image sets GT_HOST=0.0.0.0 GT_PORT=6001 and the environment BEATS the
   # config file, so the PDP listened on 6001 while everything addresses 8080; fly-up now sets GT_PORT/GT_HOST
   # itself (deploy.py, singlemachine.py). The LoTE verify_jws change is not used here.
-  pdp: ghcr.io/sirosfoundation/go-trust:0.25.0
+  pdp: ghcr.io/sirosfoundation/go-trust:0.26.0
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
@@ -353,7 +355,7 @@ values:
       credentialEncryption:
         enabled: true
   pdp:
-    # PREPARED, NOT DEPLOYED (needs a go-trust release containing sirosfoundation/go-trust PR 218, head a813befc:
+    # Needs go-trust >= 0.26.0 (contains sirosfoundation/go-trust PR 218; head a813befc:
     # the whitelist, system_cert_pool and mdoc_rical registries emit context.verifier_ids; 0.25.0 emits them only from
     # etsi/lote/did/oidfed, which gdc's verifier does not go through). Then: bump images.pdp to that release and
     # redeploy the PDP. Policies exist ONLY for the two verifier actions, default_policy and fail_closed_on_unknown_action
