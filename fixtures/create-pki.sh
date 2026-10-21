@@ -11,6 +11,7 @@
 #   ./create-pki.sh
 #   PKI_DIR_OVERRIDE=/path/to/env-pki ./create-pki.sh   # e.g. per Fly environment
 #   SIGNING_CERT_ISSUER_URL=https://issuer.example ./create-pki.sh
+#   SIGNING_CERT_VERIFIER_HOST=verifier.example ./create-pki.sh
 #
 # SIGNING_CERT_ISSUER_URL adds a URI SAN naming the credential issuer to the
 # signing certificate. mdoc verifiers derive an mDL's issuer identity from its
@@ -21,6 +22,13 @@
 # https://localhost": the wallet warns at issuance and the environment's own
 # vc-verifier rejects the presentation with "issuer not trusted". Unset for
 # the docker-compose stack, where localhost IS the identity.
+#
+# SIGNING_CERT_VERIFIER_HOST adds a DNS SAN naming the vc-verifier's public host. The verifier's OpenID4VP
+# client_id is `x509_san_dns:<that host>` and it signs its request objects with this same certificate (the key
+# is shared with the issuer's DS certificate), so a strict wallet or relying party checking the client_id against
+# the request's x5c leaf rejects it when the SAN is missing. Re-issued from the existing key and CA exactly like
+# the issuer URI: neither the key nor the root changes, so already-issued credentials keep verifying. A test or
+# demo shortcut: a deployment that signs credentials for real should keep separate issuer and verifier keys.
 #
 # Each artifact group is independently guarded by its own file-existence
 # check, so re-running after adding a new artifact group only generates what's
@@ -120,17 +128,28 @@ SIGNING_CERT_URI_SAN_LINE=""
 if [ -n "${SIGNING_CERT_ISSUER_URL:-}" ]; then
     SIGNING_CERT_URI_SAN_LINE="URI.1 = ${SIGNING_CERT_ISSUER_URL}"
 fi
+SIGNING_CERT_VERIFIER_SAN_LINE=""
+if [ -n "${SIGNING_CERT_VERIFIER_HOST:-}" ]; then
+    SIGNING_CERT_VERIFIER_SAN_LINE="DNS.4 = ${SIGNING_CERT_VERIFIER_HOST}"
+fi
 signing_cert_current() {
     [ -f "${PKI_DIR}/signing_ec.crt" ] || return 1
-    [ -z "${SIGNING_CERT_ISSUER_URL:-}" ] && return 0
-    openssl x509 -in "${PKI_DIR}/signing_ec.crt" -noout -ext subjectAltName 2>/dev/null \
-        | grep -qF "URI:${SIGNING_CERT_ISSUER_URL}"
+    local sans
+    sans=$(openssl x509 -in "${PKI_DIR}/signing_ec.crt" -noout -ext subjectAltName 2>/dev/null)
+    if [ -n "${SIGNING_CERT_ISSUER_URL:-}" ]; then
+        grep -qF "URI:${SIGNING_CERT_ISSUER_URL}" <<<"$sans" || return 1
+    fi
+    if [ -n "${SIGNING_CERT_VERIFIER_HOST:-}" ]; then
+        # ", " or line start before and ", " or line end after, so `verifier.example` does not match `x.verifier.example`.
+        grep -qE "(^|[ ,])DNS:${SIGNING_CERT_VERIFIER_HOST//./\\.}(,|$)" <<<"$sans" || return 1
+    fi
+    return 0
 }
 if signing_cert_current; then
     echo "EC signing certificate already current, skipping."
 else
     if [ -f "${PKI_DIR}/signing_ec.crt" ]; then
-        echo "Re-issuing EC signing certificate (issuer URI SAN ${SIGNING_CERT_ISSUER_URL}) from the existing key..."
+        echo "Re-issuing EC signing certificate (issuer URI SAN '${SIGNING_CERT_ISSUER_URL:-}', verifier DNS SAN '${SIGNING_CERT_VERIFIER_HOST:-}') from the existing key..."
     else
         echo "Issuing EC signing certificate..."
     fi
@@ -163,6 +182,7 @@ subjectAltName = @alt_names
 DNS.1 = localhost
 DNS.2 = vc-issuer
 DNS.3 = vc-verifier
+${SIGNING_CERT_VERIFIER_SAN_LINE}
 ${SIGNING_CERT_URI_SAN_LINE}
 EOF
 

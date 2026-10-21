@@ -471,7 +471,7 @@ The verifier has matching presentation-request templates in
 `eu.europa.ec.eudi.nym_auth.1`, carrying `birth_date` (full-date, tag 1004),
 `ssc` - SHA-256 of a 16-byte `secret_seed` the issuer and the prover share -
 and optionally `psc` (SHA-256 of a prover-only seed). It exists for
-`circuit_zk` presentations: pseudonyms and age predicates proven in zero
+`zkp_req` presentations (called `circuit_zk` before rulebook v0.4): pseudonyms and age predicates proven in zero
 knowledge, never disclosed. `fixtures/vc-metadata/nym_auth.mdoc.json` is a
 byte-for-byte copy of the rulebook's schema until registry.siros.org
 publishes it (mdoc types stay vendored even with `REGISTRY=external`).
@@ -516,6 +516,20 @@ in:** holder-supplied commitments (the `known-offender-matching-psc` configurati
 `source: holder`, SUNET/vc's PR 2 - the issuer refuses it at startup until it has a store for it). The day that
 lands, REMOVE the fixed `psc` from `nym_auth*.json`: the issuer refuses any document that already carries a value
 for a configured commitment claim.
+
+**Verifying a pseudonym (gdc config; image comes with vc's verifier release).** `environments/gdc.yaml`
+`values.verifier.extraConfig` carries `verifier.nym_auth` (SUNET/vc#832): the allowlist entry
+`known-offender-matching-ssc` (circuit ids, Ligero block parameters, artifact size and SHA-256 from
+zk-cred-longfellow `src/nymauth/profile.rs`; do not copy the digest from vc's `docs/CONFIGURATION.md`, whose
+example has 52 zeros in the middle) and `preferred_vp_formats.zkp_req` (`system_id_values`, `proof_system_values`; rulebook v0.4 names). The ~1 MB decompressed artifact cannot
+travel as a Fly secret and is not in the vc repo, so `dockerfiles/verifier-nymauth.Dockerfile` bakes it into the
+verifier image at `/etc/vc/circuits/nym_auth-ssc.bin`, checking size and digest at build time (build input:
+`fixtures/nym-auth-circuits/nym_auth-ssc.bin`, gitignored; the recipe is in the file). The verifier needs the
+`zknative` build and refuses to start without `trust.pdp_url`: it takes the issuer key from the HOLDER's own
+chain, so the PDP is the only check that key belongs to an issuer (here: action `mdoc-issuer`, the mDOC IACA
+registry; a self-signed chain with the same SAN gets decision false). **`verifier_id` is the verifier's client_id exactly as published,
+`x509_san_dns:<host of public_url>` with the prefix (rulebook v0.4; the bare host was the rule before), and scopes every
+pseudonym: changing it changes every pseudonym this verifier reports.**
 
 ### Service Architecture
 

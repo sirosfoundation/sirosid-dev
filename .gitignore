@@ -84,3 +84,6 @@ fixtures/wrpac-clients/*.issued/
 
 # bootmgr editable install metadata (make install)
 *.egg-info/
+
+# nym_auth circuit artifact (decompressed, ~1 MB): a build input for dockerfiles/verifier-nymauth.Dockerfile
+fixtures/nym-auth-circuits/*.bin

@@ -144,18 +144,31 @@ the file extension is what distinguishes them on disk.
        concern of the issuer-apigw alone, so it is rendered only by the ...Apigw variant below: the other
        services have no seed source and must not be handed a block that names one. */ -}}
 {{- define "siros-id.vc.credentialMetadata" -}}
-{{- include "siros-id.vc.credentialMetadata.render" (list . false) -}}
+{{- include "siros-id.vc.credentialMetadata.render" (list . false false) -}}
 {{- end -}}
 
 {{- define "siros-id.vc.credentialMetadataApigw" -}}
-{{- include "siros-id.vc.credentialMetadata.render" (list . true) -}}
+{{- include "siros-id.vc.credentialMetadata.render" (list . true false) -}}
+{{- end -}}
+
+{{/*
+The verifier's credential_metadata: the same block WITHOUT the pre-authorized offer twins (`<type>_offer`,
+authProvider: preauth). A twin is an issuance-only scope, so listing it in the verifier doubled every entry of
+its /ui/metadata and picker. Nothing verifier-side resolves a scope by its `_offer` name; the base scope (nym_auth
+included, whose zkp_req presets take source_format and doctype_value from it) stays. The issuer keeps its twins: an
+offer's credential_configuration_id is resolved against credential_configurations_supported.
+*/}}
+{{- define "siros-id.vc.credentialMetadataVerifier" -}}
+{{- include "siros-id.vc.credentialMetadata.render" (list . false true) -}}
 {{- end -}}
 
 {{- define "siros-id.vc.credentialMetadata.render" -}}
 {{- $root := index . 0 -}}
 {{- $withCommitments := index . 1 -}}
+{{- $skipPreauth := index . 2 -}}
 {{- $_ := required "You must define credential types in the value features.credentialTypes" $root.Values.features.credentialTypes -}}
 {{- range $id, $data := $root.Values.features.credentialTypes }}
+{{- if not (and $skipPreauth (eq (default "" $data.issuance.authProvider) "preauth")) }}
 {{ $id | quote }}:
   {{- /* A pre-authorized twin reads its source's metadata file (see features.credentialTypes.<id>_offer). */}}
   {{- $file := $data.metadataFrom | default $id }}
@@ -180,6 +193,7 @@ the file extension is what distinguishes them on disk.
   commitments: {{- toYamlPretty . | nindent 4 }}
   {{- end }}
   {{- end }}
+{{- end }}
 {{- end }}
 {{- end -}}
 

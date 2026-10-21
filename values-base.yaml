@@ -353,7 +353,7 @@ features:
           claims: [given_name, family_name]
     # Nym-authentication attestation (sirosfoundation/nym_auth_rulebook v0.3):
     # birth_date + ssc (SHA-256 of a 16-byte secret seed shared by issuer and
-    # prover) + optional psc, for circuit_zk pseudonym and age-predicate
+    # prover) + optional psc, for zkp_req (formerly circuit_zk) pseudonym and age-predicate
     # presentations. doctype and namespace are both eu.europa.ec.eudi.nym_auth.1.
     #
     # fixtures/vc-metadata/nym_auth.mdoc.json is a byte-for-byte COPY of the
@@ -653,6 +653,11 @@ issuer:
         secret_file_path: "/secrets/secrets.yaml"
 
 verifier:
+  # Fly deploys only (read by sirosid_core.deploy.generate_pki, not rendered into the chart): re-issue the signing
+  # certificate once, from the same key and root, with the verifier's public host as a DNS SAN (the verifier's
+  # client_id is x509_san_dns:<that host> and it signs request objects with this certificate). Off = the
+  # certificate is left as it is. A test-environment shortcut: the verifier and the issuer share one key.
+  signingCertDnsSan: false
   oidc_provider:
     enabled: true
     subjectType: pairwise

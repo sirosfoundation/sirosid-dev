@@ -28,6 +28,74 @@ credential_registries:
   - https://registry.siros.org
 
 images:
+  # ===========================================================================================================
+  # PIN PROVENANCE (2026-10-21). Every `local-<epoch>` image below is a LOCAL BUILD OF UNMERGED PULL REQUESTS: it
+  # exists only in registry.fly.io/sirosid-gdc-* and must be re-pinned to a RELEASED image when its PRs are merged and
+  # released. "Heads" are the PR head commits that were built.
+  #
+  # vc-verifier   registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
+  #   digest sha256:96c41f16dd9324da6890c76b9faa7810d4c8259cf142ffd16360e413c8ca8945
+  #   source  sirosfoundation/vc `integration/gdc-nymauth-v5` @ a56c4be9ec42ef394d536f5ea08d80b50f2a95a0 (merge base
+  #           SUNET/vc main 4bba38e614e1; integration of the stack below, NOT for upstream merge), --target
+  #           runtime-verifier, zknative, + the nym_auth circuit artifact overlay (dockerfiles/verifier-nymauth.Dockerfile)
+  #   PRs     https://github.com/SUNET/vc/pull/827 @ 80d6ee9ef (nym_auth circuit allowlist; open)
+  #           https://github.com/SUNET/vc/pull/829 @ 55a8c9d7f (validate a zkp_req response against the request; open)
+  #           https://github.com/SUNET/vc/pull/830 @ 770885f31 (dispatch a zkp_req presentation to the nym_auth verifier,
+  #             incl. the allow-all-PDP fix; open)
+  #           https://github.com/SUNET/vc/pull/831 @ deb0c19b6 (bind a redirect-delivered presentation to its handover; open)
+  #           https://github.com/SUNET/vc/pull/832 @ 6649047e4 (operator docs; open)
+  #           plus the rulebook v0.4 port, the verifier UI fixes (req-schema.js `fn_id`, posted `req` vs wire `_req`) and
+  #           the meta.source_format fix, all on that integration branch
+  #   ZK libs https://github.com/sirosfoundation/zk-cred-longfellow v0.1.2 @ 58de20f07487bbb6ebe32148feec3bef4d92677e and
+  #           https://github.com/sirosfoundation/zk-cred-vega v0.0.7 @ 8e7be172e9010e8b47f3192f046d5f990f602790
+  #   matcher https://github.com/sirosfoundation/siros-dc-matcher v0.11.0 (the wallet side's request matcher; not in this
+  #           image); circuit catalog https://github.com/sirosfoundation/go-zk-circuits release v0.1.0-release.16 is served
+  #           from zk-circuits.fly.dev (values.verifier.zkCircuits)
+  #   previous pins: local-1792603698 (vc 253a17e92), local-1792532233 (094549cc; cannot answer a zkp_req request, never
+  #           deployed), local-1792523015 (ae33687f), local-1792485810 (2a30a609, never deployed), local-1792456320
+  #           (6c3ac47)
+  #
+  # vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792473614
+  #   digests apigw sha256:6d532929f7a5238d16767fe071d928880b68634d8b1c0065510779206c92eb27
+  #           issuer sha256:c0efa58f3f72bccc73f750be3bf89cfc5f331386e78908520340c4023c758b58
+  #           registry sha256:458cb70c8b9918fd9841b06fcfbf6954b39030c05500ff0a717c377a6a453268
+  #   source  sirosfoundation/vc `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (NOT for upstream
+  #           merge), on SUNET/vc main as of 2026-10-20, so it also carries upstream #809 (mdoc DeviceAuthentication per ISO
+  #           18013-5) and #790 (SD-JWT holder binding)
+  #   PRs     https://github.com/SUNET/vc/pull/793 @ 3bfa96b6e (seed-backed commitment claims; MERGED upstream since)
+  #           https://github.com/SUNET/vc/pull/821 @ fd078a057 (deliver the secret seed in credential_metadata; open)
+  #           https://github.com/SUNET/vc/pull/813 @ 2e69dd2b4 (identity_attributes / document_claims; closed)
+  #           https://github.com/SUNET/vc/pull/796 @ 62c93fa01 and https://github.com/SUNET/vc/pull/820 @ 6db9dd19b (verifier
+  #             V1 / circuit_zk request; both closed, superseded by the verifier stack above)
+  #           plus startup refusals for a delivering scope without notification_endpoint / credential_encryption.keys and a
+  #           'Delivered a secret seed' INFO line
+  #
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143
+  #   digest sha256:285a7ca4ee1eaa27cacbe45435965ba08b15e2e98b680636a29ee5073da97749
+  #   source  go-wallet-backend `local/gdc-nymauth-integration-3` @ 9cb6e57d8498f0a1efa024254a6e99e2dbf278ab: a LOCAL branch,
+  #           NEVER pushed (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.9cb6e57, GIT_REF empty. Base
+  #           origin/main cb42861b6d640ea17166e6491f69761f58a5f172, plus signed --no-ff merges of:
+  #   PRs     https://github.com/sirosfoundation/go-wallet-backend/pull/469 @ e4e0bc3bd1fd800a7507a50d33b1703c6224100b
+  #             (OID4VCI credential request encryption)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/471 @ f1362658c9891e1cbbbb2642898f9c6413fcc531
+  #             (client_metadata / verifier_jwk_thumbprint / verifier trust context, incl. the fail-closed verifier-trust fix
+  #             of https://github.com/sirosfoundation/go-wallet-backend/pull/473)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/163 @ 71a07f8037c00c0faf139f23707c26a207ab7a8c
+  #             (WMP, go-wmp v0.7.0)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/472 @ be69e2e70a7d00e7bdef85ea99792d7651cd2ec5
+  #             (sign-stage refusal)
+  #           none merged; human review pending. NOT included: https://github.com/sirosfoundation/go-wallet-backend/pull/470.
+  #   rollback pins: local-1792560364 (faa5e63), local-1792473614 (#469 only, e4e0bc3)
+  #
+  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.0 (RELEASED, tag v0.26.0, commit 621b03f4)
+  #   index digest sha256:73d994eaabcf27d68837c12ef42cbb16072c87562c6abe5cf7e2332a8068cf1e
+  #   contains https://github.com/sirosfoundation/go-trust/pull/218 (merged): verifier_ids from the whitelist,
+  #   system_cert_pool and mdoc_rical registries, carried through all strategies and composites. values.pdp.extraConfig
+  #   below sets policies for the two verifier actions ONLY (x509_san_dns), so a verifier-path evaluation returns
+  #   context.verifier_ids and every other action is evaluated as before. Previous pin: 0.25.0.
+  #
+  # Other images are released versions (wallet-frontend, mini-oidc, env-admin).
+  # ===========================================================================================================
   # vc: BUILT LOCALLY (2026-10-20). The ISSUER side (registry, issuer, apigw) is sirosfoundation/vc
   # `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (v3 20ab021 + startup refusals for a delivering
   # scope without notification_endpoint / credential_encryption.keys + a 'Delivered a secret seed' INFO log line) = SUNET/vc main + #793 (seed derivation
@@ -68,7 +136,16 @@ images:
   # makes the ZK Proofs presets visible on the verifier's landing page -
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792456320
+  # vc-verifier: see PIN PROVENANCE above. Build recipe (a local build; the circuit artifact overlay is checked for size
+  # and sha256 at build time):
+  #   docker build -f dockerfiles/worker --target runtime-verifier --build-arg SERVICE_NAME=verifier \
+  #     --build-arg ZK_CRED_LONGFELLOW_REF=<full sha> --build-arg ZK_CRED_VEGA_REF=<full sha> -t <base> .
+  #   docker build -f dockerfiles/verifier-nymauth.Dockerfile --build-arg BASE=<base> \
+  #     -t registry.fly.io/sirosid-gdc-vc-verifier:local-<epoch> .   # then docker push (flyctl auth docker)
+  # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
+  # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
+  # wallet and verifier (spec decision pending); that is not a config problem.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
@@ -118,7 +195,19 @@ images:
   # (ghcr.io/sirosfoundation/go-wallet-backend:<release containing #469>) once it is merged and released.
   # Build: docker build -f Dockerfile --build-arg VERSION=0.24.0-reqenc.e4e0bc3 --build-arg COMMIT=<sha> \
   #   -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .   # then docker push (flyctl auth docker)
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792473614
+  # 2026-10-21: REPLACED the #469-only build below by a LOCAL INTEGRATION build, go-wallet-backend
+  # local/gdc-nymauth-integration-3 @ 9cb6e57d8498f0a1efa024254a6e99e2dbf278ab = faa5e63 + #471 @ f1362658 (narrowed progress context, fail-closed verifier trust; #473's fix) (a local branch that is NEVER pushed;
+  # fetched by full SHA from a local worktree). Signed --no-ff merges on origin/main cb42861b6: #469 @ e4e0bc3b
+  # (request encryption), #471 @ 28a6fa50 (client_metadata / thumbprint), #163 @ 71a07f80 (WMP, go-wmp v0.7.0), #472 @
+  # be69e2e7 (sign-stage refusal). NONE of these are merged upstream; #470 is not included. Build, with GIT_REF left
+  # EMPTY (a non-empty GIT_REF makes the Dockerfile git-clone that ref over HTTPS, which fails for an unpushed branch):
+  #   docker build -f Dockerfile --build-arg VERSION=0.24.0-nymauth.faa5e63   #     --build-arg COMMIT=faa5e63d2777c1cfe3d7c60bf0ade6d4232bea7b -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .
+  # (image id f3b6c030fabe, the same id the go-wallet-backend session got). Config: no key added, renamed or removed.
+  # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
+  # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
+  # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143
+  # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
@@ -127,7 +216,7 @@ images:
   # 2026-10-15: 0.24.1 -> 0.25.0. Its image sets GT_HOST=0.0.0.0 GT_PORT=6001 and the environment BEATS the
   # config file, so the PDP listened on 6001 while everything addresses 8080; fly-up now sets GT_PORT/GT_HOST
   # itself (deploy.py, singlemachine.py). The LoTE verify_jws change is not used here.
-  pdp: ghcr.io/sirosfoundation/go-trust:0.25.0
+  pdp: ghcr.io/sirosfoundation/go-trust:0.26.0
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
@@ -266,6 +355,27 @@ values:
       credentialEncryption:
         enabled: true
   pdp:
+    # Needs go-trust >= 0.26.0 (contains sirosfoundation/go-trust PR 218; head a813befc:
+    # the whitelist, system_cert_pool and mdoc_rical registries emit context.verifier_ids; 0.25.0 emits them only from
+    # etsi/lote/did/oidfed, which gdc's verifier does not go through). Then: bump images.pdp to that release and
+    # redeploy the PDP. Policies exist ONLY for the two verifier actions, default_policy and fail_closed_on_unknown_action
+    # are NOT set, and no registries/allowed_key_types/require_key_binding are set, so every other action (credential-
+    # issuer, mdoc-issuer, mdoc-issuer-auth) is evaluated exactly as before. Snippet: docs/examples/gdc-verifier-ids-
+    # policies.yaml in that PR. Expected after the redeploy: a verifier-path replay (subject
+    # x509_san_dns:sirosid-gdc-vc-verifier.fly.dev, x5c = the gdc chain, action credential-verifier) returns
+    # context.verifier_ids [{verifier_id_type: x509_san_dns, verifier_id: sirosid-gdc-vc-verifier.fly.dev}] - the bare
+    # DNS name, lower case.
+    extraConfig:
+      policies:
+        policies:
+          credential-verifier:
+            description: "Verifier access: return the verified dNSName of the verifier"
+            constraints:
+              return_verifier_ids: [x509_san_dns]
+          verifier:
+            description: "Verifier access (legacy action name): return the verified dNSName"
+            constraints:
+              return_verifier_ids: [x509_san_dns]
     # Resolve entities identified by did:web, so a presentation from a wallet
     # to - or an issuer identified by - a did:web subject can be evaluated at
     # all. Additive: it registers one more resolver alongside the whitelist and
@@ -283,6 +393,45 @@ values:
         description: "did:web DID document resolution"
         timeout: 10s
   verifier:
+    # nym_auth pseudonym verification (SUNET/vc#827/#829/#830/#832). Needs a vc verifier BUILT WITH the zknative tag
+    # and the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile); an older verifier ignores these
+    # keys (non-strict unmarshal) and simply cannot answer a zkp_req request.
+    #
+    # verifier_id scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. Since rulebook v0.4
+    # (vc 2026-10-20, integration/gdc-nymauth-v5 @ fd562f10) it is the verifier's client_id EXACTLY AS PUBLISHED,
+    # prefix and all: x509_san_dns:<public_url's host> (it was the bare host before v0.4, and vc refused the prefix).
+    # CHANGING IT CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
+    # src/nymauth/profile.rs (authoritative); do NOT take the digest from docs/CONFIGURATION.md, whose example is a
+    # placeholder with 52 zeros in the middle.
+    #
+    # trust.pdp_url is already set by the chart and MUST stay: nym_auth takes the issuer key from the HOLDER's own
+    # certificate chain, so the PDP is the only check that key belongs to a real issuer (the verifier refuses to
+    # start without it). Checked against this environment's PDP 2026-10-20: the gdc issuer's chain is trusted for
+    # eu.europa.ec.eudi.nym_auth.1 (action mdoc-issuer, the mDOC IACA registry) and a self-signed chain with the same
+    # SAN is not.
+    extraConfig:
+      verifier:
+        nym_auth:
+          enable: true
+          verifier_id: x509_san_dns:sirosid-gdc-vc-verifier.fly.dev
+          circuits:
+            allow:
+              - config: known-offender-matching-ssc
+                hash_circuit_id: 5f8c75ae5c3893ef6ab6a079628cb385ba85e95a85437d58570c455289d75729
+                sig_circuit_id: 00513797c75b2eab1a9db75004977c15317d4e40c0db1d00674523431baa75cb
+                block_enc_hash: 6983
+                block_enc_sig: 4679
+                artifact_path: /etc/vc/circuits/nym_auth-ssc.bin
+                artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
+                artifact_bytes: 1062842
+        preferred_vp_formats:
+          # v0.4 names (circuit_zk / circuit_id_values / circuit_proof_system_values fail startup, naming these)
+          zkp_req:
+            system_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
+            proof_system_values: ["longfellow-libzk-v1"]
+    # The verifier's client_id is x509_san_dns:sirosid-gdc-vc-verifier.fly.dev; put that host in the SAN of the
+    # certificate it signs request objects with (re-issued once from the same key and root; see create-pki.sh).
+    signingCertDnsSan: true
     # Selectable options in the verifier's own presentation-definition UI.
     # NOT the same thing as presentation-request templates, which are only
     # reachable through a real OIDC /authorize?scope=... request.
@@ -299,6 +448,46 @@ values:
     # (category/credentials/zk_system_type) is only understood by the vc build
     # pinned in environments/gdc.yaml, not by vc main.
     presets:
+      # nym_auth pseudonym request (rulebook v0.4 zkp_req; needs preferred_vp_formats.zkp_req and verifier.nym_auth
+      # above, else the preset is not published). `req` items are {fn_id, return, params}; ver and prf are required.
+      # The scope key is the verifier's own credential_metadata scope for nym_auth, which supplies meta.source_format
+      # (mso_mdoc). `validate: nym_auth` makes vc refuse this preset AT STARTUP if it breaks the rulebook. The
+      # pseudonym is scoped by verifier.nym_auth.verifier_id: changing that changes every pseudonym.
+      # nym_auth_pseudonym_age adds an age_check; its bounds are vc's example (see there).
+      "nym_auth_pseudonym":
+        category: "ZK Proofs"
+        credentials:
+          nym_auth:
+            format: "zkp_req"
+            validate: "nym_auth"
+            req:
+              - fn_id: pseudonym
+                return: nym
+                params:
+                  config: known-offender-matching-ssc
+                  ver: 1
+                  prf: sha-256
+      "nym_auth_pseudonym_age":
+        category: "ZK Proofs"
+        credentials:
+          nym_auth:
+            format: "zkp_req"
+            validate: "nym_auth"
+            req:
+              - fn_id: pseudonym
+                return: nym
+                params:
+                  config: known-offender-matching-ssc
+                  ver: 1
+                  prf: sha-256
+              - fn_id: age_check
+                return: age
+                # The range must span at least 365 days (a narrower one is an exact birth date) and must suit the
+                # holder: this window (born 1980-01-01..2000-12-31) is satisfied by alice-001 (born 1990-01-15), so
+                # it is a positive test; the 2008..2013 example in vc's brief is not.
+                params:
+                  ge: "1980-01-01"
+                  le: "2000-12-31"
       "PID (mdoc) - ZK Proof (Vega)":
         category: "ZK Proofs"
         credentials:
