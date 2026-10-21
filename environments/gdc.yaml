@@ -136,7 +136,7 @@ images:
   # Build: docker build -f Dockerfile --build-arg VERSION=0.24.0-reqenc.e4e0bc3 --build-arg COMMIT=<sha> \
   #   -t registry.fly.io/sirosid-gdc-wallet-backend:local-<epoch> .   # then docker push (flyctl auth docker)
   # 2026-10-21: REPLACED the #469-only build below by a LOCAL INTEGRATION build, go-wallet-backend
-  # local/gdc-nymauth-integration @ faa5e63d2777c1cfe3d7c60bf0ade6d4232bea7b (a local branch that is NEVER pushed;
+  # local/gdc-nymauth-integration-3 @ 9cb6e57d8498f0a1efa024254a6e99e2dbf278ab = faa5e63 + #471 @ f1362658 (narrowed progress context, fail-closed verifier trust; #473's fix) (a local branch that is NEVER pushed;
   # fetched by full SHA from a local worktree). Signed --no-ff merges on origin/main cb42861b6: #469 @ e4e0bc3b
   # (request encryption), #471 @ 28a6fa50 (client_metadata / thumbprint), #163 @ 71a07f80 (WMP, go-wmp v0.7.0), #472 @
   # be69e2e7 (sign-stage refusal). NONE of these are merged upstream; #470 is not included. Build, with GIT_REF left
@@ -146,8 +146,8 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792560364
-  # previous pin (PR 469 only): registry.fly.io/sirosid-gdc-wallet-backend:local-1792473614
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143
+  # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
   # values-fly.yaml (shared by every environment), so gdc moves when someone chooses to move it.
