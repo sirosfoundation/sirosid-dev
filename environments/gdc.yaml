@@ -295,6 +295,27 @@ values:
       credentialEncryption:
         enabled: true
   pdp:
+    # PREPARED, NOT DEPLOYED (needs a go-trust release containing sirosfoundation/go-trust PR 218, head a813befc:
+    # the whitelist, system_cert_pool and mdoc_rical registries emit context.verifier_ids; 0.25.0 emits them only from
+    # etsi/lote/did/oidfed, which gdc's verifier does not go through). Then: bump images.pdp to that release and
+    # redeploy the PDP. Policies exist ONLY for the two verifier actions, default_policy and fail_closed_on_unknown_action
+    # are NOT set, and no registries/allowed_key_types/require_key_binding are set, so every other action (credential-
+    # issuer, mdoc-issuer, mdoc-issuer-auth) is evaluated exactly as before. Snippet: docs/examples/gdc-verifier-ids-
+    # policies.yaml in that PR. Expected after the redeploy: a verifier-path replay (subject
+    # x509_san_dns:sirosid-gdc-vc-verifier.fly.dev, x5c = the gdc chain, action credential-verifier) returns
+    # context.verifier_ids [{verifier_id_type: x509_san_dns, verifier_id: sirosid-gdc-vc-verifier.fly.dev}] - the bare
+    # DNS name, lower case.
+    extraConfig:
+      policies:
+        policies:
+          credential-verifier:
+            description: "Verifier access: return the verified dNSName of the verifier"
+            constraints:
+              return_verifier_ids: [x509_san_dns]
+          verifier:
+            description: "Verifier access (legacy action name): return the verified dNSName"
+            constraints:
+              return_verifier_ids: [x509_san_dns]
     # Resolve entities identified by did:web, so a presentation from a wallet
     # to - or an issuer identified by - a did:web subject can be evaluated at
     # all. Additive: it registers one more resolver alongside the whitelist and
