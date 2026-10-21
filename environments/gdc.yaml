@@ -69,7 +69,7 @@ images:
   # both of them are categorised and neither is featured, so they still sit
   # behind "Show more presets" here.
   # vc-verifier (2026-10-20, UNMERGED upstream work: re-pin when it is released): BUILT LOCALLY from
-  # sirosfoundation/vc `integration/gdc-nymauth-v5` @ 094549ccc090eed14919f569edade41a594fd450 (rulebook v0.4 port + startup refusal of a verifier_id without a prefix) = v4 + the nym_auth
+  # sirosfoundation/vc `integration/gdc-nymauth-v5` @ 253a17e92af49255b9c2597d092a71950abff14e (rulebook v0.4 port; writes meta.source_format, validates ver/prf, refuses a bare verifier_id and a `_req` preset) = v4 + the nym_auth
   # verifier stack (SUNET/vc #827/#829/#830 incl. the allow-all-PDP fix, #831, #832, the time-binding diagnostics, the v0.4 zkp_req names),
   # with the native libs pinned by immutable tags (full SHAs: a shallow fetch needs all 40 characters):
   #   ZK_CRED_LONGFELLOW_REF=58de20f07487bbb6ebe32148feec3bef4d92677e (v0.1.2)
@@ -85,7 +85,7 @@ images:
   # between wallet and verifier (spec decision pending); that is not a config problem.
   # This branch contains sirosid-dev PRs 79 and 80, NEITHER merged when it was deployed; the pin goes back to a
   # released vc verifier image once SUNET/vc releases the verifier stack.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792532233
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792542047
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
