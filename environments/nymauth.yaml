@@ -1,0 +1,248 @@
+# Persisted config for `make fly-up ENV=nymauth`: a clean, nym_auth-only test environment, derived from gdc.
+#
+# WHAT THIS IS. gdc is a shared integration playground (Vega ZK, Geneva interop, ...). nymauth is the same stack
+# reduced to what is needed to test the nym_auth pseudonym flow end to end: issuance of nym_auth with seed delivery,
+# and verification of a zkp_req presentation by the verifier with the PDP returning verifier_ids. The team uses it as a
+# KNOWN STARTING POINT. How to test it: docs/NYMAUTH-TESTING.md.
+#
+# HOW IT DIFFERS FROM gdc (the whole diff is small: `diff environments/gdc.yaml environments/nymauth.yaml`):
+#   - every hostname is sirosid-nymauth-*; the verifier's `verifier_id` is the PREFIXED client_id of ITS OWN host
+#     (x509_san_dns:sirosid-nymauth-vc-verifier.fly.dev) - it scopes every pseudonym and must equal the client_id;
+#   - the images pin the SAME proven builds as gdc (see gdc.yaml's PIN PROVENANCE block for what is in each), pulled from
+#     gdc's registry namespace (registry.fly.io/sirosid-gdc-*): a new environment has no image of its own yet. This works
+#     if the deploying account can pull gdc's images (same Fly org); if it cannot, push the same images to the new
+#     apps' registries after `fly-up` created them and repin here. NOT yet exercised: nobody has run fly-up ENV=nymauth;
+#   - dropped as not needed for nym_auth: the Geneva/yitbarek/multipaz/Accredify interop trust (trusted_issuers,
+#     trusted_verifiers, trusted_verifier_roots) and the Geneva RICAL (rical_*). The environment's own issuer and
+#     verifier are whitelisted automatically. Kept: the Vega presets and zk_circuits_sources (identical to gdc: the
+#     pinned verifier image was proven with them), wallet attestation, the sample app's signing keys.
+#
+# EVERY pinned image except the PDP and the frontend is a LOCAL BUILD OF UNMERGED PULL REQUESTS; re-pin to released images
+# when they land (list in gdc.yaml's PIN PROVENANCE block). Twins: allowPreauthOffer is NOT set here (the pinned apigw
+# lacks SUNET/vc#840), so `make datastore-offer SCOPE=nym_auth` mints against the nym_auth_offer twin.
+
+region: arn
+
+# Resolve every SD-JWT credential type from the SIROS registry (see gdc.yaml for the why).
+# Resolve every SD-JWT credential type from the SIROS registry instead of the
+# VCTMs vendored in fixtures/vc-metadata (REGISTRY=external, PR #33). This is
+# what makes vc ADVERTISE the type's real vct (urn:eudi:pid:arf-1.8:1) in
+# credential_configurations_supported - for a vendored VCTM it advertises its
+# own /type-metadata/<scope> URL while the issued credential carries the urn,
+# and the wallets (siros-sdk-kotlin 0.13, wallet-frontend) refuse that
+# mismatch: "Issuer delivered a 'urn:eudi:pid:arf-1.8:1' credential, but this
+# offer was for https://sirosid-gdc-vc-apigw.fly.dev/type-metadata/pid_1_8".
+# mdoc types stay vendored (mdl_zk4 has no registry entry).
+credential_registries:
+  - https://registry.siros.org
+
+images:
+  # Same pins as gdc (PIN PROVENANCE in environments/gdc.yaml): tag, digest, base commit and PR heads of every build.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792603698      # vc a56c4be9e + artifact overlay (zkp_req)
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792473614            # vc v4 5e546b2d (seed delivery)
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792473614
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792473614
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792564143  # engine 9cb6e57 (#469/#471/#163/#472)
+  pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
+
+# Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
+# catalog yet (pending expert review) - this is where it actually lives.
+zk_circuits_sources:
+  - https://zk-circuits-test.fly.dev
+
+# The sample app's signing keys, so wallet-backend's rp_origins (the
+# server-side WebAuthn accept-list) contains the apk-key-hash the app
+# actually presents. Without a matching entry, /auth/passkey/register/finish
+# fails with "Error validating origin" and signup returns 400 - while login
+# with an already-registered passkey keeps working, which makes it look like
+# a server regression rather than a missing accept-list entry.
+#
+# Persisted here on purpose. These previously lived only in `.android-apps`,
+# which is gitignored and per-checkout, so a `make fly-up ENV=gdc` from any
+# working copy that happened not to have that file silently deployed an
+# rp_origins with the app's keys missing - which is exactly what happened on
+# 2026-09-07. Environment state that the environment needs belongs in the
+# environment file, where anyone's next deploy reproduces it.
+#
+# Three keys, all for org.siros.sdk.sample: the repo's committed debug
+# keystore (sample-app/debug.keystore - what CI and a clean checkout build
+# with), a local per-developer debug keystore, and an older one kept so
+# devices still carrying that build can log in. `.android-apps` is still read
+# and still adds to this; nothing here replaces it.
+android_apps:
+  - org.siros.sdk.sample=A4:DF:EC:00:09:BF:CA:CD:A4:67:F7:D4:6D:A0:AD:96:1C:4E:38:D2:4F:42:5C:6A:21:7F:98:69:9C:C5:82:14
+  - org.siros.sdk.sample=C4:07:F2:6D:C3:B4:C8:F9:54:03:F1:A4:A3:6B:47:EA:82:11:6F:D6:3E:A9:AD:EE:56:D9:B4:9B:FA:96:D3:B4
+  - org.siros.sdk.sample=46:56:F0:24:08:55:32:F0:94:0F:53:60:A2:0E:6A:31:9A:0B:57:5B:38:C6:BD:F8:48:B6:95:09:39:CB:B0:2F
+
+wallet_attestation: true
+
+# Free-form chart values, deep-merged last - see scripts/env_config.py and
+# environments/README.md. Anything the chart can express is reachable here
+# without a code change anywhere else.
+values:
+  issuer:
+    apigw:
+      # nym_auth's seed-backed ssc and its delivery (SUNET/vc#793/#821; the integration build pinned above):
+      # the issuer derives each person's seed from a per-environment secret (generated once, PERMANENT) and the
+      # wallet receives it encrypted, which needs the published credential-encryption key. Verified end to end on a
+      # Pixel 2026-10-20 (sirosid-dev PR 78). The other environments run images without it, so it is off by default.
+      seeds:
+        primary:
+          model: derived
+      credentialEncryption:
+        enabled: true
+  pdp:
+    # NYMAUTH-CRITICAL: the wallet's pseudonym function needs the verifier's identifier from the PDP
+    # (context.verifier_ids; go-trust >= 0.26.0 = sirosfoundation/go-trust PR 218, which makes the whitelist, system_cert_pool
+    # and mdoc_rical registries emit it). Without these policies the wallet refuses with "no verifier id". Policies exist
+    # ONLY for the two verifier actions; default_policy and fail_closed_on_unknown_action are NOT set and no registries /
+    # allowed_key_types / require_key_binding are set, so every other action (credential-issuer, mdoc-issuer,
+    # mdoc-issuer-auth) is evaluated exactly as before (the snippet is docs/examples/gdc-verifier-ids-policies.yaml in that
+    # PR). A verifier-path replay (subject x509_san_dns:sirosid-nymauth-vc-verifier.fly.dev, x5c = the environment's chain,
+    # action credential-verifier) returns context.verifier_ids [{x509_san_dns, sirosid-nymauth-vc-verifier.fly.dev}]: the
+    # bare DNS name, lower case.
+    extraConfig:
+      policies:
+        policies:
+          credential-verifier:
+            description: "Verifier access: return the verified dNSName of the verifier"
+            constraints:
+              return_verifier_ids: [x509_san_dns]
+          verifier:
+            description: "Verifier access (legacy action name): return the verified dNSName"
+            constraints:
+              return_verifier_ids: [x509_san_dns]
+    # Resolve entities identified by did:web, so a presentation from a wallet
+    # to - or an issuer identified by - a did:web subject can be evaluated at
+    # all. Additive: it registers one more resolver alongside the whitelist and
+    # the mdoc registries, and changes nothing about how this environment's own
+    # issuer and verifier identify themselves (still x509_san_dns, derived from
+    # their public URLs).
+    #
+    # Turning gdc's OWN verifier into a did:web identity is a different switch
+    # (verifier.clientIdScheme: "did" plus verifier.did), and it would need
+    # every whitelist entry naming the current x509_san_dns identity revisited.
+    extraRegistries:
+      didweb:
+        enabled: true
+        name: "did:web"
+        description: "did:web DID document resolution"
+        timeout: 10s
+  verifier:
+    # nym_auth pseudonym verification (SUNET/vc#827/#829/#830/#832). Needs a vc verifier BUILT WITH the zknative tag
+    # and the circuit artifact baked in (dockerfiles/verifier-nymauth.Dockerfile); an older verifier ignores these
+    # keys (non-strict unmarshal) and simply cannot answer a zkp_req request.
+    #
+    # verifier_id scopes EVERY pseudonym: SHA-256(verifier_id) is the pseudonym's verifier input. Since rulebook v0.4
+    # (vc 2026-10-20, integration/gdc-nymauth-v5 @ fd562f10) it is the verifier's client_id EXACTLY AS PUBLISHED,
+    # prefix and all: x509_san_dns:<public_url's host> (it was the bare host before v0.4, and vc refused the prefix).
+    # CHANGING IT CHANGES EVERY PSEUDONYM this verifier ever reports. The allowlist values are zk-cred-longfellow's
+    # src/nymauth/profile.rs (authoritative); do NOT take the digest from docs/CONFIGURATION.md, whose example is a
+    # placeholder with 52 zeros in the middle.
+    #
+    # trust.pdp_url is already set by the chart and MUST stay: nym_auth takes the issuer key from the HOLDER's own
+    # certificate chain, so the PDP is the only check that key belongs to a real issuer (the verifier refuses to
+    # start without it). Checked against this environment's PDP 2026-10-20: gdc's issuer chain was trusted for
+    # eu.europa.ec.eudi.nym_auth.1 (action mdoc-issuer, the mDOC IACA registry) and a self-signed chain with the same
+    # SAN is not.
+    extraConfig:
+      verifier:
+        nym_auth:
+          enable: true
+          verifier_id: x509_san_dns:sirosid-nymauth-vc-verifier.fly.dev
+          circuits:
+            allow:
+              - config: known-offender-matching-ssc
+                hash_circuit_id: 5f8c75ae5c3893ef6ab6a079628cb385ba85e95a85437d58570c455289d75729
+                sig_circuit_id: 00513797c75b2eab1a9db75004977c15317d4e40c0db1d00674523431baa75cb
+                block_enc_hash: 6983
+                block_enc_sig: 4679
+                artifact_path: /etc/vc/circuits/nym_auth-ssc.bin
+                artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
+                artifact_bytes: 1062842
+        preferred_vp_formats:
+          # v0.4 names (circuit_zk / circuit_id_values / circuit_proof_system_values fail startup, naming these)
+          zkp_req:
+            system_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
+            proof_system_values: ["longfellow-libzk-v1"]
+    # The verifier's client_id is x509_san_dns:sirosid-nymauth-vc-verifier.fly.dev; put that host in the SAN of the
+    # certificate it signs request objects with (re-issued once from the same key and root; see create-pki.sh).
+    signingCertDnsSan: true
+    # Selectable options in the verifier's own presentation-definition UI.
+    # NOT the same thing as presentation-request templates, which are only
+    # reachable through a real OIDC /authorize?scope=... request.
+    #
+    # This lives here rather than in values-base.yaml because the
+    # category/credentials/zk_system_type shape only exists on the Vega ZK
+    # branch the images pinned above are built from - a verifier built from
+    # vc main panics on it at startup.
+    # Selectable options in the verifier's own presentation-definition UI. NOT
+    # the same thing as presentationRequestTemplates below, which are only
+    # reachable through a real OIDC /authorize?scope=... request.
+    #
+    # The chart passes presets through verbatim, which matters here: this shape
+    # (category/credentials/zk_system_type) is only understood by the vc build
+    # pinned in environments/gdc.yaml, not by vc main.
+    presets:
+      # nym_auth pseudonym request (rulebook v0.4 zkp_req; needs preferred_vp_formats.zkp_req and verifier.nym_auth
+      # above, else the preset is not published). `req` items are {fn_id, return, params}; ver and prf are required.
+      # The scope key is the verifier's own credential_metadata scope for nym_auth, which supplies meta.source_format
+      # (mso_mdoc). `validate: nym_auth` makes vc refuse this preset AT STARTUP if it breaks the rulebook. The
+      # pseudonym is scoped by verifier.nym_auth.verifier_id: changing that changes every pseudonym.
+      # nym_auth_pseudonym_age adds an age_check; its bounds are vc's example (see there).
+      "nym_auth_pseudonym":
+        category: "ZK Proofs"
+        credentials:
+          nym_auth:
+            format: "zkp_req"
+            validate: "nym_auth"
+            req:
+              - fn_id: pseudonym
+                return: nym
+                params:
+                  config: known-offender-matching-ssc
+                  ver: 1
+                  prf: sha-256
+      "nym_auth_pseudonym_age":
+        category: "ZK Proofs"
+        credentials:
+          nym_auth:
+            format: "zkp_req"
+            validate: "nym_auth"
+            req:
+              - fn_id: pseudonym
+                return: nym
+                params:
+                  config: known-offender-matching-ssc
+                  ver: 1
+                  prf: sha-256
+              - fn_id: age_check
+                return: age
+                # The range must span at least 365 days (a narrower one is an exact birth date) and must suit the
+                # holder: this window (born 1980-01-01..2000-12-31) is satisfied by alice-001 (born 1990-01-15), so
+                # it is a positive test; the 2008..2013 example in vc's brief is not.
+                params:
+                  ge: "1980-01-01"
+                  le: "2000-12-31"
+      "PID (mdoc) - ZK Proof (Vega)":
+        category: "ZK Proofs"
+        credentials:
+          mdl_zk4:
+            format: "mso_mdoc_zk"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r12"
+                system: "vega-mc-p256-v1"
+            claims:
+              - path: ["org.iso.18013.5.1", "family_name"]
+              - path: ["org.iso.18013.5.1", "given_name"]
+      "Age Over 18 - ZK Proof (Vega)":
+        category: "ZK Proofs"
+        credentials:
+          mdl_zk4:
+            format: "mso_mdoc_zk"
+            zk_system_type:
+              - id: "vega-mc-p256-v1-prover-key-r12"
+                system: "vega-mc-p256-v1"
+            claims:
+              - path: ["org.iso.18013.5.1", "age_over_18"]

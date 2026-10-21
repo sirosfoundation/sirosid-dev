@@ -464,6 +464,11 @@ The verifier has matching presentation-request templates in
 `fixtures/vc-presentation-requests/eu_business_wallet.yaml`.
 
 ### nym_auth (Nym-authentication attestation)
+> **Testing nym_auth end to end** (issuance with seed delivery, then a zero-knowledge pseudonym / age presentation) is
+> a step-by-step walkthrough for testers plus an operator and developer appendix in
+> [`docs/NYMAUTH-TESTING.md`](docs/NYMAUTH-TESTING.md); the `nymauth` Fly environment
+> (`environments/nymauth.yaml`, derived from gdc) is the known starting point for it.
+
 
 `nym_auth` is the natural-person attestation of the
 [Nym-authentication rulebook](https://github.com/sirosfoundation/nym_auth_rulebook)
