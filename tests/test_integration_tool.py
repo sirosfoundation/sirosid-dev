@@ -154,6 +154,19 @@ class Verify(unittest.TestCase):
         clean.commit("patch")
         self.assertEqual(integration.main(["verify", "--path", str(clean.dir), "--tip", "integration/x", "--base", "main"]), 1)
 
+    def test_report_summary_is_one_line_for_an_image_label(self):
+        r = Repo()
+        h = r.pr("pr-one", "one.txt", "1\n")
+        r.integration()
+        r.merge("pr-one")
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            integration.main(["report", "--path", str(r.dir), "--tip", "integration/x", "--base", "main", "--summary"])
+        self.assertEqual(buf.getvalue(), "\n", "a branch whose merges name no PR lists none")
+        self.assertIsNotNone(h)
+
     def test_report_json_is_machine_readable(self):
         r = Repo()
         r.pr("pr-one", "one.txt", "1\n")
@@ -166,6 +179,121 @@ class Verify(unittest.TestCase):
             integration.main(["report", "--path", str(r.dir), "--tip", "integration/x", "--base", "main", "--json"])
         data = json.loads(buf.getvalue())
         self.assertEqual(set(data), {"base", "tip", "prs", "unmapped_merges", "merges", "extra_commits", "drift"})
+
+
+class Sync(unittest.TestCase):
+    """`sync` fetches `pull/<n>/head` from each PR's repository; here that repository is a local git repo whose refs/pull/N/head
+    is the PR head."""
+
+    def remote(self):
+        r = Repo()
+        self.addCleanup(lambda: None)
+        return r
+
+    def make_pr(self, r, number, name, filename, text):
+        head = r.pr(name, filename, text)
+        r.git("update-ref", f"refs/pull/{number}/head", head)
+        return head
+
+    def clone_of(self, remote):
+        c = Path(tempfile.mkdtemp())
+        subprocess.run(["git", "clone", "-q", str(remote.dir), str(c)], check=True, env=ENV)
+        subprocess.run(["git", "-C", str(c), "config", "user.email", "t@example.org"], check=True)
+        subprocess.run(["git", "-C", str(c), "config", "user.name", "t"], check=True)
+        return c
+
+    def test_sync_builds_the_branch_from_the_pr_list_and_verify_and_report_read_it_back_offline(self):
+        remote = self.remote()
+        h1 = self.make_pr(remote, 1, "pr-one", "one.txt", "1\n")
+        h2 = self.make_pr(remote, 2, "pr-two", "two.txt", "2\n")
+        clone = self.clone_of(remote)
+        merged = integration.sync(clone, "integration/x", "origin/main", [("o/r", 1, h1[:9]), ("o/r", 2, None)],
+                                  url_for=lambda repo: str(remote.dir), titles={("o/r", 2): "second"})
+        self.assertEqual([(m[1], m[2]) for m in merged], [(1, h1), (2, h2)])
+        a = integration.analyze(clone, "integration/x", "origin/main")
+        self.assertEqual(a.problems, [], "a synced branch always verifies")
+        self.assertEqual(integration.from_message(a.merges[1].subject)["title"], "second")
+        rep = integration.report(a)          # no repos, no API: the merge messages carry the list
+        self.assertEqual([(p["repo"], p["number"], p["merged_head"]) for p in rep["prs"]], [("o/r", 1, h1), ("o/r", 2, h2)])
+
+    def test_a_moved_pr_head_is_refused_when_a_head_was_requested(self):
+        remote = self.remote()
+        h1 = self.make_pr(remote, 1, "pr-one", "one.txt", "1\n")
+        clone = self.clone_of(remote)
+        with self.assertRaises(SystemExit) as cm:
+            integration.sync(clone, "integration/x", "origin/main", [("o/r", 1, "0" * 9)], url_for=lambda r: str(remote.dir))
+        self.assertIn("has moved", str(cm.exception))
+        self.assertNotEqual(h1[:9], "0" * 9)
+
+    def test_a_conflict_stops_the_sync_and_leaves_no_half_merged_tree(self):
+        remote = self.remote()
+        self.make_pr(remote, 1, "pr-one", "a.txt", "one\n")
+        self.make_pr(remote, 2, "pr-two", "a.txt", "two\n")
+        clone = self.clone_of(remote)
+        with self.assertRaises(SystemExit) as cm:
+            integration.sync(clone, "integration/x", "origin/main", [("o/r", 1, None), ("o/r", 2, None)],
+                             url_for=lambda r: str(remote.dir))
+        self.assertIn("glue PR", str(cm.exception))
+        self.assertEqual(subprocess.run(["git", "-C", str(clone), "status", "--porcelain"], capture_output=True, text=True).stdout, "")
+
+    def test_from_takes_the_list_of_an_existing_branch_with_latest_heads(self):
+        remote = self.remote()
+        self.make_pr(remote, 1, "pr-one", "one.txt", "1\n")
+        clone = self.clone_of(remote)
+        integration.sync(clone, "integration/old", "origin/main", [("o/r", 1, None)], url_for=lambda r: str(remote.dir))
+        remote.git("checkout", "-q", "pr-one")
+        remote.write("one.txt", "1b\n")
+        newer = remote.commit("feat: pr-one moved")
+        remote.git("update-ref", "refs/pull/1/head", newer)
+        rep = integration.report(integration.analyze(clone, "integration/old", "origin/main"))
+        integration.sync(clone, "integration/new", "origin/main", [(p["repo"], p["number"], None) for p in rep["prs"]],
+                         url_for=lambda r: str(remote.dir))
+        new = integration.report(integration.analyze(clone, "integration/new", "origin/main"))
+        self.assertEqual(new["prs"][0]["merged_head"], newer)
+
+    def test_a_dirty_tree_is_refused(self):
+        remote = self.remote()
+        self.make_pr(remote, 1, "pr-one", "one.txt", "1\n")
+        clone = self.clone_of(remote)
+        (clone / "dirty.txt").write_text("x")
+        with self.assertRaises(SystemExit):
+            integration.sync(clone, "integration/x", "origin/main", [("o/r", 1, None)], url_for=lambda r: str(remote.dir))
+
+    def test_parse_pr(self):
+        self.assertEqual(integration.parse_pr("SUNET/vc#840"), ("SUNET/vc", 840, None))
+        self.assertEqual(integration.parse_pr("a/b#1@abcdef0"), ("a", "b", 1)[:0] + ("a/b", 1, "abcdef0"))
+        with self.assertRaises(SystemExit):
+            integration.parse_pr("vc#840")
+
+
+class Workflow(unittest.TestCase):
+    """The build workflow is not runnable here, so guard what can be checked: it parses, it verifies before it builds, and no
+    dispatch input is interpolated into a shell script (a workflow_dispatch input is attacker-controlled text)."""
+
+    def setUp(self):
+        import yaml
+        self.text = (ROOT / ".github" / "workflows" / "build-integration.yml").read_text()
+        self.wf = yaml.safe_load(self.text)
+
+    def test_parses_with_the_dispatch_inputs_it_documents(self):
+        inputs = self.wf[True]["workflow_dispatch"]["inputs"]      # YAML reads the key `on` as True
+        self.assertTrue({"repo", "branch", "component", "pr_repos"} <= set(inputs))
+        self.assertTrue(all(inputs[k]["required"] for k in ("repo", "branch", "component", "pr_repos")))
+
+    def test_verify_runs_before_the_image_is_built_and_pushed(self):
+        steps = self.wf["jobs"]["build"]["steps"]
+        names = [s.get("name", s.get("uses", "")) for s in steps]
+        verify = next(i for i, s in enumerate(steps) if "integration.py verify" in s.get("run", ""))
+        build = next(i for i, s in enumerate(steps) if s.get("uses", "").startswith("docker/build-push-action"))
+        self.assertLess(verify, build, names)
+
+    def test_no_dispatch_input_is_interpolated_into_a_shell_script(self):
+        for step in self.wf["jobs"]["build"]["steps"]:
+            self.assertNotIn("${{ inputs.", step.get("run", ""), step.get("name"))
+
+    def test_least_privilege_and_no_latest(self):
+        self.assertEqual(self.wf["permissions"], {"contents": "read", "packages": "write"})
+        self.assertNotIn(":latest", self.text)
 
 
 if __name__ == "__main__":

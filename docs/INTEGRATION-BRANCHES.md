@@ -24,7 +24,32 @@ inside the merge); and, with `--repos`, a merged head that is not the head of an
 regenerated from its PR list, never patched. `report` also shows when a PR's head has moved since it was merged (the branch is
 stale) and whether the PR has since been merged upstream (re-pin to a release).
 
-First run (2026-10-22): vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` has 12 PRs but also 47 commits that are not merges of a
+## Creating and updating a branch: `sync`
+
+```sh
+# from a PR list (merge order as given; @sha pins a head and fails if the PR has moved)
+python3 scripts/integration.py sync --path <clone> --branch integration/<name> --base origin/main \
+    --pr SUNET/vc#840 --pr SUNET/vc#830@90f227fcd [--push origin]
+
+# the same PRs with their LATEST heads (an update); the old branch is only read
+python3 scripts/integration.py sync --path <clone> --branch integration/<name> --from integration/<old> --repos SUNET/vc,sirosfoundation/vc
+```
+Each PR is fetched from its own repository (`pull/<n>/head`) and merged with `--no-ff`, with the message
+`Merge PR owner/repo#N @<head9>: <title>`, so `report` can read the list back offline. A conflict stops the sync and leaves the tree
+clean: resolve it in a glue PR that goes into the list (before the PR it conflicts with), never by hand. `--push` force-pushes
+with a lease. A synced branch always passes `verify`.
+
+## Building it: `.github/workflows/build-integration.yml`
+
+`Actions -> Build integration image` (repo, branch, component, pr_repos, optional dockerfile/target/build args) checks the
+branch out with full history, runs `verify` (a branch that fails is not built), attaches the `report` as an artifact, builds with the
+component's own Dockerfile and a registry cache, and pushes `ghcr.io/<owner>/integration/<component>:<branch>-<sha7>` with labels
+(`org.opencontainers.image.revision`, `org.siros.integration.branch`, `org.siros.integration.prs`,
+`org.siros.integration.report-sha256`) and a provenance attestation. The run summary prints `component@sha256:...`: pin that
+digest in `environments/<env>.yaml`. **The workflow has never run** (it can only be dispatched from the default branch once
+merged) and does not cover builds that need more than build args, such as the vc verifier's circuit-artifact overlay.
+
+## First run (2026-10-22): vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` has 12 PRs but also 47 commits that are not merges of a
 PR (the branch started on a feature line), and 51 problems in all; the engine branch `local/gdc-nymauth-integration-4`
 @ `1d0708b` has a conflict resolved by hand in its #163 merge and two local-only commits (`a25df83`, `1d0708b`).
 Neither can be built as a documented bundle until it is regenerated.
