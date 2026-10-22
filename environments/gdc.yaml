@@ -80,31 +80,32 @@ images:
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
   #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
-  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792625654
-  #   digest sha256:dbf1813070d62d66640afd6d5501fff1addc3152cb3b9eca78a0c18504ff1afe
-  #   source  go-wallet-backend `local/gdc-nymauth-integration-4` @ 1d0708b13f7afe4752250f8e9fe04e0ab719c98f: a LOCAL branch,
-  #           NEVER pushed (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.1d0708b, GIT_REF empty. Base origin/main
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792637980
+  #   digest sha256:2256d0d066bbd41475da8036409a3be1b674eac3c0bce184246235385aca6d69
+  #   source  go-wallet-backend `local/gdc-nymauth-integration-5` @ 46c2e4f43c334853daa299b5884e17bd3eb6172d: a LOCAL branch,
+  #           NEVER pushed (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.46c2e4f, GIT_REF empty. Base origin/main
   #           cb42861b6d640ea17166e6491f69761f58a5f172, go-wmp v0.9.1, plus these merges (heads that were built):
-  #   PRs     https://github.com/sirosfoundation/go-wallet-backend/pull/469 @ 4539967d51244bfc5d109859dd996fea421830c4
-  #             (issuance half of the client-side / blind encryption)
+  #   PRs     https://github.com/sirosfoundation/go-wallet-backend/pull/469 @ 7e09a87ce821e7520c00ba0c16e5d1b4bcea4f9c
+  #             (issuance half of the client-side / blind encryption; includes the Copilot fixes: a deferred HTTP 202 encrypted
+  #             response is relayed, credentials in an encrypted response are capped at 256)
   #           https://github.com/sirosfoundation/go-wallet-backend/pull/471 @ cd6875bbbd902a066d1dcfc8b70f824112f8bf53
   #             (presentation half, verified_request, trust context; includes the fail-closed verifier-trust fix of
   #             https://github.com/sirosfoundation/go-wallet-backend/pull/473)
-  #           https://github.com/sirosfoundation/go-wallet-backend/pull/163 @ b4f33e8f6572e2a3a721e3048c3576a17ae74209
-  #             (WMP, go-wmp v0.9.1; includes the empty-DCQL-id fix of the #439 line, e71e0c0)
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/163 @ 580e90f122ff6d91eeeeee8ee5b9eda623f4bbc0
+  #             (WMP, go-wmp v0.9.1; includes the empty-DCQL-id fix e71e0c0; an open SSE stream closes when its token stops being valid)
   #           https://github.com/sirosfoundation/go-wallet-backend/pull/472 @ be69e2e70a7d00e7bdef85ea99792d7651cd2ec5
   #             (sign-stage refusal)
-  #           plus TWO local-only commits in no PR: a25df83 (the sign refusal wins over response_jwe; client-controlled error text
-  #           is never relayed) and 1d0708b (integration glue: wmphandler.go copies the new sign params over WMP + a translation test)
-  #           none merged; human review pending. NOT included: https://github.com/sirosfoundation/go-wallet-backend/pull/470, and
-  #           a Copilot finding on #469 (an encrypted HTTP 202 deferred response is not relayed) that is being fixed: a follow-up
-  #           rebuild will carry it.
+  #           plus LOCAL-ONLY changes in no PR (the go-wallet-backend session lists them): a25df83 (the sign refusal wins over
+  #           response_jwe; client error text is never relayed), 1d0708b (wmphandler.go glue: new sign params copied over WMP + a
+  #           translation test) and a conflict resolution inside the #469 merge b671ef9 (session.go: the responseStash kept for
+  #           concurrent RequestSign waiters, #469's duplicate signWaiters map dropped; behaviour identical).
+  #           none merged; human review pending. NOT included: https://github.com/sirosfoundation/go-wallet-backend/pull/470.
   #   BREAKING for clients: the engine relies on the CLIENT for encryption. OLD CLIENTS FAIL encrypted issuance
   #           (generate_proof / decrypt_credential_response, flow_complete without credential values) and direct_post.jwt
   #           presentations (sign_presentation with response_encryption + verified_request; the client returns response_jwe) until the
   #           SDKs land. Accepted by the user for gdc. Config: no key added, renamed or removed.
-  #   rollback pins: local-1792564143 (9cb6e57, server-side encryption: works with the current Pixel APK), local-1792560364 (faa5e63),
-  #           local-1792473614 (#469 only)
+  #   rollback pins: local-1792625654 (1d0708b), local-1792564143 (9cb6e57, server-side encryption: works with the current Pixel APK),
+  #           local-1792560364 (faa5e63), local-1792473614 (#469 only)
   #
   # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.0 (RELEASED, tag v0.26.0, commit 621b03f4)
   #   index digest sha256:73d994eaabcf27d68837c12ef42cbb16072c87562c6abe5cf7e2332a8068cf1e
@@ -225,7 +226,7 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792625654
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792637980
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
