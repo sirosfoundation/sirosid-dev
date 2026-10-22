@@ -49,7 +49,9 @@ component's own Dockerfile and a registry cache, and pushes `ghcr.io/<owner>/int
 digest in `environments/<env>.yaml`. **The workflow has never run** (it can only be dispatched from the default branch once
 merged) and does not cover builds that need more than build args, such as the vc verifier's circuit-artifact overlay.
 
-## First run (2026-10-22): vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` has 12 PRs but also 47 commits that are not merges of a
+## First run (2026-10-22)
+
+vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` has 12 PRs but also 47 commits that are not merges of a
 PR (the branch started on a feature line), and 51 problems in all; the engine branch `local/gdc-nymauth-integration-4`
 @ `1d0708b` has a conflict resolved by hand in its #163 merge and two local-only commits (`a25df83`, `1d0708b`).
 Neither can be built as a documented bundle until it is regenerated.
