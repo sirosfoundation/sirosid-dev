@@ -135,6 +135,16 @@ class Verify(unittest.TestCase):
         self.assertEqual(rep["merges"], 2)
         self.assertNotEqual(h1, h2)
 
+    def test_a_pr_found_through_a_fork_is_reported_under_its_base_repository(self):
+        """GitHub answers `commits/<sha>/pulls` on a fork with the UPSTREAM's PRs (their numbers belong to the base repo)."""
+        payload = json.dumps([{"number": 840, "title": "t", "state": "open", "draft": False, "head": {"sha": "a" * 40},
+                               "labels": [], "base": {"repo": {"full_name": "SUNET/vc"}}}])
+
+        def run(cmd, **kw):
+            return subprocess.CompletedProcess(cmd, 0, stdout=payload, stderr="")
+        found = integration.lookup_prs(["sirosfoundation/vc"], "b" * 40, run=run)
+        self.assertEqual((found[0]["repo"], found[0]["number"]), ("SUNET/vc", 840))
+
     def test_a_merged_head_that_is_no_pr_is_reported_unmapped(self):
         r = Repo()
         r.pr("pr-one", "one.txt", "1\n")

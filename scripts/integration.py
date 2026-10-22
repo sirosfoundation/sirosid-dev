@@ -112,7 +112,9 @@ def lookup_prs(repos, sha, run=subprocess.run):
             except json.JSONDecodeError:
                 continue
             if found:
-                return [{"repo": repo, "number": p["number"], "title": p["title"], "state": p["state"] if not p.get("merged_at")
+                # The repository a PR number belongs to is the PR's BASE repository: asking a fork returns the upstream's PRs
+                # for commits it shares, under the upstream's numbers.
+                return [{"repo": p.get("base", {}).get("repo", {}).get("full_name") or repo, "number": p["number"], "title": p["title"], "state": p["state"] if not p.get("merged_at")
                          else "merged", "draft": p.get("draft", False), "head": p["head"]["sha"],
                          "labels": [l["name"] for l in p.get("labels", [])]} for p in found]
     return []
