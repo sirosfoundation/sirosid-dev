@@ -18,10 +18,18 @@ labels, and whether the PR's head has moved since it was merged).
   - a merge of a second parent that is not a PR head (checked with the API when `--repos` is given).
 A branch that fails is regenerated from its PR list, never patched.
 
+    integration.py sync --path <clone> --branch integration/<name> --base origin/main --pr owner/repo#N [--pr ...] [--push]
+    integration.py sync --path <clone> --branch integration/<name> --from integration/<old> --repos ...   # same PRs, latest heads
+
+`sync` (re)creates the branch from a PR list: base, then one `--no-ff` merge per PR head in the order given, each with the
+message `Merge PR owner/repo#N @<head7>: <title>` so `report` can read the list back offline. A conflict stops it: resolve it in
+a (draft, never-for-upstream) glue PR that goes in the list, never by hand in the merge.
+
 The first-parent path starts at the merge base of `--tip` and `--base`. A merge's second parent is the PR head that was merged.
 """
 import argparse
 import json
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -104,10 +112,21 @@ def lookup_prs(repos, sha, run=subprocess.run):
             except json.JSONDecodeError:
                 continue
             if found:
-                return [{"repo": repo, "number": p["number"], "title": p["title"], "state": p["state"] if not p.get("merged_at")
+                # The repository a PR number belongs to is the PR's BASE repository: asking a fork returns the upstream's PRs
+                # for commits it shares, under the upstream's numbers.
+                return [{"repo": p.get("base", {}).get("repo", {}).get("full_name") or repo, "number": p["number"], "title": p["title"], "state": p["state"] if not p.get("merged_at")
                          else "merged", "draft": p.get("draft", False), "head": p["head"]["sha"],
                          "labels": [l["name"] for l in p.get("labels", [])]} for p in found]
     return []
+
+
+MESSAGE = re.compile(r"^Merge PR (?P<repo>[\w.-]+/[\w.-]+)#(?P<number>\d+) @(?P<sha>[0-9a-f]{7,40})(?:: (?P<title>.*))?$")
+
+
+def from_message(subject):
+    """The PR a `sync` merge message names (offline, no API), or None for any other message."""
+    m = MESSAGE.match(subject)
+    return m.groupdict() if m else None
 
 
 def report(analysis: Analysis, repos=(), lookup=lookup_prs) -> dict:
@@ -118,7 +137,11 @@ def report(analysis: Analysis, repos=(), lookup=lookup_prs) -> dict:
             heads.append((m.parents[1], m))
     prs, unmapped, seen = [], [], {}
     for head, merge in heads:
+        named = from_message(merge.subject)
         found = lookup(repos, head) if repos else []
+        if not found and named:
+            found = [{"repo": named["repo"], "number": int(named["number"]), "title": named.get("title") or "", "state": "unknown",
+                      "draft": False, "head": head, "labels": []}]
         if not found:
             unmapped.append({"merged_head": head, "merge": merge.sha, "subject": merge.subject})
             continue
@@ -137,16 +160,79 @@ def report(analysis: Analysis, repos=(), lookup=lookup_prs) -> dict:
             "drift": [{"commit": s.sha, "subject": s.subject, "problem": p} for s, p in analysis.problems]}
 
 
+def parse_pr(spec):
+    """`owner/repo#N` or `owner/repo#N@<sha>` -> (repo, number, expected head or None)."""
+    m = re.fullmatch(r"([\w.-]+/[\w.-]+)#(\d+)(?:@([0-9a-f]{7,40}))?", spec)
+    if not m:
+        raise SystemExit(f"not a PR reference (owner/repo#N[@sha]): {spec}")
+    return m.group(1), int(m.group(2)), m.group(3)
+
+
+def ssh_url(repo):
+    return f"git@github.com:{repo}.git"
+
+
+def sync(path, branch, base_ref, prs, url_for=ssh_url, titles=None, push_to=None):
+    """(Re)create `branch` as base_ref plus one `--no-ff` merge per PR head, in order. Returns [(repo, number, head)]."""
+    path = Path(path)
+    if git(path, "status", "--porcelain").stdout.strip():
+        raise SystemExit("the working tree is not clean")
+    merged = []
+    git(path, "checkout", "-q", "-B", branch, base_ref)
+    for repo, number, expected in prs:
+        ref = f"refs/integration/{repo.replace('/', '_')}_pr{number}"
+        fetched = git(path, "fetch", "-q", url_for(repo), f"+pull/{number}/head:{ref}", check=False)
+        if fetched.returncode != 0:
+            raise SystemExit(f"cannot fetch {repo}#{number}: {fetched.stderr.strip()}")
+        head = git(path, "rev-parse", ref).stdout.strip()
+        if expected and not head.startswith(expected):
+            raise SystemExit(f"{repo}#{number} head is {head[:9]}, not the requested {expected}: the PR has moved")
+        title = (titles or {}).get((repo, number), "")
+        message = f"Merge PR {repo}#{number} @{head[:9]}" + (f": {title}" if title else "")
+        merge = git(path, "merge", "--no-ff", "-m", message, head, check=False)
+        if merge.returncode != 0:
+            git(path, "merge", "--abort", check=False)
+            raise SystemExit(f"{repo}#{number} @{head[:9]} conflicts with what is already on {branch}. Resolve it in a glue PR "
+                             f"added to the list (before this one), not by hand: {merge.stdout.strip()[:300]}")
+        merged.append((repo, number, head))
+    if push_to:
+        git(path, "push", "--force-with-lease", push_to, f"{branch}:{branch}")
+    return merged
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=("report", "verify"))
+    ap.add_argument("command", choices=("report", "verify", "sync"))
     ap.add_argument("--path", required=True, help="a clone of the repository holding the integration branch")
-    ap.add_argument("--tip", required=True, help="the integration branch (or commit)")
+    ap.add_argument("--tip", help="the integration branch (or commit)")
+    ap.add_argument("--branch", help="sync: the branch to (re)create")
+    ap.add_argument("--pr", action="append", default=[], help="sync: owner/repo#N[@sha], in merge order (repeatable)")
+    ap.add_argument("--from", dest="source", help="sync: take the PR list (latest heads) from this existing branch")
+    ap.add_argument("--push", metavar="REMOTE", help="sync: force-with-lease push the branch to this remote")
     ap.add_argument("--base", default="origin/main", help="what the branch was built on (default origin/main)")
     ap.add_argument("--repos", default="", help="comma-separated owner/name list searched for each merged head's PR")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--summary", action="store_true", help="report: one line, owner/repo#N@head9,... (an image label)")
     args = ap.parse_args(argv)
     repos = [r for r in args.repos.split(",") if r]
+    if args.command == "sync":
+        if not args.branch:
+            raise SystemExit("sync needs --branch")
+        prs = [parse_pr(p) for p in args.pr]
+        titles = {}
+        if args.source:
+            listed = report(analyze(Path(args.path), args.source, args.base), repos)
+            if listed["unmapped_merges"]:
+                raise SystemExit("some merges of the source branch name no PR; pass --repos or --pr explicitly")
+            prs += [(p["repo"], p["number"], None) for p in listed["prs"]]
+            titles = {(p["repo"], p["number"]): p["title"] for p in listed["prs"]}
+        if not prs:
+            raise SystemExit("sync needs at least one --pr (or --from)")
+        for repo, number, head in sync(args.path, args.branch, args.base, prs, titles=titles, push_to=args.push):
+            print(f"merged {repo}#{number} @{head[:9]}")
+        return 0
+    if not args.tip:
+        raise SystemExit(f"{args.command} needs --tip")
     analysis = analyze(Path(args.path), args.tip, args.base)
     data = report(analysis, repos)
     if args.command == "verify":
@@ -158,7 +244,9 @@ def main(argv=None):
             print(f"DRIFT {d['commit'][:9]} {d['subject'][:70]}: {d['problem']}", file=sys.stderr)
         print(f"{'FAILED' if data['drift'] else 'OK'}: {data['merges']} merges, {len(data['drift'])} problems", file=sys.stderr)
         return 1 if data["drift"] else 0
-    if args.json:
+    if args.summary:
+        print(",".join(f"{p['repo']}#{p['number']}@{p['merged_head'][:9]}" for p in data["prs"]))
+    elif args.json:
         print(json.dumps(data, indent=2))
     else:
         import yaml

@@ -1,0 +1,136 @@
+# Builds an integration branch ("bag of PRs", docs/INTEGRATION-BRANCHES.md) into an image on GHCR - but only a branch that
+# VERIFIES: its history is the base plus merges of pull-request heads and nothing else (scripts/integration.py verify).
+#
+#   Actions -> "Build integration image" -> Run workflow
+#     repo        owner/name holding the branch            e.g. sirosfoundation/vc
+#     branch      the integration branch                    e.g. integration/gdc-nymauth-v5
+#     component   image name                                e.g. vc-apigw
+#     pr_repos    repos searched for each merged head's PR  e.g. SUNET/vc,sirosfoundation/vc
+#
+# The image is ghcr.io/<owner>/integration/<component>:<branch-slug>-<sha7>, labelled with the branch tip, the PR list and the
+# sha256 of the report; environments pin it by DIGEST (the run summary prints component@sha256:...). The report is also the
+# `integration-report` artifact. Images here contain UNMERGED code: never `latest`, pin by digest, re-pin to a release when
+# the PRs land.
+#
+# NOT YET EXERCISED: this workflow has never run. Known gaps: a component that needs more than build args (the vc verifier's
+# circuit-artifact overlay, dockerfiles/verifier-nymauth.Dockerfile, needs a file that is not in any repo) is not covered; a
+# private repository needs the INTEGRATION_READ_TOKEN secret (a fine-grained token with contents:read).
+name: Build integration image
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: "owner/name of the repository holding the integration branch"
+        required: true
+      branch:
+        description: "the integration branch, e.g. integration/gdc-nymauth-v5"
+        required: true
+      component:
+        description: "image name, e.g. vc-apigw"
+        required: true
+      base:
+        description: "what the branch was built on (a branch of that repo)"
+        default: "main"
+      pr_repos:
+        description: "comma-separated owner/name list searched for each merged head's pull request"
+        required: true
+      dockerfile:
+        description: "Dockerfile path inside the repository"
+        default: "Dockerfile"
+      target:
+        description: "docker build --target (optional)"
+        default: ""
+      build_args:
+        description: "KEY=VALUE per line (e.g. SERVICE_NAME=apigw, VERSION=..., full 40-char ZK refs)"
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Tools (this repository)
+        uses: actions/checkout@v4
+        with:
+          path: tools
+
+      - name: The integration branch (full history)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repo }}
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          path: src
+          token: ${{ secrets.INTEGRATION_READ_TOKEN || github.token }}
+
+      - name: Verify, and report what is in it
+        env:
+          GH_TOKEN: ${{ secrets.INTEGRATION_READ_TOKEN || github.token }}
+          BASE_BRANCH: ${{ inputs.base }}
+          BRANCH: ${{ inputs.branch }}
+          PR_REPOS: ${{ inputs.pr_repos }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet pyyaml
+          BASE="origin/$BASE_BRANCH"
+          git -C src fetch --quiet origin "$BASE_BRANCH"
+          # A branch with a patch commit, a change hidden in a merge, a hand-resolved conflict or a head that is no PR fails here.
+          python3 tools/scripts/integration.py verify --path src --tip HEAD --base "$BASE" --repos "$PR_REPOS"
+          python3 tools/scripts/integration.py report --path src --tip HEAD --base "$BASE" --repos "$PR_REPOS" --json > report.json
+          SLUG=$(echo "$BRANCH" | tr '/' '-' | tr -c 'A-Za-z0-9._-\n' '-')
+          {
+            echo "REPORT_SHA=$(sha256sum report.json | cut -d' ' -f1)"
+            echo "TIP=$(git -C src rev-parse HEAD)"
+            echo "TAG=${SLUG}-$(git -C src rev-parse --short=7 HEAD)"
+            echo "PRS=$(python3 tools/scripts/integration.py report --path src --tip HEAD --base "$BASE" --repos "$PR_REPOS" --summary)"
+          } >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: integration-report
+          path: report.json
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: src
+          file: src/${{ inputs.dockerfile }}
+          target: ${{ inputs.target }}
+          build-args: ${{ inputs.build_args }}
+          push: true
+          provenance: true
+          tags: ghcr.io/${{ github.repository_owner }}/integration/${{ inputs.component }}:${{ env.TAG }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/integration/${{ inputs.component }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository_owner }}/integration/${{ inputs.component }}:buildcache,mode=max
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ inputs.repo }}
+            org.opencontainers.image.revision=${{ env.TIP }}
+            org.siros.integration.branch=${{ inputs.branch }}
+            org.siros.integration.prs=${{ env.PRS }}
+            org.siros.integration.report-sha256=${{ env.REPORT_SHA }}
+
+      - name: Summary (pin this)
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/integration/${{ inputs.component }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo "### ${IMAGE}@${DIGEST}"
+            echo "- tag: \`${TAG}\`, branch tip \`${TIP}\`"
+            echo "- PRs: \`${PRS}\`"
+            echo "- report sha256: \`${REPORT_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
