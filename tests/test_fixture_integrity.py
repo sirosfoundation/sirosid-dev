@@ -627,8 +627,8 @@ class NymAuth(FixtureCase):
         """The birth date `holder`'s `auth_scope` credential carries at the
         claim nym_auth's documentClaims copies from, as a date - or None when
         the holder has no such credential."""
-        (source, target), = self.auth[auth_scope]["documentClaims"].items()
-        self.assertEqual(target, "birth_date")
+        # The SD-JWT PID scopes also copy the national identifier and issuing country (the seed's subjects); this is about the date.
+        (source,) = [src for src, dst in self.auth[auth_scope]["documentClaims"].items() if dst == "birth_date"]
         spec = self.types[auth_scope]
         if spec["issuance"]["source"] == "assertion":
             # pid_1_5 is built from mini-oidc's own claims at issuance; its

@@ -33,8 +33,13 @@ DOCTYPE = "eu.europa.ec.eudi.nym_auth.1"
 
 # auth scope -> (auth_claims, identity_attributes, document_claims)
 EXPECTED_AUTH_SCOPES = {
-    "pid_1_8": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"}, {"birthdate": "birth_date"}),
-    "pid_1_5": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"}, {"birthdate": "birth_date"}),
+    # The SD-JWT PIDs also copy the national identifier and issuing country: the seed's subjects follow the presented PID.
+    "pid_1_8": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"},
+                {"birthdate": "birth_date", "personal_administrative_number": "personal_administrative_number",
+                 "issuing_country": "issuing_country"}),
+    "pid_1_5": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"},
+                {"birthdate": "birth_date", "personal_administrative_number": "personal_administrative_number",
+                 "issuing_country": "issuing_country"}),
     "pid_mdoc": (["eu.europa.ec.eudi.pid.1.given_name", "eu.europa.ec.eudi.pid.1.family_name"],
                  {"eu.europa.ec.eudi.pid.1.given_name": "given_name",
                   "eu.europa.ec.eudi.pid.1.family_name": "family_name"},
