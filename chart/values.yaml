@@ -379,6 +379,11 @@ walletBackend:
   # this chart doesn't model (wallet_provider/WIA, AS rules, storage
   # backends). A list here REPLACES the list it merges over.
   extraConfig: {}
+  # Chart-relative path of an assurance policy (go-wallet-backend wallet_provider.attestation.assurance.rules_file).
+  # When set, a ConfigMap wallet-backend-assurance (key assurance.rules) carries it; mount it at
+  # /etc/wallet/assurance and point extraConfig at /etc/wallet/assurance/assurance.rules. The backend refuses to
+  # start if the file is missing or fails its lint. Empty: no ConfigMap.
+  assuranceRules: ""
   # How the VCTM registry role is configured.
   #   legacy     (default) - a separate registry.yaml, passed with --registry-config.
   #                          For go-wallet-backend images WITHOUT

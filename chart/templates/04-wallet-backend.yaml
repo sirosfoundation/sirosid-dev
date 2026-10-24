@@ -168,6 +168,20 @@ data:
     (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac l) (tenant_id (*)))
     (token (acr (*)) (aud (* set wallet-backend wallet-registry)) (tac rl) (tenant_id (*)))
 
+{{- if .Values.walletBackend.assuranceRules }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wallet-backend-assurance
+  namespace: {{ $ns }}
+  {{- include "siros-id.labels" (list . (dict)) | nindent 2 }}
+  {{- include "siros-id.annotations" (list . (dict)) | nindent 2 }}
+data:
+  assurance.rules: |-
+    {{- .Files.Get .Values.walletBackend.assuranceRules | nindent 4 }}
+{{- end }}
+
 ---
 apiVersion: v1
 kind: ConfigMap

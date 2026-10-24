@@ -533,6 +533,16 @@ def write_as_rules(docs: list, out_dir: Path) -> Path:
     return _write_documents(docs, out_dir, "wallet-backend-as-rules", "as-rules")
 
 
+def write_assurance_rules(docs: list, out_dir: Path) -> Path | None:
+    """Materialize walletBackend.assuranceRules (ConfigMap wallet-backend-assurance) as a directory, or None when
+    the environment sets no assurance policy. go-wallet-backend refuses to start if the configured rules_file is
+    missing, so the targets upload it to /etc/wallet/assurance."""
+    if not any(d.get("kind") == "ConfigMap" and (d.get("metadata") or {}).get("name") == "wallet-backend-assurance"
+               for d in docs if isinstance(d, dict)):
+        return None
+    return _write_documents(docs, out_dir, "wallet-backend-assurance", "assurance")
+
+
 def integral_nym_auth_numbers(config: dict) -> dict:
     """Helm renders an integer of a million or more as a float (artifact_bytes 1062842 becomes `1.062842e+06`,
     which PyYAML then dumps as `1062842.0`), and vc's allowlist wants an integer there. Only the allowlist's
