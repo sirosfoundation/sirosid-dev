@@ -80,7 +80,18 @@ images:
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
   #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
-  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792637980
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792841318
+  #   digest sha256:7385b905632cbdc73f17be35c983f73cb3715e240dab79ee800712d7197cc920 (integration 6, 2026-10-24)
+  #   source  go-wallet-backend `local/gdc-nymauth-integration-6` @ f9aa081e6e50c33193829875fec3ee1d031b29ad: a LOCAL branch,
+  #           NEVER pushed (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.f9aa081, GIT_REF empty. Base origin/main
+  #           a310e157 (#436, #429, go 1.27.3), go-wmp v0.10.0, plus PRs (heads built): #469 38388ef, #471 b6674b3 (incl #473),
+  #           #163 5f4ee5e (incl #439), #472 84c6928, #480 3d39e8f, #476 26b333c, #477 7aab47f (all
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/<n>); NOT #468/#470. LOCAL-ONLY commits 6a29fe6, 4c3e914,
+  #           f9aa081, fa6f855 and the #163 conflict resolutions (human look wanted before any #163 PR). Built here, so the image id
+  #           differs from the go-wallet-backend session's. Config: new issuance.secret_members (default fine); main's #429/#436
+  #           make as.legacy.enabled deprecated, so the chart no longer renders it. Behaviour: engine-blind encryption stays.
+  #   rollback pin: local-1792637980 (46c2e4f, digest sha256:2256d0d066bbd41475da8036409a3be1b674eac3c0bce184246235385aca6d69)
+  #   previous engine (46c2e4f):
   #   digest sha256:2256d0d066bbd41475da8036409a3be1b674eac3c0bce184246235385aca6d69
   #   source  go-wallet-backend `local/gdc-nymauth-integration-5` @ 46c2e4f43c334853daa299b5884e17bd3eb6172d: a LOCAL branch,
   #           NEVER pushed (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.46c2e4f, GIT_REF empty. Base origin/main
@@ -226,7 +237,7 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792637980
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792841318
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
