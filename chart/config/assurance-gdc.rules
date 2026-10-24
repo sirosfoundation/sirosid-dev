@@ -1,0 +1,56 @@
+# Assurance policy for the gdc Wallet Provider: SIMULATION. NEVER use in production.
+#
+# This policy lets the gdc test environment (no certified hardware) exercise
+# issuers that demand "high" key storage and user authentication. It does so by
+# trusting what the CLIENT CLAIMS: a client that sends
+# security_properties.plugin = "soft" is granted the highest level for both
+# key storage and user authentication. Both rules depend on client-claimed
+# evidence on purpose (the linter warns about them), so any client can obtain
+# "high" here. That is the point of the simulation and exactly why it must not
+# run anywhere real credentials are issued.
+#
+# Run with lower_by_claims_key_storage = false and
+# lower_by_claims_user_authentication = false so these rules are the sole
+# authority. With the default (true) the result would be min(claimed, granted).
+#
+# What is deliberately NOT here:
+#  - no rule for development_attested: a development App Attest chain falls to
+#    the floor like any unverified evidence (a development attestation is not S1);
+#  - no rule for hsm or any other plugin claim: they fall to the floor;
+#  - the production-style FIDO2 (MDS3) and platform rules are kept below as
+#    documented templates only. They are comments, not rules.
+#
+# Format: advanced form, one rule per line, each preceded by "# id: <name>".
+# Slot order is fixed (schema v1); (verified) is "don't care".
+
+# id: gdc-soft-ks-high
+(assure-ks (tier (* set basic enhanced-basic moderate high))(evidence (verified)(claimed (plugin soft))))
+
+# id: gdc-soft-ua-high
+(assure-ua (tier (* set basic enhanced-basic moderate high))(evidence (verified)(claimed (plugin soft))))
+
+# A WIA is issued to every wallet, as with the policy disabled. Without an
+# assure-wia-issue rule every WIA request is refused (403 WIA_REFUSED_BY_POLICY).
+# id: gdc-wia-issue-all
+(assure-wia-issue (evidence))
+
+# WIA S profile: s1-full-client (emits platform_attested) only when this very
+# request carried a verified native attestation (Apple App Attest / Play
+# Integrity). Everything else, development_attested included, gets the floor
+# s3-backend-only (emits backend_attested).
+# id: gdc-wia-s1-platform
+(assure-wia (profile s1-full-client)(evidence (verified (fido2)(platform (source platform_attested)))))
+
+# ---- Production-style templates, intentionally disabled ---------------------
+# Uncomment and give each rule its own "# id: <name>" line to enable. Replace
+# the placeholder AAGUIDs with the authenticator models you accept. Do NOT put
+# an "id:" comment on the template lines below: this file keeps them inert.
+#
+# FIDO2 key storage, verified through MDS3:
+# (assure-ks (tier (* set basic enhanced-basic moderate))(evidence (verified (fido2 (mds3 trusted)(aaguid (* set 00000000-0000-0000-0000-000000000001 00000000-0000-0000-0000-000000000002))))))
+#
+# FIDO2 user authentication, needs user verification at key creation:
+# (assure-ua (tier (* set basic enhanced-basic moderate))(evidence (verified (fido2 (mds3 trusted)(aaguid (* set 00000000-0000-0000-0000-000000000001))(uv present)))))
+#
+# Platform (native attestation) key storage:
+# (assure-ks (tier (* set basic enhanced-basic))(evidence (verified (fido2)(platform (source platform_attested)))))

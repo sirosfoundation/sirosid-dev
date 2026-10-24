@@ -43,7 +43,7 @@ images:
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792609658            # vc c8c5b1ea (seed delivery, #840)
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792609658
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792609658
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792841318  # engine f9aa081 (integration 6)
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792873390  # engine 64e1ebe (integration 7)
   pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
 
@@ -82,6 +82,21 @@ wallet_attestation: true
 # environments/README.md. Anything the chart can express is reachable here
 # without a code change anywhere else.
 values:
+  walletBackend:
+    # go-wallet-backend assurance engine (integration 7, #481). SIMULATION policy: a client that CLAIMS security_properties.plugin
+    # = "soft" is granted the highest key-storage and user-authentication level, so any client gets "high" here. NEVER in
+    # production. The lower_by_claims_* switches MUST be false so the rules are the sole authority (their default is true).
+    # The rules file is chart/config/assurance-gdc.rules (from go-wallet-backend deploy/assurance/gdc-integration7.rules @
+    # 64e1ebe, 4 rules, lints with two WARNs for the claimed evidence); the backend refuses to start if it is missing.
+    assuranceRules: config/assurance-gdc.rules
+    extraConfig:
+      wallet_provider:
+        attestation:
+          assurance:
+            enabled: true
+            rules_file: /etc/wallet/assurance/assurance.rules
+            lower_by_claims_key_storage: false
+            lower_by_claims_user_authentication: false
   issuer:
     # SUNET/vc#840: mint pre-authorized offers for the BASE scopes, so there are no `<type>_offer` twins (the chart drops them
     # for an environment that sets this, sirosid_core/vc_render.py drop_offer_twins). Needs vc images built from a SHA that

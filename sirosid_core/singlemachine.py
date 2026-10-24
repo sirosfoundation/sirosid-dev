@@ -287,6 +287,8 @@ def build_machine_config(ctx: DeployContext, images: dict, bundle_ref: str, volu
         wb_files.append(_file("/app/registry.yaml", (out_dir / "wallet-backend-registry.yaml").read_text()))
     for rules in sorted((out_dir / "as-rules").glob("*")):
         wb_files.append(_file(f"/as-rules/{rules.name}", rules.read_bytes()))
+    for rules in sorted((out_dir / "assurance").glob("*")):
+        wb_files.append(_file(f"/etc/wallet/assurance/{rules.name}", rules.read_bytes()))
     containers.append(_container(
         "wallet-backend", images["wallet-backend"],
         cmd=["--mode=all", "--config=/app/config.yaml"] + ([] if registry_integrated else ["--registry-config=/app/registry.yaml"]),
