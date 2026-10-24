@@ -411,14 +411,28 @@ features:
         source: datastore
         authOptions:
           scopes:
+            # The seed is derived from the PRESENTED PID's national identifier, not from what the datastore stores
+            # (SUNET/vc#838: document_claims REPLACE the stored document's elements with the verified presented claims, and
+            # the issuer asks the wallet to disclose every document_claims source; SUNET/vc#793: commitments.ssc.subjects
+            # are read from the issued document, so the seed follows the PID). personal_administrative_number is the PID's
+            # national identifier (the "social security number"). Failing closed: a PID without them is not issued from.
+            # An image without #838 ignores document_claims and falls back to the stored values (the same for the fixture
+            # persons, tests/test_fixture_integrity.py), so this is invisible there. Only the SD-JWT PIDs carry the
+            # identifiers: mDL/Photo ID/mdoc PID (below) cannot supply them and keep the stored values.
             pid_1_8:
               claims: [given_name, family_name, birthdate]
               identityAttributes: {birthdate: birth_date}
-              documentClaims: {birthdate: birth_date}
+              documentClaims:
+                birthdate: birth_date
+                personal_administrative_number: personal_administrative_number
+                issuing_country: issuing_country
             pid_1_5:
               claims: [given_name, family_name, birthdate]
               identityAttributes: {birthdate: birth_date}
-              documentClaims: {birthdate: birth_date}
+              documentClaims:
+                birthdate: birth_date
+                personal_administrative_number: personal_administrative_number
+                issuing_country: issuing_country
             pid_mdoc:
               claims: [eu.europa.ec.eudi.pid.1.given_name, eu.europa.ec.eudi.pid.1.family_name]
               identityAttributes:
