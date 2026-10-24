@@ -33,8 +33,6 @@ server:
     allow_credentials: true
 as:
   enabled: true
-  legacy:
-    enabled: false
   signing_key_path: /as-cert/tls.key
   rules_dir: /as-rules
   default_max_tac: rwlid

@@ -43,7 +43,7 @@ images:
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792609658            # vc c8c5b1ea (seed delivery, #840)
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792609658
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792609658
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792637980  # engine 46c2e4f (client-side encryption)
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792841318  # engine f9aa081 (integration 6)
   pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
 
