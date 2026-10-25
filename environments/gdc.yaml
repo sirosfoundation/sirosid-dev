@@ -89,18 +89,16 @@ images:
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
   #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
-  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792873390
-  #   digest sha256:6f8597f347370ec8bae96e6bb30438b112d277f3b33e21b6089551d4dfa2fd8b (integration 7, 2026-10-24)
-  #   source  go-wallet-backend `local/gdc-nymauth-integration-7` @ 64e1ebeed3dc95a3d0e9e196b73e54853942f7e6: LOCAL, NEVER pushed
-  #           (fetched by full SHA from a worktree); VERSION 0.24.0-nymauth.64e1ebe, GIT_REF empty. Base main a310e157, go-wmp
-  #           v0.10.0, PRs (heads built, all https://github.com/sirosfoundation/go-wallet-backend/pull/<n>): #469 38388ef1,
-  #           #471 b6674b33, #163 5f4ee5ee, #472 84c69285, #480 3d39e8f6, #476 26b333c8, #477 0ff170fa, #481 2121f30c (SPOCP
-  #           assurance engine), #482 71624c4c (WIA/preview). LOCAL-ONLY commits 11a62a0, c32f838, 755ba30, 2339482, dd3f524, 64e1ebe
-  #           and conflict resolutions in #163, #477, #481. Config: the assurance block in values.walletBackend (rules file mounted at
-  #           /etc/wallet/assurance). Behaviour: a key attestation's wallet_instance_id must be an owned, active instance; WIA records
-  #           wscd_type=unknown; POST /wallet-provider/assurance-preview. The soft-plugin simulation applies only to clients that send
-  #           security_properties.plugin=soft (the Kotlin SDK does not yet): the Pixel gets the floor.
-  #   rollback pin: local-1792841318 (integration 6, f9aa081, digest sha256:7385b905632cbdc73f17be35c983f73cb3715e240dab79ee800712d7197cc920)
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792928945
+  #   digest sha256:e95feb9dfb1e1b69a2b288db75ae3db29d649434873a66b10e64c1ac65786a1a (integration 10, 2026-10-25; supersedes 8 and 9, never deployed)
+  #   source  go-wallet-backend local branch @ 5536d36767eab34631347ca3e352b43856e4ef96: LOCAL, NEVER pushed (fetched by full SHA
+  #           from a worktree); VERSION 0.24.0-nymauth.5536d36, GIT_REF empty. Base main a310e157, go-wmp v0.10.0, PRs (heads built,
+  #           all https://github.com/sirosfoundation/go-wallet-backend/pull/<n>): #469 38388ef1, #471 b6674b33, #163 5f4ee5ee, #472
+  #           84c69285, #480 3d39e8f6, #476 26b333c8, #477 0ff170fa, #481 f8b276c5, #482 bb5a2a63, #483 4188f30b, #484 76d9a973,
+  #           #485 c5244412, #486 85c73d18; NOT #487 (App Attest). Over integration 7: the instance-key stack, an Android key
+  #           attestation enforcement gate (ENFORCEMENT ignore|reject, default ignore; gdc sets none, so it behaves as 7) and a
+  #           status-list re-check on use. The assurance rules file is unchanged (chart/config/assurance-gdc.rules).
+  #   rollback pin: local-1792873390 (integration 7, 64e1ebe, digest sha256:6f8597f347370ec8bae96e6bb30438b112d277f3b33e21b6089551d4dfa2fd8b)
   #   previous engine (integration 6): local-1792841318
   #   digest sha256:7385b905632cbdc73f17be35c983f73cb3715e240dab79ee800712d7197cc920 (integration 6, 2026-10-24)
   #   source  go-wallet-backend `local/gdc-nymauth-integration-6` @ f9aa081e6e50c33193829875fec3ee1d031b29ad: a LOCAL branch,
@@ -258,7 +256,7 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792873390
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792928945
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
