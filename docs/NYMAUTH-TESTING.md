@@ -180,7 +180,7 @@ URL, x5c = the DS leaf) is true from the mDOC IACA registry with the leaf alone.
 ### The pins
 | component | pin | built from |
 |---|---|---|
-| vc-verifier / apigw / issuer / registry | `registry.fly.io/sirosid-gdc-vc-<svc>:local-1792609658` | vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` (includes #840; verifier + circuit-artifact overlay) |
+| vc-verifier / apigw / issuer / registry | `registry.fly.io/sirosid-gdc-vc-<svc>:local-1792922319` | vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` (includes #840; verifier + circuit-artifact overlay) |
 | wallet-backend (engine) | `registry.fly.io/sirosid-gdc-wallet-backend:local-1792873390` | go-wallet-backend local branch @ `64e1ebe` (#469, #471, #163, #472, #480, #476, #477, #481, #482 + local-only commits; go-wmp v0.10.0; assurance simulation policy): the CLIENT does the encryption, so a client without that support fails issuance and direct_post.jwt |
 | pdp | `ghcr.io/sirosfoundation/go-trust:0.26.0` | released (go-trust#218) |
 

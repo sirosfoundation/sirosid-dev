@@ -39,10 +39,10 @@ credential_registries:
 
 images:
   # Same pins as gdc (PIN PROVENANCE in environments/gdc.yaml): tag, digest, base commit and PR heads of every build.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792609658      # vc c8c5b1ea + artifact overlay (zkp_req, #840)
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792609658            # vc c8c5b1ea (seed delivery, #840)
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792609658
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792609658
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792922319      # vc c8c5b1ea + artifact overlay (zkp_req, #840)
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792922319            # vc c8c5b1ea (seed delivery, #840)
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792922319
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792922319
   wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792873390  # engine 64e1ebe (integration 7)
   pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
@@ -175,7 +175,8 @@ values:
           verifier_id: x509_san_dns:sirosid-nymauth-vc-verifier.fly.dev
           circuits:
             allow:
-              - config: known-offender-matching-ssc
+              - system_id: urn:circuits:longfellow:nym_auth:v1
+                config: known-offender-matching-ssc
                 hash_circuit_id: 5f8c75ae5c3893ef6ab6a079628cb385ba85e95a85437d58570c455289d75729
                 sig_circuit_id: 00513797c75b2eab1a9db75004977c15317d4e40c0db1d00674523431baa75cb
                 block_enc_hash: 6983
@@ -183,11 +184,19 @@ values:
                 artifact_path: /etc/vc/circuits/nym_auth-ssc.bin
                 artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
                 artifact_bytes: 1062842
+              # Vega (SUNET/vc#830 dispatch): shapes only, no circuit ids (vc refuses a Vega entry carrying them). The same
+              # `config` as above is right: the pseudonym is system-independent. Digest and size are the catalog's entry
+              # nymauth-vega-mdoc-v1 (zk-circuits-test.fly.dev/v1/circuits), the artifact the prover uses.
+              - system_id: urn:circuits:vega:nym_auth:v1
+                config: known-offender-matching-ssc
+                artifact_path: /etc/vc/circuits/nym_auth-vega-ssc.bin
+                artifact_sha256: 4da5e73afb9be2682e70be793c9956a73304e21f31246aa10da0d3e95c926425
+                artifact_bytes: 12205144
         preferred_vp_formats:
           # v0.4 names (circuit_zk / circuit_id_values / circuit_proof_system_values fail startup, naming these)
           zkp_req:
-            system_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
-            proof_system_values: ["longfellow-libzk-v1"]
+            system_id_values: ["urn:circuits:longfellow:nym_auth:v1", "urn:circuits:vega:nym_auth:v1"]
+            proof_system_values: ["longfellow-libzk-v1", "vega-v1"]
     # The verifier's client_id is x509_san_dns:sirosid-nymauth-vc-verifier.fly.dev; put that host in the SAN of the
     # certificate it signs request objects with (re-issued once from the same key and root; see create-pki.sh).
     signingCertDnsSan: true

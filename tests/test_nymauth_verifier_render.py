@@ -35,6 +35,15 @@ PROFILE = {
     "artifact_bytes": 1062842,
     "artifact_sha256": "92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f",
 }
+# The Vega entry: the shapes' DECOMPRESSED digest and size, the catalog's nymauth-vega-mdoc-v1 (zk-circuits-test.fly.dev);
+# a Vega entry carries no Longfellow parameter (vc refuses one).
+VEGA = {
+    "system_id": "urn:circuits:vega:nym_auth:v1",
+    "config": "known-offender-matching-ssc",
+    "artifact_path": "/etc/vc/circuits/nym_auth-vega-ssc.bin",
+    "artifact_bytes": 12205144,
+    "artifact_sha256": "4da5e73afb9be2682e70be793c9956a73304e21f31246aa10da0d3e95c926425",
+}
 
 
 def render_gdc_verifier():
@@ -60,9 +69,11 @@ class GdcNymAuthVerifier(unittest.TestCase):
 
     def test_enabled_with_exactly_the_profile_the_circuit_ships(self):
         entry = self.cfg["nym_auth"]["circuits"]["allow"]
-        self.assertEqual(len(entry), 1)
+        self.assertEqual(len(entry), 2)
         self.assertEqual({k: entry[0][k] for k in PROFILE}, PROFILE)
+        self.assertEqual(entry[0]["system_id"], "urn:circuits:longfellow:nym_auth:v1")
         self.assertEqual(entry[0]["config"], "known-offender-matching-ssc")
+        self.assertEqual(entry[1], VEGA)
         self.assertTrue(self.cfg["nym_auth"]["enable"])
 
     def test_numbers_are_integers_in_the_file_vc_reads(self):
@@ -94,14 +105,20 @@ class GdcNymAuthVerifier(unittest.TestCase):
         self.assertIn("/etc/vc/circuits/nym_auth-ssc.bin", dockerfile)
         self.assertIn(PROFILE["artifact_sha256"], dockerfile)
         self.assertIn(str(PROFILE["artifact_bytes"]), dockerfile)
+        # the second artifact is baked in under the path the Vega entry names, with its size and digest checked at build time
+        self.assertIn(VEGA["artifact_path"].rsplit("/", 1)[1], dockerfile)
+        self.assertIn(VEGA["artifact_sha256"], dockerfile)
+        self.assertIn(str(VEGA["artifact_bytes"]), dockerfile)
 
     def test_a_pdp_is_configured_because_the_verifier_refuses_to_start_without_one(self):
         self.assertTrue(self.cfg["trust"]["pdp_url"], "nym_auth takes the issuer key from the holder's chain; no PDP = refuse to start")
 
     def test_the_request_may_name_only_what_this_verifier_offers(self):
         zk = self.cfg["preferred_vp_formats"]["zkp_req"]
-        self.assertEqual(zk["system_id_values"], ["urn:circuits:longfellow:nym_auth:v1"])
-        self.assertEqual(zk["proof_system_values"], ["longfellow-libzk-v1"])
+        self.assertEqual(zk["system_id_values"], ["urn:circuits:longfellow:nym_auth:v1", "urn:circuits:vega:nym_auth:v1"])
+        self.assertEqual(zk["proof_system_values"], ["longfellow-libzk-v1", "vega-v1"])
+        # vc does not check this at startup: an offered system without an allow entry is refused at presentation time
+        self.assertEqual({e["system_id"] for e in self.cfg["nym_auth"]["circuits"]["allow"]}, set(zk["system_id_values"]))
         self.assertIn("dc+sd-jwt", self.cfg["preferred_vp_formats"], "adding zkp_req must not drop the existing formats")
 
     def test_the_nym_auth_presets_are_shaped_as_vc_reads_them(self):

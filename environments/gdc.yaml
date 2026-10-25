@@ -50,13 +50,20 @@ images:
   #   delivery); signingCertDnsSan (the verifier's host in the request-signing cert); the engine image (request encryption,
   #   client_metadata, WMP) with the config unchanged (dcql_consent_check default).
   #
-  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792609658
-  #   digests verifier sha256:9385f5bf1b676b87f2fe6891769fafbc2cd6bd84c65b10bc614104512233891a (+ the circuit artifact overlay)
-  #           apigw    sha256:bb1a46f329211124e32e33421aa9526a96170bb3fa5e10dc082dab4535fef6c7
-  #           issuer   sha256:9064f735c12d4d97962eed55c54db9c6ce123197eb38f9de3a197709ca57ea48
-  #           registry sha256:afa31586c9a8c17711c963ba21d17b7ff1bb80d3ddc90b27eeb18823dbdeb4f9
-  #   source  sirosfoundation/vc `integration/gdc-nymauth-v5` @ c8c5b1eafd0ff08c14ca3cf8ebaceaa4473533f0 (NOT for upstream merge);
-  #           the verifier is --target runtime-verifier with zknative; all four are built from this one SHA
+  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792922319
+  #   digests verifier sha256:7e5cbf1c010a41a51b188448008346b9d696563beb127a427207746aacb17fe6 (+ BOTH circuit artifacts: Longfellow
+  #                    1,062,842 B and Vega 12,205,144 B, checked at build time)
+  #           apigw    sha256:08bfa83948345f2fafdc53d6dd6a349db956d57b7b021c8ddf460624d93126ff
+  #           issuer   sha256:9257749633756b4b9b25dafca4e33ab532a052a5ca5cc77b92ae707b4b5b7a91
+  #           registry sha256:67541d78726f8a28a6cfd45aaee59db5fa0688d6603ce3ffec200ee78200f358
+  #   source  vc merge e688386b0a6f138b617386c392e36d152871ef87 (2026-10-25, local branch `local/gdc-nymauth-v6`, never pushed): the
+  #           previous integration `integration/gdc-nymauth-v5` @ c8c5b1eafd0ff08c14ca3cf8ebaceaa4473533f0 plus sirosfoundation/vc `docs/nymauth-verifier-operator`
+  #           @ 09700653dfff56de9c371a07ae40570e6be097dc (system_id-keyed allowlist, Vega dispatch; clean merge, 23 files). That head
+  #           alone does NOT contain #840 or the v0.4 port, so it is merged into the old integration, not built on its own. The
+  #           verifier is --target runtime-verifier with zknative; all four are built from this one SHA. Vega nym_auth verifies
+  #           IN-PROCESS (libzk_cred_vega.so, no worker); `system_id` is the one new config key (required on every allow entry).
+  #           The Vega shapes are the catalog's nymauth-vega-mdoc-v1 (compressed sha256 b457ba53…, the same file zk-cred-vega
+  #           8e7be172 ships), decompressed sha256 4da5e73a…6425.
   #   PRs     https://github.com/SUNET/vc/pull/827 @ 80d6ee9ef (nym_auth circuit allowlist; open)
   #           https://github.com/SUNET/vc/pull/829 @ 19efd24c7 (validate a zkp_req response; open)
   #           https://github.com/SUNET/vc/pull/830 @ 90f227fcd (dispatch to the nym_auth verifier, allow-all-PDP fix, classified
@@ -77,6 +84,8 @@ images:
   #           that sets issuer.allowPreauthOffer MUST be built from a vc SHA that contains it (an image without it ignores the flag
   #           silently, so a pre-authorized offer for a base scope fails with invalid_scope). tests/test_pins_carry_840.py checks
   #           that this block names #840 whenever the flag is on. Re-pin to released images once #840 and the stack are released.
+  #   rollback pins: vc images local-1792609658 (vc c8c5b1ea, verifier digest sha256:9385f5bf1b676b87f2fe6891769fafbc2cd6bd84c65b10bc614104512233891a);
+  #           roll the allowlist (system_id, the Vega entry) and the zkp_req offered systems back WITH the images: that image does not know them
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
   #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
@@ -188,10 +197,10 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792609658
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792609658
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792609658
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792609658
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792922319
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792922319
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792922319
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792922319
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -480,7 +489,8 @@ values:
           verifier_id: x509_san_dns:sirosid-gdc-vc-verifier.fly.dev
           circuits:
             allow:
-              - config: known-offender-matching-ssc
+              - system_id: urn:circuits:longfellow:nym_auth:v1
+                config: known-offender-matching-ssc
                 hash_circuit_id: 5f8c75ae5c3893ef6ab6a079628cb385ba85e95a85437d58570c455289d75729
                 sig_circuit_id: 00513797c75b2eab1a9db75004977c15317d4e40c0db1d00674523431baa75cb
                 block_enc_hash: 6983
@@ -488,11 +498,19 @@ values:
                 artifact_path: /etc/vc/circuits/nym_auth-ssc.bin
                 artifact_sha256: 92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f
                 artifact_bytes: 1062842
+              # Vega (SUNET/vc#830 dispatch): shapes only, no circuit ids (vc refuses a Vega entry carrying them). The same
+              # `config` as above is right: the pseudonym is system-independent. Digest and size are the catalog's entry
+              # nymauth-vega-mdoc-v1 (zk-circuits-test.fly.dev/v1/circuits), the artifact the prover uses.
+              - system_id: urn:circuits:vega:nym_auth:v1
+                config: known-offender-matching-ssc
+                artifact_path: /etc/vc/circuits/nym_auth-vega-ssc.bin
+                artifact_sha256: 4da5e73afb9be2682e70be793c9956a73304e21f31246aa10da0d3e95c926425
+                artifact_bytes: 12205144
         preferred_vp_formats:
           # v0.4 names (circuit_zk / circuit_id_values / circuit_proof_system_values fail startup, naming these)
           zkp_req:
-            system_id_values: ["urn:circuits:longfellow:nym_auth:v1"]
-            proof_system_values: ["longfellow-libzk-v1"]
+            system_id_values: ["urn:circuits:longfellow:nym_auth:v1", "urn:circuits:vega:nym_auth:v1"]
+            proof_system_values: ["longfellow-libzk-v1", "vega-v1"]
     # The verifier's client_id is x509_san_dns:sirosid-gdc-vc-verifier.fly.dev; put that host in the SAN of the
     # certificate it signs request objects with (re-issued once from the same key and root; see create-pki.sh).
     signingCertDnsSan: true
