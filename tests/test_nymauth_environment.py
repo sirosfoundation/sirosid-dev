@@ -74,8 +74,8 @@ class RenderedNymAuthEnvironment(unittest.TestCase):
     def test_the_zkp_req_formats_presets_and_pdp_are_set(self):
         verifier = self.cfg["vc-verifier"]["verifier"]
         self.assertEqual(verifier["preferred_vp_formats"]["zkp_req"],
-                         {"system_id_values": ["urn:circuits:longfellow:nym_auth:v1"],
-                          "proof_system_values": ["longfellow-libzk-v1"]})
+                         {"system_id_values": ["urn:circuits:longfellow:nym_auth:v1", "urn:circuits:vega:nym_auth:v1"],
+                          "proof_system_values": ["longfellow-libzk-v1", "vega-v1"]})
         for preset in ("nym_auth_pseudonym", "nym_auth_pseudonym_age"):
             self.assertEqual(verifier["presets"][preset]["credentials"]["nym_auth"]["format"], "zkp_req")
         self.assertEqual(verifier["trust"]["pdp_url"], "http://sirosid-nymauth-pdp.internal:8080")
