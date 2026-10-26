@@ -859,6 +859,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
     # only exist in Kubernetes, and a missing signing key is fatal.
     vc_render.write_as_rules(docs, out_dir)
     say(f"wrote {out_dir / 'as-rules'}/")
+    if vc_render.write_assurance_rules(docs, out_dir):
+        say(f"wrote {out_dir / 'assurance'}/")
 
     # --- pdp ---
     pdp_data = extract_configmap_data(docs, "pdp-main")

@@ -590,6 +590,8 @@ def deploy_component(ctx: DeployContext, comp: dict):
         ]
         for rules in sorted((out_dir / "as-rules").glob("*")):
             deploy_args += ["--file-local", f"/as-rules/{rules.name}={rules}"]
+        for rules in sorted((out_dir / "assurance").glob("*")):
+            deploy_args += ["--file-local", f"/etc/wallet/assurance/{rules.name}={rules}"]
     elif name == "wallet-proxy":
         conf_path = out_dir / "wallet-proxy.conf"
         conf_path.write_text(wallet_proxy_conf(env, naming))
