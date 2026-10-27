@@ -502,8 +502,10 @@ change until our `pid_mdoc` schema carries a `birth_date`.
 **`ssc` is derived by the issuer** (SUNET/vc#850, Credential Auxiliary Data). The type declares `auxiliaryData` in
 `values-base.yaml`: a `to_wallet` `hash_commitment` on `ssc` (the issuer puts SHA-256 of an opening into the credential and
 sends the **opening** to the wallet in the *encrypted* Credential Response, which is why the issuer must publish
-`credential_encryption` and vc refuses to start without it) and a `to_issuer` one on `psc` (the commitment the wallet sends
-in its key proofs; it is not mandatory in the MDDL, so a wallet that sends none is still served). One `hkdf` derivation per
+`credential_encryption` and vc refuses to start without it) There is deliberately NO `to_issuer` entry on `psc`: the verifier
+allowlist only uses `known-offender-matching-ssc`, vc's profile refuses a psc-based pseudonym, and vc#850 accepts a different
+wallet-supplied `psc` on every issuance (the rulebook's one-psc-per-subject rule is not enforced), so it would only add surface;
+the MDDL still declares `psc`, non-mandatory. One `hkdf` derivation per
 data source scope fulfils `ssc`: the opening is `HKDF-SHA256` over a secret and the person's `issuing_country` and
 `personal_administrative_number` (the same two values their PID carries, stored in `nym_auth.json` as inputs only: the schema
 does not declare them, so they are never issued). The secret is a file the deploy mounts (`/seeds/nym_auth_seed.key`; on Fly

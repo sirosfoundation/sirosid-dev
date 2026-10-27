@@ -93,7 +93,7 @@ user first, then request `nym_auth` and present it when asked.
 - `ssc` is derived by the issuer from a per-environment secret over the person's issuing country and
   personal administrative number (the same two values their PID carries), and the opening is delivered to the
   wallet in the encrypted credential response; stored documents carry no `ssc` and no `psc`. `nym_auth_offer`
-  derives the same opening for the same person. `psc` is supplied by the wallet. The schema is a copy of the rulebook's until
+  derives the same opening for the same person. `psc` is not issued or collected here. The schema is a copy of the rulebook's until
   registry.siros.org publishes it.
 
 ## "no documents"

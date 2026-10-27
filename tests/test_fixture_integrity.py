@@ -587,13 +587,12 @@ class NymAuth(FixtureCase):
 
     def test_ssc_is_derived_by_the_issuer_and_delivered_for_both_scopes(self):
         # SUNET/vc#850: ssc is an auxiliary_data `to_wallet` hash_commitment the issuer fulfils with one hkdf derivation
-        # per data source scope, psc a `to_issuer` one the wallet supplies; both claims are declared by the schema and
-        # psc is NOT mandatory there, so a wallet that sends none is still served.
+        # per data source scope. psc is declared by the schema (NOT mandatory) but has no `to_issuer` entry.
         for scope in (self.SCOPE, self.SCOPE + "_offer"):
             aux = self.types[scope].get("auxiliaryData") or {}
             self.assertEqual([e["path"] for e in aux.get("to_wallet", [])], [[self.NAMESPACE, "ssc"]], scope)
-            self.assertEqual([e["path"] for e in aux.get("to_issuer", [])], [[self.NAMESPACE, "psc"]], scope)
-            for e in aux["to_wallet"] + aux["to_issuer"]:
+            self.assertNotIn("to_issuer", aux, f"{scope}: a psc entry accepts a different wallet psc on every issuance (vc#850)")
+            for e in aux["to_wallet"]:
                 self.assertEqual((e["type"], e["alg"]), ("hash_commitment", "sha-256"), scope)
                 self.assertNotIn("required", e, "vc derives `required` from the MDDL's mandatory flag and refuses it here")
             derivation = [d["hash_commitment"] for d in self.types[scope]["derivations"]]

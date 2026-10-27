@@ -544,7 +544,8 @@ Auxiliary Data: `auxiliaryData` + one `hkdf` `hash_commitment` derivation per da
 `issuer.apigw.credentialEncryption.enabled`) from a PERMANENT per-environment secret file (`/seeds/nym_auth_seed.key`,
 `vc_render.apply_secrets`) over the document's `issuing_country` + `personal_administrative_number`, and the opening is
 delivered to the wallet in the encrypted credential response; the stored documents must carry neither `ssc` nor `psc`
-(vc refuses a pre-set value; `psc` is wallet-supplied and not mandatory in the MDDL). Needs vc with SUNET/vc#850; an older
+(vc refuses a pre-set value; `psc` is declared non-mandatory in the MDDL but has no `to_issuer` entry: vc#850 would accept a
+different wallet psc on every issuance). Needs vc with SUNET/vc#850; an older
 image ignores `auxiliary_data`/`derivations` and issues no `ssc`, and the old seed shapes (`issuer.apigw.seeds`,
 `org.siros.secret_seed`, `holder_commitments`) are removed: vc ignores leftover keys silently.
 

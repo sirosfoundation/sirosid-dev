@@ -209,8 +209,10 @@ features:
       format: mso_mdoc
       mdocSchema: {file: fixtures/vc-metadata/nym_auth.mdoc.json}
       # Credential Auxiliary Data (SUNET/vc#850): ssc is a SHA-256 commitment to an opening the issuer derives (hkdf over a
-      # secret and the ordered identifiers) and delivers to the wallet in the ENCRYPTED Credential Response; psc is the
-      # commitment the wallet sends (its MDDL element is not mandatory, so a wallet that sends none is still served).
+      # secret and the ordered identifiers) and delivers to the wallet in the ENCRYPTED Credential Response. There is NO
+      # `to_issuer` psc entry: the verifier allowlist only uses known-offender-matching-ssc, vc's profile refuses a psc-based
+      # pseudonym, and vc#850 accepts a different wallet psc on every issuance (the rulebook's one-psc-per-subject rule is not
+      # enforced), so declaring it would only add surface. The MDDL still declares psc, non-mandatory.
       # The stored document carries the two identifiers (the same ones the person's PID has, so the same person gets the
       # same pseudonym through every credential type and the pre-authorized offer) and must NOT carry ssc or psc: vc refuses
       # a pre-set value. The identifiers are inputs only; the mdoc schema does not declare them, so they are never issued.
@@ -218,8 +220,6 @@ features:
       auxiliaryData:
         to_wallet:
           - {type: hash_commitment, alg: sha-256, path: [eu.europa.ec.eudi.nym_auth.1, ssc]}
-        to_issuer:
-          - {type: hash_commitment, alg: sha-256, path: [eu.europa.ec.eudi.nym_auth.1, psc]}
       derivations:
         - hash_commitment:
             path: [eu.europa.ec.eudi.nym_auth.1, ssc]
@@ -402,8 +402,10 @@ features:
       format: mso_mdoc
       mdocSchema: {file: fixtures/vc-metadata/nym_auth.mdoc.json}
       # Credential Auxiliary Data (SUNET/vc#850): ssc is a SHA-256 commitment to an opening the issuer derives (hkdf over a
-      # secret and the ordered identifiers) and delivers to the wallet in the ENCRYPTED Credential Response; psc is the
-      # commitment the wallet sends (its MDDL element is not mandatory, so a wallet that sends none is still served).
+      # secret and the ordered identifiers) and delivers to the wallet in the ENCRYPTED Credential Response. There is NO
+      # `to_issuer` psc entry: the verifier allowlist only uses known-offender-matching-ssc, vc's profile refuses a psc-based
+      # pseudonym, and vc#850 accepts a different wallet psc on every issuance (the rulebook's one-psc-per-subject rule is not
+      # enforced), so declaring it would only add surface. The MDDL still declares psc, non-mandatory.
       # The stored document carries the two identifiers (the same ones the person's PID has, so the same person gets the
       # same pseudonym through every credential type and the pre-authorized offer) and must NOT carry ssc or psc: vc refuses
       # a pre-set value. The identifiers are inputs only; the mdoc schema does not declare them, so they are never issued.
@@ -411,8 +413,6 @@ features:
       auxiliaryData:
         to_wallet:
           - {type: hash_commitment, alg: sha-256, path: [eu.europa.ec.eudi.nym_auth.1, ssc]}
-        to_issuer:
-          - {type: hash_commitment, alg: sha-256, path: [eu.europa.ec.eudi.nym_auth.1, psc]}
       derivations:
         - hash_commitment:
             path: [eu.europa.ec.eudi.nym_auth.1, ssc]

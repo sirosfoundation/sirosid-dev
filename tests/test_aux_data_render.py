@@ -79,8 +79,8 @@ class AuxiliaryData(unittest.TestCase):
     def test_nym_auth_and_its_twin_carry_the_same_auxiliary_data_and_derivation(self):
         meta = self.cfg["vc-apigw"]["common"]["credential_metadata"]
         scopes = self.cfg["vc-apigw"]["apigw"]["data_sources"]["datastore"]["scopes"]
-        want_aux = {"to_wallet": [{"type": "hash_commitment", "alg": "sha-256", "path": SSC}],
-                    "to_issuer": [{"type": "hash_commitment", "alg": "sha-256", "path": PSC}]}
+        # no to_issuer psc entry: nothing uses it and vc#850 does not enforce one-psc-per-subject
+        want_aux = {"to_wallet": [{"type": "hash_commitment", "alg": "sha-256", "path": SSC}]}
         want_derivation = [{"hash_commitment": {"path": SSC, "opening": {"hkdf": {
             "secret_path": SEED_PATH, "inputs": ["issuing_country", "personal_administrative_number"], "bytes": 16}}}}]
         for scope in ("nym_auth", "nym_auth_offer"):
