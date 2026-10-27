@@ -508,7 +508,12 @@ PID carries, stored in `nym_auth.json` as inputs only: the schema does not decla
 issued), commits to it (`ssc` = SHA-256 of the seed) and, because the type sets `deliver: true`, hands the
 **seed** to the wallet in the credential response (`credential_metadata`, namespace
 `org.siros.nym_auth`; the engine requires an encrypted response for that). The stored documents therefore
-carry **no** `ssc`, and vc refuses a document that does. An offer (the pre-authorized grant: `make datastore-offer SCOPE=nym_auth`, or the
+carry **no** `ssc`, and vc refuses a document that does. When the credential is requested by PRESENTING a PID (Add Credential, Nym authentication), the seed is derived from the presented PID's
+`personal_administrative_number` (the national identifier) and `issuing_country`, not from the stored document: the SD-JWT PID scopes
+(`pid_1_8`, `pid_1_5`) copy both from the verified presentation into the issued document (SUNET/vc#838 `document_claims`, which replace the
+stored elements) and the `ssc` commitment reads them (#793). To see it work, present a PID whose identifier differs from the stored
+`nym_auth` document of the same person: the pseudonym changes. mDL, Photo ID and mdoc PIDs cannot supply the identifiers and keep the stored
+values. An offer (the pre-authorized grant: `make datastore-offer SCOPE=nym_auth`, or the
 `nym_auth_offer` twin where an environment still has twins) derives the **same** seed for the same person: one person,
 one pseudonym, whichever way the credential was obtained.
 
