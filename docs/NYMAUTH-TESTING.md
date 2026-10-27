@@ -160,6 +160,14 @@ results keyed by the `return` handles (`nym`, `age`), plus `system_id` and `proo
 - the issuer's `/.well-known/openid-credential-issuer` must NOT contain an opening (no 32-hex string) and advertises
   `notification_endpoint`.
 
+### Known unproven (after the move to Credential Auxiliary Data)
+- The Mongo re-issue of `nym_auth` from a presented **mdoc** PID is the only test that proves SUNET/vc#865 (an mdoc date coming
+  back from the cache as `bson.D` under HA + Mongo) is fixed by SUNET/vc#866; every in-process suite passes either way.
+- A pre-authorized issuance where the pre-authorized twin is KEPT (a compose-render environment, not gdc: gdc drops the twins).
+- **SD-JWT-sourced issuance under HA:** a nested object still changes type across the cache (stored as a BSON sub-document,
+  read back as `bson.D`); mdoc claims do not nest, SD-JWT claims do. #866 pins the current behaviour with a test. If an
+  SD-JWT-sourced issuance misbehaves under HA, that is the suspect, and it is a separate fix.
+
 ### Logs
 `flyctl logs --no-tail` returns only the **last 100 lines** per app; at debug level that is about a minute. **Run a continuous
 capture before you reproduce:**
