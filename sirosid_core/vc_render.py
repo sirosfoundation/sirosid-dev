@@ -81,9 +81,25 @@ CREDENTIAL_ENCRYPTION_FILE = "vcCredentialEncryption.pem"
 CREDENTIAL_ENCRYPTION_PATH = "/credential-encryption/primary.pem"     # where every layout mounts it
 
 
-def seed_secret_file(name: str) -> str:
-    """File name (in the secrets dir) of the seed secret behind apigw.seeds.<name>."""
-    return f"vcApigwSeed{name.capitalize()}"
+def opening_secret_file(path: str) -> str:
+    """File name (in the secrets dir) of the secret an opening reads at `path` (/seeds/nym_auth_seed.key ->
+    vcOpeningNymAuthSeed)."""
+    stem = Path(path).name.rsplit(".", 1)[0]
+    return "vcOpening" + "".join(part.capitalize() for part in re.split(r"[^A-Za-z0-9]+", stem) if part)
+
+
+def opening_secret_paths(apigw: dict) -> list:
+    """The `secret_path` of every hkdf/hmac opening of a hash_commitment derivation on an apigw data source scope
+    (SUNET/vc#850 Credential Auxiliary Data): the files the deploy has to mount."""
+    paths = set()
+    for kind in ((apigw or {}).get("data_sources") or {}).values():
+        for scope in ((kind or {}).get("scopes") or {}).values():
+            for derivation in (scope or {}).get("derivations") or []:
+                opening = ((derivation or {}).get("hash_commitment") or {}).get("opening") or {}
+                for how in ("hkdf", "hmac"):
+                    if (opening.get(how) or {}).get("secret_path"):
+                        paths.add(opening[how]["secret_path"])
+    return sorted(paths)
 
 VC_SECRETS = {
     "OIDC_PROVIDER_SUBJECT_SALT": "vcOidcProviderSubjectSalt",
@@ -361,23 +377,6 @@ def patch_vc_mongo(config: dict, target: str, env: str = None, mongo_password: s
     return config
 
 
-# nym_auth's LEGACY `ssc` for an environment with no seed source (issuer.apigw.seeds empty): SHA-256 of the public test
-# seed 000102030405060708090a0b0c0d0e0f, standard base64 as the datastore stores a bstr - the value every document
-# carried before the issuer could generate it. The same for every holder, so every holder derives the same
-# pseudonyms: enough for testing a circuit, useless for unlinkability. An environment WITH seeds must not carry it
-# (the issuer refuses a pre-set value for a commitment claim), so the source fixtures do not and this is added only
-# to the rendered copy.
-LEGACY_NYM_AUTH_SSC = "vkXLJgW/Nr695oSEGijw/UPGmFCj3OX+26aZKO46iZE="
-
-
-def inject_legacy_ssc(documents_dir: Path) -> None:
-    for path in sorted(Path(documents_dir).glob("nym_auth*.json")):
-        docs = json.loads(path.read_text())
-        for doc in docs.values():
-            doc["document_data"].setdefault("ssc", LEGACY_NYM_AUTH_SSC)
-        path.write_text(json.dumps(docs, indent=2) + "\n")
-
-
 TWIN_DOCUMENT_SUFFIX = "_offer.json"
 
 
@@ -433,13 +432,12 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
     not published anywhere the secrets file wouldn't be.
     """
     values = {var: gen_secret(secrets_dir / name) for var, name in VC_SECRETS.items()}
-    # Seed secrets (apigw.seeds.<name>, SUNET/vc#793): base64url and at least 32 bytes DECODED, which a
-    # 64-character alphanumeric string is (48 bytes). PERMANENT, like the subject salt above: every commitment
-    # ever issued is a function of it, so a replaced secret repseudonymises everyone and a lost one makes every
-    # issued pseudonym unrecoverable. NOT inlined into the config: vc reads `secret` only from its secrets file,
-    # which it refuses unless group/world-unreadable (the problem described below), so the config names a file
-    # (`secret_path`, /seeds/<name>) and the deploy mounts it - `make fly-up` as a Fly secret, compose as a bind
-    # mount. Which seeds exist is read off the rendered config, so `issuer.apigw.seeds` is the single list.
+    # Opening secrets (hash_commitment derivations on apigw data source scopes, SUNET/vc#850): base64url and at least 32
+    # bytes DECODED, which a 64-character alphanumeric string is (48 bytes). PERMANENT, like the subject salt above:
+    # every commitment ever issued is a function of it, so a replaced secret repseudonymises everyone and a lost one
+    # makes every issued pseudonym unrecoverable. NOT inlined into the config: the derivation names a file
+    # (`secret_path`) the deploy mounts - `make fly-up` as a Fly secret, compose as a bind mount. Which secrets exist
+    # is read off the rendered config (`opening_secret_paths`).
     # Kept in `state_dir` (per ENVIRONMENT, unlike the shared secrets_dir above): two environments deployed from
     # one checkout must not share a derivation secret.
     state_dir = Path(state_dir) if state_dir else secrets_dir
@@ -447,7 +445,7 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
         # compose bind-mounts both files unconditionally, and Docker turns a MISSING bind-mount source into a
         # directory (the "is a directory" crash of issue #30): keep an empty placeholder where the feature is off.
         # An empty placeholder is not a secret, so it is replaced the moment the feature is switched on.
-        for needed, name in ((bool((config["apigw"].get("seeds") or {})), seed_secret_file("primary")),
+        for needed, name in ((bool(opening_secret_paths(config["apigw"])), opening_secret_file("/seeds/nym_auth_seed.key")),
                              (bool((((config["apigw"].get("issuer_metadata") or {}).get("credential_encryption") or {})
                                     .get("keys"))), CREDENTIAL_ENCRYPTION_FILE)):
             path = state_dir / name
@@ -456,8 +454,8 @@ def apply_secrets(docs: list, cm_name: str, config: dict, secrets_dir: Path, gen
             elif not needed and not path.exists():
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.touch(mode=0o644)
-    for name in ((config.get("apigw") or {}).get("seeds") or {}):
-        gen_secret(state_dir / seed_secret_file(name), SEED_SECRET_LENGTH)
+    for secret_path in opening_secret_paths(config.get("apigw") or {}):
+        gen_secret(state_dir / opening_secret_file(secret_path), SEED_SECRET_LENGTH)
     # The credential-encryption key (apigw.issuer_metadata.credential_encryption, OpenID4VCI section 8.3): an EC
     # P-256 key pair generated once, mounted as a file like the seeds. Rotating it only needs a redeploy (wallets
     # re-read the published JWKS), unlike a seed secret.
@@ -561,7 +559,6 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
               credential_types: dict = None, credential_registries: list = None,
               naming: Naming = None, say=print, warn=None, state_dir: Path = None) -> None:
     """Extract every vc service's config plus the directories it mounts."""
-    seeds_enabled = False
     for cm_name, filename in VC_CONFIGMAPS.items():
         config = yaml.safe_load(extract_configmap_data(docs, cm_name)["config.yaml"])
         if target == "compose":
@@ -571,8 +568,6 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
             config = patch_vc_mongo(config, target, env, mongo_password, naming, warn)
         config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides,
                                state_dir=state_dir, world_readable=(target == "compose"))
-        if cm_name == "issuer-apigw-main":
-            seeds_enabled = bool((config.get("apigw") or {}).get("seeds"))
         if target == "fly":
             drop_twin_imports(config)
         config = integral_nym_auth_numbers(strip_unrenderable(config))
@@ -592,8 +587,6 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
     # point is the same name in both worlds.
     _write_documents(docs, out_dir, "vctms", "vctms")
     _write_documents(docs, out_dir, "issuer-documents", "documents")
-    if not seeds_enabled:
-        inject_legacy_ssc(out_dir / "documents")
 
     # The verifier reads presentation_requests_dir as a directory of template
     # files; the chart renders them into a single pres-reqs.yaml.

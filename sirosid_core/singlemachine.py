@@ -52,6 +52,7 @@ from .assets import (assetlinks_json, front_nginx_conf, mini_oidc_config, wallet
 from .components import build_components, volume_name
 from .deploy import (DeployContext, DeployError, DeployResult, generate_android_assets, generate_pki,
                      mini_oidc_env, register_vc_services, resolve_image, wallet_frontend_env)
+from . import vc_render
 from .fly import FlyClient, FlyError
 from .helm import HelmError, extract_configmap_data, extract_image
 from .machines import MachinesClient, MachinesError
@@ -100,10 +101,10 @@ SECRETS = {
     "SIROSID_MONGO_ROOT_PASSWORD": ("mongoRootPassword", [("mongodb", "mongoRootPassword")]),
     "SIROSID_VC_SIGNING_KEY": ("vc-pki/signing_ec_private.pem",
                                [("vc", "signing_ec_private.pem"), ("wallet_backend", "asSigningKey")]),
-    # apigw.seeds.primary's secret (SUNET/vc#793), kept with the vc services' other generated secrets
-    # (state.VC_SECRETS_DIR). A new seed name needs an entry here and in SECRET_PATHS: test_seed_commitments_render
-    # fails when the chart has a seed this layout cannot mount.
-    "SIROSID_VC_APIGW_SEED_PRIMARY": ("vc-secrets/vcApigwSeedPrimary", [("vc", "apigwSeedPrimary")]),
+    # the secret behind nym_auth's hash_commitment opening (SUNET/vc#850), kept with the vc services' other generated
+    # secrets (state.VC_SECRETS_DIR). A new opening secret needs an entry here and in SECRET_PATHS:
+    # test_aux_data_render fails when the chart has one this layout cannot mount.
+    "SIROSID_VC_NYM_AUTH_SEED": ("vc-secrets/vcOpeningNymAuthSeed", [("vc", "openingNymAuthSeed")]),
     "SIROSID_VC_CREDENTIAL_ENCRYPTION_KEY": ("vc-secrets/vcCredentialEncryption.pem",
                                              [("vc", "credentialEncryption.pem")]),
     "SIROSID_JWT_SECRET": ("jwtSecret", [("wallet_backend", "jwtSecret")]),
@@ -117,7 +118,7 @@ SECRET_GROUP = {"mongodb": "mongodb", "wallet-backend": "wallet_backend",
 # Absolute paths of the apps layout that became something else here.
 SECRET_PATHS = {
     "vc": {"/pki/signing_ec_private.pem": f"{SECRETS_DIR}/signing_ec_private.pem",
-           "/seeds/primary": f"{SECRETS_DIR}/apigwSeedPrimary",
+           "/seeds/nym_auth_seed.key": f"{SECRETS_DIR}/openingNymAuthSeed",
            "/credential-encryption/primary.pem": f"{SECRETS_DIR}/credentialEncryption.pem"},
     "wallet_backend": {"/main-secrets/jwtSecret": f"{SECRETS_DIR}/jwtSecret",
                        "/main-secrets/adminToken": f"{SECRETS_DIR}/adminToken",
@@ -126,10 +127,10 @@ SECRET_PATHS = {
 }
 
 
-# Secrets that exist only when the rendered apigw config asks for them (apigw.seeds.primary, the
+# Secrets that exist only when the rendered apigw config asks for them (the nym_auth opening secret, the
 # credential-encryption key): listing them unconditionally would read a file that was never generated.
 _OPTIONAL_SECRETS = {
-    "SIROSID_VC_APIGW_SEED_PRIMARY": lambda apigw: "primary" in (apigw.get("seeds") or {}),
+    "SIROSID_VC_NYM_AUTH_SEED": lambda apigw: "/seeds/nym_auth_seed.key" in vc_render.opening_secret_paths(apigw),
     "SIROSID_VC_CREDENTIAL_ENCRYPTION_KEY":
         lambda apigw: bool(((apigw.get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys")),
 }
