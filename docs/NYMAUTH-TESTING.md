@@ -151,8 +151,11 @@ Deliver the link to a connected phone: `adb shell am start -a android.intent.act
 results keyed by the `return` handles (`nym`, `age`), plus `system_id` and `proof_time`.
 
 ### Checking issuance
-- issuer log: `POST /credential` 200 and `POST /notification` 204 (the old `Delivered a secret seed` line is gone; the line vc
-  #850 logs for delivered auxiliary data is not verified here, and it must never contain the opening);
+- issuer log: `POST /credential` 200 and `POST /notification` 204. There is NO delivery log line any more: the old `Delivered a
+  secret seed` has no successor (vc #850 logs only an ERROR, `failed to apply auxiliary data`, handlers_issuer.go:526), so a
+  log-grep for success always fails. Check the RESPONSE instead: a successful issuance carries
+  `credential_metadata.auxiliary_data[]` with a `hash_commitment` entry for path `[eu.europa.ec.eudi.nym_auth.1, ssc]` and a
+  base64url `opening`, inside the encrypted Credential Response, so the check runs wallet-side or on a decrypted capture;
 - engine log: `credential notification forwarded to issuer`; `/v1/evaluate` 200 (decision true);
 - the issuer's `/.well-known/openid-credential-issuer` must NOT contain an opening (no 32-hex string) and advertises
   `notification_endpoint`.
