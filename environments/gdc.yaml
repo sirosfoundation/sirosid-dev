@@ -49,14 +49,17 @@ images:
   #   image; verifier.trust.pdp_url; pdp.extraConfig.policies (verifier_ids); issuer.apigw.credentialEncryption + the nym_auth auxiliaryData/derivations (auxiliary data delivery); signingCertDnsSan (the verifier's host in the request-signing cert); the engine image (request encryption,
   #   client_metadata, WMP) with the config unchanged (dcql_consent_check default).
   #
-  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1793132043
-  #   digests verifier sha256:a41c7031ed6bcbd443638f4954454986f99c6e9b1b24d89e97ea147ccd7a72b7 (+ BOTH circuit artifacts: Longfellow
+  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1793141805
+  #   digests verifier sha256:5f7581a70b294929ed0d7b81be9880edcede85b5e3031a2ee08a75f5ddf219bb (+ BOTH circuit artifacts: Longfellow
   #                    1,062,842 B and Vega 12,205,144 B, checked at build time)
-  #           apigw    sha256:27937cf06c87a7572ee5b767bed168199d42e0828608048fa1d6026d7f646667
-  #           issuer   sha256:42adcef1cd9cd2c5bffc9262d55d95693a9befa67962bb03e73f9b3857fa95be
-  #           registry sha256:518a9625c1c0b1ecdea7e720139a4f060fbe362306456f69de50123b2ccb9c1b
-  #   source  vc merge, local branch `local/gdc-nymauth-v8` @ 8bf1594fb48177b6a88cd8bdcca2a3e38265b2bd (2026-10-27, never pushed; a
-  #           later test-only commit 8fedc0d58 carries the fixed #866 test). The vc session's `local/gdc-nymauth-v7` a54690b0a2808538bf2a96f2a9864d5ac1f57dd9
+  #           apigw    sha256:6a2b4a82bf1ef9901b519f39879dad3d74422f4a2ffe3ccbc966301c4926f739
+  #           issuer   sha256:694b1d6a90862a12e9b27d63b4a0a950b651f2f8726aa1a65f32887283076856
+  #           registry sha256:913308961c80a41165f7d92ad5644bbb2befe67c18cdb7c35d8ab5684f0cb883
+  #   source  vc merge, local branch `local/gdc-nymauth-v9` @ 34180a8e022bde9a3c38ad0857e330ddf959458c (2026-10-28, never pushed; tree
+  #           bbcd22852d142731cbc28c6053cdd1e6c513fe42) = the v8 merge 8bf1594fb48177b6a88cd8bdcca2a3e38265b2bd + the test-only commit
+  #           8fedc0d58 (the fixed #866 test) + ONE cherry-picked commit (vc 5da879895): handlers_users.go no longer logs the whole
+  #           AuthorizationContext and document map at debug level (they carried access/refresh tokens, the authorization code and
+  #           the holder's claims). The vc session's `local/gdc-nymauth-v7` a54690b0a2808538bf2a96f2a9864d5ac1f57dd9
   #           (parents 1759596828832cc5b8e717557fa20155b675f0e8 and edc191830361ccfc0548c6afa6da6707215040a4: main 5e26c93b6 +
   #           the verifier stack #827 #829 #830 #831 #832 + https://github.com/SUNET/vc/pull/840 + https://github.com/SUNET/vc/pull/850 @
   #           1c6e0aab4 + Wicpar/vc#1 @ edc191830) merged with https://github.com/SUNET/vc/pull/866 @ 9fb22dc72 (the presented-claims
@@ -91,7 +94,7 @@ images:
   #           that sets issuer.allowPreauthOffer MUST be built from a vc SHA that contains it (an image without it ignores the flag
   #           silently, so a pre-authorized offer for a base scope fails with invalid_scope). tests/test_pins_carry_840.py checks
   #           that this block names #840 whenever the flag is on. Re-pin to released images once #840 and the stack are released.
-  #   rollback pins: vc images local-1792922319 (merge e688386b0, verifier digest sha256:7e5cbf1c010a41a51b188448008346b9d696563beb127a427207746aacb17fe6;
+  #   rollback pins: vc images local-1793132043 (v8 8bf1594fb: the same config, but it logs tokens at debug), local-1792922319 (merge e688386b0, verifier digest sha256:7e5cbf1c010a41a51b188448008346b9d696563beb127a427207746aacb17fe6;
   #           needs the OLD config: the seeds block and the ssc/psc shapes, i.e. the config of PR 96), then local-1792609658 (vc c8c5b1ea, verifier digest sha256:9385f5bf1b676b87f2fe6891769fafbc2cd6bd84c65b10bc614104512233891a);
   #           roll the allowlist (system_id, the Vega entry) and the zkp_req offered systems back WITH the images: that image does not know them
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
@@ -203,10 +206,10 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793132043
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793132043
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793132043
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793132043
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793141805
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793141805
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793141805
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793141805
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
