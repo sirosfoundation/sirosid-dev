@@ -46,8 +46,8 @@ class SeedFromPid(unittest.TestCase):
         cls.scope = cfg["apigw"]["data_sources"]["datastore"]["scopes"]["nym_auth"]
         cls.meta = cfg["common"]["credential_metadata"]["nym_auth"]
 
-    def test_the_commitment_reads_the_two_identifiers_of_the_issued_document(self):
-        self.assertEqual(self.meta["commitments"]["ssc"]["subjects"], SUBJECTS)
+    def test_the_opening_reads_the_two_identifiers_of_the_issued_document(self):
+        self.assertEqual(self.scope["derivations"][0]["hash_commitment"]["opening"]["hkdf"]["inputs"], SUBJECTS)
 
     def test_the_sd_jwt_pid_scopes_copy_both_identifiers_from_the_presentation(self):
         for pid, vctm in (("pid_1_8", "vctm_pid_arf_1_8.json"), ("pid_1_5", "vctm_pid_arf_1_5.json")):

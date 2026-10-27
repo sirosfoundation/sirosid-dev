@@ -32,7 +32,7 @@ class PinsCarry840(unittest.TestCase):
         text = (ROOT / "environments" / "gdc.yaml").read_text()
         block = text[text.index("PIN PROVENANCE"):text.index("# Other images are released versions")]
         self.assertIn("https://github.com/SUNET/vc/pull/840", block)
-        self.assertRegex(block, r"integration/gdc-nymauth-v5` @ [0-9a-f]{40}")
+        self.assertRegex(block, r"(integration|local)/gdc-nymauth-v[0-9]+` @ [0-9a-f]{40}")
 
     def test_flagged_environments_pin_the_same_vc_images_as_gdc(self):
         gdc = env_config.load_environment_config("gdc")["images"]

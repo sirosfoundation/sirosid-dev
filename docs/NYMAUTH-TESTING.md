@@ -1,11 +1,11 @@
 # Testing nym_auth: the `nymauth` environment
 
 `environments/nymauth.yaml` is a **known starting point** for testing the nym_auth pseudonym flow end to end:
-the issuer gives a wallet a `nym_auth` credential (and delivers its secret seed), and a verifier asks the wallet for a
+the issuer gives a wallet a `nym_auth` credential (and delivers the opening of its `ssc` commitment), and a verifier asks the wallet for a
 **zero-knowledge pseudonym** (and optionally an age range) without seeing any attribute. It is the `gdc` stack reduced to
 what that needs; `diff environments/gdc.yaml environments/nymauth.yaml` shows exactly what is nymauth-specific.
 
-**Status.** The flow below was proven live on `gdc` (a Pixel, the Kotlin sample app): issuance with seed delivery and
+**Status.** The flow below was proven live on `gdc` (a Pixel, the Kotlin sample app): issuance with auxiliary data delivery and
 notification; same-device presentation of both presets; cross-device presentation by scanning the verifier page's QR in a
 browser. **Nobody has deployed `ENV=nymauth` yet**; it reproduces gdc's pins on its own hostnames. (The vc images were rebuilt
 from vc `c8c5b1ea` - classified refusals and #840 - after the proven run; the Pixel run on exactly that set is the next step.)
@@ -23,7 +23,7 @@ sample app and a browser.
 
 ### Prerequisites
 - `flyctl` logged in to the Fly org (`flyctl auth whoami`), `helm`, `docker`, `python3` with PyYAML, and a checkout of
-  this repo **on the machine that deploys**: per-environment state (PKI, secrets, the seed secret) lives in the
+  this repo **on the machine that deploys**: per-environment state (PKI, secrets, the opening secret) lives in the
   gitignored `fixtures/rendered/fly-nymauth/` and must be kept; a deploy from another checkout generates new ones.
 - The images are pinned to gdc's registry namespace (`registry.fly.io/sirosid-gdc-*`); the deploy pulls them, so the Fly
   account must be able to read gdc's images. **Not yet exercised.** If it cannot, push the same images to the new apps'
@@ -36,7 +36,7 @@ make fly-up ENV=nymauth            # a fresh datastore imports the fixtures on f
 ```
 `make fly-up ENV=nymauth` would create, in the org's `arn` region: **11 apps** - `sirosid-nymauth-` + `mongodb`, `mini-oidc`,
 `pdp`, `vc-registry`, `vc-issuer`, `vc-apigw`, `vc-verifier`, `wallet-backend`, `wallet-proxy`, `wallet-frontend`,
-`env-admin` - with a volume for MongoDB, the secrets (signing key, JWT/admin secrets, the permanent seed secret and the
+`env-admin` - with a volume for MongoDB, the secrets (signing key, JWT/admin secrets, the permanent opening secret and the
 credential-encryption key), deploy tokens for env-admin, and public `*.fly.dev` hostnames. It generates the environment's
 own PKI; the signing certificate carries the verifier's host (`signingCertDnsSan`). `make fly-down ENV=nymauth` removes it.
 Do not run these unless you mean to create those resources.
@@ -81,7 +81,7 @@ use a passkey, and sign in. The **Credentials** tab shows **Welcome, <your name>
 The operator gives you an offer link or QR code (Part 1). Either open the link on the phone, or on **Home** tap
 **Add a credential**, scan with **Scan QR Code**, or paste the link under **Or paste a credential offer URI** and tap
 **Redeem Offer**. The wallet shows progress ("Reading credential offer...", "Issuer trust verified", "Requesting
-credential..."), then the credential appears under **Credentials** as **Nym authentication**. The secret seed is stored
+credential..."), then the credential appears under **Credentials** as **Nym authentication**. The opening (the private seed) is stored
 silently and never shown.
 
 ### 4. Present it to the verifier
@@ -151,10 +151,10 @@ Deliver the link to a connected phone: `adb shell am start -a android.intent.act
 results keyed by the `return` handles (`nym`, `age`), plus `system_id` and `proof_time`.
 
 ### Checking issuance
-- issuer log: `Delivered a secret seed {namespaces: [org.siros.nym_auth], notification_id: ...}`, then `POST /credential` 200 and
-  `POST /notification` 204;
+- issuer log: `POST /credential` 200 and `POST /notification` 204 (the old `Delivered a secret seed` line is gone; the line vc
+  #850 logs for delivered auxiliary data is not verified here, and it must never contain the opening);
 - engine log: `credential notification forwarded to issuer`; `/v1/evaluate` 200 (decision true);
-- the issuer's `/.well-known/openid-credential-issuer` must NOT contain the seed (no 32-hex string) and advertises
+- the issuer's `/.well-known/openid-credential-issuer` must NOT contain an opening (no 32-hex string) and advertises
   `notification_endpoint`.
 
 ### Logs

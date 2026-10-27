@@ -24,7 +24,6 @@ sys.path.insert(0, str(ROOT))
 from sirosid_core.render import render  # noqa: E402
 from sirosid_core.resources import Resources  # noqa: E402
 
-from sirosid_core.vc_render import LEGACY_NYM_AUTH_SSC as LEGACY_SSC  # noqa: E402
 
 NEEDS = unittest.skipUnless(shutil.which("helm"), "needs helm")
 
@@ -122,16 +121,14 @@ class NymAuthRender(unittest.TestCase):
         for _, configs, files in self.each():
             for svc in ("vc-apigw", "vc-issuer"):
                 meta = dict(configs[svc]["common"]["credential_metadata"][SCOPE])
-                # No commitments in the default render (it needs a seed-capable vc image);
-                # test_seed_commitments_render holds the gdc-style render.
-                self.assertNotIn("commitments", meta, svc)
+                # No auxiliary_data in the default render (it needs a vc image with #850);
+                # test_aux_data_render holds the gdc-style render.
+                self.assertNotIn("auxiliary_data", meta, svc)
                 self.assertEqual(meta, {"mddl_file_path": f"/vctms/{SCOPE}.mdoc.json", "doctype": DOCTYPE,
                                         "format": "mso_mdoc"}, svc)
             self.assertEqual(files["mddl"], (ROOT / "fixtures" / "vc-metadata" / f"{SCOPE}.mdoc.json").read_bytes())
-            # no seed source in the default render, so the documents carry the legacy public test ssc
+            # the documents are the source fixtures: no ssc or psc, vc derives and the wallet supplies them
             expected = json.loads((ROOT / "fixtures" / "vc-bootstrapping" / f"{SCOPE}.json").read_text())
-            for doc in expected.values():
-                doc["document_data"]["ssc"] = LEGACY_SSC
             self.assertEqual(files["documents"], expected)
             imports = configs["vc-apigw"]["apigw"]["data_sources"]["datastore"]["import"]["file_paths"]
             self.assertIn(f"/documents/{SCOPE}.json", imports)

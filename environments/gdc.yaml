@@ -55,7 +55,7 @@ images:
   #           apigw    sha256:27937cf06c87a7572ee5b767bed168199d42e0828608048fa1d6026d7f646667
   #           issuer   sha256:42adcef1cd9cd2c5bffc9262d55d95693a9befa67962bb03e73f9b3857fa95be
   #           registry sha256:518a9625c1c0b1ecdea7e720139a4f060fbe362306456f69de50123b2ccb9c1b
-  #   source  vc merge 8bf1594fb48177b6a88cd8bdcca2a3e38265b2bd (2026-10-27, local branch `local/gdc-nymauth-v8`, never pushed; a
+  #   source  vc merge, local branch `local/gdc-nymauth-v8` @ 8bf1594fb48177b6a88cd8bdcca2a3e38265b2bd (2026-10-27, never pushed; a
   #           later test-only commit 8fedc0d58 carries the fixed #866 test). The vc session's `local/gdc-nymauth-v7` a54690b0a2808538bf2a96f2a9864d5ac1f57dd9
   #           (parents 1759596828832cc5b8e717557fa20155b675f0e8 and edc191830361ccfc0548c6afa6da6707215040a4: main 5e26c93b6 +
   #           the verifier stack #827 #829 #830 #831 #832 + https://github.com/SUNET/vc/pull/840 + https://github.com/SUNET/vc/pull/850 @

@@ -539,11 +539,14 @@ into a datastore document, so the chart renders
 `auth_scopes.<x>.document_claims`/`identity_attributes` for a proposed vc
 change and vc main ignores them; until then the document's own `birth_date`
 is issued, and `tests/test_fixture_integrity.py` (`NymAuth`) holds it equal to
-the birth date in every credential that person can present. Its `ssc` is issuer-generated
-from `issuer.apigw.seeds` (a PERMANENT per-environment secret, `vc_render.apply_secrets`) over the
-document's `issuing_country` + `personal_administrative_number`, and its seed is delivered to the wallet
-(`commitments.ssc.deliver`); the stored documents must not carry `ssc` (vc refuses it) and `psc` is
-holder-supplied. Needs vc with SUNET/vc#793/#821; an older image ignores `apigw.seeds` and issues no `ssc`.
+the birth date in every credential that person can present. Its `ssc` is derived by the issuer (SUNET/vc#850 Credential
+Auxiliary Data: `auxiliaryData` + one `hkdf` `hash_commitment` derivation per data source scope, rendered only where
+`issuer.apigw.credentialEncryption.enabled`) from a PERMANENT per-environment secret file (`/seeds/nym_auth_seed.key`,
+`vc_render.apply_secrets`) over the document's `issuing_country` + `personal_administrative_number`, and the opening is
+delivered to the wallet in the encrypted credential response; the stored documents must carry neither `ssc` nor `psc`
+(vc refuses a pre-set value; `psc` is wallet-supplied and not mandatory in the MDDL). Needs vc with SUNET/vc#850; an older
+image ignores `auxiliary_data`/`derivations` and issues no `ssc`, and the old seed shapes (`issuer.apigw.seeds`,
+`org.siros.secret_seed`, `holder_commitments`) are removed: vc ignores leftover keys silently.
 
 Derived age claims are recomputed from the birth date at test time, so they
 fail the suite rather than rot. Adding or changing a document needs a
