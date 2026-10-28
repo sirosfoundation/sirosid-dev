@@ -107,20 +107,18 @@ images:
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
   #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
-  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1793143233
-  #   digest sha256:7acb95a652b50cc4e36307a0120505f4da082c1658736393117abdeed59e46ea (integration 11, 2026-10-28)
-  #   source  go-wallet-backend local branch @ ed0beb273e22c994447389f6ef9fe8d3f76c4d49: LOCAL, NEVER pushed (fetched by full SHA
-  #           from a worktree); VERSION 0.24.0-nymauth.ed0beb2, GIT_REF empty. = main ff3fe436677ff2c9aea519e077757b51d1997408 +
-  #           https://github.com/sirosfoundation/go-wallet-backend/pull/471 @ 32e16e48e64ab0d09d69c6bde6a224fe63735cae +
-  #           https://github.com/sirosfoundation/go-wallet-backend/pull/480 @ 627ab7a81141d1c7d1510f20f88efc2b8ba87626 (reworked:
-  #           legacy shapes removed, duplicate-key ambiguity in resolved issuer metadata fixed) + 2 local gdc commits (rules file and
-  #           simulation tests) + 1 docs commit. NOT contained: WMP (#163/#472), the lifecycle stack, #452. Config: no new keys
-  #           (issuance.secret_members is gone; a leftover key is harmless). Behaviour: an issuer advert or response carrying
-  #           org.siros.secret_seed / holder_commitments / psc is refused (LEGACY_SECRET_MEMBER), so vc MUST be the #850 build
-  #           with the aux-data config; AUXILIARY_DATA_UNSUPPORTED for unsupported alg/encoding/required entries; repeated or
-  #           case-variant issuer metadata members: the configuration is not offered, or the fetch fails closed.
-  #           The assurance rules file is unchanged (hash 791e00a8…451a).
-  #   rollback pin: local-1792928945 (integration 10, 5536d36, digest sha256:e95feb9dfb1e1b69a2b288db75ae3db29d649434873a66b10e64c1ac65786a1a)
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150
+  #   digest sha256:9e216b14e51360d0b9731bb2fcf5204b6e0e4e3c0c329bed557e52f8c26bfd39 (integration 12, 2026-10-28)
+  #   source  go-wallet-backend local branch @ d7d11ac42db68bc30265a3281d1416c308e7f568: LOCAL, NEVER pushed (fetched by full SHA
+  #           from a worktree); VERSION 0.24.0-nymauth.d7d11ac, GIT_REF empty. = main c86c663f (incl.
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/471, /pull/452 and /pull/509) + PR
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/480 @ d406ea3e (legacy shapes removed, duplicate-key fix) + the
+  #           2 local gdc commits. NOT contained: WMP (#163/#472), the lifecycle stack. Supersedes integration 11 (ed0beb27).
+  #           New: WebSocket close-reason diagnostics (#509: Info `Session close reason` with a stable reason per close,
+  #           `Closing existing session` at Info with both session ids; remote_addr is the Fly proxy's address) and ONE new config
+  #           key from #452, security.token_blacklist.backend (empty follows storage.type = the shared Mongo revocation store, 503
+  #           when it cannot answer): set to `memory` below, i.e. unchanged behaviour. Assurance rules file unchanged.
+  #   rollback pins: integration 11 local-1793143233 (ed0beb2, digest sha256:7acb95a652b50cc4e36307a0120505f4da082c1658736393117abdeed59e46ea); integration 10 local-1792928945 ( 5536d36, digest sha256:e95feb9dfb1e1b69a2b288db75ae3db29d649434873a66b10e64c1ac65786a1a)
   #   previous engine (integration 10 and older, kept as history):
   #   rollback pin: local-1792873390 (integration 7, 64e1ebe, digest sha256:6f8597f347370ec8bae96e6bb30438b112d277f3b33e21b6089551d4dfa2fd8b)
   #   previous engine (integration 6): local-1792841318
@@ -280,7 +278,7 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793143233
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
@@ -425,6 +423,12 @@ values:
     # 64e1ebe, 4 rules, lints with two WARNs for the claimed evidence); the backend refuses to start if it is missing.
     assuranceRules: config/assurance-gdc.rules
     extraConfig:
+      # #452 (engine integration 12): an empty backend FOLLOWS storage.type, so a Mongo-backed gdc would switch token revocation to a
+      # SHARED Mongo store that refuses requests with 503 when it cannot answer. Kept at the per-process memory store for this test
+      # cycle, i.e. today's behaviour; switch to `storage` deliberately.
+      security:
+        token_blacklist:
+          backend: memory
       wallet_provider:
         attestation:
           assurance:
