@@ -1,0 +1,39 @@
+{
+  "alice-001": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "pid_mdoc_id_offer",
+      "document_id": "document_id_pid_mdoc_id_offer_alice-001",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "alice-001"
+    ],
+    "document_data": {
+      "family_name": "Wonderland",
+      "given_name": "Alice",
+      "birth_date": "1990-01-15",
+      "issuing_country": "SE",
+      "administrative_number": "pan-100"
+    }
+  },
+  "bob-002": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "pid_mdoc_id_offer",
+      "document_id": "document_id_pid_mdoc_id_offer_bob-002-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "bob-002"
+    ],
+    "document_data": {
+      "family_name": "Builder",
+      "given_name": "Bob",
+      "birth_date": "1985-06-20",
+      "issuing_country": "SE",
+      "administrative_number": "pan-101",
+      "age_over_18": true
+    }
+  }
+}

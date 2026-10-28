@@ -66,7 +66,7 @@ class VerifierHidesOfferTwins(unittest.TestCase):
         """The verifier's picker iterates common.credential_metadata wholesale; this is the count it renders."""
         twins = [k for k in self.apigw if k.endswith("_offer")]
         self.assertEqual(len(self.verifier), len(self.apigw) - len(twins))
-        self.assertEqual(len(self.verifier), 14, "26 entries minus the 12 twins")
+        self.assertEqual(len(self.verifier), 15, "28 entries minus the 13 twins")
 
 
 @NEEDS
@@ -85,7 +85,7 @@ class NoTwinsWhereOffersAreAllowed(unittest.TestCase):
 
     def test_one_entry_per_type_and_nym_auth_is_still_issuable(self):
         meta = self.cfg["vc-apigw"]["common"]["credential_metadata"]
-        self.assertEqual(len(meta), 14)
+        self.assertEqual(len(meta), 15)
         self.assertEqual(set(meta), set(self.cfg["vc-verifier"]["common"]["credential_metadata"]))
         scopes = self.cfg["vc-apigw"]["apigw"]["data_sources"]["datastore"]["scopes"]
         self.assertTrue(scopes["nym_auth"]["allow_preauth_offer"])

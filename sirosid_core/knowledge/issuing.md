@@ -44,10 +44,12 @@ mandatory ones):
 | `siros_id` | dc+sd-jwt | alice-001, bob-002 | carol-003 |
 | `diploma` | dc+sd-jwt | alice-001, bob-002 | carol-003 |
 | `pid_mdoc` | mso_mdoc | alice-001 | bob-002 |
+| `pid_mdoc_id` | mso_mdoc | alice-001 | bob-002 |
 | `mdl_zk4` | mso_mdoc | alice-001 | bob-002 |
 | `photoid` | mso_mdoc | alice-001, bob-002 | carol-003 |
 | `pid_1_8_offer` | dc+sd-jwt | as `pid_1_8` | as `pid_1_8` |
 | `pid_mdoc_offer` | mso_mdoc | as `pid_mdoc` | as `pid_mdoc` |
+| `pid_mdoc_id_offer` | mso_mdoc | as `pid_mdoc_id` | as `pid_mdoc_id` |
 | `mdl_offer` | mso_mdoc | as `mdl` | as `mdl` |
 | `photoid_offer` | mso_mdoc | as `photoid` | as `photoid` |
 | `diploma_offer` | dc+sd-jwt | as `diploma` | as `diploma` |
@@ -84,7 +86,7 @@ alice, bob and carol have no business documents, so their PID leads to "no docum
 `nym_auth` (doctype `eu.europa.ec.eudi.nym_auth.1`, nym_auth rulebook v0.3) holds a birth date and
 commitments (`ssc`, optional `psc`; Credential Auxiliary Data) for zero-knowledge pseudonym and age proofs. It is also
 presentation-authenticated, but for the natural persons (alice-001, bob-002, carol-003), and the issuer
-accepts any ONE of `pid_1_8`, `pid_1_5`, `pid_mdoc`, `mdl` or `photoid`. So: get one of those as that
+accepts any ONE of `pid_1_8`, `pid_1_5`, `pid_mdoc_id`, `mdl` or `photoid`. So: get one of those as that
 user first, then request `nym_auth` and present it when asked.
 - The issued birth date is copied from the presented credential when the issuer has the document-claim
   copy (SUNET/vc#813); otherwise it is the stored one, which is the same person's birth date.

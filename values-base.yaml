@@ -118,6 +118,15 @@ features:
       issuance:
         authProvider: preauth
         source: datastore
+    pid_mdoc_id_offer:
+      metadataFrom: pid_mdoc_id
+      vct: "eu.europa.ec.eudi.pid.1"
+      doctype: "eu.europa.ec.eudi.pid.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/pid_mdoc_id.mdoc.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
     pid_mdoc_offer:
       metadataFrom: pid_mdoc
       vct: "eu.europa.ec.eudi.pid.1"
@@ -329,6 +338,21 @@ features:
         source: datastore
         authOptions:
           claims: [given_name, family_name]
+    # The same doctype WITH a birth date and the national identifier, for issuing nym_auth from a real mdoc PID
+    # (pid_mdoc stays the 4-claim Vega ZK test credential: its circuit is fixed at 4 claim slots and
+    # fixtures/vc-presentation-requests/pid_mdoc_zk.yaml depends on it). The birth_date is an mdoc full-date (CBOR
+    # tag 1004) - the value that SUNET/vc#865 broke through Mongo - and administrative_number is the PID element nym_auth's
+    # commitment reads (documentClaims below). The two scopes share a doctype: a wallet holding both offers either.
+    pid_mdoc_id:
+      vct: "eu.europa.ec.eudi.pid.1"
+      doctype: "eu.europa.ec.eudi.pid.1"
+      format: mso_mdoc
+      mdocSchema: {file: fixtures/vc-metadata/pid_mdoc_id.mdoc.json}
+      issuance:
+        authProvider: oidc
+        source: datastore
+        authOptions:
+          claims: [given_name, family_name]
     # 4-claim org.iso.18013.5.1.mDL variant for Vega ZK testing. Neither "mdl"
     # (30+ claims, over VegaProofSystem's fixed 4-slot circuit) nor "pid_mdoc"
     # (right claim count, wrong docType/namespace - zk-cred-vega's mso.rs
@@ -448,12 +472,17 @@ features:
                 birthdate: birth_date
                 personal_administrative_number: personal_administrative_number
                 issuing_country: issuing_country
-            pid_mdoc:
+            # The mdoc PID WITH identifiers (pid_mdoc_id). The 4-claim pid_mdoc has no birth date, so offering it here
+            # could only fail closed.
+            pid_mdoc_id:
               claims: [eu.europa.ec.eudi.pid.1.given_name, eu.europa.ec.eudi.pid.1.family_name]
               identityAttributes:
                 eu.europa.ec.eudi.pid.1.given_name: given_name
                 eu.europa.ec.eudi.pid.1.family_name: family_name
-              documentClaims: {eu.europa.ec.eudi.pid.1.birth_date: birth_date}
+              documentClaims:
+                eu.europa.ec.eudi.pid.1.birth_date: birth_date
+                eu.europa.ec.eudi.pid.1.issuing_country: issuing_country
+                eu.europa.ec.eudi.pid.1.administrative_number: personal_administrative_number
             mdl:
               claims: [given_name, family_name]
               documentClaims: {birth_date: birth_date}
@@ -522,10 +551,12 @@ issuer:
       mdl: {file: fixtures/vc-bootstrapping/mdl.json}
       mdl_zk4: {file: fixtures/vc-bootstrapping/mdl_zk4.json}
       pid_mdoc: {file: fixtures/vc-bootstrapping/pid_mdoc.json}
+      pid_mdoc_id: {file: fixtures/vc-bootstrapping/pid_mdoc_id.json}
       siros_id: {file: fixtures/vc-bootstrapping/siros_id.json}
       photoid: {file: fixtures/vc-bootstrapping/photoid.json}
       pid_1_8_offer: {file: fixtures/vc-bootstrapping/pid_1_8_offer.json}
       pid_mdoc_offer: {file: fixtures/vc-bootstrapping/pid_mdoc_offer.json}
+      pid_mdoc_id_offer: {file: fixtures/vc-bootstrapping/pid_mdoc_id_offer.json}
       mdl_offer: {file: fixtures/vc-bootstrapping/mdl_offer.json}
       photoid_offer: {file: fixtures/vc-bootstrapping/photoid_offer.json}
       # EU Business Wallet documents for the mini-oidc company users -
@@ -613,11 +644,11 @@ issuer:
                 redirect_uri:
                   - "siros-sample://callback"
                   - "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
               e2e-test-client-2:
                 type: public
                 redirect_uri: "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
         data_sources:
           assertion:
             scopes:

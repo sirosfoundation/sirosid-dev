@@ -63,8 +63,16 @@ class SeedFromPid(unittest.TestCase):
         self.assertIn("personal_administrative_number", entry["document_claims"])
 
     def test_scopes_that_cannot_supply_them_do_not_pretend_to(self):
-        for other in ("mdl", "photoid", "pid_mdoc"):
+        for other in ("mdl", "photoid"):
             self.assertFalse(set(SUBJECTS) & set(self.scope["auth_scopes"][other].get("document_claims", {}).values()), other)
+
+    def test_the_mdoc_pid_with_identifiers_supplies_both(self):
+        """pid_mdoc_id (the 4-claim pid_mdoc cannot: no birth date, no identifiers) copies the birth date and both identifiers."""
+        claims = self.scope["auth_scopes"]["pid_mdoc_id"]["document_claims"]
+        self.assertEqual(claims["eu.europa.ec.eudi.pid.1.issuing_country"], "issuing_country")
+        self.assertEqual(claims["eu.europa.ec.eudi.pid.1.administrative_number"], "personal_administrative_number")
+        self.assertEqual(claims["eu.europa.ec.eudi.pid.1.birth_date"], "birth_date")
+        self.assertNotIn("pid_mdoc", self.scope["auth_scopes"], "the 4-claim pid_mdoc could only fail closed here")
 
     def test_the_stored_documents_still_carry_the_same_identifiers_so_the_pseudonym_is_the_same_by_offer_or_by_pid(self):
         pid = json.load(open(ROOT / "fixtures" / "vc-bootstrapping" / "pid_1_8.json"))
