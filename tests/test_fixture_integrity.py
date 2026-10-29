@@ -104,6 +104,9 @@ IDENTITY_CLAIMS = {
             ("birth_date",): "birth_date"},
     "pid_mdoc": {("given_name",): "given_name",
                  ("family_name",): "family_name"},
+    "pid_mdoc_id": {("given_name",): "given_name",
+                    ("family_name",): "family_name",
+                    ("birth_date",): "birth_date"},
     "mdl_zk4": {("given_name",): "given_name",
                 ("family_name",): "family_name"},
     "photoid": {("given_name_unicode",): "given_name",
@@ -137,6 +140,7 @@ AGE_DERIVATIONS = {
         ("age_over_65",): lambda age, year: age >= 65,
     }),
     "pid_mdoc": (None, {("age_over_18",): lambda age, year: age >= 18}),
+    "pid_mdoc_id": (("birth_date",), {("age_over_18",): lambda age, year: age >= 18}),
     "mdl_zk4": (None, {("age_over_18",): lambda age, year: age >= 18}),
     "photoid": (("birth_date",), {
         ("age_in_years",): lambda age, year: age,
@@ -532,7 +536,7 @@ class NymAuth(FixtureCase):
 
     SCOPE = "nym_auth"
     NAMESPACE = "eu.europa.ec.eudi.nym_auth.1"
-    AUTH_SCOPES = {"pid_1_8", "pid_1_5", "pid_mdoc", "mdl", "photoid"}
+    AUTH_SCOPES = {"pid_1_8", "pid_1_5", "pid_mdoc_id", "mdl", "photoid"}
     NATURAL_PERSONS = {"alice-001", "bob-002", "carol-003"}
     PRIMARY_MDOC_NAMESPACE = "org.iso.18013.5.1"
 
@@ -540,9 +544,7 @@ class NymAuth(FixtureCase):
     # vc with document_claims refuses such a presentation (fail closed) rather
     # than issue the stored date - so the option is unusable until the gap is
     # closed, and this test fails the day it is, to have the entry removed.
-    BIRTH_DATE_GAPS = {
-        "pid_mdoc": "fixtures/vc-metadata/pid_mdoc.mdoc.json is a 4-claim stub without the EU PID's birth_date",
-    }
+    BIRTH_DATE_GAPS = {}
 
     @classmethod
     def setUpClass(cls):

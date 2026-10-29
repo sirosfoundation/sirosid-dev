@@ -42,10 +42,10 @@ a user from a list; there are no passwords. It is the only "identity provider" i
 | format id | what | identified by | examples here |
 |---|---|---|---|
 | `dc+sd-jwt` | SD-JWT VC: a JWT with selectively disclosable claims | `vct` (a URN/URI) | `pid_1_8` (`urn:eudi:pid:arf-1.8:1`), `pid_1_5`, `ehic`, `diploma`, `siros_id`, `ebw_oid`, `eucc`, `eu_poa`, `iban_ov` |
-| `mso_mdoc` | ISO/IEC 18013-5 mdoc (CBOR, COSE-signed) | `doctype` | `mdl` (`org.iso.18013.5.1.mDL`), `pid_mdoc` (`eu.europa.ec.eudi.pid.1`), `photoid`, `mdl_zk4`, `nym_auth` (`eu.europa.ec.eudi.nym_auth.1`) |
+| `mso_mdoc` | ISO/IEC 18013-5 mdoc (CBOR, COSE-signed) | `doctype` | `mdl` (`org.iso.18013.5.1.mDL`), `pid_mdoc` (`eu.europa.ec.eudi.pid.1`), `pid_mdoc_id` (the same doctype with a birth date and the national identifier), `photoid`, `mdl_zk4`, `nym_auth` (`eu.europa.ec.eudi.nym_auth.1`) |
 
 `mdl_zk4` is a 4-claim mDL variant used for Vega zero-knowledge proof tests.
-The `_offer` scopes (`pid_1_8_offer`, `pid_mdoc_offer`, `mdl_offer`, `mdl_zk4_offer`, `photoid_offer`, `diploma_offer`, `siros_id_offer`, `ebw_oid_offer`, `eucc_offer`, `eu_poa_offer`, `iban_ov_offer`, `nym_auth_offer`) are not separate credentials: each is the same
+The `_offer` scopes (`pid_1_8_offer`, `pid_mdoc_offer`, `pid_mdoc_id_offer`, `mdl_offer`, `mdl_zk4_offer`, `photoid_offer`, `diploma_offer`, `siros_id_offer`, `ebw_oid_offer`, `eucc_offer`, `eu_poa_offer`, `iban_ov_offer`, `nym_auth_offer`) are not separate credentials: each is the same
 credential as its source, issued by a pre-authorized offer (no login) for the developer CLI's `make datastore-offer`. A credential *scope*
 (`pid_1_8`, `mdl`, ...) is the OpenID4VCI scope and the key used throughout the configs.
 

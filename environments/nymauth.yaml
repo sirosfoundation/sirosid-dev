@@ -39,11 +39,11 @@ credential_registries:
 
 images:
   # Same pins as gdc (PIN PROVENANCE in environments/gdc.yaml): tag, digest, base commit and PR heads of every build.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793177331      # vc c8c5b1ea + artifact overlay (zkp_req, #840)
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793177331            # vc c8c5b1ea (seed delivery, #840)
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793177331
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793177331
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793143233  # engine ed0beb2 (integration 11)
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793192393      # vc c8c5b1ea + artifact overlay (zkp_req, #840)
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793192393            # vc c8c5b1ea (seed delivery, #840)
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793192393
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150  # engine d7d11ac (integration 12)
   pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
 
@@ -90,6 +90,12 @@ values:
     # 64e1ebe, 4 rules, lints with two WARNs for the claimed evidence); the backend refuses to start if it is missing.
     assuranceRules: config/assurance-gdc.rules
     extraConfig:
+      # #452 (engine integration 12): an empty backend FOLLOWS storage.type, so a Mongo-backed gdc would switch token revocation to a
+      # SHARED Mongo store that refuses requests with 503 when it cannot answer. Kept at the per-process memory store for this test
+      # cycle, i.e. today's behaviour; switch to `storage` deliberately.
+      security:
+        token_blacklist:
+          backend: memory
       wallet_provider:
         attestation:
           assurance:
