@@ -140,9 +140,9 @@ and pointing an mdoc type at a vctm_file_path fails validation at startup. Both
 are rendered into the same `vctms` ConfigMap (templates/03-cred-common.yaml) -
 the file extension is what distinguishes them on disk.
 */}}
-{{- /* The metadata every vc service reads. `commitments` (seed-backed claims, SUNET/vc#793/#821) is a
+{{- /* The metadata every vc service reads. `auxiliary_data` (Credential Auxiliary Data, SUNET/vc#850) is a
        concern of the issuer-apigw alone, so it is rendered only by the ...Apigw variant below: the other
-       services have no seed source and must not be handed a block that names one. */ -}}
+       services have no opening to derive and must not be handed a block that names one. */ -}}
 {{- define "siros-id.vc.credentialMetadata" -}}
 {{- include "siros-id.vc.credentialMetadata.render" (list . false false) -}}
 {{- end -}}
@@ -188,9 +188,9 @@ offer's credential_configuration_id is resolved against credential_configuration
   {{- with $data.disclosurePolicy }}
   disclosure_policy: {{- toYamlPretty . | nindent 4 }}
   {{- end }}
-  {{- if and $withCommitments $root.Values.issuer.apigw.seeds }}
-  {{- with $data.commitments }}
-  commitments: {{- toYamlPretty . | nindent 4 }}
+  {{- if and $withCommitments $root.Values.issuer.apigw.credentialEncryption.enabled }}
+  {{- with $data.auxiliaryData }}
+  auxiliary_data: {{- toYamlPretty . | nindent 4 }}
   {{- end }}
   {{- end }}
 {{- end }}

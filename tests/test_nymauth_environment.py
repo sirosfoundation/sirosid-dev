@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import env_config  # noqa: E402
+from sirosid_core import vc_render  # noqa: E402
 from sirosid_core.naming import Naming  # noqa: E402
 from sirosid_core.render import render  # noqa: E402
 from sirosid_core.resources import Resources  # noqa: E402
@@ -86,9 +87,10 @@ class RenderedNymAuthEnvironment(unittest.TestCase):
         whitelist = self.cfg["pdp"]["registries"]["whitelist"]["lists"]
         self.assertEqual(whitelist["verifiers"], ["https://sirosid-nymauth-vc-apigw.fly.dev", f"https://{HOST}"])
 
-    def test_the_issuer_delivers_the_seed_encrypted_with_a_notification_endpoint(self):
+    def test_the_issuer_delivers_the_opening_encrypted_with_a_notification_endpoint(self):
         apigw = self.cfg["vc-apigw"]["apigw"]
-        self.assertEqual(apigw["seeds"]["primary"]["model"], "derived")
+        self.assertNotIn("seeds", apigw)
+        self.assertEqual(vc_render.opening_secret_paths(apigw), ["/seeds/nym_auth_seed.key"])
         self.assertIn("credential_encryption", apigw["issuer_metadata"])
         self.assertEqual(apigw["issuer_metadata"]["notification_endpoint"], "https://sirosid-nymauth-vc-apigw.fly.dev/notification")
         meta = self.cfg["vc-apigw"]["common"]["credential_metadata"]

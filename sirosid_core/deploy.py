@@ -190,12 +190,12 @@ def _vc_service_files(ctx: DeployContext, app: str, service: str, metadata: bool
         args += ["--file-local", f"/branding-assets/{f.name}={f}"]
     if service == "vc-apigw":
         apigw = (yaml.safe_load((out_dir / "vc-apigw.yaml").read_text()).get("apigw") or {})
-        # apigw.seeds.<name>.secret_path: the seed secret as a Fly secret mounted as a file (never in the config,
-        # which `flyctl config show` can read). ensure_secret never rotates: the secret is permanent.
-        for name, seed in sorted((apigw.get("seeds") or {}).items()):
-            secret = vc_render.seed_secret_file(name)
+        # the secret behind each hash_commitment opening (secret_path): a Fly secret mounted as a file (never in the
+        # config, which `flyctl config show` can read). ensure_secret never rotates: the secret is permanent.
+        for secret_path in vc_render.opening_secret_paths(apigw):
+            secret = vc_render.opening_secret_file(secret_path)
             fly.ensure_secret(app, secret, (out_dir / state_mod.VC_SECRETS_DIR / secret).read_text().strip())
-            args += ["--file-secret", f"{seed['secret_path']}={secret}"]
+            args += ["--file-secret", f"{secret_path}={secret}"]
         # The credential-encryption key (see vc_render): a Fly secret mounted as a file, set once.
         if ((apigw.get("issuer_metadata") or {}).get("credential_encryption") or {}).get("keys"):
             fly.ensure_secret(app, "vcCredentialEncryption",

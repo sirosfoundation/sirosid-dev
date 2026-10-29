@@ -1,11 +1,11 @@
 # Testing nym_auth: the `nymauth` environment
 
 `environments/nymauth.yaml` is a **known starting point** for testing the nym_auth pseudonym flow end to end:
-the issuer gives a wallet a `nym_auth` credential (and delivers its secret seed), and a verifier asks the wallet for a
+the issuer gives a wallet a `nym_auth` credential (and delivers the opening of its `ssc` commitment), and a verifier asks the wallet for a
 **zero-knowledge pseudonym** (and optionally an age range) without seeing any attribute. It is the `gdc` stack reduced to
 what that needs; `diff environments/gdc.yaml environments/nymauth.yaml` shows exactly what is nymauth-specific.
 
-**Status.** The flow below was proven live on `gdc` (a Pixel, the Kotlin sample app): issuance with seed delivery and
+**Status.** The flow below was proven live on `gdc` (a Pixel, the Kotlin sample app): issuance with auxiliary data delivery and
 notification; same-device presentation of both presets; cross-device presentation by scanning the verifier page's QR in a
 browser. **Nobody has deployed `ENV=nymauth` yet**; it reproduces gdc's pins on its own hostnames. (The vc images were rebuilt
 from vc `c8c5b1ea` - classified refusals and #840 - after the proven run; the Pixel run on exactly that set is the next step.)
@@ -23,7 +23,7 @@ sample app and a browser.
 
 ### Prerequisites
 - `flyctl` logged in to the Fly org (`flyctl auth whoami`), `helm`, `docker`, `python3` with PyYAML, and a checkout of
-  this repo **on the machine that deploys**: per-environment state (PKI, secrets, the seed secret) lives in the
+  this repo **on the machine that deploys**: per-environment state (PKI, secrets, the opening secret) lives in the
   gitignored `fixtures/rendered/fly-nymauth/` and must be kept; a deploy from another checkout generates new ones.
 - The images are pinned to gdc's registry namespace (`registry.fly.io/sirosid-gdc-*`); the deploy pulls them, so the Fly
   account must be able to read gdc's images. **Not yet exercised.** If it cannot, push the same images to the new apps'
@@ -36,7 +36,7 @@ make fly-up ENV=nymauth            # a fresh datastore imports the fixtures on f
 ```
 `make fly-up ENV=nymauth` would create, in the org's `arn` region: **11 apps** - `sirosid-nymauth-` + `mongodb`, `mini-oidc`,
 `pdp`, `vc-registry`, `vc-issuer`, `vc-apigw`, `vc-verifier`, `wallet-backend`, `wallet-proxy`, `wallet-frontend`,
-`env-admin` - with a volume for MongoDB, the secrets (signing key, JWT/admin secrets, the permanent seed secret and the
+`env-admin` - with a volume for MongoDB, the secrets (signing key, JWT/admin secrets, the permanent opening secret and the
 credential-encryption key), deploy tokens for env-admin, and public `*.fly.dev` hostnames. It generates the environment's
 own PKI; the signing certificate carries the verifier's host (`signingCertDnsSan`). `make fly-down ENV=nymauth` removes it.
 Do not run these unless you mean to create those resources.
@@ -81,7 +81,7 @@ use a passkey, and sign in. The **Credentials** tab shows **Welcome, <your name>
 The operator gives you an offer link or QR code (Part 1). Either open the link on the phone, or on **Home** tap
 **Add a credential**, scan with **Scan QR Code**, or paste the link under **Or paste a credential offer URI** and tap
 **Redeem Offer**. The wallet shows progress ("Reading credential offer...", "Issuer trust verified", "Requesting
-credential..."), then the credential appears under **Credentials** as **Nym authentication**. The secret seed is stored
+credential..."), then the credential appears under **Credentials** as **Nym authentication**. The opening (the private seed) is stored
 silently and never shown.
 
 ### 4. Present it to the verifier
@@ -151,11 +151,22 @@ Deliver the link to a connected phone: `adb shell am start -a android.intent.act
 results keyed by the `return` handles (`nym`, `age`), plus `system_id` and `proof_time`.
 
 ### Checking issuance
-- issuer log: `Delivered a secret seed {namespaces: [org.siros.nym_auth], notification_id: ...}`, then `POST /credential` 200 and
-  `POST /notification` 204;
+- issuer log: `POST /credential` 200 and `POST /notification` 204. There is NO delivery log line any more: the old `Delivered a
+  secret seed` has no successor (vc #850 logs only an ERROR, `failed to apply auxiliary data`, handlers_issuer.go:526), so a
+  log-grep for success always fails. Check the RESPONSE instead: a successful issuance carries
+  `credential_metadata.auxiliary_data[]` with a `hash_commitment` entry for path `[eu.europa.ec.eudi.nym_auth.1, ssc]` and a
+  base64url `opening`, inside the encrypted Credential Response, so the check runs wallet-side or on a decrypted capture;
 - engine log: `credential notification forwarded to issuer`; `/v1/evaluate` 200 (decision true);
-- the issuer's `/.well-known/openid-credential-issuer` must NOT contain the seed (no 32-hex string) and advertises
+- the issuer's `/.well-known/openid-credential-issuer` must NOT contain an opening (no 32-hex string) and advertises
   `notification_endpoint`.
+
+### Known unproven (after the move to Credential Auxiliary Data)
+- The Mongo re-issue of `nym_auth` from a presented **mdoc** PID is the only test that proves SUNET/vc#865 (an mdoc date coming
+  back from the cache as `bson.D` under HA + Mongo) is fixed by SUNET/vc#866; every in-process suite passes either way.
+- A pre-authorized issuance where the pre-authorized twin is KEPT (a compose-render environment, not gdc: gdc drops the twins).
+- **SD-JWT-sourced issuance under HA:** a nested object still changes type across the cache (stored as a BSON sub-document,
+  read back as `bson.D`); mdoc claims do not nest, SD-JWT claims do. #866 pins the current behaviour with a test. If an
+  SD-JWT-sourced issuance misbehaves under HA, that is the suspect, and it is a separate fix.
 
 ### Logs
 `flyctl logs --no-tail` returns only the **last 100 lines** per app; at debug level that is about a minute. **Run a continuous
@@ -180,8 +191,8 @@ URL, x5c = the DS leaf) is true from the mDOC IACA registry with the leaf alone.
 ### The pins
 | component | pin | built from |
 |---|---|---|
-| vc-verifier / apigw / issuer / registry | `registry.fly.io/sirosid-gdc-vc-<svc>:local-1792922319` | vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` (includes #840; verifier + circuit-artifact overlay) |
-| wallet-backend (engine) | `registry.fly.io/sirosid-gdc-wallet-backend:local-1792928945` | go-wallet-backend local branch @ `5536d36` (#469, #471, #163, #472, #480, #476, #477, #481, #482, #483-#486 + local-only commits; go-wmp v0.10.0; assurance simulation policy): the CLIENT does the encryption, so a client without that support fails issuance and direct_post.jwt |
+| vc-verifier / apigw / issuer / registry | `registry.fly.io/sirosid-gdc-vc-<svc>:local-1793177331` | vc `integration/gdc-nymauth-v5` @ `c8c5b1ea` (includes #840; verifier + circuit-artifact overlay) |
+| wallet-backend (engine) | `registry.fly.io/sirosid-gdc-wallet-backend:local-1793143233` | go-wallet-backend local branch @ `ed0beb2` (main ff3fe436 + #471 + the reworked #480 + local gdc commits; no WMP; assurance simulation policy): the CLIENT does the encryption, so a client without that support fails issuance and direct_post.jwt |
 | pdp | `ghcr.io/sirosfoundation/go-trust:0.26.0` | released (go-trust#218) |
 
 The previously PROVEN vc build was `a56c4be9e` (verifier `local-1792603698`) with apigw/issuer/registry `local-1792473614`; the current pins

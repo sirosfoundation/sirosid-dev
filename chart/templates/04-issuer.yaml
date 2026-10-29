@@ -83,17 +83,6 @@ common:
   credential_metadata: {{- include "siros-id.vc.credentialMetadataApigw" . | nindent 4 }}
 apigw:
   public_url: https://{{ $hostnameIssuer }}
-  {{- with .Values.issuer.apigw.seeds }}
-  {{- /* Seed sources for the commitments a credential type declares (SUNET/vc#793). The secret itself
-         is NOT here: the config names a file (`secret_path`) the deploy mounts - vc reads `secret` only from a
-         secrets file, which it refuses unless it is mode-restricted, and we cannot give it one (see apply_secrets). */}}
-  seeds:
-    {{- range $name, $seed := . }}
-    {{ $name }}:
-      {{- toYamlPretty $seed | nindent 6 }}
-      secret_path: /seeds/{{ $name }}
-    {{- end }}
-  {{- end }}
   api_server:
     addr: ":8080"
     cors:
@@ -139,7 +128,7 @@ apigw:
     mdoc_iacas_uri: https://{{ $hostnameIssuer }}/iacas
     # Advertised so a wallet reports the outcome (credential_accepted/failure/deleted) of an issuance; the endpoint is
     # served regardless, but a wallet that finds it in no metadata registers no notification context and drops the
-    # event (found on the first Pixel run, 2026-10-20). A seed-delivering scope REQUIRES it at startup (SUNET/vc#821).
+    # event (found on the first Pixel run, 2026-10-20). A scope with auxiliary data to the wallet should have it (SUNET/vc#850 carries the opening in the response).
     notification_endpoint: https://{{ $hostnameIssuer }}/notification
     display:
       - locale: en-US
@@ -148,9 +137,9 @@ apigw:
           uri: {{ include "siros-id.branding.logoDataUrl" . | quote }}
           alt_text: Logotype for issuer
     {{- if .Values.issuer.apigw.credentialEncryption.enabled }}
-    {{- /* OpenID4VCI §8.3 JWE of the Credential Request/Response (ECDH-ES+A256KW / A256GCM, P-256). A wallet that
-           is asked to receive a delivered seed (SUNET/vc#821) refuses to proceed against an issuer that does not
-           advertise it. The key is a FILE the deploy mounts (generated once, never in the config). */}}
+    {{- /* OpenID4VCI §8.3 JWE of the Credential Request/Response (ECDH-ES+A256KW / A256GCM, P-256). The issuer REFUSES to start
+           without it once a credential type declares auxiliary_data to_wallet (SUNET/vc#850): an opening travels only in an
+           encrypted Credential Response. The key is a FILE the deploy mounts (generated once, never in the config). */}}
     credential_encryption:
       keys:
         - private_key_path: /credential-encryption/primary.pem
@@ -197,6 +186,13 @@ apigw:
           {{- end }}
           {{- if and $.Values.issuer.datastoreAuthenticSource (ne $data.issuance.authProvider "preauth") }}
           authentic_source: {{ $.Values.issuer.datastoreAuthenticSource | quote }}
+          {{- end }}
+          {{- if and $.Values.issuer.apigw.credentialEncryption.enabled $data.derivations }}
+          {{- /* The hash_commitment derivation that fulfils each to_wallet entry of the type's auxiliary_data
+                 (SUNET/vc#850): every data source scope serving the credential needs one, or the issuer refuses to
+                 start. It reads the DOCUMENT data - the stored document for a pre-authorized offer, the presented
+                 credential's claims once document_claims has replaced them. */}}
+          derivations: {{- toYamlPretty $data.derivations | nindent 12 }}
           {{- end }}
           {{- if eq $data.issuance.authProvider "oidc" }}
           auth_claims: {{- $data.issuance.authOptions.claims | toYamlPretty | nindent 12 }}

@@ -46,25 +46,38 @@ images:
   # NYMAUTH-CRITICAL SETTINGS in this file (each one broke the flow when wrong; see docs/NYMAUTH-TESTING.md, gotchas):
   #   verifier.nym_auth.verifier_id = the PREFIXED client_id x509_san_dns:<verifier host>; verifier.preferred_vp_formats.zkp_req
   #   (system_id_values / proof_system_values); the presets (key `req`, fn_id, ver, prf); the artifact baked into the verifier
-  #   image; verifier.trust.pdp_url; pdp.extraConfig.policies (verifier_ids); issuer.apigw.seeds + credentialEncryption (seed
-  #   delivery); signingCertDnsSan (the verifier's host in the request-signing cert); the engine image (request encryption,
+  #   image; verifier.trust.pdp_url; pdp.extraConfig.policies (verifier_ids); issuer.apigw.credentialEncryption + the nym_auth auxiliaryData/derivations (auxiliary data delivery); signingCertDnsSan (the verifier's host in the request-signing cert); the engine image (request encryption,
   #   client_metadata, WMP) with the config unchanged (dcql_consent_check default).
   #
-  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1792922319
-  #   digests verifier sha256:7e5cbf1c010a41a51b188448008346b9d696563beb127a427207746aacb17fe6 (+ BOTH circuit artifacts: Longfellow
+  # vc-verifier / vc-apigw / vc-issuer / vc-registry   registry.fly.io/sirosid-gdc-vc-<svc>:local-1793177331
+  #   digests verifier sha256:28d0c8b521345c89d9d53d0f8bdf24e24136c2bcb20a6374df0928dd1c763bf9 (+ BOTH circuit artifacts: Longfellow
   #                    1,062,842 B and Vega 12,205,144 B, checked at build time)
-  #           apigw    sha256:08bfa83948345f2fafdc53d6dd6a349db956d57b7b021c8ddf460624d93126ff
-  #           issuer   sha256:9257749633756b4b9b25dafca4e33ab532a052a5ca5cc77b92ae707b4b5b7a91
-  #           registry sha256:67541d78726f8a28a6cfd45aaee59db5fa0688d6603ce3ffec200ee78200f358
-  #   source  vc merge e688386b0a6f138b617386c392e36d152871ef87 (2026-10-25, local branch `local/gdc-nymauth-v6`, never pushed): the
-  #           previous integration `integration/gdc-nymauth-v5` @ c8c5b1eafd0ff08c14ca3cf8ebaceaa4473533f0 plus sirosfoundation/vc `docs/nymauth-verifier-operator`
-  #           @ 09700653dfff56de9c371a07ae40570e6be097dc (system_id-keyed allowlist, Vega dispatch; clean merge, 23 files). That head
-  #           alone does NOT contain #840 or the v0.4 port, so it is merged into the old integration, not built on its own. The
-  #           verifier is --target runtime-verifier with zknative; all four are built from this one SHA. Vega nym_auth verifies
-  #           IN-PROCESS (libzk_cred_vega.so, no worker); `system_id` is the one new config key (required on every allow entry).
-  #           The Vega shapes are the catalog's nymauth-vega-mdoc-v1 (compressed sha256 b457ba53…, the same file zk-cred-vega
-  #           8e7be172 ships), decompressed sha256 4da5e73a…6425.
-  #   PRs     https://github.com/SUNET/vc/pull/827 @ 80d6ee9ef (nym_auth circuit allowlist; open)
+  #           apigw    sha256:29b823c3917ba76b25126eb9eafe1b8dc92ebd9fef4dd333fb6b83beae7103da
+  #           issuer   sha256:706ba62c62137293428b692d25e86a67ccf1c0db4f34bcb95538c97f57938797
+  #           registry sha256:20742dd4ad72c5659426f996318e25b1a1eb0edf261d7dbd7075e8904c62a2d4
+  #   source  vc merge, local branch `local/gdc-nymauth-v10` @ 8c79db2456ab7b5593f425238d0b88288435946f (2026-10-28, never pushed; tree
+  #           3473bcf0f8a0de625d9ca4e8143c27429e9fe2c2) = v9 34180a8e022bde9a3c38ad0857e330ddf959458c (tree
+  #           bbcd22852d142731cbc28c6053cdd1e6c513fe42) + vc a0074d066 (a notification_id is minted with a delivered opening: #850 had
+  #           dropped #821's minting and the new Kotlin refuses a secret without one) + vc e6d8547cd (AuthorizationContext and
+  #           TokenResponse redact themselves in a log, MarshalLog: no tokens, codes or claim values) on top of = the v8 merge 8bf1594fb48177b6a88cd8bdcca2a3e38265b2bd + the test-only commit
+  #           8fedc0d58 (the fixed #866 test) + ONE cherry-picked commit (vc 5da879895): handlers_users.go no longer logs the whole
+  #           AuthorizationContext and document map at debug level (they carried access/refresh tokens, the authorization code and
+  #           the holder's claims). The vc session's `local/gdc-nymauth-v7` a54690b0a2808538bf2a96f2a9864d5ac1f57dd9
+  #           (parents 1759596828832cc5b8e717557fa20155b675f0e8 and edc191830361ccfc0548c6afa6da6707215040a4: main 5e26c93b6 +
+  #           the verifier stack #827 #829 #830 #831 #832 + https://github.com/SUNET/vc/pull/840 + https://github.com/SUNET/vc/pull/850 @
+  #           1c6e0aab4 + Wicpar/vc#1 @ edc191830) merged with https://github.com/SUNET/vc/pull/866 @ 9fb22dc72 (the presented-claims
+  #           cache fix, https://github.com/SUNET/vc/issues/865: gdc runs HA with Mongo, where an mdoc date came back as bson.D and
+  #           issuance refused it). One conflict (internal/apigw/apiv1/handlers_verifier_presentation.go), resolved here and
+  #           reviewed by the vc session. #839 (the v0.4 port) is deliberately NOT in: #850 deletes what it touched and the v0.4
+  #           verifier_id rule moved to pkg/nymauth/verifier_id.go. The verifier is --target runtime-verifier with zknative; all four
+  #           are built from this one SHA. Vega nym_auth verifies IN-PROCESS (libzk_cred_vega.so, no worker); `system_id` is
+  #           required on every verifier allow entry. Credential Auxiliary Data replaces seed delivery: see values.issuer and
+  #           values-base.yaml (nym_auth auxiliaryData + derivations, the opening secret /seeds/nym_auth_seed.key). The old
+  #           secret shapes (org.siros.secret_seed, holder_commitments, psc) are gone: a new engine refuses them.
+  #           Shapes (Vega) = the catalog's nymauth-vega-mdoc-v1 (compressed sha256 b457ba53…, the file zk-cred-vega 8e7be172
+  #           ships), decompressed sha256 4da5e73a…6425.
+  #   PRs (of the PREVIOUS build c8c5b1ea, kept as history; #839 and the #821 delivery are superseded by #850):
+  #           https://github.com/SUNET/vc/pull/827 @ 80d6ee9ef (nym_auth circuit allowlist; open)
   #           https://github.com/SUNET/vc/pull/829 @ 19efd24c7 (validate a zkp_req response; open)
   #           https://github.com/SUNET/vc/pull/830 @ 90f227fcd (dispatch to the nym_auth verifier, allow-all-PDP fix, classified
   #             refusals: HTTP 400 with a stable code, e.g. zkp_req_issuer_key_set_size; open)
@@ -84,20 +97,27 @@ images:
   #           that sets issuer.allowPreauthOffer MUST be built from a vc SHA that contains it (an image without it ignores the flag
   #           silently, so a pre-authorized offer for a base scope fails with invalid_scope). tests/test_pins_carry_840.py checks
   #           that this block names #840 whenever the flag is on. Re-pin to released images once #840 and the stack are released.
-  #   rollback pins: vc images local-1792609658 (vc c8c5b1ea, verifier digest sha256:9385f5bf1b676b87f2fe6891769fafbc2cd6bd84c65b10bc614104512233891a);
+  #   rollback pins: vc images local-1793141805 (v9: issues no notification_id, so the new APK refuses delivery; logs the token at the token endpoint), local-1793132043 (v8 8bf1594fb: the same config, but it logs tokens at debug), local-1792922319 (merge e688386b0, verifier digest sha256:7e5cbf1c010a41a51b188448008346b9d696563beb127a427207746aacb17fe6;
+  #           needs the OLD config: the seeds block and the ssc/psc shapes, i.e. the config of PR 96), then local-1792609658 (vc c8c5b1ea, verifier digest sha256:9385f5bf1b676b87f2fe6891769fafbc2cd6bd84c65b10bc614104512233891a);
   #           roll the allowlist (system_id, the Vega entry) and the zkp_req offered systems back WITH the images: that image does not know them
   #   previous pins: verifier local-1792603698 (vc a56c4be9e, PROVEN flow); apigw/issuer/registry local-1792473614 (vc v4
   #           5e546b2d: #793, #821, #813, #796, #820); older verifier builds local-1792542047, -1792532233, -1792523015
   #
-  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1792928945
-  #   digest sha256:e95feb9dfb1e1b69a2b288db75ae3db29d649434873a66b10e64c1ac65786a1a (integration 10, 2026-10-25; supersedes 8 and 9, never deployed)
-  #   source  go-wallet-backend local branch @ 5536d36767eab34631347ca3e352b43856e4ef96: LOCAL, NEVER pushed (fetched by full SHA
-  #           from a worktree); VERSION 0.24.0-nymauth.5536d36, GIT_REF empty. Base main a310e157, go-wmp v0.10.0, PRs (heads built,
-  #           all https://github.com/sirosfoundation/go-wallet-backend/pull/<n>): #469 38388ef1, #471 b6674b33, #163 5f4ee5ee, #472
-  #           84c69285, #480 3d39e8f6, #476 26b333c8, #477 0ff170fa, #481 f8b276c5, #482 bb5a2a63, #483 4188f30b, #484 76d9a973,
-  #           #485 c5244412, #486 85c73d18; NOT #487 (App Attest). Over integration 7: the instance-key stack, an Android key
-  #           attestation enforcement gate (ENFORCEMENT ignore|reject, default ignore; gdc sets none, so it behaves as 7) and a
-  #           status-list re-check on use. The assurance rules file is unchanged (chart/config/assurance-gdc.rules).
+  # wallet-backend (the ENGINE)   registry.fly.io/sirosid-gdc-wallet-backend:local-1793143233
+  #   digest sha256:7acb95a652b50cc4e36307a0120505f4da082c1658736393117abdeed59e46ea (integration 11, 2026-10-28)
+  #   source  go-wallet-backend local branch @ ed0beb273e22c994447389f6ef9fe8d3f76c4d49: LOCAL, NEVER pushed (fetched by full SHA
+  #           from a worktree); VERSION 0.24.0-nymauth.ed0beb2, GIT_REF empty. = main ff3fe436677ff2c9aea519e077757b51d1997408 +
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/471 @ 32e16e48e64ab0d09d69c6bde6a224fe63735cae +
+  #           https://github.com/sirosfoundation/go-wallet-backend/pull/480 @ 627ab7a81141d1c7d1510f20f88efc2b8ba87626 (reworked:
+  #           legacy shapes removed, duplicate-key ambiguity in resolved issuer metadata fixed) + 2 local gdc commits (rules file and
+  #           simulation tests) + 1 docs commit. NOT contained: WMP (#163/#472), the lifecycle stack, #452. Config: no new keys
+  #           (issuance.secret_members is gone; a leftover key is harmless). Behaviour: an issuer advert or response carrying
+  #           org.siros.secret_seed / holder_commitments / psc is refused (LEGACY_SECRET_MEMBER), so vc MUST be the #850 build
+  #           with the aux-data config; AUXILIARY_DATA_UNSUPPORTED for unsupported alg/encoding/required entries; repeated or
+  #           case-variant issuer metadata members: the configuration is not offered, or the fetch fails closed.
+  #           The assurance rules file is unchanged (hash 791e00a8…451a).
+  #   rollback pin: local-1792928945 (integration 10, 5536d36, digest sha256:e95feb9dfb1e1b69a2b288db75ae3db29d649434873a66b10e64c1ac65786a1a)
+  #   previous engine (integration 10 and older, kept as history):
   #   rollback pin: local-1792873390 (integration 7, 64e1ebe, digest sha256:6f8597f347370ec8bae96e6bb30438b112d277f3b33e21b6089551d4dfa2fd8b)
   #   previous engine (integration 6): local-1792841318
   #   digest sha256:7385b905632cbdc73f17be35c983f73cb3715e240dab79ee800712d7197cc920 (integration 6, 2026-10-24)
@@ -107,7 +127,7 @@ images:
   #           #163 5f4ee5e (incl #439), #472 84c6928, #480 3d39e8f, #476 26b333c, #477 7aab47f (all
   #           https://github.com/sirosfoundation/go-wallet-backend/pull/<n>); NOT #468/#470. LOCAL-ONLY commits 6a29fe6, 4c3e914,
   #           f9aa081, fa6f855 and the #163 conflict resolutions (human look wanted before any #163 PR). Built here, so the image id
-  #           differs from the go-wallet-backend session's. Config: new issuance.secret_members (default fine); main's #429/#436
+  #           differs from the go-wallet-backend session's. Config: issuance.secret_members existed only in an earlier #480 head and is gone (a leftover key is ignored); main's #429/#436
   #           make as.legacy.enabled deprecated, so the chart no longer renders it. Behaviour: engine-blind encryption stays.
   #   rollback pin: local-1792637980 (46c2e4f, digest sha256:2256d0d066bbd41475da8036409a3be1b674eac3c0bce184246235385aca6d69)
   #   previous engine (46c2e4f):
@@ -195,10 +215,10 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1792922319
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1792922319
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1792922319
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1792922319
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793177331
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793177331
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793177331
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793177331
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -256,7 +276,7 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1792928945
+  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793143233
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
@@ -416,13 +436,11 @@ values:
     # off or oidc enabled. gdc: api_auth.jwks.enable true and admin_ui_enable false (its default), so the guard passes.
     allowPreauthOffer: true
     apigw:
-      # nym_auth's seed-backed ssc and its delivery (SUNET/vc#793/#821; the integration build pinned above):
-      # the issuer derives each person's seed from a per-environment secret (generated once, PERMANENT) and the
-      # wallet receives it encrypted, which needs the published credential-encryption key. Verified end to end on a
-      # Pixel 2026-10-20 (sirosid-dev PR 78). The other environments run images without it, so it is off by default.
-      seeds:
-        primary:
-          model: derived
+      # nym_auth's Credential Auxiliary Data (SUNET/vc#850; the integration build pinned above): ssc is a commitment to an
+      # opening the issuer derives from a per-environment secret (generated once, PERMANENT: replacing it gives every
+      # person a new pseudonym) and delivers to the wallet in the ENCRYPTED Credential Response, which REQUIRES the
+      # published credential-encryption key (the issuer refuses to start without it) and is what switches the type's
+      # auxiliary_data and derivations on (values-base.yaml). The other environments run images without it: off by default.
       credentialEncryption:
         enabled: true
   pdp:

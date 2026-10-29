@@ -24,7 +24,6 @@ sys.path.insert(0, str(ROOT))
 from sirosid_core.render import render  # noqa: E402
 from sirosid_core.resources import Resources  # noqa: E402
 
-from sirosid_core.vc_render import LEGACY_NYM_AUTH_SSC as LEGACY_SSC  # noqa: E402
 
 NEEDS = unittest.skipUnless(shutil.which("helm"), "needs helm")
 
@@ -33,8 +32,13 @@ DOCTYPE = "eu.europa.ec.eudi.nym_auth.1"
 
 # auth scope -> (auth_claims, identity_attributes, document_claims)
 EXPECTED_AUTH_SCOPES = {
-    "pid_1_8": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"}, {"birthdate": "birth_date"}),
-    "pid_1_5": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"}, {"birthdate": "birth_date"}),
+    # The SD-JWT PIDs also copy the national identifier and issuing country: the seed's subjects follow the presented PID.
+    "pid_1_8": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"},
+                {"birthdate": "birth_date", "personal_administrative_number": "personal_administrative_number",
+                 "issuing_country": "issuing_country"}),
+    "pid_1_5": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"},
+                {"birthdate": "birth_date", "personal_administrative_number": "personal_administrative_number",
+                 "issuing_country": "issuing_country"}),
     "pid_mdoc": (["eu.europa.ec.eudi.pid.1.given_name", "eu.europa.ec.eudi.pid.1.family_name"],
                  {"eu.europa.ec.eudi.pid.1.given_name": "given_name",
                   "eu.europa.ec.eudi.pid.1.family_name": "family_name"},
@@ -117,16 +121,14 @@ class NymAuthRender(unittest.TestCase):
         for _, configs, files in self.each():
             for svc in ("vc-apigw", "vc-issuer"):
                 meta = dict(configs[svc]["common"]["credential_metadata"][SCOPE])
-                # No commitments in the default render (it needs a seed-capable vc image);
-                # test_seed_commitments_render holds the gdc-style render.
-                self.assertNotIn("commitments", meta, svc)
+                # No auxiliary_data in the default render (it needs a vc image with #850);
+                # test_aux_data_render holds the gdc-style render.
+                self.assertNotIn("auxiliary_data", meta, svc)
                 self.assertEqual(meta, {"mddl_file_path": f"/vctms/{SCOPE}.mdoc.json", "doctype": DOCTYPE,
                                         "format": "mso_mdoc"}, svc)
             self.assertEqual(files["mddl"], (ROOT / "fixtures" / "vc-metadata" / f"{SCOPE}.mdoc.json").read_bytes())
-            # no seed source in the default render, so the documents carry the legacy public test ssc
+            # the documents are the source fixtures: no ssc or psc, vc derives and the wallet supplies them
             expected = json.loads((ROOT / "fixtures" / "vc-bootstrapping" / f"{SCOPE}.json").read_text())
-            for doc in expected.values():
-                doc["document_data"]["ssc"] = LEGACY_SSC
             self.assertEqual(files["documents"], expected)
             imports = configs["vc-apigw"]["apigw"]["data_sources"]["datastore"]["import"]["file_paths"]
             self.assertIn(f"/documents/{SCOPE}.json", imports)
