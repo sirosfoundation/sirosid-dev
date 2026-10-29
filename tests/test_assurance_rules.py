@@ -28,6 +28,12 @@ class AssuranceRules(unittest.TestCase):
             self.assertIs(a["lower_by_claims_key_storage"], False, env)
             self.assertIs(a["lower_by_claims_user_authentication"], False, env)
 
+    def test_the_token_revocation_store_stays_per_process(self):
+        """#452: an empty security.token_blacklist.backend follows storage.type (mongodb here) and would switch to a shared
+        store that 503s when it cannot answer; the engine environments pin `memory` until that is chosen deliberately."""
+        for env in ("gdc", "nymauth"):
+            self.assertEqual(self.values(env)["extraConfig"]["security"]["token_blacklist"]["backend"], "memory", env)
+
     def test_both_targets_upload_to_the_configured_path(self):
         for f in ("sirosid_core/deploy.py", "sirosid_core/singlemachine.py"):
             self.assertIn("/etc/wallet/assurance/", (ROOT / f).read_text(), f)

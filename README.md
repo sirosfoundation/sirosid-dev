@@ -399,6 +399,7 @@ picks between them.
 | `siros_id` | alice-001, bob-002 | carol-003 |
 | `diploma` | alice-001, bob-002 | carol-003 |
 | `pid_mdoc` | alice-001 | bob-002 |
+| `pid_mdoc_id` | alice-001 | bob-002 |
 | `mdl_zk4` | alice-001 | bob-002 |
 | `photoid` | alice-001, bob-002 | carol-003 |
 | `<type>_offer` for every row above | as their source | as their source (pre-authorized twins for `make datastore-offer`; copies, kept equal by a test). Only in environments that do NOT set `issuer.allowPreauthOffer` (gdc and nymauth do not have them: SUNET/vc#840) |
@@ -496,8 +497,9 @@ claim into a datastore-sourced credential, so values-base.yaml also renders
 main ignores both keys and issues the document's own `birth_date`, which
 `tests/test_fixture_integrity.py` holds equal to the birth date in every
 credential the person can present. With vc main only the `pid_1_8`, `pid_1_5`
-and `mdl` options resolve a person; `pid_mdoc` stays unusable even with the vc
-change until our `pid_mdoc` schema carries a `birth_date`.
+and `mdl` options resolve a person. The 4-claim `pid_mdoc` (the Vega ZK test credential: its circuit is fixed at four claim
+slots) has no birth date and is NOT an option here; its sibling `pid_mdoc_id` (same doctype, plus `birth_date`,
+`issuing_country` and `administrative_number`) is, and it is the way to issue `nym_auth` from a real mdoc PID.
 
 **`ssc` is derived by the issuer** (SUNET/vc#850, Credential Auxiliary Data). The type declares `auxiliaryData` in
 `values-base.yaml`: a `to_wallet` `hash_commitment` on `ssc` (the issuer puts SHA-256 of an opening into the credential and

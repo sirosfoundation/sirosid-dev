@@ -39,17 +39,19 @@ EXPECTED_AUTH_SCOPES = {
     "pid_1_5": (["given_name", "family_name", "birthdate"], {"birthdate": "birth_date"},
                 {"birthdate": "birth_date", "personal_administrative_number": "personal_administrative_number",
                  "issuing_country": "issuing_country"}),
-    "pid_mdoc": (["eu.europa.ec.eudi.pid.1.given_name", "eu.europa.ec.eudi.pid.1.family_name"],
-                 {"eu.europa.ec.eudi.pid.1.given_name": "given_name",
-                  "eu.europa.ec.eudi.pid.1.family_name": "family_name"},
-                 {"eu.europa.ec.eudi.pid.1.birth_date": "birth_date"}),
+    "pid_mdoc_id": (["eu.europa.ec.eudi.pid.1.given_name", "eu.europa.ec.eudi.pid.1.family_name"],
+                    {"eu.europa.ec.eudi.pid.1.given_name": "given_name",
+                     "eu.europa.ec.eudi.pid.1.family_name": "family_name"},
+                    {"eu.europa.ec.eudi.pid.1.birth_date": "birth_date",
+                     "eu.europa.ec.eudi.pid.1.issuing_country": "issuing_country",
+                     "eu.europa.ec.eudi.pid.1.administrative_number": "personal_administrative_number"}),
     "mdl": (["given_name", "family_name"], None, {"birth_date": "birth_date"}),
     "photoid": (["org.iso.23220.1.given_name_unicode", "org.iso.23220.1.family_name_unicode"],
                 {"org.iso.23220.1.given_name_unicode": "given_name",
                  "org.iso.23220.1.family_name_unicode": "family_name"},
                 {"org.iso.23220.1.birth_date": "birth_date"}),
 }
-MDOC_AUTH_SCOPES = {"pid_mdoc", "mdl", "photoid"}
+MDOC_AUTH_SCOPES = {"pid_mdoc_id", "mdl", "photoid"}
 
 
 def render_target(target):
@@ -140,7 +142,7 @@ class NymAuthRender(unittest.TestCase):
             if target == "compose":
                 self.assertIn("e2e-test-client-2", clients)
             for client_id, client in clients.items():
-                for scope in (SCOPE, "pid_1_8", "pid_1_5", "pid_mdoc", "mdl", "photoid"):
+                for scope in (SCOPE, "pid_1_8", "pid_1_5", "pid_mdoc", "pid_mdoc_id", "mdl", "photoid"):
                     self.assertIn(scope, client["scopes"], f"{target}: {client_id} lacks {scope}")
 
     def test_verifier_supports_it(self):

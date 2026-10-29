@@ -38,6 +38,12 @@ _shared: &shared
   - path: apigw.data_sources.datastore.scopes.pid_mdoc_offer
     kind: added
     reason: "pre-authorized twin of pid_mdoc for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.pid_mdoc_id_offer
+    kind: added
+    reason: "pre-authorized twin of pid_mdoc_id for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
+  - path: apigw.data_sources.datastore.scopes.pid_mdoc_id
+    kind: added
+    reason: "the mdoc PID WITH the birth date and the national identifier (values-base.yaml pid_mdoc_id): the credential nym_auth is issued from when presented an mdoc PID; the 4-claim pid_mdoc stays for the Vega ZK test"
   - path: apigw.data_sources.datastore.scopes.mdl_offer
     kind: added
     reason: "pre-authorized twin of mdl for make datastore-offer (vc's preauth_offer refuses any scope that is not auth_provider: preauth)"
