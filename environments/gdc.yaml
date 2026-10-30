@@ -302,8 +302,9 @@ images:
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
   #   mini-oidc 0.0.5 is the newest release (the values-fly.yaml pin).
   # env-admin 0.1.2 adds additive-verifier re-registration after storage resets.
+  # Built from a clean sirosid-dev tree at 0bf082dc2c4691843d8af572ecd60869b2d675ef.
   # Digest sha256:8bf0f8ceef24174c8bfc7d3093b8c6c707d8f58f60cf6d0602af25353ad5a074.
-  env-admin: registry.fly.io/sirosid-gdc-env-admin:local-1793374622
+  env-admin: registry.fly.io/sirosid-gdc-env-admin:local-1793383953
 
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
 # mdoc issuer - trusted here so a wallet can receive a credential from it
