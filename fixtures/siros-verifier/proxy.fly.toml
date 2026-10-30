@@ -22,7 +22,7 @@ name = "OIDC"
   [frontend.config]
   signing_key_path = "/pki/signing_ec_private.pem"
   signing_algorithm = "ES256"
-  signing_key_id = "gdc-siros-verifier"
+  signing_key_id = "siros-verifier-op"
 
   [[frontend.config.clients]]
   client_id = "mini-oidc-rp"
@@ -40,7 +40,7 @@ name = "vp"
   pdp_id = "go-trust"
   # Fly's encrypted private WireGuard network is the trusted local network here.
   allow_insecure_http = true
-  receipt_key_id = "gdc-siros-receipt"
+  receipt_key_id = "siros-receipt"
   receipt_issuer = "siros-verifier-core"
   receipt_audience = "vp"
   max_receipt_ttl_secs = 300

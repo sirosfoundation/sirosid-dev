@@ -180,7 +180,9 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertEqual(result.urls["siros-verifier"], "https://k7m2qx4d-siros-verifier.sandbox.example")
         self.assertEqual(registrations, [[{"name": "SIROS Verifier",
                                            "url": "https://k7m2qx4d-siros-verifier.sandbox.example"}]])
-        self.assertIn("sirosVerifierStateKey", fake.apps[app]["secrets"])
+        self.assertIn("SIROS_VERIFIER_STATE_KEY", fake.apps[app]["secrets"])
+        self.assertEqual(len(fake.apps[app]["secrets"]["SIROS_VERIFIER_STATE_KEY"]), 32,
+                         "raw env-var secret, not ensure_secret's base64 file encoding")
         self.assertIn("vcSigningKey", fake.apps[app]["secrets"])
         self.assertTrue((root / "fly-k7m2qx4d" / "sirosVerifierStateKey").exists())
         commands = [c for c in fake.log if c.startswith("flyctl deploy") and app in c]
@@ -190,6 +192,12 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertIn("/etc/siros-verifier/proxy.toml=", command)
         self.assertIn("/pki/signing_ec_private.pem=vcSigningKey", command)
         self.assertIn("SIROS_VERIFIER_PDP_ENDPOINT=http://sid-k7m2qx4d-pdp.internal:8080/evaluation", command)
+        import re
+        template = (ROOT / "fixtures" / "siros-verifier" / "proxy.fly.toml").read_text()
+        placeholders = set(re.findall(r"\$\{([A-Z0-9_]+)\}", template))
+        env_names = set(re.findall(r"--env ([A-Z0-9_]+)=", command))
+        supplied = env_names | set(fake.apps[app]["secrets"])
+        self.assertEqual(placeholders - supplied, set(), "every Fly config placeholder must be populated")
         identity = x509_hash_identity(root / "fly-k7m2qx4d" / "vc-pki" / "signing_ec.crt")
         pdp = yaml.safe_load((root / "fly-k7m2qx4d" / "pdp.yaml").read_text())
         rendered = yaml.safe_dump(pdp)

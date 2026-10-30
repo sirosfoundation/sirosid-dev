@@ -544,7 +544,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
     elif name == "siros-verifier":
         fixture = resources.root / "fixtures" / "siros-verifier"
         fly.ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
-        fly.ensure_secret(app, "sirosVerifierStateKey", persistent_secret(out_dir, "sirosVerifierStateKey"))
+        fly.import_secrets(app, {"SIROS_VERIFIER_STATE_KEY": persistent_secret(out_dir, "sirosVerifierStateKey")})
         deploy_args += [
             "--env", "TUNNELBANA_BIND=0.0.0.0:9001",
             "--env", f"SIROS_VERIFIER_BASE_URL={naming.url(name)}",

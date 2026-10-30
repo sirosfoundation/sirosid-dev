@@ -349,6 +349,9 @@ endif
 # Select the verifier implementation without changing the default VC stack.
 ifeq ($(VERIFIER_IMPL),siros)
   ifneq ($(call _truthy,$(VC)),)
+    ifneq ($(PDP),allow)
+      $(error VERIFIER_IMPL=siros currently requires PDP=allow)
+    endif
     COMPOSE_FILES += -f $(SIROS_VERIFIER_COMPOSE)
   else
     $(error VERIFIER_IMPL=siros requires VC=yes)
@@ -841,7 +844,7 @@ endif
 	@# on any architecture.
 	@_VC_DIR="$${VC_PATH:-../vc}"; \
 		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
-		docker build --quiet --network="$${DOCKER_BUILD_NETWORK:-bridge}" --tag docker.sunet.se/iam_vc/gobuild:local \
+		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
 	@# Render every vc service's config from the in-repo chart, the same
 	@# way PDP=helm already renders wallet-backend's and the PDP's. This
@@ -1098,7 +1101,11 @@ status-vc: ## Check VC service health
 	@curl -sf $(VC_ISSUER_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-issuer" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-issuer" "✗ not running"
-	@curl -sf $(VC_VERIFIER_URL)/.well-known/openid-configuration >/dev/null 2>&1 && \
+	@if [ "$(VERIFIER_IMPL)" = "siros" ]; then \
+		curl -sf $(VC_VERIFIER_URL)/health; \
+	else \
+		curl -sf $(VC_VERIFIER_URL)/.well-known/openid-configuration; \
+	fi >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-verifier" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-verifier" "✗ not running"
 	@curl -sf $(VC_APIGW_URL)/.well-known/oauth-authorization-server >/dev/null 2>&1 && \
@@ -1368,7 +1375,7 @@ fly-status: ## Show Fly app status for a named environment (make fly-status ENV=
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-status ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import component_names; print(' '.join(component_names()))"); do \
+	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS, with_optional_components; from env_config import load_environment_config; cfg=load_environment_config('$(ENV)'); print(' '.join(c['name'] for c in with_optional_components(COMPONENTS, cfg['images']) + CONFORMANCE_COMPONENTS))"); do \
 		flyctl status -a "sirosid-$(ENV)-$$c" 2>&1 | head -5; \
 		echo ""; \
 	done

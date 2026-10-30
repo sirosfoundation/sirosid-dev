@@ -20,8 +20,10 @@ The UI offers two ways to request an ARF 1.8 PID as an SD-JWT VC:
   the wallet's encrypted `dc_api.jwt` response. Open and unlock the wallet in its
   current process before choosing this option.
 
-A successful flow displays the verified claims. The app reuses gdc's existing
-issuer, registry, wallet backend, MongoDB, and go-trust PDP; it does not deploy
+A successful flow displays the verified claims. For this synthetic test flow the
+OIDC subject is the PID's `personal_administrative_number`; do not use that as a
+production subject-privacy design. The app reuses gdc's existing issuer,
+registry, wallet backend, MongoDB, and go-trust PDP; it does not deploy
 duplicates.
 
 ## Image and deploy
@@ -58,6 +60,13 @@ Deploy registers both verifier URLs with the wallet backend. gdc's env-admin
 0.1.2 image restores both registrations after a storage reset. The state-cookie
 key is persistent across redeploys; the request-signing key and chain are the
 same ones used by gdc's existing VC services.
+
+Reusing the issuer's credential-signing key for OIDC and OpenID4VP is a
+conscious simplification for this isolated test environment, not the intended
+production key-separation design. A production deployment should issue a
+dedicated verifier key and certificate from the same CA. Rotating the shared
+leaf also rotates the verifier's `x509_hash` identity, so the deploy updates the
+app and whitelist together.
 
 ## Current limits
 

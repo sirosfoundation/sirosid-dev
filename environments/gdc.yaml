@@ -221,11 +221,14 @@ images:
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793192393
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793192393
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
-  # Additional SD-JWT VC verifier with QR and DC API test UIs, built from the
-  # sibling siros-verifier-core workspace. This is additive: vc-verifier remains available unchanged.
-  # Image digest sha256:f3eb847ec202553720cc4478e880e7dcd3f8f037ce038e0036613c5379fb1142.
+  # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
+  # vc-verifier remains available unchanged. The source workspace has no git metadata,
+  # so no commit/clean-tree claim is made: the image is pinned to a 93-file source
+  # snapshot (sorted relative path + NUL + contents + NUL, build artifacts excluded)
+  # with SHA-256 ded3fa593ef4c7ef5b50f691760f4b609ee9f807983516637b3cb4ab26f3205b.
+  # Image digest sha256:9a3a70f6d4853d5eb8ec8b536b07eb8eda60d0ec994bbf4d7f0f8833cd456bdb.
   # Build: docker build -t registry.fly.io/sirosid-gdc-siros-verifier:local-<epoch> .
-  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793376964
+  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793383310
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all

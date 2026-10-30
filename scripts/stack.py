@@ -269,6 +269,8 @@ def compose_files(opts: dict) -> list:
     if opts["verifier_impl"] == "siros":
         if not opts["vc"]:
             raise ValueError("VERIFIER_IMPL=siros requires VC=yes")
+        if opts["pdp"] != "allow":
+            raise ValueError("VERIFIER_IMPL=siros currently requires PDP=allow")
         files.append(COMPOSE["SIROS_VERIFIER"])
     if opts["facetec"]:
         if COMPOSE["VC_SERVICES"] not in files:
