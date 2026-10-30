@@ -41,7 +41,10 @@ class SmallDiffAgainstGdc(unittest.TestCase):
         self.assertEqual(self.ny["values"], swap(self.gdc["values"]))
 
     def test_the_images_are_the_same_proven_pins(self):
-        self.assertEqual(self.ny["images"], self.gdc["images"])
+        gdc_images = dict(self.gdc["images"])
+        gdc_images.pop("siros-verifier")  # gdc-only additive verifier
+        gdc_images.pop("env-admin")      # gdc-only local build with additive reset support
+        self.assertEqual(self.ny["images"], gdc_images)
 
     def test_what_a_nym_auth_test_does_not_need_is_dropped_and_nothing_else(self):
         for key in ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots"):

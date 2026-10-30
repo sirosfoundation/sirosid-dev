@@ -166,7 +166,7 @@ images:
   #   below sets policies for the two verifier actions ONLY (x509_san_dns), so a verifier-path evaluation returns
   #   context.verifier_ids and every other action is evaluated as before. Previous pin: 0.25.0.
   #
-  # Other images are released versions (wallet-frontend, mini-oidc, env-admin).
+  # Other images are released versions (wallet-frontend and mini-oidc); env-admin is the local 0.1.2 build below.
   # ===========================================================================================================
   # vc: BUILT LOCALLY (2026-10-20). The ISSUER side (registry, issuer, apigw) is sirosfoundation/vc
   # `integration/gdc-nymauth-v4` @ 5e546b2d61d4756f04b39ea84d26cf6b18b830ba (v3 20ab021 + startup refusals for a delivering
@@ -221,6 +221,14 @@ images:
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793192393
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793192393
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
+  # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
+  # vc-verifier remains available unchanged. The source workspace has no git metadata,
+  # so no commit/clean-tree claim is made: the image is pinned to a 93-file source
+  # snapshot (sorted relative path + NUL + contents + NUL, build artifacts excluded)
+  # with SHA-256 ded3fa593ef4c7ef5b50f691760f4b609ee9f807983516637b3cb4ab26f3205b.
+  # Image digest sha256:9a3a70f6d4853d5eb8ec8b536b07eb8eda60d0ec994bbf4d7f0f8833cd456bdb.
+  # Build: docker build -t registry.fly.io/sirosid-gdc-siros-verifier:local-<epoch> .
+  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793383310
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -292,7 +300,11 @@ images:
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
-  #   mini-oidc 0.0.5 and env-admin 0.1.1 are already the newest releases (the values-fly.yaml pins).
+  #   mini-oidc 0.0.5 is the newest release (the values-fly.yaml pin).
+  # env-admin 0.1.2 adds additive-verifier re-registration after storage resets.
+  # Built from a clean sirosid-dev tree at 0bf082dc2c4691843d8af572ecd60869b2d675ef.
+  # Digest sha256:8bf0f8ceef24174c8bfc7d3093b8c6c707d8f58f60cf6d0602af25353ad5a074.
+  env-admin: registry.fly.io/sirosid-gdc-env-admin:local-1793383953
 
 # geneva2026.mdoc.online: the Geneva 2026 interop test event's reference
 # mdoc issuer - trusted here so a wallet can receive a credential from it

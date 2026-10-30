@@ -1,0 +1,19 @@
+user_id_from_attrs = ["subject-id"]
+
+[attributes.givenname]
+openid = ["given_name"]
+
+[attributes.surname]
+openid = ["family_name"]
+
+[attributes.birthdate]
+openid = ["birthdate"]
+
+[attributes.nationalities]
+openid = ["nationalities"]
+
+[attributes.authenticating_authority]
+openid = ["authenticating_authority"]
+
+[attributes.subject-id]
+openid = ["sub"]

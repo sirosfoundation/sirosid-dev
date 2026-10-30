@@ -54,6 +54,7 @@ GO_TRUST_DENY_COMPOSE := docker-compose.go-trust-deny.yml
 HELM_CONFIG_COMPOSE := docker-compose.helm-config.yml
 AS_RULES_BASELINE_COMPOSE := docker-compose.as-rules-baseline.yml
 VC_SERVICES_COMPOSE := docker-compose.vc-services.yml
+SIROS_VERIFIER_COMPOSE := docker-compose.siros-verifier.yml
 MONGODB_COMPOSE := docker-compose.mongodb.yml
 VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
@@ -100,6 +101,9 @@ endif
 PDP ?= allow
 AS_RULES ?= allow-all
 VC ?=
+# Verifier implementation when VC services are enabled: upstream vc or siros-verifier-core.
+VERIFIER_IMPL ?= vc
+export VERIFIER_CORE_PATH ?= ../siros-verifier-core
 TRANSPORT ?=
 CONFORMANCE ?=
 R2PS ?=
@@ -342,6 +346,20 @@ else
   _VC_LABEL := no
 endif
 
+# Select the verifier implementation without changing the default VC stack.
+ifeq ($(VERIFIER_IMPL),siros)
+  ifneq ($(call _truthy,$(VC)),)
+    ifneq ($(PDP),allow)
+      $(error VERIFIER_IMPL=siros currently requires PDP=allow)
+    endif
+    COMPOSE_FILES += -f $(SIROS_VERIFIER_COMPOSE)
+  else
+    $(error VERIFIER_IMPL=siros requires VC=yes)
+  endif
+else ifneq ($(VERIFIER_IMPL),vc)
+  $(error Unknown VERIFIER_IMPL '$(VERIFIER_IMPL)'. Use: vc, siros)
+endif
+
 # facetec-api (FaceTec SDK <-> vc issuer bridge). Requires VC services for
 # credential issuance via vc-apigw, so it implies VC=yes.
 ifneq ($(call _truthy,$(FACETEC)),)
@@ -464,7 +482,7 @@ _print-compose-files:
 
 plan: ## Show what `make up` would do with these options (compose files, storage, pre-flight) - takes the same flags as `make up`, plus ENV=<name>
 	@python3 scripts/stack.py plan $(if $(ENV),--env "$(ENV)") \
-		$(foreach v,PDP AS_RULES VC TRANSPORT CONFORMANCE R2PS FACETEC DOMAIN TUNNELS GOLDEN DC_API REBUILD,$(if $($(v)),--set $(v)="$($(v))"))
+		$(foreach v,PDP AS_RULES VC VERIFIER_IMPL TRANSPORT CONFORMANCE R2PS FACETEC DOMAIN TUNNELS GOLDEN DC_API REBUILD,$(if $($(v)),--set $(v)="$($(v))"))
 
 # =============================================================================
 # Help
@@ -805,6 +823,13 @@ ifneq ($(call _truthy,$(VC)),)
 		echo "  Or:  git clone https://github.com/SUNET/vc ../vc"; \
 		exit 1; \
 	fi
+ifeq ($(VERIFIER_IMPL),siros)
+	@# Pre-flight: the alternate verifier checkout must exist.
+	@if [ ! -d "$(VERIFIER_CORE_PATH)" ]; then \
+		echo "$(RED)Error: VERIFIER_IMPL=siros requires siros-verifier-core at $(VERIFIER_CORE_PATH)$(NC)"; \
+		exit 1; \
+	fi
+endif
 	@# Pre-flight: generate PKI if missing
 	@if [ ! -f fixtures/vc-pki/rootCA.crt ]; then \
 		echo "$(YELLOW)VC PKI not found — generating...$(NC)"; \
@@ -863,6 +888,7 @@ endif
 	@echo "  PDP:         $(_PDP_LABEL)"
 	@echo "  AS rules:    $(_AS_RULES_LABEL)"
 	@echo "  VC services: $(_VC_LABEL)"
+	@echo "  Verifier:    $(VERIFIER_IMPL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
 	@echo "  R2PS:        $(_R2PS_LABEL)"
@@ -1075,7 +1101,11 @@ status-vc: ## Check VC service health
 	@curl -sf $(VC_ISSUER_URL)/health >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-issuer" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-issuer" "✗ not running"
-	@curl -sf $(VC_VERIFIER_URL)/.well-known/openid-configuration >/dev/null 2>&1 && \
+	@if [ "$(VERIFIER_IMPL)" = "siros" ]; then \
+		curl -sf $(VC_VERIFIER_URL)/health; \
+	else \
+		curl -sf $(VC_VERIFIER_URL)/.well-known/openid-configuration; \
+	fi >/dev/null 2>&1 && \
 		printf "  %-20s $(GREEN)%s$(NC)\n" "vc-verifier" "✓ running" || \
 		printf "  %-20s $(RED)%s$(NC)\n" "vc-verifier" "✗ not running"
 	@curl -sf $(VC_APIGW_URL)/.well-known/oauth-authorization-server >/dev/null 2>&1 && \
@@ -1345,7 +1375,7 @@ fly-status: ## Show Fly app status for a named environment (make fly-status ENV=
 		echo "$(RED)Error: ENV=<name> is required, e.g. make fly-status ENV=demo1$(NC)"; \
 		exit 1; \
 	fi
-	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS; print(' '.join(c['name'] for c in COMPONENTS + CONFORMANCE_COMPONENTS))"); do \
+	@for c in $$(python3 -c "import sys; sys.path.insert(0, 'scripts'); from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS, with_optional_components; from env_config import load_environment_config; cfg=load_environment_config('$(ENV)'); print(' '.join(c['name'] for c in with_optional_components(COMPONENTS, cfg['images']) + CONFORMANCE_COMPONENTS))"); do \
 		flyctl status -a "sirosid-$(ENV)-$$c" 2>&1 | head -5; \
 		echo ""; \
 	done

@@ -84,6 +84,13 @@ OPTIONS = [
                  "mini-oidc. Their config is rendered from the chart regardless of PDP=."),
     },
     {
+        "key": "verifier_impl", "make_var": "VERIFIER_IMPL", "type": "enum",
+        "choices": ["vc", "siros"], "default": "vc",
+        "label": "Verifier implementation",
+        "help": ("Which OpenID4VP verifier runs when VC services are enabled: the upstream SUNET/vc "
+                 "service (vc) or the Rust siros-verifier-core gateway (siros). Requires VC=yes."),
+    },
+    {
         "key": "transport", "make_var": "TRANSPORT", "type": "enum",
         "choices": ["websocket", "wmp", "http"], "default": "websocket",
         "label": "Wallet transport",
@@ -156,6 +163,7 @@ COMPOSE = {
     "HELM_CONFIG": "docker-compose.helm-config.yml",
     "AS_RULES_BASELINE": "docker-compose.as-rules-baseline.yml",
     "VC_SERVICES": "docker-compose.vc-services.yml",
+    "SIROS_VERIFIER": "docker-compose.siros-verifier.yml",
     "VC_GO_TRUST": "docker-compose.vc-go-trust.yml",
     "CONFORMANCE": "docker-compose.conformance.yml",
     "HTTP_TRANSPORT": "docker-compose.http-transport.yml",
@@ -258,6 +266,12 @@ def compose_files(opts: dict) -> list:
 
     if opts["vc"]:
         files.append(COMPOSE["VC_SERVICES"])
+    if opts["verifier_impl"] == "siros":
+        if not opts["vc"]:
+            raise ValueError("VERIFIER_IMPL=siros requires VC=yes")
+        if opts["pdp"] != "allow":
+            raise ValueError("VERIFIER_IMPL=siros currently requires PDP=allow")
+        files.append(COMPOSE["SIROS_VERIFIER"])
     if opts["facetec"]:
         if COMPOSE["VC_SERVICES"] not in files:
             files.append(COMPOSE["VC_SERVICES"])
@@ -340,6 +354,9 @@ def preflight(opts: dict) -> list:
         check("go-trust checkout", (root / "../go-trust").is_dir(), "../go-trust - run `make setup`")
     if opts["vc"] or opts["conformance"] or opts["facetec"]:
         check("vc checkout", (root / "../vc").is_dir(), "../vc - run `make setup`")
+    if opts["verifier_impl"] == "siros":
+        check("siros-verifier-core checkout", (root / "../siros-verifier-core").is_dir(),
+              "../siros-verifier-core - alternate verifier checkout")
     if opts["pdp"] == "helm" or opts["vc"] or opts["conformance"] or opts["facetec"]:
         check("chart", (root / "chart" / "Chart.yaml").is_file(), "chart/ is part of this repo - restore it with git")
         check("helm", shutil.which("helm"), "config is rendered with `helm template`")

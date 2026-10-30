@@ -163,6 +163,27 @@ def build_components(mini_oidc_image: str, env_admin_image: str) -> list:
     ]
 
 
+# Optional additional verifier, enabled only by an explicit image pin. It is
+# inserted after pdp so the existing trust service is healthy before it starts.
+SIROS_VERIFIER_COMPONENT = {
+    "name": "siros-verifier",
+    "ports": [{"internal": 9001, "public": True}],
+    "checks": "/health",
+}
+
+
+def with_optional_components(components: list, images: dict) -> list:
+    """Add image-gated components without changing the default component list."""
+    if "siros-verifier" not in images or any(c["name"] == "siros-verifier" for c in components):
+        return list(components)
+    out = []
+    for comp in components:
+        out.append(comp)
+        if comp["name"] == "pdp":
+            out.append(SIROS_VERIFIER_COMPONENT)
+    return out
+
+
 # Opt-in (--conformance), deployed AFTER the 10 above, matching local dev's
 # CONFORMANCE=yes overlay. conformance-runner drives sirosid-tests' own
 # Playwright conformance specs (ghcr.io/sirosfoundation/conformance-runner,
@@ -239,6 +260,7 @@ CONFORMANCE_COMPONENTS = [
 def component_names(include_conformance: bool = True) -> list:
     """Every component name, in deploy order. Needs no image pins."""
     names = [c["name"] for c in build_components("", "")]
+    names.insert(names.index("pdp") + 1, SIROS_VERIFIER_COMPONENT["name"])
     if include_conformance:
         names += [c["name"] for c in CONFORMANCE_COMPONENTS]
     return names

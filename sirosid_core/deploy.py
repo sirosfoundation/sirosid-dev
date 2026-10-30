@@ -23,7 +23,7 @@ from .android import identities_from_entries
 from .assets import (assetlinks_json, mini_oidc_config, wallet_frontend_conf, wallet_frontend_dashboard_html,
                      wallet_proxy_conf, write_fly_toml)
 from .components import (CONFORMANCE_COMPONENTS, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
-                         build_components)
+                         build_components, with_optional_components)
 from .fly import FlyClient, FlyDeployError, FlyError
 from .helm import HelmError, extract_configmap_data, extract_image
 from .naming import Naming
@@ -31,6 +31,7 @@ from . import vc_render
 from .render import render
 from .resources import Resources
 from .spec import InstanceSpec
+from .siros_verifier import x509_hash_identity
 from . import state as state_mod
 from .state import persistent_secret
 
@@ -540,6 +541,20 @@ def deploy_component(ctx: DeployContext, comp: dict):
         # wallet-backend and vc) addresses it on 8080. Found by running 0.25.0 with the rendered config.
         deploy_args += ["--env", "GT_HOST=0.0.0.0", "--env", "GT_PORT=8080",
                         "--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
+    elif name == "siros-verifier":
+        fixture = resources.root / "fixtures" / "siros-verifier"
+        fly.ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
+        fly.import_secrets(app, {"SIROS_VERIFIER_STATE_KEY": persistent_secret(out_dir, "sirosVerifierStateKey")})
+        deploy_args += [
+            "--env", "TUNNELBANA_BIND=0.0.0.0:9001",
+            "--env", f"SIROS_VERIFIER_BASE_URL={naming.url(name)}",
+            "--env", f"SIROS_VERIFIER_OIDC_REDIRECT_URI={naming.url('mini-oidc')}/callback",
+            "--env", f"SIROS_VERIFIER_PDP_ENDPOINT=http://{naming.addr('pdp')}/evaluation",
+            "--file-local", f"/etc/siros-verifier/proxy.toml={fixture / 'proxy.fly.toml'}",
+            "--file-local", f"/etc/siros-verifier/attributes.toml={fixture / 'attributes.toml'}",
+            "--file-secret", "/pki/signing_ec_private.pem=vcSigningKey",
+            "--file-local", f"/pki/signing_ec_chain.pem={pki_dir / 'signing_ec_chain.pem'}",
+        ]
     elif name == "wallet-backend":
         deploy_args += [
             "--file-local", f"/app/config.yaml={out_dir / 'wallet-backend.yaml'}",
@@ -699,6 +714,9 @@ def deploy_component(ctx: DeployContext, comp: dict):
             "--file-secret", "/run/secrets/mongoUri=mongoUri",
             "--file-secret", "/run/secrets/flyApiTokens=flyApiTokens",
         ]
+        if "siros-verifier" in spec.images:
+            additional = [{"name": "SIROS Verifier", "url": naming.url("siros-verifier")}]
+            deploy_args += ["--env", "ADDITIONAL_VERIFIERS=" + json.dumps(additional)]
     elif name == "conformance-runner":
         # Same FRONTEND_URL/ADMIN_URL/ADMIN_TOKEN values already printed in
         # main()'s "run sirosid-tests manually" summary block below - this
@@ -750,7 +768,8 @@ def deploy_component(ctx: DeployContext, comp: dict):
         say(f"{name}: {naming.url(name)}")
 
 
-def register_vc_services(naming: Naming, admin_token: str, register, say=print, sleep=None, admin_url: str = ""):
+def register_vc_services(naming: Naming, admin_token: str, register, say=print, sleep=None, admin_url: str = "",
+                         additional_verifiers: list = None):
     """Register this instance's vc-apigw and vc-verifier with wallet-backend's
     default tenant, through the caller's `register` callable (scripts/bootstrap.py
     in the CLI - the same code `make up` and env-admin's storage reset run, so the
@@ -778,8 +797,15 @@ def register_vc_services(naming: Naming, admin_token: str, register, say=print, 
     last_err = None
     for _ in range(15):
         try:
-            summary = register(proxy_url, admin_token, apigw_url, verifier_url)
+            if additional_verifiers:
+                summary = register(proxy_url, admin_token, apigw_url, verifier_url,
+                                   additional_verifiers=additional_verifiers)
+            else:
+                summary = register(proxy_url, admin_token, apigw_url, verifier_url)
             say(f"vc-apigw ({apigw_url}): {summary['issuer']}; vc-verifier ({verifier_url}): {summary['verifier']}")
+            for verifier in additional_verifiers or []:
+                status = summary.get("additional_verifiers", {}).get(verifier["url"])
+                say(f"{verifier['name']} ({verifier['url']}): {status}")
             return summary
         except RegistrationError as e:
             last_err = e
@@ -867,10 +893,25 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
         components = build_components(
             resources.image_pin("miniOidc", "ghcr.io/sirosfoundation/mini-oidc:0.0.4"),
             resources.image_pin("envAdmin", "ghcr.io/sirosfoundation/sirosid-env-admin:0.1.0"))
+    components = with_optional_components(components, spec.images)
 
     # Persisted per environment: the Mongo volume's data was initialised with it
     # and MONGO_INITDB_ROOT_* never re-applies to a non-empty /data/db.
     mongo_password = resolve_mongo_password(fly, naming, out_dir, say)
+
+    # siros-verifier-core uses the signing leaf's x509_hash as its client_id.
+    # Generate/reuse the environment PKI before rendering the PDP whitelist so
+    # a certificate reissue updates the trust identity atomically with the app.
+    pki_dir = None
+    trusted_verifiers = list(spec.trusted_verifiers)
+    if "siros-verifier" in spec.images:
+        say("=== Generating per-environment PKI ===")
+        pki_ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say,
+                                docs=[], out_dir=out_dir, mongo_password=mongo_password)
+        pki_dir = generate_pki(pki_ctx)
+        identity = x509_hash_identity(pki_dir / "signing_ec.crt")
+        if identity not in trusted_verifiers:
+            trusted_verifiers.append(identity)
 
     say(f"=== Rendering config for environment '{env}' ===")
     # docs is the full rendered manifest (not just wallet-backend/pdp) - reused
@@ -884,7 +925,7 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
                       android_apk_key_hashes=[i["apk_key_hash"] for i in identities],
                       out_dir=rendered_root, mongo_password=mongo_password,
                       conformance=spec.conformance, extra_trusted_issuers=spec.trusted_issuers,
-                      wallet_attestation=spec.wallet_attestation, extra_trusted_verifiers=spec.trusted_verifiers,
+                      wallet_attestation=spec.wallet_attestation, extra_trusted_verifiers=trusted_verifiers,
                       extra_trusted_verifier_roots=spec.trusted_verifier_roots,
                       rical_provider_url=spec.rical_provider_url or None,
                       rical_root_certificate_pem=spec.rical_root_pem or None,
@@ -904,8 +945,10 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
 
     ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say, docs=docs,
                         mongo_version=mongo_version, out_dir=out_dir, mongo_password=mongo_password)
-    say("=== Generating per-environment PKI ===")
-    ctx.pki_dir = generate_pki(ctx)
+    if pki_dir is None:
+        say("=== Generating per-environment PKI ===")
+        pki_dir = generate_pki(ctx)
+    ctx.pki_dir = pki_dir
     say("=== Generating Android assetlinks.json ===")
     # No separate iOS asset: wallet-frontend's own image generates its complete
     # apple-app-site-association from WELLKNOWN_APPLE_APPIDS (_wallet_frontend_env),
@@ -929,7 +972,9 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
     result.admin_token = persistent_secret(out_dir, "adminToken")
     if register is not None:
         say("=== Registering VC services with wallet-backend's default tenant ===")
-        register_vc_services(naming, result.admin_token, register, say)
+        additional = ([{"name": "SIROS Verifier", "url": naming.url("siros-verifier")}]
+                      if "siros-verifier" in spec.images else None)
+        register_vc_services(naming, result.admin_token, register, say, additional_verifiers=additional)
     for comp in all_components:
         if any(p["public"] for p in comp["ports"]):
             result.urls[comp["name"]] = naming.url(comp["name"])

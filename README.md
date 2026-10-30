@@ -773,6 +773,9 @@ consumers with one app-scoped Fly deploy token per consumer app.
 Requires `flyctl` installed and authenticated, and the in-repo `chart/`
 checkout (`make setup` clones it).
 
+gdc also has an opt-in, additional Rust verifier with QR-code and DC API test
+UIs. See [SIROS verifier-core on Fly](docs/SIROS-VERIFIER.md).
+
 ### Multiple developers, multiple environments
 
 Environments are fully isolated by name - two developers can run

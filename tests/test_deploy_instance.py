@@ -159,6 +159,57 @@ class DeployInstanceTests(unittest.TestCase):
                                   "https://k7m2qx4d-vc-apigw.sandbox.example",
                                   "https://k7m2qx4d-vc-verifier.sandbox.example", True)])
 
+    def test_optional_siros_verifier_is_fully_wired_when_enabled(self):
+        from sirosid_core.siros_verifier import x509_hash_identity
+        import yaml
+
+        registrations = []
+
+        def register(admin_url, token, issuer_url, verifier_url, additional_verifiers=None):
+            registrations.append(additional_verifiers)
+            return {"issuer": "registered", "verifier": "registered",
+                    "additional_verifiers": {v["url"]: "registered" for v in additional_verifiers or []}}
+
+        spec = InstanceSpec(env=NAMING.env, region="arn", app_prefix="sid", host_pattern=NAMING.host_pattern,
+                            images={"siros-verifier": "registry.fly.io/sid-k7m2qx4d-siros-verifier:test"})
+        fake, result, root = self.deploy(spec=spec, register=register)
+        app = "sid-k7m2qx4d-siros-verifier"
+        self.assertIn(app, fake.apps)
+        self.assertLess(result.deployed.index("pdp"), result.deployed.index("siros-verifier"))
+        self.assertLess(result.deployed.index("siros-verifier"), result.deployed.index("wallet-backend"))
+        self.assertEqual(result.urls["siros-verifier"], "https://k7m2qx4d-siros-verifier.sandbox.example")
+        self.assertEqual(registrations, [[{"name": "SIROS Verifier",
+                                           "url": "https://k7m2qx4d-siros-verifier.sandbox.example"}]])
+        self.assertIn("SIROS_VERIFIER_STATE_KEY", fake.apps[app]["secrets"])
+        self.assertEqual(len(fake.apps[app]["secrets"]["SIROS_VERIFIER_STATE_KEY"]), 32,
+                         "raw env-var secret, not ensure_secret's base64 file encoding")
+        self.assertIn("vcSigningKey", fake.apps[app]["secrets"])
+        self.assertTrue((root / "fly-k7m2qx4d" / "sirosVerifierStateKey").exists())
+        commands = [c for c in fake.log if c.startswith("flyctl deploy") and app in c]
+        self.assertEqual(len(commands), 1)
+        command = commands[0]
+        self.assertIn("TUNNELBANA_BIND=0.0.0.0:9001", command)
+        self.assertIn("/etc/siros-verifier/proxy.toml=", command)
+        self.assertIn("/pki/signing_ec_private.pem=vcSigningKey", command)
+        self.assertIn("SIROS_VERIFIER_PDP_ENDPOINT=http://sid-k7m2qx4d-pdp.internal:8080/evaluation", command)
+        import re
+        template = (ROOT / "fixtures" / "siros-verifier" / "proxy.fly.toml").read_text()
+        placeholders = set(re.findall(r"\$\{([A-Z0-9_]+)\}", template))
+        env_names = set(re.findall(r"--env ([A-Z0-9_]+)=", command))
+        supplied = env_names | set(fake.apps[app]["secrets"])
+        self.assertEqual(placeholders - supplied, set(), "every Fly config placeholder must be populated")
+        identity = x509_hash_identity(root / "fly-k7m2qx4d" / "vc-pki" / "signing_ec.crt")
+        pdp = yaml.safe_load((root / "fly-k7m2qx4d" / "pdp.yaml").read_text())
+        rendered = yaml.safe_dump(pdp)
+        self.assertIn(identity, rendered)
+        self.assertIn("https://k7m2qx4d-vc-verifier.sandbox.example", rendered)
+
+    def test_optional_siros_verifier_changes_nothing_when_disabled(self):
+        fake, result, root = self.deploy()
+        self.assertNotIn("siros-verifier", result.images)
+        self.assertNotIn("sid-k7m2qx4d-siros-verifier", fake.apps)
+        self.assertFalse((root / "fly-k7m2qx4d" / "sirosVerifierStateKey").exists())
+
     def test_registration_that_never_succeeds_is_fatal_not_silent(self):
         import sirosid_core.deploy as d
 

@@ -66,7 +66,7 @@ import bootstrap  # noqa: E402
 import fly_common  # noqa: E402
 from android_apps import load_android_apps  # noqa: E402
 from env_config import load_environment_config, merge_images, merge_list  # noqa: E402
-from fly_common import COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, detect_region  # noqa: E402
+from fly_common import COMPONENTS, FLY_ORG, FLY_REGION_FALLBACK, KNOWN_COMPONENTS, detect_region  # noqa: E402
 from sirosid_core.deploy import DeployError, RegistrationError, deploy_instance  # noqa: E402
 from sirosid_core.fly import FlyClient, FlyError  # noqa: E402
 from sirosid_core.naming import Naming  # noqa: E402,F401
@@ -214,8 +214,8 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
             raise SystemExit(f"--images entry {pair!r} must be component=image")
         component, image = pair.split("=", 1)
         component = component.strip()
-        if component not in {c["name"] for c in COMPONENTS}:
-            raise SystemExit(f"--images: unknown component {component!r} - see fly_common.COMPONENTS")
+        if component not in {c["name"] for c in KNOWN_COMPONENTS}:
+            raise SystemExit(f"--images: unknown component {component!r} - see fly_common.KNOWN_COMPONENTS")
         cli_image_overrides[component] = image.strip()
     image_overrides = merge_images(env_cfg["images"], cli_image_overrides)
 
@@ -259,7 +259,7 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
         # single machine has neither, so the layout implies --no-env-admin.
         env_admin=not (args.no_env_admin or args.single_machine),
         **({"layout": "single-machine", "public_ips": not args.no_public_ips} if args.single_machine else {}),
-    ).validate([c["name"] for c in COMPONENTS])
+    ).validate([c["name"] for c in KNOWN_COMPONENTS])
 
 
 def main():
@@ -440,11 +440,12 @@ def main():
     identities = load_android_apps(extra=spec.android_apps)
     fly_client = FlyClient(args.org) if args.org else fly_common._client
 
-    def register(admin_url, admin_token, issuer_url, verifier_url):
+    def register(admin_url, admin_token, issuer_url, verifier_url, additional_verifiers=None):
         # scripts/bootstrap.py is the one implementation `make up`, env-admin's
         # storage reset and this share; the library only knows "not ready yet".
         try:
-            return bootstrap.register(admin_url, admin_token, issuer_url, verifier_url)
+            return bootstrap.register(admin_url, admin_token, issuer_url, verifier_url,
+                                      additional_verifiers=additional_verifiers)
         except bootstrap.BootstrapError as e:
             raise RegistrationError(str(e)) from e
 
@@ -475,8 +476,8 @@ def main():
 
     if args.render_only:
         print("=== Images (--render-only: nothing deployed) ===")
-        for comp in COMPONENTS:
-            print(f"  {comp['name']:<18} {result.images[comp['name']]}")
+        for name, image in result.images.items():
+            print(f"  {name:<18} {image}")
         print(f"config written to {out_dir}")
         return
 

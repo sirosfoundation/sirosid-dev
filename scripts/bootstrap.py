@@ -85,7 +85,8 @@ def wait_for_tenant(admin_url: str, token: str, tenant: str = DEFAULT_TENANT, at
 
 
 def register(admin_url: str, token: str, issuer_url: str, verifier_url: str,
-             tenant: str = DEFAULT_TENANT, verifier_name: str = "VC Verifier", log=print) -> dict:
+             tenant: str = DEFAULT_TENANT, verifier_name: str = "VC Verifier", log=print,
+             additional_verifiers: list = None) -> dict:
     """Idempotently register issuer_url and verifier_url with the tenant.
     Returns a summary dict; raises BootstrapError on a hard failure."""
     admin_url = admin_url.rstrip("/")
@@ -121,6 +122,21 @@ def register(admin_url: str, token: str, issuer_url: str, verifier_url: str,
     else:
         raise BootstrapError(f"could not register verifier {verifier_url} (HTTP {status})")
     log(f"verifier {verifier_url}: {summary['verifier']}")
+
+    if additional_verifiers:
+        summary["additional_verifiers"] = {}
+        for verifier in additional_verifiers:
+            name, url = verifier["name"], verifier["url"]
+            status, _ = _request("POST", f"{admin_url}/admin/tenants/{tenant}/verifiers", token,
+                                 {"name": name, "url": url})
+            if 200 <= status < 300:
+                outcome = "registered"
+            elif status == 409:
+                outcome = "already registered"
+            else:
+                raise BootstrapError(f"could not register verifier {url} (HTTP {status})")
+            summary["additional_verifiers"][url] = outcome
+            log(f"verifier {url}: {outcome}")
     return summary
 
 
