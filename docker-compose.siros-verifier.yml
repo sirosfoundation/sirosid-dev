@@ -1,0 +1,27 @@
+# Replace SUNET/vc's verifier with the Rust siros-verifier-core gateway while
+# keeping issuer, apigw, registry, mini-oidc and go-trust unchanged.
+services:
+  vc-verifier:
+    build:
+      context: ${VERIFIER_CORE_PATH:-../siros-verifier-core}
+      dockerfile: Dockerfile
+    image: siros-verifier-core-e2e-test:local
+    container_name: siros-verifier-core-e2e
+    volumes:
+      - ./fixtures/siros-verifier/proxy.toml:/etc/siros-verifier/proxy.toml:ro
+      - ./fixtures/siros-verifier/attributes.toml:/etc/siros-verifier/attributes.toml:ro
+      - ./fixtures/vc-pki:/pki:ro
+    environment:
+      - TUNNELBANA_BIND=0.0.0.0:9001
+    depends_on:
+      go-trust-allow:
+        condition: service_started
+    networks:
+      e2e-test-network:
+        aliases:
+          - vc-verifier.localhost
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true

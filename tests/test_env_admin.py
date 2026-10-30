@@ -61,7 +61,7 @@ class ResetSequence(unittest.TestCase):
             self.dropped.extend(d for d in cfg.databases if d not in server.SYSTEM_DATABASES)
             return list(self.dropped)
         server_mod.drop_databases = fake_drop
-        server_mod.bootstrap.register = lambda *a, **k: self.registered.append(a) or {}
+        server_mod.bootstrap.register = lambda *a, **k: self.registered.append((a, k)) or {}
 
     def tearDown(self):
         server.mongo_stores, server.drop_databases, server.bootstrap.register = self._orig
@@ -93,6 +93,13 @@ class ResetSequence(unittest.TestCase):
         record, _ = self.run_job(self.cfg, FakePlatform({"wb", "apigw"}))
         self.assertEqual(record["status"], "finished")
         self.assertEqual(len(self.registered), 1)
+
+    def test_bootstrap_restores_additional_verifiers(self):
+        self.cfg.admin_url = self.cfg.issuer_url = self.cfg.verifier_url = "http://x"
+        self.cfg.additional_verifiers = [{"name": "SIROS Verifier", "url": "https://siros.example"}]
+        record, _ = self.run_job(self.cfg, FakePlatform({"wb", "apigw"}))
+        self.assertEqual(record["status"], "finished")
+        self.assertEqual(self.registered[0][1]["additional_verifiers"], self.cfg.additional_verifiers)
 
     def test_no_control_is_an_error_not_a_wipe(self):
         platform = FakePlatform({"wb"})

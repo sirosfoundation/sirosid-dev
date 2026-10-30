@@ -1,0 +1,67 @@
+# SIROS verifier-core on Fly: an additional OpenID4VP verifier endpoint.
+# Values are injected by fly-up; the state key and signing key remain secrets.
+base_url = "${SIROS_VERIFIER_BASE_URL}"
+state_encryption_key = "${SIROS_VERIFIER_STATE_KEY}"
+cookie_name = "SIROS_VERIFIER_STATE"
+cookie_secure = true
+cookie_same_site = "None"
+state_cookie_max_age = 900
+attributes = "/etc/siros-verifier/attributes.toml"
+
+[logging]
+level = "info"
+format = "json"
+
+[[frontend]]
+type = "ui"
+name = "ui"
+
+[[frontend]]
+type = "oidc"
+name = "OIDC"
+  [frontend.config]
+  signing_key_path = "/pki/signing_ec_private.pem"
+  signing_algorithm = "ES256"
+  signing_key_id = "gdc-siros-verifier"
+
+  [[frontend.config.clients]]
+  client_id = "mini-oidc-rp"
+  redirect_uris = ["${SIROS_VERIFIER_OIDC_REDIRECT_URI}"]
+  response_types = ["code"]
+  token_endpoint_auth_method = "none"
+
+[[backend]]
+type = "openid4vp"
+name = "vp"
+  [backend.config]
+  request_signing_key_path = "/pki/signing_ec_private.pem"
+  request_certificate_chain_path = "/pki/signing_ec_chain.pem"
+  pdp_endpoint = "${SIROS_VERIFIER_PDP_ENDPOINT}"
+  pdp_id = "go-trust"
+  # Fly's encrypted private WireGuard network is the trusted local network here.
+  allow_insecure_http = true
+  receipt_key_id = "gdc-siros-receipt"
+  receipt_issuer = "siros-verifier-core"
+  receipt_audience = "vp"
+  max_receipt_ttl_secs = 300
+  role = "pid-provider"
+  request_ttl_secs = 300
+  subject_pointer = "/personal_administrative_number"
+  dcql = { credentials = [
+    { id = "eudi_pid", format = "dc+sd-jwt",
+      meta = { vct_values = ["urn:eudi:pid:arf-1.8:1"] },
+      claims = [
+        { path = ["given_name"] },
+        { path = ["family_name"] },
+        { path = ["birthdate"] },
+        { path = ["nationalities"] },
+        { path = ["personal_administrative_number"] },
+      ]
+    },
+  ] }
+  attribute_map = {
+    givenname = "/given_name",
+    surname = "/family_name",
+    birthdate = "/birthdate",
+    nationalities = "/nationalities",
+  }

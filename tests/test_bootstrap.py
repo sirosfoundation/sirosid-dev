@@ -94,6 +94,15 @@ class BootstrapContract(unittest.TestCase):
         verifier_post = next(b for m, u, _h, b in api.requests if m == "POST" and u == f"{TENANT}/verifiers")
         self.assertEqual(verifier_post, {"name": "VC Verifier", "url": VERIFIER})
 
+    def test_additional_verifiers_are_registered_without_replacing_the_default(self):
+        api = self.install(self.fresh_routes())
+        extra = {"name": "SIROS Verifier", "url": "https://siros.example"}
+        summary = bootstrap.register(ADMIN, "t", ISSUER, VERIFIER, log=self.log.append,
+                                     additional_verifiers=[extra])
+        posts = [b for m, u, _h, b in api.requests if m == "POST" and u == f"{TENANT}/verifiers"]
+        self.assertEqual(posts, [{"name": "VC Verifier", "url": VERIFIER}, extra])
+        self.assertEqual(summary["additional_verifiers"], {"https://siros.example": "registered"})
+
     def test_409_means_already_registered_and_is_not_an_error(self):
         routes = self.fresh_routes()
         routes[("POST", f"{TENANT}/issuers")] = (409, {"error": "exists"})

@@ -54,9 +54,10 @@ def _register_callable(settings: Settings):
     import bootstrap
     from sirosid_core.deploy import RegistrationError
 
-    def register(admin_url, token, issuer_url, verifier_url):
+    def register(admin_url, token, issuer_url, verifier_url, additional_verifiers=None):
         try:
-            return bootstrap.register(admin_url, token, issuer_url, verifier_url)
+            return bootstrap.register(admin_url, token, issuer_url, verifier_url,
+                                      additional_verifiers=additional_verifiers)
         except bootstrap.BootstrapError as e:
             raise RegistrationError(str(e)) from e
     return register

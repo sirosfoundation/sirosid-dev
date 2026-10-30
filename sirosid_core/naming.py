@@ -49,6 +49,7 @@ APPS_PORTS = {
     "vc-verifier": {"http": 8080},
     "vc-apigw": {"http": 8080},
     "pdp": {"http": 8080},
+    "siros-verifier": {"http": 9001},
     "wallet-backend": {"http": 8080, "admin": 8081, "engine": 8082},
     "wallet-proxy": {"http": 8090},
     "env-admin": {"http": 3002},

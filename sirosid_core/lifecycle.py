@@ -7,7 +7,7 @@ so every app is attempted and the failures are returned.
 """
 from dataclasses import dataclass, field
 
-from .components import CONFORMANCE_COMPONENTS, STORAGE_APPS, build_components, component_names
+from .components import CONFORMANCE_COMPONENTS, SIROS_VERIFIER_COMPONENT, STORAGE_APPS, build_components, component_names
 from .fly import FlyClient, FlyError
 from .naming import Naming
 
@@ -127,7 +127,7 @@ def start_instance(fly: FlyClient, naming: Naming, progress=None, machines=None,
     if naming.single_machine:
         return _power_single_machine(fly, naming, "start", say, machines, ready_timeout)
     report = PowerReport()
-    comps = {c["name"]: c for c in build_components("", "") + CONFORMANCE_COMPONENTS}
+    comps = {c["name"]: c for c in build_components("", "") + [SIROS_VERIFIER_COMPONENT] + CONFORMANCE_COMPONENTS}
     for name in component_names():
         app = naming.app(name)
         try:

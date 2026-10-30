@@ -1,0 +1,66 @@
+# SIROS verifier-core local E2E gateway: real OIDC OP + OpenID4VP SD-JWT backend.
+base_url = "http://vc-verifier.localhost:9001"
+state_encryption_key = "e2e-siros-verifier-core-state-secret-0123456789abcdef"
+cookie_name = "SIROS_VERIFIER_STATE"
+cookie_secure = false
+cookie_same_site = "None"
+state_cookie_max_age = 900
+attributes = "/etc/siros-verifier/attributes.toml"
+
+[logging]
+level = "info"
+format = "pretty"
+
+[[frontend]]
+type = "ui"
+name = "ui"
+
+[[frontend]]
+type = "oidc"
+name = "OIDC"
+  [frontend.config]
+  signing_key_path = "/pki/signing_ec_private.pem"
+  signing_algorithm = "ES256"
+  signing_key_id = "dev-op"
+
+  [[frontend.config.clients]]
+  client_id = "mini-oidc-rp"
+  redirect_uris = ["http://mini-oidc-rp.localhost:9006/callback"]
+  response_types = ["code"]
+  token_endpoint_auth_method = "none"
+
+[[backend]]
+type = "openid4vp"
+name = "vp"
+  [backend.config]
+  request_signing_key_path = "/pki/signing_ec_private.pem"
+  request_certificate_chain_path = "/pki/signing_ec_chain.pem"
+  pdp_endpoint = "http://go-trust-allow:6001/evaluation"
+  pdp_id = "go-trust-allow"
+  # Development-network escape hatch only; production PDPs use HTTPS.
+  allow_insecure_http = true
+  receipt_key_id = "dev-receipt"
+  receipt_issuer = "siros-verifier-core"
+  receipt_audience = "vp"
+  max_receipt_ttl_secs = 300
+  role = "pid-provider"
+  request_ttl_secs = 300
+  subject_pointer = "/personal_administrative_number"
+  dcql = { credentials = [
+    { id = "eudi_pid", format = "dc+sd-jwt",
+      meta = { vct_values = ["urn:eudi:pid:arf-1.8:1"] },
+      claims = [
+        { path = ["given_name"] },
+        { path = ["family_name"] },
+        { path = ["birthdate"] },
+        { path = ["nationalities"] },
+        { path = ["personal_administrative_number"] },
+      ]
+    },
+  ] }
+  attribute_map = {
+    givenname = "/given_name",
+    surname = "/family_name",
+    birthdate = "/birthdate",
+    nationalities = "/nationalities",
+  }

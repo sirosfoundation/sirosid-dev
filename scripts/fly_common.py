@@ -24,7 +24,8 @@ from sirosid_core.assets import (  # noqa: E402,F401  (re-exported: the CLI scri
     wallet_frontend_dashboard_html, wallet_proxy_conf, write_fly_toml)
 from sirosid_core.components import (  # noqa: E402,F401
     CONFORMANCE_COMPONENTS, FLY_REGION_FALLBACK, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
-    STORAGE_APPS, VOLUME_SIZE_GB, build_components, volume_name)
+    SIROS_VERIFIER_COMPONENT, STORAGE_APPS, VOLUME_SIZE_GB, build_components, component_names, volume_name,
+    with_optional_components)
 from sirosid_core.fly import FlyClient, FlyError, detect_region  # noqa: E402,F401
 from sirosid_core.naming import Naming  # noqa: E402
 
@@ -67,6 +68,7 @@ FLY_ORG = "sirosfoundation"
 
 # The deployment order; the two pins above are the only repo-file input.
 COMPONENTS = build_components(MINI_OIDC_IMAGE, ENV_ADMIN_IMAGE)
+KNOWN_COMPONENTS = COMPONENTS + [SIROS_VERIFIER_COMPONENT]
 
 
 

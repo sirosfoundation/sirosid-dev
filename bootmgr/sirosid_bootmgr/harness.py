@@ -442,7 +442,7 @@ def fly_versions(env: str) -> list[dict]:
     state, region and last update. Apps queried in parallel - one flyctl call
     each, and an environment has eleven or more."""
     from concurrent.futures import ThreadPoolExecutor
-    from fly_common import COMPONENTS, CONFORMANCE_COMPONENTS, app_name
+    from fly_common import KNOWN_COMPONENTS, CONFORMANCE_COMPONENTS, app_name
 
     def one(comp: dict) -> dict | None:
         app = app_name(env, comp["name"])
@@ -468,7 +468,7 @@ def fly_versions(env: str) -> list[dict]:
                 "digest": digest, "state": m.get("state", ""), "region": m.get("region", ""),
                 "updated": (m.get("updated_at") or "")[:19].replace("T", " ")}
 
-    comps = COMPONENTS + CONFORMANCE_COMPONENTS
+    comps = KNOWN_COMPONENTS + CONFORMANCE_COMPONENTS
     with ThreadPoolExecutor(max_workers=8) as pool:
         rows = list(pool.map(one, comps))
     return [r for r in rows if r]

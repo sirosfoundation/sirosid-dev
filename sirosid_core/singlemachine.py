@@ -390,6 +390,8 @@ def check_unsupported(spec: InstanceSpec, naming: Naming):
                         "machines with per-app deploy tokens; there is one machine here). Deploy with "
                         "env_admin=False (fly-up --no-env-admin, implied by --single-machine) and reset "
                         "the instance from outside (fly-storage-clear / ControlPlane.reset_instance)")
+    if "siros-verifier" in spec.images:
+        problems.append("siros-verifier is supported only in the apps layout")
     if spec.conformance:
         problems.append("the conformance suite is not supported in the single-machine layout (its nginx "
                         "image hard-codes server:8080)")

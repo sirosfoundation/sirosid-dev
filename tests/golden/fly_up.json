@@ -777,6 +777,8 @@
    "flyctl apps list --json",
    "flyctl apps destroy sirosid-coretest-pdp --yes",
    "flyctl apps list --json",
+   "flyctl apps list --json",
+   "flyctl apps list --json",
    "flyctl tokens list -a sirosid-coretest-wallet-backend",
    "flyctl tokens revoke tok_0011",
    "flyctl apps list --json",
@@ -840,6 +842,8 @@
    "flyctl apps list --json",
    "flyctl apps destroy sirosid-coretest-pdp --yes",
    "flyctl apps list --json",
+   "flyctl apps list --json",
+   "flyctl apps list --json",
    "flyctl tokens list -a sirosid-coretest-wallet-backend",
    "flyctl tokens revoke tok_0011",
    "flyctl apps list --json",
@@ -870,6 +874,8 @@
  "teardown-of-nothing": {
   "apps_left": [],
   "commands": [
+   "flyctl apps list --json",
+   "flyctl apps list --json",
    "flyctl apps list --json",
    "flyctl apps list --json",
    "flyctl apps list --json",

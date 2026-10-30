@@ -23,6 +23,7 @@ The components, in deploy order:
 | `vc-verifier` | the verifier (OpenID4VP, presentation requests, DC API) | yes |
 | `vc-apigw` | the issuer's public face: OpenID4VCI metadata, token and credential endpoints | yes |
 | `pdp` | go-trust, the trust service (AuthZEN Policy Decision Point) | no |
+| `siros-verifier` | optional additional Rust SD-JWT verifier with QR and DC API test UIs; apps layout only, enabled by its image pin | yes |
 | `wallet-backend` | go-wallet-backend: accounts, passkeys, credential storage, issuance/presentation engine | no (reached through wallet-proxy) |
 | `wallet-proxy` | nginx in front of wallet-backend: the backend's public URL, serves `/.well-known/assetlinks.json` | yes |
 | `env-admin` | the in-instance "Clear all data" actor; deployed only by the `make fly-up` CLI, never by the hosted service | no |

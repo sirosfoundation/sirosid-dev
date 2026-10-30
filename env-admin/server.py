@@ -60,7 +60,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import bootstrap  # noqa: E402  (scripts/bootstrap.py, copied next to this file by the Dockerfile)
 
-VERSION = "0.1.1"
+VERSION = "0.1.2"
 SYSTEM_DATABASES = {"admin", "local", "config"}
 
 
@@ -122,6 +122,7 @@ class Config:
     admin_url: str = _env("ADMIN_URL", "")
     issuer_url: str = _env("ISSUER_URL", "")
     verifier_url: str = _env("VERIFIER_URL", "")
+    additional_verifiers: list = field(default_factory=lambda: json.loads(_env("ADDITIONAL_VERIFIERS") or "[]"))
 
     def resolve_files(self):
         if self.mongo_uri_file and os.path.exists(self.mongo_uri_file):
@@ -426,7 +427,7 @@ class ResetJob(threading.Thread):
             self.log("VC services not running in this stack - nothing to register")
         else:
             bootstrap.register(self.cfg.admin_url, self.cfg.token, self.cfg.issuer_url, self.cfg.verifier_url,
-                               log=self.log)
+                               log=self.log, additional_verifiers=self.cfg.additional_verifiers)
         self.log("done - the environment is back to its freshly deployed state")
 
     def _wait_healthy(self, consumer, timeout=120):
