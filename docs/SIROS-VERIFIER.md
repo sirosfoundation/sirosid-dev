@@ -10,7 +10,7 @@ unchanged.
 - Health: https://sirosid-gdc-siros-verifier.fly.dev/health
 - OIDC discovery: https://sirosid-gdc-siros-verifier.fly.dev/OIDC/.well-known/openid-configuration
 
-The UI loads SD-JWT credential types and claim metadata from the TS11 catalog at
+The UI loads SD-JWT and mdoc credential types and claim metadata from the TS11 catalog at
 `https://registry.siros.org/api/v1/schemas.json` (with configured presets as a
 fallback). Select a registry-backed preset, choose attributes, or edit the DCQL
 directly, then choose an invocation mechanism:
@@ -84,5 +84,7 @@ app and whitelist together.
 ## Current limits
 
 This is a test deployment of a service that is not production-ready. It supports
-the SD-JWT VC gateway flow, not mdoc OpenID4VP or `zkp_req`. Flow and replay state
+SD-JWT VC and mdoc OpenID4VP, not `zkp_req`. mdoc doctype presets and both QR/DC
+API handovers are covered by protocol tests; Pixel interoperability for each
+credential profile must still be demonstrated separately. Flow and replay state
 are in-process: run one machine and do not treat this as the HA implementation.
