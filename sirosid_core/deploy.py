@@ -393,7 +393,9 @@ const result = exists
   : db.adminCommand({createUser: "siros_verifier", pwd: pwd, roles: roles});
 if (result.ok !== 1) { throw new Error("could not provision siros_verifier"); }
 ' '''
-    fly.machine_exec(naming.app("mongodb"), ["sh", "-c", script], input_text=password + "\n")
+    app = naming.app("mongodb")
+    fly.ensure_running(app)
+    fly.machine_exec(app, ["sh", "-c", script], input_text=password + "\n")
 
 
 def deploy_component(ctx: DeployContext, comp: dict):
