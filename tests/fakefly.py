@@ -147,6 +147,8 @@ class FakeFly:
             return _cp(argv)
         if head in ("machine", "machines") and sub == "list":
             return _cp(argv, stdout=json.dumps(self._app(app)["machines"]))
+        if head == "machine" and sub == "exec":
+            return _cp(argv)
         if head == "machine" and sub in ("start", "stop", "destroy"):
             ms = self._app(app)["machines"]
             for m in list(ms):

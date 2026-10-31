@@ -185,9 +185,15 @@ class DeployInstanceTests(unittest.TestCase):
                          "raw env-var secret, not ensure_secret's base64 file encoding")
         self.assertIn("vcSigningKey", fake.apps[app]["secrets"])
         mongo_uri = fake.apps[app]["secrets"]["SIROS_VERIFIER_MONGODB_URI"]
-        self.assertTrue(mongo_uri.startswith("mongodb://root:"))
+        self.assertTrue(mongo_uri.startswith("mongodb://siros_verifier:"))
+        self.assertNotIn("mongodb://root:", mongo_uri)
         self.assertIn("@sid-k7m2qx4d-mongodb.internal:27017/?authSource=admin", mongo_uri)
         self.assertTrue((root / "fly-k7m2qx4d" / "sirosVerifierStateKey").exists())
+        mongo_password = (root / "fly-k7m2qx4d" / "sirosVerifierMongoPassword").read_text().strip()
+        self.assertEqual(len(mongo_password), 32)
+        provisioning = [c for c in fake.log if c.startswith("flyctl machine exec") and "usersInfo" in c]
+        self.assertEqual(len(provisioning), 1)
+        self.assertNotIn(mongo_password, provisioning[0])
         commands = [c for c in fake.log if c.startswith("flyctl deploy") and app in c]
         self.assertEqual(len(commands), 1)
         command = commands[0]

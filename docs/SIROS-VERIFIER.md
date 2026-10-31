@@ -101,11 +101,14 @@ MongoDB does not contain the response
 private key or verified attributes in plaintext. Retention is enforced both by
 request-time checks and a TTL index.
 
-The Fly deploy supplies the MongoDB URI as `SIROS_VERIFIER_MONGODB_URI`. The
-current single MongoDB is a shared store but not a highly available database;
-database failover requires a replica set or managed HA MongoDB. The upstream
-OIDC frontend's authorization-code/refresh-token use store remains process-local,
-so full multi-replica OIDC gateway HA is separate upstream work.
+The Fly deploy provisions a dedicated `siros_verifier` MongoDB user with only
+`readWrite` on that database and supplies its URI as
+`SIROS_VERIFIER_MONGODB_URI`. The current single MongoDB is a shared store but
+not a highly available database; database failover requires a replica set or
+managed HA MongoDB. OIDC authorization-code, refresh-token, and client-assertion
+replay markers use the separate `oidc_token_use` collection with a TTL index.
+Keep one machine until the two-replica live test is complete; access tokens
+remain stateless and reusable until expiry by design.
 
 ## Current limits
 
@@ -113,5 +116,4 @@ This is a test deployment of a service that is not production-ready. Protocol
 tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
 QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
 each credential profile must still be demonstrated separately. Keep gdc at one
-verifier machine until the OIDC token-use store is shared; otherwise an
-authorization code or refresh token could be redeemed once per replica.
+verifier machine until the two-replica live test is complete.

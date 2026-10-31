@@ -380,6 +380,22 @@ def resolve_mongo_password(fly: FlyClient, naming: Naming, out_dir: Path, say=pr
     return persistent_secret(out_dir, "mongoRootPassword")
 
 
+def ensure_siros_verifier_mongo_user(fly: FlyClient, naming: Naming, password: str) -> None:
+    """Provision the verifier's least-privilege account without logging its password."""
+    script = r'''IFS= read -r SIROS_VERIFIER_PASSWORD
+export SIROS_VERIFIER_PASSWORD
+mongosh --quiet -u root -p "$(cat /run/secrets/mongoRootPassword)" --authenticationDatabase admin --eval '
+const pwd = process.env.SIROS_VERIFIER_PASSWORD;
+const roles = [{role: "readWrite", db: "siros_verifier"}];
+const exists = db.adminCommand({usersInfo: "siros_verifier"}).users.length > 0;
+const result = exists
+  ? db.adminCommand({updateUser: "siros_verifier", pwd: pwd, roles: roles})
+  : db.adminCommand({createUser: "siros_verifier", pwd: pwd, roles: roles});
+if (result.ok !== 1) { throw new Error("could not provision siros_verifier"); }
+' '''
+    fly.machine_exec(naming.app("mongodb"), ["sh", "-c", script], input_text=password + "\n")
+
+
 def deploy_component(ctx: DeployContext, comp: dict):
     fly, naming, resources, spec, say = ctx.fly, ctx.naming, ctx.resources, ctx.spec, ctx.say
     env, docs, mongo_version = naming.env, ctx.docs, ctx.mongo_version
@@ -544,12 +560,11 @@ def deploy_component(ctx: DeployContext, comp: dict):
     elif name == "siros-verifier":
         fixture = resources.root / "fixtures" / "siros-verifier"
         fly.ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
-        # Synthetic-data gdc shares Mongo's root account, as env-admin already
-        # does. Before copying this pattern to real data, create a dedicated
-        # siros_verifier user with readWrite only on that one database.
+        mongo_user_password = persistent_secret(out_dir, "sirosVerifierMongoPassword")
+        ensure_siros_verifier_mongo_user(fly, naming, mongo_user_password)
         fly.import_secrets(app, {
             "SIROS_VERIFIER_STATE_KEY": persistent_secret(out_dir, "sirosVerifierStateKey"),
-            "SIROS_VERIFIER_MONGODB_URI": f"mongodb://root:{mongo_password}@{naming.addr('mongodb')}/?authSource=admin",
+            "SIROS_VERIFIER_MONGODB_URI": f"mongodb://siros_verifier:{mongo_user_password}@{naming.addr('mongodb')}/?authSource=admin",
         })
         deploy_args += [
             "--env", "TUNNELBANA_BIND=0.0.0.0:9001",
