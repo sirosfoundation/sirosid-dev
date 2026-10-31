@@ -222,10 +222,10 @@ images:
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793192393
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
   # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
-  # vc-verifier remains available unchanged. The source workspace has no git metadata,
-  # so no commit/clean-tree claim is made: the image is pinned to a 101-file source
-  # snapshot (sorted relative path + NUL + contents + NUL, build artifacts excluded)
-  # with SHA-256 15e8acc3c0225c78ccfe1ad33c4252f5fc7f19b585a6df272319fea4a4b07ffc.
+  # vc-verifier remains available unchanged. Source: siros-verifier-core
+  # f829e6b2cf0f9afd49dae54812f1ef0d28ada2b9 (clean tree, 101 files).
+  # Independent snapshot hash (sorted relative path + NUL + contents + NUL, build
+  # artifacts excluded): 15e8acc3c0225c78ccfe1ad33c4252f5fc7f19b585a6df272319fea4a4b07ffc.
   # Image digest sha256:186d23f75986383a50d4ff62a0f5cdbe23d206cd3bc4d6cd273cfafae39ff653.
   # Build: docker build -t registry.fly.io/sirosid-gdc-siros-verifier:local-<epoch> .
   siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793436778
