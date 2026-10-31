@@ -184,6 +184,9 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertEqual(len(fake.apps[app]["secrets"]["SIROS_VERIFIER_STATE_KEY"]), 32,
                          "raw env-var secret, not ensure_secret's base64 file encoding")
         self.assertIn("vcSigningKey", fake.apps[app]["secrets"])
+        mongo_uri = fake.apps[app]["secrets"]["SIROS_VERIFIER_MONGODB_URI"]
+        self.assertTrue(mongo_uri.startswith("mongodb://root:"))
+        self.assertIn("@sid-k7m2qx4d-mongodb.internal:27017/?authSource=admin", mongo_uri)
         self.assertTrue((root / "fly-k7m2qx4d" / "sirosVerifierStateKey").exists())
         commands = [c for c in fake.log if c.startswith("flyctl deploy") and app in c]
         self.assertEqual(len(commands), 1)
@@ -194,6 +197,7 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertIn("SIROS_VERIFIER_PDP_ENDPOINT=http://sid-k7m2qx4d-pdp.internal:8080/evaluation", command)
         import re
         template = (ROOT / "fixtures" / "siros-verifier" / "proxy.fly.toml").read_text()
+        self.assertIn("SIROS_VERIFIER_MONGODB_URI", template)
         placeholders = set(re.findall(r"\$\{([A-Z0-9_]+)\}", template))
         env_names = set(re.findall(r"--env ([A-Z0-9_]+)=", command))
         supplied = env_names | set(fake.apps[app]["secrets"])

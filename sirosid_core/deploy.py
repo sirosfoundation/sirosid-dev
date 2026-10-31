@@ -544,7 +544,13 @@ def deploy_component(ctx: DeployContext, comp: dict):
     elif name == "siros-verifier":
         fixture = resources.root / "fixtures" / "siros-verifier"
         fly.ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
-        fly.import_secrets(app, {"SIROS_VERIFIER_STATE_KEY": persistent_secret(out_dir, "sirosVerifierStateKey")})
+        # Synthetic-data gdc shares Mongo's root account, as env-admin already
+        # does. Before copying this pattern to real data, create a dedicated
+        # siros_verifier user with readWrite only on that one database.
+        fly.import_secrets(app, {
+            "SIROS_VERIFIER_STATE_KEY": persistent_secret(out_dir, "sirosVerifierStateKey"),
+            "SIROS_VERIFIER_MONGODB_URI": f"mongodb://root:{mongo_password}@{naming.addr('mongodb')}/?authSource=admin",
+        })
         deploy_args += [
             "--env", "TUNNELBANA_BIND=0.0.0.0:9001",
             "--env", f"SIROS_VERIFIER_BASE_URL={naming.url(name)}",

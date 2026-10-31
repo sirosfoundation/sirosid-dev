@@ -41,6 +41,24 @@ class SirosVerifierConfigTests(unittest.TestCase):
         self.assertEqual(registry_url.scheme, "https")
         self.assertIn(registry_url.hostname, local["registry_allowed_hosts"])
 
+    def storage_config(self, filename):
+        text = (ROOT / "fixtures" / "siros-verifier" / filename).read_text()
+        marker = "  [backend.config.storage]\n"
+        parts = text.split(marker)
+        self.assertEqual(len(parts), 2, "exactly one backend storage table")
+        return tomllib.loads(parts[1])
+
+    def test_proxy_fixtures_explicitly_use_shared_mongo_storage(self):
+        local = self.storage_config("proxy.toml")
+        fly = self.storage_config("proxy.fly.toml")
+        for config in (local, fly):
+            self.assertEqual(set(config), {"backend", "uri", "database", "collection"})
+            self.assertEqual(config["backend"], "mongodb")
+            self.assertEqual(config["database"], "siros_verifier")
+            self.assertEqual(config["collection"], "presentation_flows")
+        self.assertEqual(local["uri"], "mongodb://mongodb:27017")
+        self.assertEqual(fly["uri"], "${SIROS_VERIFIER_MONGODB_URI}")
+
     def test_gdc_pin_has_a_local_epoch_tag_and_digest_provenance(self):
         text = (ROOT / "environments" / "gdc.yaml").read_text()
         image = yaml.safe_load(text)["images"]["siros-verifier"]
