@@ -16,7 +16,9 @@ fails, the page displays a warning and offers only the configured presets. After
 a successful load, a refresh failure may serve the in-memory catalog stale for
 up to one hour after its original fetch; beyond that limit, the page falls back
 to the configured presets and displays the warning. Select a registry-backed
-preset, choose attributes, or edit the DCQL directly, then choose an invocation
+preset, choose attributes from the multi-select dropdown, or edit the DCQL
+directly. The dropdown exposes all claims in the registry metadata even when the
+configured preset requests only a subset by default. Then choose an invocation
 mechanism:
 
 - **QR code**: scan with the SIROS SDK demo wallet. As with other SIROS QR
