@@ -395,7 +395,7 @@ if (result.ok !== 1) { throw new Error("could not provision siros_verifier"); }
 ' '''
     app = naming.app("mongodb")
     fly.ensure_running(app)
-    fly.machine_exec(app, ["sh", "-c", script], input_text=password + "\n")
+    fly.machine_exec(app, script, input_text=password + "\n")
 
 
 def deploy_component(ctx: DeployContext, comp: dict):

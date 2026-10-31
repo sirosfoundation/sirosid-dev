@@ -163,12 +163,12 @@ class FlyClient:
         lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
         return f": {lines[-1][:240]}" if lines else ""
 
-    def machine_exec(self, app: str, command: list, input_text: str = None):
+    def machine_exec(self, app: str, command: str, input_text: str = None):
         """Execute on the app's first machine without logging sensitive input."""
         machines = self.list_machines(app)
         if not machines:
             raise FlyError(f"cannot execute on {app}: no machines")
-        cmd = ["flyctl", "machine", "exec", machines[0]["id"], "-a", app, *command]
+        cmd = ["flyctl", "machine", "exec", machines[0]["id"], "-a", app, command]
         kw = {"text": True, "capture_output": True}
         if input_text is not None:
             kw["input"] = input_text
