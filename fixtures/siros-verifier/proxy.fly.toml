@@ -15,6 +15,12 @@ format = "json"
 [[frontend]]
 type = "ui"
 name = "ui"
+  [frontend.config]
+  invocations = ["qr", "dc-api", "link"]
+  schemes = ["openid4vp", "haip", "haip-vp", "mdoc-openid4vp"]
+  registry_url = "https://registry.siros.org/api/v1/schemas.json"
+  registry_allowed_hosts = ["registry.siros.org"]
+  registry_cache_seconds = 600
 
 [[frontend]]
 type = "oidc"
