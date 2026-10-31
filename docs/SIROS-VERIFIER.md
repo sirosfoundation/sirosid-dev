@@ -11,16 +11,21 @@ unchanged.
 - OIDC discovery: https://sirosid-gdc-siros-verifier.fly.dev/OIDC/.well-known/openid-configuration
 
 The UI loads SD-JWT and mdoc credential types and claim metadata from the TS11 catalog at
-`https://registry.siros.org/api/v1/schemas.json` (with configured presets as a
-fallback). Select a registry-backed preset, choose attributes, or edit the DCQL
-directly, then choose an invocation mechanism:
+`https://registry.siros.org/api/v1/schemas.json`. If the first registry load
+fails, the page displays a warning and offers only the configured presets. After
+a successful load, a refresh failure may serve the in-memory catalog stale for
+up to one hour after its original fetch; beyond that limit, the page falls back
+to the configured presets and displays the warning. Select a registry-backed
+preset, choose attributes, or edit the DCQL directly, then choose an invocation
+mechanism:
 
 - **QR code**: scan with the SIROS SDK demo wallet. As with other SIROS QR
   presentations, the configured wallet backend retrieves the request and submits
   the response; it is not a device-side direct POST.
 - **Direct link**: open the same authorization request using `openid4vp://`,
   `haip://`, `haip-vp://`, or `mdoc-openid4vp://`. The scheme changes invocation
-  only, not the request profile.
+  only, not the request profile. Pixel interoperability has not yet been
+  demonstrated for these direct-link schemes.
 - **DC API**: use Chrome on the Pixel with the demo wallet installed, registered,
   and unlocked. The browser immediately sends an `openid4vp-v1-signed` request
   and submits the wallet's encrypted `dc_api.jwt` response—there is no secondary
@@ -83,8 +88,9 @@ app and whitelist together.
 
 ## Current limits
 
-This is a test deployment of a service that is not production-ready. It supports
-SD-JWT VC and mdoc OpenID4VP, not `zkp_req`. mdoc doctype presets and both QR/DC
-API handovers are covered by protocol tests; Pixel interoperability for each
-credential profile must still be demonstrated separately. Flow and replay state
-are in-process: run one machine and do not treat this as the HA implementation.
+This is a test deployment of a service that is not production-ready. Protocol
+tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
+QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
+each credential profile must still be demonstrated separately. Flow and replay
+state are in-process: run one machine and do not treat this as the HA
+implementation.
