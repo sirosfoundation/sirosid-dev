@@ -15,7 +15,7 @@ services:
       - ./fixtures/vc-pki:/pki:ro
     environment:
       - TUNNELBANA_BIND=0.0.0.0:9001
-    depends_on: !override { go-trust-allow: { condition: service_started } }
+    depends_on: !override { go-trust-allow: { condition: service_started }, mongodb: { condition: service_healthy } }
     networks:
       e2e-test-network:
         aliases:

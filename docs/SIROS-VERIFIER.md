@@ -86,11 +86,26 @@ dedicated verifier key and certificate from the same CA. Rotating the shared
 leaf also rotates the verifier's `x509_hash` identity, so the deploy updates the
 app and whitelist together.
 
+## Shared flow and replay state
+
+The verifier stores OpenID4VP flows and replay tombstones in the existing
+MongoDB, in database `siros_verifier` and collection `presentation_flows`.
+Startup checks connectivity and the retention index and fails if either is
+unavailable. Atomic response claims and one-time result collection allow
+multiple verifier replicas to share the same flow. Sessions and verified results
+are sealed with the shared state key; MongoDB does not contain the response
+private key or verified attributes in plaintext. Retention is enforced both by
+request-time checks and a TTL index.
+
+The Fly deploy supplies the MongoDB URI as `SIROS_VERIFIER_MONGODB_URI`. The
+current single MongoDB is a shared store but not a highly available database;
+database failover requires a replica set or managed HA MongoDB. The upstream
+OIDC frontend's authorization-code/refresh-token use store remains process-local,
+so full multi-replica OIDC gateway HA is separate upstream work.
+
 ## Current limits
 
 This is a test deployment of a service that is not production-ready. Protocol
 tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
 QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
-each credential profile must still be demonstrated separately. Flow and replay
-state are in-process: run one machine and do not treat this as the HA
-implementation.
+each credential profile must still be demonstrated separately.
