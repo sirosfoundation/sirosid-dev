@@ -91,9 +91,11 @@ app and whitelist together.
 The verifier stores OpenID4VP flows and replay tombstones in the existing
 MongoDB, in database `siros_verifier` and collection `presentation_flows`.
 Startup checks connectivity and the retention index and fails if either is
-unavailable. Atomic response claims and one-time result collection allow
-multiple verifier replicas to share the same flow. Sessions and verified results
-are sealed with the shared state key; MongoDB does not contain the response
+unavailable. Atomic response claims and one-time result collection are designed
+to allow multiple verifier replicas to share a flow. This is covered by real
+MongoDB tests in core CI, but has not been demonstrated with two live gdc
+machines. Sessions and verified results are sealed with the shared state key;
+MongoDB does not contain the response
 private key or verified attributes in plaintext. Retention is enforced both by
 request-time checks and a TTL index.
 
@@ -108,4 +110,6 @@ so full multi-replica OIDC gateway HA is separate upstream work.
 This is a test deployment of a service that is not production-ready. Protocol
 tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
 QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
-each credential profile must still be demonstrated separately.
+each credential profile must still be demonstrated separately. Keep gdc at one
+verifier machine until the OIDC token-use store is shared; otherwise an
+authorization code or refresh token could be redeemed once per replica.

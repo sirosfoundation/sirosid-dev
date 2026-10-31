@@ -73,6 +73,7 @@ name = "vp"
 
   [backend.config.storage]
   backend = "mongodb"
+  # Compose Mongo is intentionally unauthenticated; Fly uses a secret root URI.
   uri = "mongodb://mongodb:27017"
   database = "siros_verifier"
   collection = "presentation_flows"

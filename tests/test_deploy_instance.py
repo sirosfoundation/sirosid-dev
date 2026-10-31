@@ -197,6 +197,7 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertIn("SIROS_VERIFIER_PDP_ENDPOINT=http://sid-k7m2qx4d-pdp.internal:8080/evaluation", command)
         import re
         template = (ROOT / "fixtures" / "siros-verifier" / "proxy.fly.toml").read_text()
+        self.assertIn("SIROS_VERIFIER_MONGODB_URI", template)
         placeholders = set(re.findall(r"\$\{([A-Z0-9_]+)\}", template))
         env_names = set(re.findall(r"--env ([A-Z0-9_]+)=", command))
         supplied = env_names | set(fake.apps[app]["secrets"])
