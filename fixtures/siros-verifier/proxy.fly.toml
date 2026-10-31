@@ -71,3 +71,9 @@ name = "vp"
     birthdate = "/birthdate",
     nationalities = "/nationalities",
   }
+
+  [backend.config.storage]
+  backend = "mongodb"
+  uri = "${SIROS_VERIFIER_MONGODB_URI}"
+  database = "siros_verifier"
+  collection = "presentation_flows"
