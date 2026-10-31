@@ -19,6 +19,7 @@ import json
 import os
 import shutil
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -43,8 +44,12 @@ def scenarios():
     # Idempotent redeploy: the SECOND run against one fake Fly. What it issues
     # is the contract that redeploys never recreate apps or volumes.
     fake = fakefly.FakeFly()
-    first = fakefly.run_fly_up([], fake=fake, keep_state=True)
-    second = fakefly.run_fly_up([], fake=fake, keep_state=True)
+    secrets = Path(tempfile.mkdtemp(prefix="coretest-secrets-"))     # shared by both runs, as fixtures/rendered-secrets is
+    try:
+        first = fakefly.run_fly_up([], fake=fake, keep_state=True, secrets_dir=secrets)
+        second = fakefly.run_fly_up([], fake=fake, keep_state=True, secrets_dir=secrets)
+    finally:
+        shutil.rmtree(secrets, ignore_errors=True)
     shutil.rmtree(fakefly.ROOT / "fixtures" / "rendered" / "fly-coretest", ignore_errors=True)
     summary["redeploy-second-run"] = {"exit": second.exit, "commands": second.commands[len(first.commands):],
                                       "files": second.files}
