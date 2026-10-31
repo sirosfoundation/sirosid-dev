@@ -107,13 +107,13 @@ The Fly deploy provisions a dedicated `siros_verifier` MongoDB user with only
 not a highly available database; database failover requires a replica set or
 managed HA MongoDB. OIDC authorization-code, refresh-token, and client-assertion
 replay markers use the separate `oidc_token_use` collection with a TTL index.
-Keep one machine until the two-replica live test is complete; access tokens
-remain stateless and reusable until expiry by design.
+Two live verifier machines were raced with the same authorization code and
+refresh token: each grant succeeded once and returned `invalid_grant` on the
+other replica. Access tokens remain stateless and reusable until expiry by design.
 
 ## Current limits
 
 This is a test deployment of a service that is not production-ready. Protocol
 tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
 QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
-each credential profile must still be demonstrated separately. Keep gdc at one
-verifier machine until the two-replica live test is complete.
+each credential profile must still be demonstrated separately.
