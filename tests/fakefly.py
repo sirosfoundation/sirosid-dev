@@ -252,7 +252,8 @@ def hash_tree(out_dir: Path):
     return files
 
 
-def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False, rendered_root=None, state=None):
+def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False, rendered_root=None, state=None,
+               secrets_dir=None):
     """Run the real scripts/fly-up.py main() against `fake`.
 
     argv: fly-up arguments (without --env; it is added).  env_yaml: the text of
@@ -263,6 +264,8 @@ def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False,
     rendered_root: use this directory instead of fixtures/rendered (the caller
     owns it and cleanup). state: {path: bytes} of sirosid_core.state files to
     restore into it first - what a hosted service does from its database.
+    secrets_dir: the vc services' generated-once secrets (the CLI's shared fixtures/rendered-secrets). By default each
+    run gets its own empty one; pass the same directory to several runs to model a redeploy that reuses them.
     """
     import os
     import unittest.mock as mock
@@ -305,8 +308,13 @@ def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False,
     fly_up = _load("fly_up_under_test", ROOT / "scripts" / "fly-up.py")
     import env_config
     import android_apps
+    from sirosid_core import resources as resources_mod
     import tempfile as _tf
     empty_root = Path(_tf.mkdtemp(prefix="coretest-empty-"))   # no .android-apps / .env.android of whoever runs this
+    # The vc services' generated secrets live in the shared, gitignored fixtures/rendered-secrets and are REUSED once they
+    # exist, so on a machine that has ever deployed anything the rendered configs carry that machine's real secrets and
+    # no golden hash can match. Each run gets an empty one, which the pinned rng then fills identically everywhere.
+    secrets_root = Path(secrets_dir) if secrets_dir else Path(_tf.mkdtemp(prefix="coretest-secrets-"))
     old_android_root = android_apps.SIROSID_DEV_ROOT
     old_root = env_config.SIROSID_DEV_ROOT
     old_cwd = os.getcwd()
@@ -320,6 +328,7 @@ def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False,
              mock.patch("time.sleep", lambda *_: None), \
              mock.patch("time.time", lambda: 1_700_000_000.0), \
              mock.patch("secrets.choice", lambda seq: rng.choice(seq)), \
+             mock.patch.object(resources_mod.Resources, "rendered_secrets", property(lambda self: secrets_root)), \
              mock.patch("shutil.which", lambda n, *a, **k: "/usr/bin/flyctl" if n == "flyctl" else real_which(n, *a, **k)), \
              mock.patch.object(fly_up.bootstrap, "register",
                                lambda *a, **k: {"issuer": "registered", "verifier": "registered"}), \
@@ -338,6 +347,8 @@ def run_fly_up(argv, fake=None, env_yaml=None, env="coretest", keep_state=False,
         env_config.SIROSID_DEV_ROOT = old_root
         android_apps.SIROSID_DEV_ROOT = old_android_root
         shutil.rmtree(empty_root, ignore_errors=True)
+        if not secrets_dir:
+            shutil.rmtree(secrets_root, ignore_errors=True)
         if envdir is not None:
             shutil.rmtree(envdir, ignore_errors=True)
     extra = [envdir] if envdir else []

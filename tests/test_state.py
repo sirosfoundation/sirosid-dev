@@ -101,7 +101,9 @@ class RedeployFromExportedState(unittest.TestCase):
 
     def deploy(self, fake, state=None):
         root = self.scratch()
-        r = fakefly.run_fly_up([], fake=fake, rendered_root=root, state=state)
+        if not hasattr(self, "secrets"):
+            self.secrets = self.scratch()      # the CLI's shared rendered-secrets: one per test, reused by every deploy
+        r = fakefly.run_fly_up([], fake=fake, rendered_root=root, state=state, secrets_dir=self.secrets)
         return r, root / "fly-coretest"
 
     def test_state_alone_is_enough_for_a_redeploy(self):

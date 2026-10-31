@@ -9,11 +9,12 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from test_api import HAVE, ORIGIN, Console, build, signed_in  # noqa: E402
 
+from sirosid_service.llm import LlmError, OpenRouter  # noqa: E402  stdlib only: its tests run without the web stack
+
 if HAVE:
     from sirosid_service.api import ApiConfig, create_app
     from sirosid_service.auth import AuthConfig, AuthService
     from sirosid_service.chat import REQUIRES_APPROVAL, SYSTEM_PROMPT, ChatConfig, ChatService
-    from sirosid_service.llm import LlmError, OpenRouter
     from sirosid_core import knowledge
 
 NEEDS = unittest.skipUnless(HAVE, "needs starlette, httpx, webauthn, cbor2")
