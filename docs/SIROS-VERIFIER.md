@@ -72,21 +72,17 @@ The app is supported in the apps layout, not the single-machine layout.
 ## Trust and registration
 
 The service currently publishes an `x509_hash` OpenID4VP client identity. Deploy
-computes the base64url SHA-256 digest of the current gdc signing leaf and adds it
-to the existing PDP whitelist. Do not hard-code that hash: reissuing the leaf
-changes it. The existing vc-verifier URL remains trusted independently.
+computes the base64url SHA-256 digest of the dedicated SIROS verifier leaf and
+adds it to the existing PDP whitelist. Do not hard-code that hash: reissuing the
+leaf changes it. The existing vc-verifier URL remains trusted independently.
 
 Deploy registers both verifier URLs with the wallet backend. gdc's env-admin
 0.1.2 image restores both registrations after a storage reset. The state-cookie
-key is persistent across redeploys; the request-signing key and chain are the
-same ones used by gdc's existing VC services.
-
-Reusing the issuer's credential-signing key for OIDC and OpenID4VP is a
-conscious simplification for this isolated test environment, not the intended
-production key-separation design. A production deployment should issue a
-dedicated verifier key and certificate from the same CA. Rotating the shared
-leaf also rotates the verifier's `x509_hash` identity, so the deploy updates the
-app and whitelist together.
+key is persistent across redeploys. The request-signing key and chain are
+generated specifically for this verifier from the same test CA and are not the
+issuer's credential-signing key. Rotating the dedicated leaf also rotates the
+verifier's `x509_hash` identity, so the deploy updates the app and whitelist
+together.
 
 ## State-key rotation
 

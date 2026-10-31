@@ -202,7 +202,7 @@ class DeployInstanceTests(unittest.TestCase):
         command = commands[0]
         self.assertIn("TUNNELBANA_BIND=0.0.0.0:9001", command)
         self.assertIn("/etc/siros-verifier/proxy.toml=", command)
-        self.assertIn("/pki/signing_ec_private.pem=vcSigningKey", command)
+        self.assertIn("/pki/verifier_ec_private.pem=vcSigningKey", command)
         self.assertIn("SIROS_VERIFIER_PDP_ENDPOINT=http://sid-k7m2qx4d-pdp.internal:8080/evaluation", command)
         import re
         template = (ROOT / "fixtures" / "siros-verifier" / "proxy.fly.toml").read_text()
@@ -211,7 +211,7 @@ class DeployInstanceTests(unittest.TestCase):
         env_names = set(re.findall(r"--env ([A-Z0-9_]+)=", command))
         supplied = env_names | set(fake.apps[app]["secrets"])
         self.assertEqual(placeholders - supplied, set(), "every Fly config placeholder must be populated")
-        identity = x509_hash_identity(root / "fly-k7m2qx4d" / "vc-pki" / "signing_ec.crt")
+        identity = x509_hash_identity(root / "fly-k7m2qx4d" / "vc-pki" / "verifier_ec.crt")
         pdp = yaml.safe_load((root / "fly-k7m2qx4d" / "pdp.yaml").read_text())
         rendered = yaml.safe_dump(pdp)
         self.assertIn(identity, rendered)

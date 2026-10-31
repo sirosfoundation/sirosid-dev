@@ -27,7 +27,7 @@ name = "ui"
 type = "oidc"
 name = "OIDC"
   [frontend.config]
-  signing_key_path = "/pki/signing_ec_private.pem"
+  signing_key_path = "/pki/verifier_ec_private.pem"
   signing_algorithm = "ES256"
   signing_key_id = "siros-verifier-op"
 
@@ -42,8 +42,8 @@ name = "OIDC"
 type = "openid4vp"
 name = "vp"
   [backend.config]
-  request_signing_key_path = "/pki/signing_ec_private.pem"
-  request_certificate_chain_path = "/pki/signing_ec_chain.pem"
+  request_signing_key_path = "/pki/verifier_ec_private.pem"
+  request_certificate_chain_path = "/pki/verifier_ec_chain.pem"
   pdp_endpoint = "${SIROS_VERIFIER_PDP_ENDPOINT}"
   pdp_id = "go-trust"
   # Fly's encrypted private WireGuard network is the trusted local network here.

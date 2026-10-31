@@ -561,7 +561,7 @@ def deploy_component(ctx: DeployContext, comp: dict):
                         "--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
     elif name == "siros-verifier":
         fixture = resources.root / "fixtures" / "siros-verifier"
-        fly.ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
+        fly.ensure_secret(app, "vcSigningKey", (pki_dir / "verifier_ec_private.pem").read_text())
         mongo_user_password = persistent_secret(out_dir, "sirosVerifierMongoPassword")
         ensure_siros_verifier_mongo_user(fly, naming, mongo_user_password)
         state_key = persistent_secret(out_dir, "sirosVerifierStateKey")
@@ -579,8 +579,8 @@ def deploy_component(ctx: DeployContext, comp: dict):
             "--env", f"SIROS_VERIFIER_PDP_ENDPOINT=http://{naming.addr('pdp')}/evaluation",
             "--file-local", f"/etc/siros-verifier/proxy.toml={fixture / 'proxy.fly.toml'}",
             "--file-local", f"/etc/siros-verifier/attributes.toml={fixture / 'attributes.toml'}",
-            "--file-secret", "/pki/signing_ec_private.pem=vcSigningKey",
-            "--file-local", f"/pki/signing_ec_chain.pem={pki_dir / 'signing_ec_chain.pem'}",
+            "--file-secret", "/pki/verifier_ec_private.pem=vcSigningKey",
+            "--file-local", f"/pki/verifier_ec_chain.pem={pki_dir / 'verifier_ec_chain.pem'}",
         ]
     elif name == "wallet-backend":
         deploy_args += [
@@ -936,7 +936,7 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
         pki_ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say,
                                 docs=[], out_dir=out_dir, mongo_password=mongo_password)
         pki_dir = generate_pki(pki_ctx)
-        identity = x509_hash_identity(pki_dir / "signing_ec.crt")
+        identity = x509_hash_identity(pki_dir / "verifier_ec.crt")
         if identity not in trusted_verifiers:
             trusted_verifiers.append(identity)
 
