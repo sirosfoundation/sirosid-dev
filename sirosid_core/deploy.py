@@ -564,8 +564,12 @@ def deploy_component(ctx: DeployContext, comp: dict):
         fly.ensure_secret(app, "vcSigningKey", (pki_dir / "signing_ec_private.pem").read_text())
         mongo_user_password = persistent_secret(out_dir, "sirosVerifierMongoPassword")
         ensure_siros_verifier_mongo_user(fly, naming, mongo_user_password)
+        state_key = persistent_secret(out_dir, "sirosVerifierStateKey")
+        previous_state_path = out_dir / "sirosVerifierPreviousStateKey"
+        previous_state_key = previous_state_path.read_text().strip() if previous_state_path.exists() else state_key
         fly.import_secrets(app, {
-            "SIROS_VERIFIER_STATE_KEY": persistent_secret(out_dir, "sirosVerifierStateKey"),
+            "SIROS_VERIFIER_STATE_KEY": state_key,
+            "SIROS_VERIFIER_PREVIOUS_STATE_KEY": previous_state_key,
             "SIROS_VERIFIER_MONGODB_URI": f"mongodb://siros_verifier:{mongo_user_password}@{naming.addr('mongodb')}/?authSource=admin",
         })
         deploy_args += [

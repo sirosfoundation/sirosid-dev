@@ -88,16 +88,35 @@ dedicated verifier key and certificate from the same CA. Rotating the shared
 leaf also rotates the verifier's `x509_hash` identity, so the deploy updates the
 app and whitelist together.
 
+## State-key rotation
+
+The state key seals browser cookies, OIDC codes/tokens, and stored OpenID4VP
+sessions/results. To rotate it without invalidating in-flight flows, first
+preserve the current key as the previous key, then remove the current file so
+deploy generates a new one:
+
+```sh
+cd fixtures/rendered/fly-gdc
+cp sirosVerifierStateKey sirosVerifierPreviousStateKey
+rm sirosVerifierStateKey
+```
+
+Deploy supplies both `SIROS_VERIFIER_STATE_KEY` and
+`SIROS_VERIFIER_PREVIOUS_STATE_KEY`. New records use the new key; existing
+records remain readable through the previous key. After the longest refresh
+lifetime has passed (30 days by default), remove
+`sirosVerifierPreviousStateKey` and redeploy. Without that file, the previous
+key falls back to the current key.
+
 ## Shared flow and replay state
 
 The verifier stores OpenID4VP flows and replay tombstones in the existing
 MongoDB, in database `siros_verifier` and collection `presentation_flows`.
 Startup checks connectivity and the retention index and fails if either is
-unavailable. Atomic response claims and one-time result collection are designed
-to allow multiple verifier replicas to share a flow. This is covered by real
-MongoDB tests in core CI, but has not been demonstrated with two live gdc
-machines. Sessions and verified results are sealed with the shared state key;
-MongoDB does not contain the response
+unavailable. Atomic response claims and one-time result collection allow
+multiple verifier replicas to share a flow, covered by real MongoDB tests and a
+live two-machine gdc test. Sessions and verified results are sealed with the
+shared state key; MongoDB does not contain the response
 private key or verified attributes in plaintext. Retention is enforced both by
 request-time checks and a TTL index.
 

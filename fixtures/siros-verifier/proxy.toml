@@ -1,6 +1,7 @@
 # SIROS verifier-core local E2E gateway: real OIDC OP + OpenID4VP SD-JWT backend.
 base_url = "http://vc-verifier.localhost:9001"
 state_encryption_key = "e2e-siros-verifier-core-state-secret-0123456789abcdef"
+previous_state_encryption_keys = ["e2e-siros-verifier-core-state-secret-0123456789abcdef"]
 cookie_name = "SIROS_VERIFIER_STATE"
 cookie_secure = false
 cookie_same_site = "None"

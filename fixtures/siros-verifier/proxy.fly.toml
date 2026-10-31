@@ -2,6 +2,7 @@
 # Values are injected by fly-up; the state key and signing key remain secrets.
 base_url = "${SIROS_VERIFIER_BASE_URL}"
 state_encryption_key = "${SIROS_VERIFIER_STATE_KEY}"
+previous_state_encryption_keys = ["${SIROS_VERIFIER_PREVIOUS_STATE_KEY}"]
 cookie_name = "SIROS_VERIFIER_STATE"
 cookie_secure = true
 cookie_same_site = "None"

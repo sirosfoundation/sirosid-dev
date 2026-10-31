@@ -183,6 +183,9 @@ class DeployInstanceTests(unittest.TestCase):
         self.assertIn("SIROS_VERIFIER_STATE_KEY", fake.apps[app]["secrets"])
         self.assertEqual(len(fake.apps[app]["secrets"]["SIROS_VERIFIER_STATE_KEY"]), 32,
                          "raw env-var secret, not ensure_secret's base64 file encoding")
+        self.assertEqual(fake.apps[app]["secrets"]["SIROS_VERIFIER_PREVIOUS_STATE_KEY"],
+                         fake.apps[app]["secrets"]["SIROS_VERIFIER_STATE_KEY"],
+                         "an environment that never rotated uses the current key as its fallback")
         self.assertIn("vcSigningKey", fake.apps[app]["secrets"])
         mongo_uri = fake.apps[app]["secrets"]["SIROS_VERIFIER_MONGODB_URI"]
         self.assertTrue(mongo_uri.startswith("mongodb://siros_verifier:"))

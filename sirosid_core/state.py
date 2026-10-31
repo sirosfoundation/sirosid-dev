@@ -28,7 +28,7 @@ import tempfile
 from pathlib import Path
 from typing import Dict, Protocol
 
-STATE_FILES = ("mongoRootPassword", "jwtSecret", "adminToken", "apiAuthKey.pem", "sirosVerifierStateKey", "sirosVerifierMongoPassword")
+STATE_FILES = ("mongoRootPassword", "jwtSecret", "adminToken", "apiAuthKey.pem", "sirosVerifierStateKey", "sirosVerifierPreviousStateKey", "sirosVerifierMongoPassword")
 # vc-secrets: the vc services' generated secrets (subject salt, admin GUI password,
 # ...) when the caller keeps them per instance (deploy_instance(secrets_dir=...), what
 # a service does). The CLI keeps them in fixtures/rendered-secrets, shared, as before.
