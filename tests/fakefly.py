@@ -92,10 +92,13 @@ class FakeFly:
 
     def handle(self, argv):
         argv = [str(a) for a in argv]
-        self.log.append("flyctl " + " ".join(argv))
         app = self._opt(argv, "-a", "--app")
         head = argv[0] if argv else ""
         sub = argv[1] if len(argv) > 1 else ""
+        command = " ".join(argv)
+        if head == "machine" and sub == "exec" and getattr(self, "stdin", None):
+            command = command.replace(self.stdin.strip(), "<redacted>")
+        self.log.append("flyctl " + command)
 
         if head == "apps" and sub == "list":
             org = self._opt(argv, "-o", "--org")

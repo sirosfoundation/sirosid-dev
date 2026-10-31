@@ -13,6 +13,7 @@ and raises RegistrationError for "not ready yet, retry".
 """
 import json
 import os
+import shlex
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -382,9 +383,7 @@ def resolve_mongo_password(fly: FlyClient, naming: Naming, out_dir: Path, say=pr
 
 def ensure_siros_verifier_mongo_user(fly: FlyClient, naming: Naming, password: str) -> None:
     """Provision the verifier's least-privilege account without logging its password."""
-    script = r'''IFS= read -r SIROS_VERIFIER_PASSWORD
-export SIROS_VERIFIER_PASSWORD
-mongosh --quiet -u root -p "$(cat /run/secrets/mongoRootPassword)" --authenticationDatabase admin --eval '
+    script = r'''mongosh --quiet -u root -p "$(cat /run/secrets/mongoRootPassword)" --authenticationDatabase admin --eval '
 const pwd = process.env.SIROS_VERIFIER_PASSWORD;
 const roles = [{role: "readWrite", db: "siros_verifier"}];
 const exists = db.adminCommand({usersInfo: "siros_verifier"}).users.length > 0;
@@ -395,7 +394,8 @@ if (result.ok !== 1) { throw new Error("could not provision siros_verifier"); }
 ' '''
     app = naming.app("mongodb")
     fly.ensure_running(app)
-    fly.machine_exec(app, script, input_text=password + "\n")
+    command = f"env SIROS_VERIFIER_PASSWORD={shlex.quote(password)} sh -c {shlex.quote(script)}"
+    fly.machine_exec(app, command, input_text=password + "\n")
 
 
 def deploy_component(ctx: DeployContext, comp: dict):
