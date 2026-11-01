@@ -96,6 +96,7 @@ features:
   #     issuance:
   #       authProvider: oidc
   #       source: "datastore" # or "assertion" if the credential should be built dynamically via oidc claims
+  #       oidcScopes: [demo_3]  # oidc only: scopes requested on top of authProviders.oidc.scopes (vc oidc_request_params.extra_scopes)
   #       authOptions:
   #         claims:
   #           - given_name

@@ -162,6 +162,10 @@ apigw:
       scopes: {{- range $id, $data := $assertionCredentials }}
         {{ $id | quote }}:
           auth_provider: {{ $data.issuance.authProvider | quote }}
+          {{- if and $data.issuance.oidcScopes (eq $data.issuance.authProvider "oidc") }}
+          oidc_request_params:
+            extra_scopes: {{- toYaml $data.issuance.oidcScopes | nindent 14 }}
+          {{- end }}
       {{- end }}
     {{- end }}
     {{- if (or .Values.issuer.datastoreImport.documents $datastoreCredentials) }}

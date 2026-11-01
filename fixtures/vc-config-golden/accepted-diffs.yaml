@@ -12,6 +12,10 @@
 # changed) narrows an entry to one direction.
 
 _shared: &shared
+  # --- EHIC asks for its own OIDC scope (2026-11-01) ---------------------------
+  - path: apigw.data_sources.assertion.scopes.ehic.oidc_request_params
+    kind: added
+    reason: "The apigw OIDC provider asks for 'openid profile' only; values-base.yaml ehic issuance.oidcScopes adds the 'ehic' scope so mini-oidc releases the EHIC claims"
   # --- EU Business Wallet attestations (2026-09-10) ----------------------------
   # Three new PID-authenticated credential types (values-base.yaml ebw_oid/
   # eucc/eu_poa, WE BUILD ds001/ds004/ds007). The goldens predate them; the

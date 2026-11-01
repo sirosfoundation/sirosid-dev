@@ -83,6 +83,9 @@ features:
       issuance:
         authProvider: oidc
         source: assertion
+        # The apigw's OIDC provider asks for "openid profile" only; the EHIC data is released under the "ehic" scope, so
+        # without this mini-oidc never releases personal_administrative_number, document_number, the dates, ...
+        oidcScopes: [ehic]
     diploma:
       vct: "urn:eudi:diploma:1"
       format: dc+sd-jwt
