@@ -36,9 +36,13 @@ class OidcScopes(unittest.TestCase):
         scope = apigw_config()["data_sources"]["assertion"]["scopes"]["ehic"]
         self.assertEqual(scope["oidc_request_params"], {"extra_scopes": ["ehic"]})
 
+    def test_pid_1_5_asks_the_op_for_its_own_scope(self):
+        scope = apigw_config()["data_sources"]["assertion"]["scopes"]["pid_1_5"]
+        self.assertEqual(scope["oidc_request_params"], {"extra_scopes": ["pid_1_5"]})
+
     def test_a_scope_without_oidc_scopes_gets_no_request_params(self):
         scopes = apigw_config()["data_sources"]["assertion"]["scopes"]
-        self.assertEqual([k for k, v in scopes.items() if k != "ehic" and "oidc_request_params" in v], [])
+        self.assertEqual([k for k, v in scopes.items() if k not in ("ehic", "pid_1_5") and "oidc_request_params" in v], [])
 
     def test_the_provider_scopes_stay_openid_profile(self):
         self.assertEqual(apigw_config()["auth_providers"]["oidc"]["scopes"], ["openid", "profile"])

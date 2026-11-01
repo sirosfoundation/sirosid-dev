@@ -76,6 +76,8 @@ features:
       issuance:
         authProvider: oidc
         source: assertion
+        # Same reason as ehic below: mini-oidc releases the ARF 1.5 PID claims under the "pid_1_5" scope only.
+        oidcScopes: [pid_1_5]
     ehic:
       vct: "urn:eudi:ehic:1"
       format: dc+sd-jwt
