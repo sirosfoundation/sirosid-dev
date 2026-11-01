@@ -26,7 +26,7 @@ name = "ui"
 type = "oidc"
 name = "OIDC"
   [frontend.config]
-  signing_key_path = "/pki/signing_ec_private.pem"
+  signing_key_path = "/pki/verifier_ec_private.pem"
   signing_algorithm = "ES256"
   signing_key_id = "dev-op"
 
@@ -41,8 +41,8 @@ name = "OIDC"
 type = "openid4vp"
 name = "vp"
   [backend.config]
-  request_signing_key_path = "/pki/signing_ec_private.pem"
-  request_certificate_chain_path = "/pki/signing_ec_chain.pem"
+  request_signing_key_path = "/pki/verifier_ec_private.pem"
+  request_certificate_chain_path = "/pki/verifier_ec_chain.pem"
   pdp_endpoint = "http://go-trust-allow:6001/evaluation"
   pdp_id = "go-trust-allow"
   # Development-network escape hatch only; production PDPs use HTTPS.

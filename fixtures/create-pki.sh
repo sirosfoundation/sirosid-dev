@@ -102,6 +102,9 @@ EOF
     if [ -f "${PKI_DIR}/signing_ec.crt" ]; then
         cat "${PKI_DIR}/signing_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/signing_ec_chain.pem"
     fi
+    if [ -f "${PKI_DIR}/verifier_ec.crt" ]; then
+        cat "${PKI_DIR}/verifier_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/verifier_ec_chain.pem"
+    fi
 fi
 
 if [ -f "${PKI_DIR}/signing_ec_private.pem" ]; then
@@ -196,6 +199,51 @@ EOF
 
     # Clean up signing temp files
     rm -f /tmp/signing_ec.csr /tmp/signing_ec.conf /tmp/signing_ec.ext
+fi
+
+# Dedicated SIROS verifier key: separate from the credential issuer's DS key.
+if [ -f "${PKI_DIR}/verifier_ec_private.pem" ]; then
+    echo "EC verifier key pair already exists, skipping."
+else
+    echo "Generating dedicated EC P-256 verifier key pair..."
+    openssl ecparam -name prime256v1 -genkey -noout -out /tmp/verifier_ec_raw.pem
+    openssl pkcs8 -topk8 -nocrypt -in /tmp/verifier_ec_raw.pem -out "${PKI_DIR}/verifier_ec_private.pem"
+    openssl ec -in "${PKI_DIR}/verifier_ec_private.pem" -pubout -out "${PKI_DIR}/verifier_ec_public.pem"
+    chmod a+r "${PKI_DIR}/verifier_ec_private.pem"
+    rm -f /tmp/verifier_ec_raw.pem
+fi
+
+if [ -f "${PKI_DIR}/verifier_ec.crt" ]; then
+    echo "EC verifier certificate already exists, skipping."
+else
+    echo "Issuing dedicated EC verifier certificate..."
+    cat > /tmp/verifier_ec.conf <<EOF
+[req]
+default_bits       = 256
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+
+[dn]
+C  = SE
+ST = Test
+L  = E2E Testing
+O  = Wallet E2E Test
+OU = SIROS Verifier
+CN = E2E Test SIROS Verifier
+EOF
+
+    cat > /tmp/verifier_ec.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation
+EOF
+
+    openssl req -new -key "${PKI_DIR}/verifier_ec_private.pem" -out /tmp/verifier_ec.csr -config /tmp/verifier_ec.conf
+    openssl x509 -req -in /tmp/verifier_ec.csr -CA "${PKI_DIR}/rootCA.crt" -CAkey "${PKI_DIR}/rootCA.key" \
+        -CAcreateserial -out "${PKI_DIR}/verifier_ec.crt" -days 730 -sha256 -extfile /tmp/verifier_ec.ext
+    cat "${PKI_DIR}/verifier_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/verifier_ec_chain.pem"
+    rm -f /tmp/verifier_ec.csr /tmp/verifier_ec.conf /tmp/verifier_ec.ext
 fi
 
 if [ -f "${PKI_DIR}/wallet_provider_ec_private.pem" ]; then

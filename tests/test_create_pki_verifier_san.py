@@ -90,6 +90,24 @@ class VerifierSan(unittest.TestCase):
         self.assertIn("already current", out)
         self.assertEqual(digest(self.pki.dir / "signing_ec.crt"), self.old_cert)
 
+    def test_dedicated_verifier_key_is_separate_and_stable(self):
+        verifier_key = self.pki.dir / "verifier_ec_private.pem"
+        verifier_cert = self.pki.dir / "verifier_ec.crt"
+        self.assertNotEqual(digest(verifier_key), self.key)
+        self.assertEqual(
+            subprocess.run(["openssl", "verify", "-CAfile", str(self.pki.dir / "rootCA.crt"), str(verifier_cert)],
+                           capture_output=True).returncode,
+            0,
+        )
+        self.assertEqual(
+            (self.pki.dir / "verifier_ec_chain.pem").read_text(),
+            verifier_cert.read_text() + (self.pki.dir / "rootCA.crt").read_text(),
+        )
+        key_before, cert_before = digest(verifier_key), digest(verifier_cert)
+        self.pki.run(SIGNING_CERT_ISSUER_URL=ISSUER)
+        self.assertEqual(digest(verifier_key), key_before)
+        self.assertEqual(digest(verifier_cert), cert_before)
+
     def test_a_longer_host_ending_in_the_same_name_is_not_a_match(self):
         """`x.verifier.example` must not satisfy `verifier.example`, and `.` must not act as a wildcard."""
         self.pki.run(SIGNING_CERT_ISSUER_URL=ISSUER, SIGNING_CERT_VERIFIER_HOST="x.verifier.example")
