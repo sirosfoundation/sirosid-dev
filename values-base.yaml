@@ -76,6 +76,8 @@ features:
       issuance:
         authProvider: oidc
         source: assertion
+        # Same reason as ehic below: mini-oidc releases the ARF 1.5 PID claims under the "pid_1_5" scope only.
+        oidcScopes: [pid_1_5]
     ehic:
       vct: "urn:eudi:ehic:1"
       format: dc+sd-jwt
@@ -83,6 +85,9 @@ features:
       issuance:
         authProvider: oidc
         source: assertion
+        # The apigw's OIDC provider asks for "openid profile" only; the EHIC data is released under the "ehic" scope, so
+        # without this mini-oidc never releases personal_administrative_number, document_number, the dates, ...
+        oidcScopes: [ehic]
     diploma:
       vct: "urn:eudi:diploma:1"
       format: dc+sd-jwt
