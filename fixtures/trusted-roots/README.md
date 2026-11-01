@@ -96,3 +96,12 @@ go-trust's 0.18.0 changelog) into the whitelist registry's
 must be >= `0.20.5` for this entry to work.
 
 Usage: `make fly-up ENV=<name> TRUSTED_VERIFIER_ROOTS=fixtures/trusted-roots/geneva2026-verifier-reader-ca.pem TRUSTED_VERIFIERS=https://geneva2026.mdoc.online ...` (persisted in `environments/gdc.yaml`, so a plain `make fly-up ENV=gdc` picks it up automatically).
+
+## sirosid-gdc-test-ca.pem
+
+The persisted test CA of the shared `gdc` Fly environment (subject `E2E Test Root CA`, self-signed, valid to
+2036-09-05; the CA key stays in the deploying machine's gitignored `fixtures/rendered/fly-gdc/vc-pki/`). It is a
+public certificate, committed so that `environments/gdc.yaml` does not point at per-machine state: go-trust needs it to
+chain-validate the SIROS verifier's `x509_san_dns` requests (`https://sirosid-gdc-siros-verifier.fly.dev`), whose dedicated
+leaf it issued. Hash-pinned (`x509_hash`) requests do not use it. If gdc's PKI is ever regenerated, replace this file with
+the new `rootCA.crt` and repin the verifier's hash in `gdc.yaml`.
