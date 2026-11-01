@@ -23,6 +23,20 @@ name = "ui"
   registry_allowed_hosts = ["registry.siros.org"]
   registry_cache_seconds = 600
 
+  [[frontend.config.presets]]
+  id = "nym_auth_pseudonym"
+  label = "Nym authentication (zkp_req)"
+  dcql = { credentials = [{
+    id = "nym_attestation", format = "zkp_req",
+    meta = { source_format = "mso_mdoc", doctype_value = "eu.europa.ec.eudi.nym_auth.1" },
+    _req = [
+      { fn_id = "pseudonym", return = "nym-1", params = {
+        config = "known-offender-matching-ssc", ver = 1, prf = "sha-256" } },
+      { fn_id = "age_check", return = "age-1", params = {
+        ge = "2008-10-10", le = "2013-10-09" } },
+    ]
+  }] }
+
 [[frontend]]
 type = "oidc"
 name = "OIDC"
@@ -79,3 +93,34 @@ name = "vp"
   uri = "${SIROS_VERIFIER_MONGODB_URI}"
   database = "siros_verifier"
   collection = "presentation_flows"
+
+  [backend.config.zkp]
+  query = { id = "nym_attestation", format = "zkp_req",
+    meta = { source_format = "mso_mdoc", doctype_value = "eu.europa.ec.eudi.nym_auth.1" },
+    _req = [
+      { fn_id = "pseudonym", return = "nym-1", params = {
+        config = "known-offender-matching-ssc", ver = 1, prf = "sha-256" } },
+      { fn_id = "age_check", return = "age-1", params = {
+        ge = "2008-10-10", le = "2013-10-09" } },
+    ] }
+  system_id_values = ["urn:circuits:longfellow:nym_auth:v1"]
+  proof_system_values = ["longfellow-libzk-v1"]
+  role = "mdoc-issuer"
+  verifier_id = "x509_san_dns:sirosid-gdc-siros-verifier.fly.dev"
+  subject_handle = "nym-1"
+  attribute_map = { pseudonym = "nym-1", ageOver = "age-1" }
+  auth_class_ref = "urn:eudi:loa:high"
+
+  [backend.config.zkp.circuits]
+  sources = ["https://api.circuits.siros.org"]
+
+  [[backend.config.zkp.circuits.allow]]
+  system_id = "urn:circuits:longfellow:nym_auth:v1"
+  config = "known-offender-matching-ssc"
+  hash_circuit_id = "5f8c75ae5c3893ef6ab6a079628cb385ba85e95a85437d58570c455289d75729"
+  sig_circuit_id = "00513797c75b2eab1a9db75004977c15317d4e40c0db1d00674523431baa75cb"
+  block_enc_hash = 6983
+  block_enc_sig = 4679
+  artifact_id = "nymauth-longfellow-mdoc-v1"
+  artifact_sha256 = "92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f"
+  artifact_bytes = 1062842

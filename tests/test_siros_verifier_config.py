@@ -17,7 +17,8 @@ class SirosVerifierConfigTests(unittest.TestCase):
         # itself and verify that it occurs exactly once in the UI frontend.
         match = re.search(
             r"(?ms)^type = \"ui\"\nname = \"ui\"\n"
-            r"(?:  )?\[frontend\.config\]\n(.*?)(?=^\[\[frontend\]\])",
+            r"(?:  )?\[frontend\.config\]\n(.*?)"
+            r"(?=^  \[\[frontend\.config\.presets\]\]|^\[\[frontend\]\])",
             text,
         )
         self.assertIsNotNone(match)
@@ -43,10 +44,14 @@ class SirosVerifierConfigTests(unittest.TestCase):
 
     def storage_config(self, filename):
         text = (ROOT / "fixtures" / "siros-verifier" / filename).read_text()
-        marker = "  [backend.config.storage]\n"
-        parts = text.split(marker)
-        self.assertEqual(len(parts), 2, "exactly one backend storage table")
-        return tomllib.loads(parts[1])
+        matches = list(
+            re.finditer(
+                r"(?ms)^  \[backend\.config\.storage\]\n(.*?)(?=^  \[|\Z)",
+                text,
+            )
+        )
+        self.assertEqual(len(matches), 1, "exactly one backend storage table")
+        return tomllib.loads(matches[0].group(1))
 
     def test_proxy_fixtures_explicitly_use_shared_mongo_storage(self):
         local = self.storage_config("proxy.toml")
@@ -58,6 +63,34 @@ class SirosVerifierConfigTests(unittest.TestCase):
             self.assertEqual(config["collection"], "presentation_flows")
         self.assertEqual(local["uri"], "mongodb://mongodb:27017")
         self.assertEqual(fly["uri"], "${SIROS_VERIFIER_MONGODB_URI}")
+
+    def zkp_circuit_config(self, filename):
+        text = (ROOT / "fixtures" / "siros-verifier" / filename).read_text()
+        match = re.search(
+            r"(?ms)^  \[backend\.config\.zkp\.circuits\]\n(.*)\Z",
+            text,
+        )
+        self.assertIsNotNone(match)
+        parsed = tomllib.loads(match.group(1))
+        return {
+            "sources": parsed["sources"],
+            "allow": parsed["backend"]["config"]["zkp"]["circuits"]["allow"],
+        }
+
+    def test_proxy_fixtures_use_the_pinned_siros_catalog_circuit(self):
+        local = self.zkp_circuit_config("proxy.toml")
+        fly = self.zkp_circuit_config("proxy.fly.toml")
+        self.assertEqual(local, fly)
+        self.assertEqual(local["sources"], ["https://api.circuits.siros.org"])
+        self.assertEqual(len(local["allow"]), 1)
+        circuit = local["allow"][0]
+        self.assertEqual(circuit["artifact_id"], "nymauth-longfellow-mdoc-v1")
+        self.assertNotIn("artifact_path", circuit)
+        self.assertEqual(circuit["artifact_bytes"], 1062842)
+        self.assertEqual(
+            circuit["artifact_sha256"],
+            "92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f",
+        )
 
     def test_gdc_pin_has_a_local_epoch_tag_and_digest_provenance(self):
         text = (ROOT / "environments" / "gdc.yaml").read_text()

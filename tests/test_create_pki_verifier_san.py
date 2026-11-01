@@ -108,6 +108,17 @@ class VerifierSan(unittest.TestCase):
         self.assertEqual(digest(verifier_key), key_before)
         self.assertEqual(digest(verifier_cert), cert_before)
 
+    def test_dedicated_verifier_certificate_adopts_the_siros_dns_san(self):
+        before = digest(self.pki.dir / "verifier_ec.crt")
+        key_before = digest(self.pki.dir / "verifier_ec_private.pem")
+        self.pki.run(SIROS_VERIFIER_HOST=HOST)
+        out = subprocess.run(["openssl", "x509", "-in", str(self.pki.dir / "verifier_ec.crt"),
+                              "-noout", "-ext", "subjectAltName"], capture_output=True, text=True, check=True).stdout
+        self.assertIn(f"DNS:{HOST}", out)
+        self.assertNotEqual(digest(self.pki.dir / "verifier_ec.crt"), before)
+        self.assertEqual(digest(self.pki.dir / "verifier_ec_private.pem"), key_before)
+        self.assertEqual(digest(self.pki.dir / "rootCA.crt"), self.root)
+
     def test_a_longer_host_ending_in_the_same_name_is_not_a_match(self):
         """`x.verifier.example` must not satisfy `verifier.example`, and `.` must not act as a wildcard."""
         self.pki.run(SIGNING_CERT_ISSUER_URL=ISSUER, SIGNING_CERT_VERIFIER_HOST="x.verifier.example")

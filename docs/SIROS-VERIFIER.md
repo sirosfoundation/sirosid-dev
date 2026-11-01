@@ -130,5 +130,11 @@ other replica. Access tokens remain stateless and reusable until expiry by desig
 
 This is a test deployment of a service that is not production-ready. Protocol
 tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
-QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
+QR/DC API handovers. Longfellow nym_auth
+`zkp_req` is supported with pseudonym and `age_check`; Vega, BBS, and
+predicate-only requests are not enabled. The gdc configuration resolves
+`nymauth-longfellow-mdoc-v1` from `https://api.circuits.siros.org`, checks the
+catalog descriptor and both artifact hash layers, and still enforces the local
+allowlist's decompressed SHA-256 and size. `circuits.siros.org` is the
+human-facing catalog site, not the API endpoint. Pixel interoperability for
 each credential profile must still be demonstrated separately.
