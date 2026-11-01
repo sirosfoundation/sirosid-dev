@@ -213,8 +213,24 @@ else
     rm -f /tmp/verifier_ec_raw.pem
 fi
 
-if [ -f "${PKI_DIR}/verifier_ec.crt" ]; then
-    echo "EC verifier certificate already exists, skipping."
+SIROS_VERIFIER_SAN_LINE=""
+SIROS_VERIFIER_SAN_SECTION=""
+if [ -n "${SIROS_VERIFIER_HOST:-}" ]; then
+    SIROS_VERIFIER_SAN_LINE="DNS.1 = ${SIROS_VERIFIER_HOST}"
+    SIROS_VERIFIER_SAN_SECTION="subjectAltName = @alt_names
+
+[alt_names]
+${SIROS_VERIFIER_SAN_LINE}"
+fi
+verifier_cert_current() {
+    [ -f "${PKI_DIR}/verifier_ec.crt" ] || return 1
+    if [ -n "${SIROS_VERIFIER_HOST:-}" ]; then
+        openssl x509 -in "${PKI_DIR}/verifier_ec.crt" -noout -ext subjectAltName 2>/dev/null | grep -qE "(^|[ ,])DNS:${SIROS_VERIFIER_HOST//./\\.}(,|$)" || return 1
+    fi
+    return 0
+}
+if verifier_cert_current; then
+    echo "EC verifier certificate already current, skipping."
 else
     echo "Issuing dedicated EC verifier certificate..."
     cat > /tmp/verifier_ec.conf <<EOF
@@ -237,6 +253,7 @@ EOF
 authorityKeyIdentifier=keyid,issuer
 basicConstraints=CA:FALSE
 keyUsage = digitalSignature, nonRepudiation
+${SIROS_VERIFIER_SAN_SECTION}
 EOF
 
     openssl req -new -key "${PKI_DIR}/verifier_ec_private.pem" -out /tmp/verifier_ec.csr -config /tmp/verifier_ec.conf

@@ -139,6 +139,8 @@ def generate_pki(ctx: DeployContext) -> Path:
     # request objects with. Unset, an environment's certificate is left exactly as it is.
     if ((ctx.spec.values or {}).get("verifier") or {}).get("signingCertDnsSan"):
         env_vars["SIGNING_CERT_VERIFIER_HOST"] = naming.host("vc-verifier")
+    if "siros-verifier" in (getattr(ctx.spec, "images", {}) or {}):
+        env_vars["SIROS_VERIFIER_HOST"] = naming.host("siros-verifier")
     fly.exec(["bash", "./create-pki.sh"], cwd=resources.fixtures, env=env_vars)
     return pki_dir
 
