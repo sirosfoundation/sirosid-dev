@@ -32,8 +32,6 @@ name = "ui"
     _req = [
       { fn_id = "pseudonym", return = "nym-1", params = {
         config = "known-offender-matching-ssc", ver = 1, prf = "sha-256" } },
-      { fn_id = "age_check", return = "age-1", params = {
-        ge = "2008-10-10", le = "2013-10-09" } },
     ]
   }] }
 
@@ -100,15 +98,13 @@ name = "vp"
     _req = [
       { fn_id = "pseudonym", return = "nym-1", params = {
         config = "known-offender-matching-ssc", ver = 1, prf = "sha-256" } },
-      { fn_id = "age_check", return = "age-1", params = {
-        ge = "2008-10-10", le = "2013-10-09" } },
     ] }
   system_id_values = ["urn:circuits:longfellow:nym_auth:v1"]
   proof_system_values = ["longfellow-libzk-v1"]
   role = "mdoc-issuer"
   verifier_id = "x509_san_dns:sirosid-gdc-siros-verifier.fly.dev"
   subject_handle = "nym-1"
-  attribute_map = { pseudonym = "nym-1", ageOver = "age-1" }
+  attribute_map = { pseudonym = "nym-1" }
   auth_class_ref = "urn:eudi:loa:high"
 
   [backend.config.zkp.circuits]

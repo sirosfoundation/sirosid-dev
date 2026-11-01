@@ -92,6 +92,20 @@ class SirosVerifierConfigTests(unittest.TestCase):
             "92dd42fdf99673249eec33c7d07850bd9da66fbdab01ef26391e04c8341c1b7f",
         )
 
+    def test_gdc_san_and_hash_verifier_trust_are_pinned(self):
+        config = yaml.safe_load((ROOT / "environments" / "gdc.yaml").read_text())
+        self.assertIn(
+            "https://sirosid-gdc-siros-verifier.fly.dev",
+            config["trusted_verifiers"],
+        )
+        self.assertIn(
+            "x509_hash:cIPUuz0YSWx4RxTKJXF3VCCh2oWL3HD2Knjjgd_vKRo",
+            config["trusted_verifiers"],
+        )
+        root = "fixtures/rendered/fly-gdc/vc-pki/rootCA.crt"
+        self.assertIn(root, config["trusted_verifier_roots"])
+        self.assertTrue((ROOT / root).is_file())
+
     def test_gdc_pin_has_a_local_epoch_tag_and_digest_provenance(self):
         text = (ROOT / "environments" / "gdc.yaml").read_text()
         image = yaml.safe_load(text)["images"]["siros-verifier"]

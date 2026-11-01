@@ -223,12 +223,12 @@ images:
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
   # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
   # vc-verifier remains available unchanged. Source: siros-verifier-core
-  # eb60874b58b6695efcbae726fa6c03628b02ad03 (clean tree, 137 files).
+  # b7ae6195cbe512a0737cd9f1046e9dc5d3c90d2e (clean tree, 137 files).
   # Independent snapshot hash (sorted relative path + NUL + contents + NUL, build
-  # artifacts excluded): d516efdbf4e51fb977956138b7ba7b5c7b815e568e07c37414dfe97488774ba4.
-  # Image digest sha256:aba9bfe5a40a25b0019a8d25906b9d36970f7cfc43dbd1f3f98d6f76bee770d9.
+  # artifacts excluded): e91361b627dcd9c393a55ae82143dd42872118d84c59073c95c812bfdc45fa70.
+  # Image digest sha256:86d86a84441b18ee1c0ff9dbb2689ee72f635f0120cba5bf2da36f0caa0591cf.
   # Build: docker build -t registry.fly.io/sirosid-gdc-siros-verifier:local-<epoch> .
-  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793544509
+  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793548298
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
@@ -359,6 +359,12 @@ trusted_verifiers:
   # Hash-pinning is itself the trust decision for this scheme, so go-trust
   # skips chain validation and no reader-CA root is required.
   - x509_hash:f1drGLOIT4kDBlJVsD-_33igSf5uwRnq3yO2NvcXEW0
+  # siros-verifier-core uses x509_san_dns for zkp_req and x509_hash for the
+  # other formats. go-trust normalizes the SAN form to its HTTPS origin, so
+  # both entries are required. The hash belongs to the dedicated SAN-reissued
+  # leaf; the private key remains the separate verifier key, not the issuer's.
+  - https://sirosid-gdc-siros-verifier.fly.dev
+  - x509_hash:cIPUuz0YSWx4RxTKJXF3VCCh2oWL3HD2Knjjgd_vKRo
   # Accredify's ACRA UAT verifier, added 2026-09-17 for interop testing.
   #
   # It identifies itself with did:web, confirmed from its own DID document at
@@ -384,6 +390,9 @@ trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
   - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
   - fixtures/trusted-roots/geneva2026-verifier-reader-ca.pem
+  # gdc's persisted test CA, needed for the SIROS verifier's x509_san_dns
+  # requests. Hash-pinned requests do not use chain validation; SAN requests do.
+  - fixtures/rendered/fly-gdc/vc-pki/rootCA.crt
 
 # Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
 # catalog yet (pending expert review) - this is where it actually lives.

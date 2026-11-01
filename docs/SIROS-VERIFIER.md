@@ -135,6 +135,8 @@ QR/DC API handovers. Longfellow nym_auth
 predicate-only requests are not enabled. The gdc configuration resolves
 `nymauth-longfellow-mdoc-v1` from `https://api.circuits.siros.org`, checks the
 catalog descriptor and both artifact hash layers, and still enforces the local
-allowlist's decompressed SHA-256 and size. `circuits.siros.org` is the
-human-facing catalog site, not the API endpoint. Pixel interoperability for
+allowlist's decompressed SHA-256 and size. These are integrity checks, not
+trust decisions: all issuer and verifier trust decisions remain in go-trust.
+`circuits.siros.org` is the human-facing catalog site, not the API endpoint.
+Pixel interoperability for
 each credential profile must still be demonstrated separately.
