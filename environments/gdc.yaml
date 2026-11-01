@@ -392,7 +392,7 @@ trusted_verifier_roots:
   - fixtures/trusted-roots/geneva2026-verifier-reader-ca.pem
   # gdc's persisted test CA, needed for the SIROS verifier's x509_san_dns
   # requests. Hash-pinned requests do not use chain validation; SAN requests do.
-  - fixtures/rendered/fly-gdc/vc-pki/rootCA.crt
+  - fixtures/trusted-roots/sirosid-gdc-test-ca.pem
 
 # Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
 # catalog yet (pending expert review) - this is where it actually lives.

@@ -102,7 +102,7 @@ class SirosVerifierConfigTests(unittest.TestCase):
             "x509_hash:cIPUuz0YSWx4RxTKJXF3VCCh2oWL3HD2Knjjgd_vKRo",
             config["trusted_verifiers"],
         )
-        root = "fixtures/rendered/fly-gdc/vc-pki/rootCA.crt"
+        root = "fixtures/trusted-roots/sirosid-gdc-test-ca.pem"
         self.assertIn(root, config["trusted_verifier_roots"])
         self.assertTrue((ROOT / root).is_file())
 
