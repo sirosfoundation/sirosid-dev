@@ -88,30 +88,51 @@ dedicated verifier key and certificate from the same CA. Rotating the shared
 leaf also rotates the verifier's `x509_hash` identity, so the deploy updates the
 app and whitelist together.
 
+## State-key rotation
+
+The state key seals browser cookies, OIDC codes/tokens, and stored OpenID4VP
+sessions/results. To rotate it without invalidating in-flight flows, first
+preserve the current key as the previous key, then remove the current file so
+deploy generates a new one:
+
+```sh
+cd fixtures/rendered/fly-gdc
+cp sirosVerifierStateKey sirosVerifierPreviousStateKey
+rm sirosVerifierStateKey
+```
+
+Deploy supplies both `SIROS_VERIFIER_STATE_KEY` and
+`SIROS_VERIFIER_PREVIOUS_STATE_KEY`. New records use the new key; existing
+records remain readable through the previous key. After the longest refresh
+lifetime has passed (30 days by default), remove
+`sirosVerifierPreviousStateKey` and redeploy. Without that file, the previous
+key falls back to the current key.
+
 ## Shared flow and replay state
 
 The verifier stores OpenID4VP flows and replay tombstones in the existing
 MongoDB, in database `siros_verifier` and collection `presentation_flows`.
 Startup checks connectivity and the retention index and fails if either is
-unavailable. Atomic response claims and one-time result collection are designed
-to allow multiple verifier replicas to share a flow. This is covered by real
-MongoDB tests in core CI, but has not been demonstrated with two live gdc
-machines. Sessions and verified results are sealed with the shared state key;
-MongoDB does not contain the response
+unavailable. Atomic response claims and one-time result collection allow
+multiple verifier replicas to share a flow, covered by real MongoDB tests and a
+live two-machine gdc test. Sessions and verified results are sealed with the
+shared state key; MongoDB does not contain the response
 private key or verified attributes in plaintext. Retention is enforced both by
 request-time checks and a TTL index.
 
-The Fly deploy supplies the MongoDB URI as `SIROS_VERIFIER_MONGODB_URI`. The
-current single MongoDB is a shared store but not a highly available database;
-database failover requires a replica set or managed HA MongoDB. The upstream
-OIDC frontend's authorization-code/refresh-token use store remains process-local,
-so full multi-replica OIDC gateway HA is separate upstream work.
+The Fly deploy provisions a dedicated `siros_verifier` MongoDB user with only
+`readWrite` on that database and supplies its URI as
+`SIROS_VERIFIER_MONGODB_URI`. The current single MongoDB is a shared store but
+not a highly available database; database failover requires a replica set or
+managed HA MongoDB. OIDC authorization-code, refresh-token, and client-assertion
+replay markers use the separate `oidc_token_use` collection with a TTL index.
+Two live verifier machines were raced with the same authorization code and
+refresh token: each grant succeeded once and returned `invalid_grant` on the
+other replica. Access tokens remain stateless and reusable until expiry by design.
 
 ## Current limits
 
 This is a test deployment of a service that is not production-ready. Protocol
 tests cover SD-JWT VC and mdoc OpenID4VP, including mdoc doctype presets and both
 QR/DC API handovers; `zkp_req` is not implemented. Pixel interoperability for
-each credential profile must still be demonstrated separately. Keep gdc at one
-verifier machine until the OIDC token-use store is shared; otherwise an
-authorization code or refresh token could be redeemed once per replica.
+each credential profile must still be demonstrated separately.

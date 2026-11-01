@@ -223,12 +223,12 @@ images:
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
   # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
   # vc-verifier remains available unchanged. Source: siros-verifier-core
-  # aa4975a1ef45358b946225e0d826fc8abb08627e (clean tree, 105 files).
+  # 1104b0e74bcf42d618e8da934a03b0550679ee76 (clean tree, 105 files).
   # Independent snapshot hash (sorted relative path + NUL + contents + NUL, build
-  # artifacts excluded): 6655bd759d1ea66a574210893e75fd8e396c16723856b22786a3bd25e6afea48.
-  # Image digest sha256:5bc7794f26c5d9472795fd1352128b7f8552cb9215932d443f83a65baf5e90ae.
+  # artifacts excluded): 9bb34cc35134f57ae5c3f4ea121c53115ac5ebfb2a897c20d6616f247631f23c.
+  # Image digest sha256:7a9225248976c557579f9bf80bd00c5676edbfd8e2091d51bd9d9f614ef2aba8.
   # Build: docker build -t registry.fly.io/sirosid-gdc-siros-verifier:local-<epoch> .
-  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793483885
+  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793488913
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
