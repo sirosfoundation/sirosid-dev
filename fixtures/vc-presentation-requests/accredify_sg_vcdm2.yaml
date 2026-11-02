@@ -8,6 +8,10 @@
 #
 # DCQL as supplied by Accredify. The three queries are all required (no credential_sets), so the wallet must hold and
 # present all three.
+#
+# type_values are fully expanded IRIs (OpenID4VP 1.0 B.3.2): the verifier refuses a DCQL query whose
+# bare type names can never match. VerifiableCredential expands through the VCDM 2.0 base context, the others
+# through the schemas.accredify.io/idvc/*/v1/context term definitions.
 templates:
   - id: "accredify_sg_vcdm2"
     name: "Accredify SG - VCDM 2.0 credentials"
@@ -21,7 +25,7 @@ templates:
           format: "ldp_vc"
           meta:
             type_values:
-              - ["VerifiableCredential", "IndividualIDCredential"]
+              - ["https://www.w3.org/2018/credentials#VerifiableCredential", "https://schemas.accredify.io/idvc/vocab/v1/vocab#IndividualIDCredential"]
           claims:
             - path: ["credentialSubject", "fullName"]
             - path: ["credentialSubject", "email"]
@@ -29,7 +33,7 @@ templates:
           format: "ldp_vc"
           meta:
             type_values:
-              - ["VerifiableCredential", "CorporateRepresentativeCredential"]
+              - ["https://www.w3.org/2018/credentials#VerifiableCredential", "https://schemas.accredify.io/idvc/vocab/v1/vocab#CorporateRepresentativeCredential"]
           claims:
             - path: ["credentialSubject", "uniqueEntityNumber"]
             - path: ["credentialSubject", "nationalRegistrationIdentityCard"]
@@ -37,7 +41,7 @@ templates:
           format: "ldp_vc"
           meta:
             type_values:
-              - ["VerifiableCredential", "CorporateEntityCredential"]
+              - ["https://www.w3.org/2018/credentials#VerifiableCredential", "https://schemas.accredify.io/idvc/vocab/v1/vocab#CorporateEntityCredential"]
           claims:
             - path: ["credentialSubject", "entityName"]
             - path: ["credentialSubject", "uniqueEntityNumber"]
