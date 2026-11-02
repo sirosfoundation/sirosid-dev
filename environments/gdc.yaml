@@ -300,7 +300,7 @@ images:
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
-  #   mini-oidc 0.0.5 is the newest release (the values-fly.yaml pin).
+  #   mini-oidc 0.0.6 is the newest release (the values-fly.yaml pin).
   # env-admin 0.1.2 adds additive-verifier re-registration after storage resets.
   # Built from a clean sirosid-dev tree at 0bf082dc2c4691843d8af572ecd60869b2d675ef.
   # Digest sha256:8bf0f8ceef24174c8bfc7d3093b8c6c707d8f58f60cf6d0602af25353ad5a074.
