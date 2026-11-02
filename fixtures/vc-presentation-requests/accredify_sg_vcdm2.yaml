@@ -1,0 +1,50 @@
+# W3C VCDM 2.0 presentation request for Accredify's Singapore demo credentials (nucleus.uat.accredify.io; the wallet's
+# three credential types are issued by IMDA and ACRA).
+#
+# Format "ldp_vc": Data Integrity credentials (@context https://www.w3.org/ns/credentials/v2, cryptosuite ecdsa-sd-2023).
+# The verifier verifies the proof itself (pkg/openid4vp VC20Handler), resolving the issuer's did:web verification method
+# through the PDP's did:web registry (values.pdp.extraRegistries.didweb in environments/gdc.yaml): resolution-only, so no
+# whitelist entry is needed. Requested claims live in credentialSubject; mappings use the bare credentialSubject names.
+#
+# DCQL as supplied by Accredify. The three queries are all required (no credential_sets), so the wallet must hold and
+# present all three.
+templates:
+  - id: "accredify_sg_vcdm2"
+    name: "Accredify SG - VCDM 2.0 credentials"
+    description: "Individual ID, Corporate Representative and Corporate Entity credentials (W3C VCDM 2.0, ldp_vc)"
+    version: "1.0"
+    oidc_scopes:
+      - "accredify_sg_vcdm2"
+    dcql:
+      credentials:
+        - id: "individualIdvc"
+          format: "ldp_vc"
+          meta:
+            type_values:
+              - ["VerifiableCredential", "IndividualIDCredential"]
+          claims:
+            - path: ["credentialSubject", "fullName"]
+            - path: ["credentialSubject", "email"]
+        - id: "crc"
+          format: "ldp_vc"
+          meta:
+            type_values:
+              - ["VerifiableCredential", "CorporateRepresentativeCredential"]
+          claims:
+            - path: ["credentialSubject", "uniqueEntityNumber"]
+            - path: ["credentialSubject", "nationalRegistrationIdentityCard"]
+        - id: "cec"
+          format: "ldp_vc"
+          meta:
+            type_values:
+              - ["VerifiableCredential", "CorporateEntityCredential"]
+          claims:
+            - path: ["credentialSubject", "entityName"]
+            - path: ["credentialSubject", "uniqueEntityNumber"]
+    claim_mappings:
+      fullName: "name"
+      email: "email"
+      uniqueEntityNumber: "unique_entity_number"
+      nationalRegistrationIdentityCard: "national_registration_identity_card"
+      entityName: "entity_name"
+    enabled: true
