@@ -371,7 +371,11 @@ images:
   # PoA) for the company users. values-base.yaml's ebw_oid/eucc/eu_poa
   # credential types are assertion-sourced against exactly those scopes, so
   # an older mini-oidc has nothing to release for them and issuance fails.
-  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.5"
+  #
+  # 0.0.5 -> 0.0.6: userinfo applies the granted scope's claims over the user record (mini-oidc#30), so the "ehic" scope's
+  # issuing_authority {id, name} is no longer replaced by the record's string. Pairs with issuance.oidcScopes on ehic and
+  # pid_1_5 in values-base.yaml, which makes the apigw request those scopes at all.
+  miniOidc: "ghcr.io/sirosfoundation/mini-oidc:0.0.6"
 
   # env-admin is sirosid-dev's OWN code (env-admin/), the privileged actor
   # behind the dashboard's "Clear all data" / `make fly-storage-clear`.
