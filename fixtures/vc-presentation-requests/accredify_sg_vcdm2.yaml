@@ -6,19 +6,21 @@
 # through the PDP's did:web registry (values.pdp.extraRegistries.didweb in environments/gdc.yaml): resolution-only, so no
 # whitelist entry is needed. Requested claims live in credentialSubject; mappings use the bare credentialSubject names.
 #
-# DCQL as supplied by Accredify. The three queries are all required (no credential_sets), so the wallet must hold and
-# present all three.
+# One template, and one scope, per credential type. Accredify's own DCQL asks for all three in a single request, but the
+# verifier can only attribute a returned credential to a query when the query is the sole one or a configured
+# credential_metadata scope claims it (internal/verifier/apiv1/client.go unclaimedRequiredQueries): with three queries and
+# no such scopes /authorize answers server_error. These templates keep each request to one query, which needs no mapping.
 #
 # type_values are fully expanded IRIs (OpenID4VP 1.0 B.3.2): the verifier refuses a DCQL query whose
 # bare type names can never match. VerifiableCredential expands through the VCDM 2.0 base context, the others
 # through the schemas.accredify.io/idvc/*/v1/context term definitions.
 templates:
-  - id: "accredify_sg_vcdm2"
-    name: "Accredify SG - VCDM 2.0 credentials"
-    description: "Individual ID, Corporate Representative and Corporate Entity credentials (W3C VCDM 2.0, ldp_vc)"
+  - id: "accredify_individual_id"
+    name: "Accredify SG - Individual ID (VCDM 2.0)"
+    description: "Individual ID credential (W3C VCDM 2.0, ldp_vc)"
     version: "1.0"
     oidc_scopes:
-      - "accredify_sg_vcdm2"
+      - "accredify_individual_id"
     dcql:
       credentials:
         - id: "individualIdvc"
@@ -29,6 +31,18 @@ templates:
           claims:
             - path: ["credentialSubject", "fullName"]
             - path: ["credentialSubject", "email"]
+    claim_mappings:
+      fullName: "name"
+      email: "email"
+    enabled: true
+  - id: "accredify_corporate_representative"
+    name: "Accredify SG - Corporate Representative (VCDM 2.0)"
+    description: "Corporate Representative credential (W3C VCDM 2.0, ldp_vc)"
+    version: "1.0"
+    oidc_scopes:
+      - "accredify_corporate_representative"
+    dcql:
+      credentials:
         - id: "crc"
           format: "ldp_vc"
           meta:
@@ -37,6 +51,18 @@ templates:
           claims:
             - path: ["credentialSubject", "uniqueEntityNumber"]
             - path: ["credentialSubject", "nationalRegistrationIdentityCard"]
+    claim_mappings:
+      uniqueEntityNumber: "unique_entity_number"
+      nationalRegistrationIdentityCard: "national_registration_identity_card"
+    enabled: true
+  - id: "accredify_corporate_entity"
+    name: "Accredify SG - Corporate Entity (VCDM 2.0)"
+    description: "Corporate Entity credential (W3C VCDM 2.0, ldp_vc)"
+    version: "1.0"
+    oidc_scopes:
+      - "accredify_corporate_entity"
+    dcql:
+      credentials:
         - id: "cec"
           format: "ldp_vc"
           meta:
@@ -46,9 +72,6 @@ templates:
             - path: ["credentialSubject", "entityName"]
             - path: ["credentialSubject", "uniqueEntityNumber"]
     claim_mappings:
-      fullName: "name"
-      email: "email"
-      uniqueEntityNumber: "unique_entity_number"
-      nationalRegistrationIdentityCard: "national_registration_identity_card"
       entityName: "entity_name"
+      uniqueEntityNumber: "unique_entity_number"
     enabled: true
