@@ -121,6 +121,14 @@ class GdcNymAuthVerifier(unittest.TestCase):
         self.assertEqual({e["system_id"] for e in self.cfg["nym_auth"]["circuits"]["allow"]}, set(zk["system_id_values"]))
         self.assertIn("dc+sd-jwt", self.cfg["preferred_vp_formats"], "adding zkp_req must not drop the existing formats")
 
+    def test_ldp_vc_is_advertised_for_the_w3c_vcdm2_templates(self):
+        """vp_formats_supported lists what a wallet may present (OpenID4VP 1.0 11.1); the verifier's default omits
+        ldp_vc, so the accredify_* requests asked a strict wallet for a format the verifier said it did not accept
+        (Accredify's wallet: "Presentation Unavailable")."""
+        ldp = self.cfg["preferred_vp_formats"]["ldp_vc"]
+        self.assertEqual(ldp["proof_type_values"], ["DataIntegrityProof"])
+        self.assertEqual(ldp["cryptosuite_values"], ["ecdsa-rdfc-2019", "ecdsa-sd-2023", "eddsa-rdfc-2022"])
+
     def test_the_nym_auth_presets_are_shaped_as_vc_reads_them(self):
         """vc's brief (SUNET/vc#832): preset key `req` (the WIRE member `_req` was silently accepted and left empty),
         item key fn_id, ver and prf required, no source_format / doctype_value (both derive from the scope's
