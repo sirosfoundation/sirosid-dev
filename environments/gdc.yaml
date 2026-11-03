@@ -217,7 +217,13 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793192393
+  # vc-verifier is NOT from the build above: it is the verifier built from vc a9321132a (branch local/gdc-verifier-v080,
+  # never pushed) = https://github.com/SUNET/vc/pull/877 (ldp_vc presentation as a JSON object in vp_token, OpenID4VP 1.0
+  # 8.1; the Accredify wallet sends that shape) merged into the v0.8.0 (762c8bece) rebase of the nym_auth stack
+  # #827 #829 #830 #831 #832. Digest sha256:1d7df7a816dcf01b3a5ac2aa4563f254d099bb279e02e469379d6b47009a50a1; same circuit
+  # overlay as above (nym_auth-ssc.bin 1062842 B, nym_auth-vega-ssc.bin 12205144 B, checked at build time). NOT in it: #840,
+  # #850, #866 and the other integration-line changes (issuer/apigw side). Rollback: local-1793192393.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793717117
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793192393
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793192393
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
