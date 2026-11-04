@@ -159,7 +159,7 @@ images:
   #   rollback pins: local-1792625654 (1d0708b), local-1792564143 (9cb6e57, server-side encryption: works with the current Pixel APK),
   #           local-1792560364 (faa5e63), local-1792473614 (#469 only)
   #
-  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.0 (RELEASED, tag v0.26.0, commit 621b03f4)
+  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.1 (RELEASED, tag v0.26.1; 0.26.0 was commit 621b03f4)
   #   index digest sha256:73d994eaabcf27d68837c12ef42cbb16072c87562c6abe5cf7e2332a8068cf1e
   #   contains https://github.com/sirosfoundation/go-trust/pull/218 (merged): verifier_ids from the whitelist,
   #   system_cert_pool and mdoc_rical registries, carried through all strategies and composites. values.pdp.extraConfig
@@ -217,26 +217,26 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  # All four vc images below are ONE build, local-1793776448, from vc tree 14be7b2d9 (commit 038c2db52) (branch local/gdc-nymauth-v15, never
+  # All four vc images below are ONE build, local-1793780334, from vc tree 889a17c4a (commit 02eb0adb7) (branch local/gdc-nymauth-v15, never
   # pushed): upstream main 985245a21 (v0.8.0 + #866 as #878, #851, #875) with the open PRs #850 (+ Wicpar/vc#1 and #2:
   # verifier_id rule and notification_id on a delivered opening), #832 (carries #827 #829 #830 #831), #840, #842, #828,
   # #847, #877 (ldp_vc presentation as a JSON object in vp_token, a W3C type given as a string, holder did:key/did:jwk resolved
-  # locally, presenter bound to a credentialSubject.id, the verified signer returned as holder, and an embedded credential placed in its own graph
-  # when a presentation is signed or verified) and #854. NOT
+  # locally, presenter bound to a credentialSubject.id, the verified signer returned as holder, an embedded credential placed in its own graph when a
+  # presentation is signed or verified, and a publicKeyMultibase key decoded from a DID document) and #854. NOT
   # included: #868 (opt-in compact type_values; Accredify fixed its side), #857, #855, #856, #859, #703.
-  # Digests: verifier sha256:b3d33ec36509e5e1a96f91bf96157d8ef90f75d5d73b4daa268306ed72955a33,
-  #   apigw sha256:b7e141dc22d6c9eeb2099125e8771fdb539cc4251c4923ddc1343696daa48706,
-  #   issuer sha256:c930bfee237dc7d4f3dfb7d1536a198068b4e7373d3d7f6a71e1a0bd893d451a,
-  #   registry sha256:df1e701873effbc4a1eca2f4c6882939c4cdcc5e6b188491b200e3504f7ed2f6.
+  # Digests: verifier sha256:53cb935bf86c7f2f6f608604625731a57051d125cd78f6bef5676d6a403bb1ea,
+  #   apigw sha256:b116b20e9b9a5ab4ebe99a0ef42f43c286540268606fa46c52cc55f749b2d399,
+  #   issuer sha256:37f9206b685f8b0ed7ea695b5a0788e69dfd0d13da89352e829ef34ff7912488,
+  #   registry sha256:f7705934daba51929abe98d5311d0669c178e51acdb5b06a3d904470c1733032.
   # Native libraries (Longfellow 495d704, Vega v0.0.7) are byte-identical to the previous pin's; circuit overlay on the
   # verifier unchanged (nym_auth-ssc.bin 1062842 B, nym_auth-vega-ssc.bin 12205144 B, checked at build time).
   # Synthetic data only: this build carries #854's auxiliary_data/lookup without an operator check and #850 accepting a
   # different wallet psc per issuance (open review threads); neither is reachable with gdc's config (no psc to_issuer).
-  # Rollback: local-1793755360 (before the presentation graph fix), local-1793751969, local-1793749811 or local-1793192393 (v11) for all four.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793776448
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793776448
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793776448
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793776448
+  # Rollback: local-1793776448 (before multibase key decoding), local-1793755360, local-1793751969, local-1793749811 or local-1793192393 (v11) for all four.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793780334
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793780334
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793780334
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793780334
   # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
   # vc-verifier remains available unchanged. Source: siros-verifier-core
   # d720bb19099dfa178545fe968d4362542f8392e9 (clean tree, 137 files).
@@ -312,7 +312,10 @@ images:
   # 2026-10-15: 0.24.1 -> 0.25.0. Its image sets GT_HOST=0.0.0.0 GT_PORT=6001 and the environment BEATS the
   # config file, so the PDP listened on 6001 while everything addresses 8080; fly-up now sets GT_PORT/GT_HOST
   # itself (deploy.py, singlemachine.py). The LoTE verify_jws change is not used here.
-  pdp: ghcr.io/sirosfoundation/go-trust:0.26.0
+  # 2026-11-04: 0.26.0 -> 0.26.1. The did:web registry returns publicKeyMultibase in trust_metadata (go-trust#227);
+  # without it an issuer whose DID document uses Multikey / Ed25519VerificationKey2020 (Accredify) resolves to no key.
+  # Also built with Go 1.27.3 (GO-2026-6809).
+  pdp: ghcr.io/sirosfoundation/go-trust:0.26.1
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
