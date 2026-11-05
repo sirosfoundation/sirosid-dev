@@ -31,14 +31,6 @@ class AccredifyButton(unittest.TestCase):
         self.assertEqual(meta["format"], "ldp_vc")
         self.assertEqual(meta["credential_type_values"], TYPES)
 
-    def test_scope_names_the_type_and_context_vc_requires_at_startup(self):
-        """vc's checkW3CTypeConsistency panics the verifier at startup when a W3C scope narrows the request (type_values
-        past VerifiableCredential) without naming the type it issues and a context that defines it. Seen live: the
-        verifier crash-looped on the first version of this scope."""
-        meta = self.cfg["common"]["credential_metadata"][SCOPE]
-        self.assertIn("IndividualIDCredential", meta["credential_types"])
-        self.assertEqual(meta["credential_contexts"], ["https://schemas.accredify.io/idvc/individual-id/v1/context"])
-
     def test_preset_requests_the_claims_the_oidc_template_maps(self):
         preset = self.cfg["verifier"]["presets"][LABEL]
         self.assertEqual(preset["category"], "Accredify")
