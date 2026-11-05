@@ -23,6 +23,8 @@ from sirosid_core.resources import Resources  # noqa: E402
 
 NEEDS = unittest.skipUnless(shutil.which("helm"), "needs helm")
 
+VERIFIER_ONLY_SCOPES = {"accredify_individual_id"}
+
 
 def render_blocks(values):
     tmp = Path(tempfile.mkdtemp())
@@ -86,7 +88,9 @@ class NoTwinsWhereOffersAreAllowed(unittest.TestCase):
     def test_one_entry_per_type_and_nym_auth_is_still_issuable(self):
         meta = self.cfg["vc-apigw"]["common"]["credential_metadata"]
         self.assertEqual(len(meta), 15)
-        self.assertEqual(set(meta), set(self.cfg["vc-verifier"]["common"]["credential_metadata"]))
+        # The verifier alone also carries the scopes of credentials it requests but this environment does not issue (an
+        # ldp_vc scope in the issuer's block would stop it starting without a JSON-LD context allowlist).
+        self.assertEqual(set(meta) | VERIFIER_ONLY_SCOPES, set(self.cfg["vc-verifier"]["common"]["credential_metadata"]))
         scopes = self.cfg["vc-apigw"]["apigw"]["data_sources"]["datastore"]["scopes"]
         self.assertTrue(scopes["nym_auth"]["allow_preauth_offer"])
         self.assertEqual([k for k in scopes if k.endswith("_offer")], [])
