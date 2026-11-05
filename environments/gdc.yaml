@@ -334,6 +334,12 @@ trusted_issuers:
   # /.well-known/jwt-vc-issuer); there is no public ...-vc-issuer host (that app is internal), so trusting
   # it never resolved and the PDP could not fetch its keys.
   - https://sirosid-yitbarek-vc-apigw.fly.dev
+  # Accredify's UAT issuer for the Singapore IMDA demo credentials (Individual ID, Corporate Representative, Corporate
+  # Entity), added 2026-11-05 for the Accredify wallet interop test. It identifies itself with did:web; the PDP denied
+  # it with "no registry returned positive match" (action credential-issuer, subject = this bare DID) until listed.
+  # The did:web registry (values.pdp.extraRegistries.didweb) supplies its keys; this entry authorizes the identity.
+  # Synthetic demo data only.
+  - did:web:vc.infocomm-media-development-au.demo.nexus.uat.accredify.io:organizations:a03de350-d707-41bc-8bc4-0c924ca68baa
 
 # Every OpenID4VP verifier used for interop testing so far - each needs its
 # own reader-CA root below (ISO 18013-5 out-of-band trust convention, not a
