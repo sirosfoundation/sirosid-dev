@@ -23,3 +23,8 @@ data:
   {{ $id }}.json: | {{- include "siros-id.dataOrFile" (list $ $data.vctm) | nindent 4 }}
   {{- end }}
   {{- end }}
+  {{- /* A VCTM for a scope only the verifier has (verifier.extraVctms, written into verifier.extraConfig as
+         vctm_file_path: /vctms/<name>.json): vc loads a schema for EVERY non-mdoc scope, ldp_vc included. */}}
+  {{- range $name, $doc := .Values.verifier.extraVctms }}
+  {{ $name }}.json: {{ (kindIs "string" $doc | ternary $doc ($doc | toJson)) | quote }}
+  {{- end }}
