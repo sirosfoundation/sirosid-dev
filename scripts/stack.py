@@ -97,6 +97,14 @@ OPTIONS = [
         "help": "websocket is the default; wmp is JSON-RPC over SSE; http is deprecated.",
     },
     {
+        "key": "wmp_engine", "make_var": "WMP_ENGINE", "type": "bool", "default": False,
+        "label": "Rust WMP engine",
+        "help": ("Adds the siros-wallet-core engine-server (:8780) as a NEW engine endpoint beside "
+                 "the Go engine - the drop-in cloud engine for the native SDKs' remote mode "
+                 "(WMP over HTTP+SSE: POST /wmp, GET /wmp/events). Nothing about wallet-backend "
+                 "changes; built from ../siros-wallet-core (WALLET_CORE_PATH= to override)."),
+    },
+    {
         "key": "conformance", "make_var": "CONFORMANCE", "type": "bool", "default": False,
         "label": "OpenID conformance suite",
         "help": ("Adds the conformance suite, its Mongo, vc-proxy and conformance-runner, and the "
@@ -168,6 +176,7 @@ COMPOSE = {
     "CONFORMANCE": "docker-compose.conformance.yml",
     "HTTP_TRANSPORT": "docker-compose.http-transport.yml",
     "WMP_TRANSPORT": "docker-compose.wmp-transport.yml",
+    "WMP_ENGINE": "docker-compose.wmp-engine.yml",
     "R2PS": "docker-compose.r2ps.yml",
     "DOMAIN": "docker-compose.domain.yml",
     "TUNNEL": "docker-compose.tunnel.yml",
@@ -281,6 +290,9 @@ def compose_files(opts: dict) -> list:
         files.append(COMPOSE["WMP_TRANSPORT"])
     elif opts["transport"] == "http":
         files.append(COMPOSE["HTTP_TRANSPORT"])
+
+    if opts["wmp_engine"]:
+        files.append(COMPOSE["WMP_ENGINE"])
 
     if opts["conformance"]:
         if COMPOSE["VC_SERVICES"] not in files:
@@ -399,6 +411,8 @@ def build_plan(env_name: str = "", overrides: dict = None, with_checks: bool = T
         "VC services": "yes" if (opts["vc"] or opts["conformance"]) else ("yes (via facetec)" if opts["facetec"] else "no"),
         "Transport": {"websocket": "WebSocket (default)", "wmp": "WMP (JSON-RPC+SSE)",
                       "http": "HTTP proxy (deprecated)"}[opts["transport"]],
+        "WMP engine": ("siros-wallet-core (WMP over HTTP+SSE, :8780)" if opts["wmp_engine"]
+                       else "no (WMP_ENGINE=yes to add the Rust engine)"),
         "Conformance": "yes" if opts["conformance"] else "no",
         "R2PS": "yes" if opts["r2ps"] else "no",
         "Domain": opts["domain"] or "localhost (default)",
