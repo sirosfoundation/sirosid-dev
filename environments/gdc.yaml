@@ -556,6 +556,15 @@ values:
     # eu.europa.ec.eudi.nym_auth.1 (action mdoc-issuer, the mDOC IACA registry) and a self-signed chain with the same
     # SAN is not.
     extraConfig:
+      # Verifier-only (the issuer's credential_metadata is untouched): a preset is keyed by a credential_metadata scope, and
+      # that scope supplies the DCQL meta.type_values for an ldp_vc credential. These are the expanded IRIs
+      # (OpenID4VP 1.0 B.3.2) the Accredify template in fixtures/vc-presentation-requests/accredify_sg_vcdm2.yaml sends.
+      common:
+        credential_metadata:
+          accredify_individual_id:
+            format: ldp_vc
+            credential_type_values:
+              - ["https://www.w3.org/2018/credentials#VerifiableCredential", "https://schemas.accredify.io/idvc/vocab/v1/vocab#IndividualIDCredential"]
       verifier:
         nym_auth:
           enable: true
@@ -610,6 +619,16 @@ values:
     # (category/credentials/zk_system_type) is only understood by the vc build
     # pinned in environments/gdc.yaml, not by vc main.
     presets:
+      # Accredify's Singapore Individual ID credential (W3C VCDM 2.0, ldp_vc, ecdsa-sd-2023), the one the Accredify demo wallet
+      # (nucleus.uat.accredify.io) presents; verified end to end on gdc 2026-11-05. The same request as the OIDC scope
+      # accredify_individual_id, as a button on the verifier's own page. Needs the credential_metadata scope above.
+      "Accredify SG - Individual ID (VCDM 2.0)":
+        category: "Accredify"
+        credentials:
+          accredify_individual_id:
+            claims:
+              - path: ["credentialSubject", "fullName"]
+              - path: ["credentialSubject", "email"]
       # nym_auth pseudonym request (rulebook v0.4 zkp_req; needs preferred_vp_formats.zkp_req and verifier.nym_auth
       # above, else the preset is not published). `req` items are {fn_id, return, params}; ver and prf are required.
       # The scope key is the verifier's own credential_metadata scope for nym_auth, which supplies meta.source_format
