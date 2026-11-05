@@ -217,26 +217,26 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  # All four vc images below are ONE build, local-1793780334, from vc tree 889a17c4a (commit 02eb0adb7) (branch local/gdc-nymauth-v15, never
+  # All four vc images below are ONE build, local-1793837178, from vc vc commit 5410e9269 (branch local/gdc-nymauth-v15, never
   # pushed): upstream main 985245a21 (v0.8.0 + #866 as #878, #851, #875) with the open PRs #850 (+ Wicpar/vc#1 and #2:
   # verifier_id rule and notification_id on a delivered opening), #832 (carries #827 #829 #830 #831), #840, #842, #828,
   # #847, #877 (ldp_vc presentation as a JSON object in vp_token, a W3C type given as a string, holder did:key/did:jwk resolved
   # locally, presenter bound to a credentialSubject.id, the verified signer returned as holder, an embedded credential placed in its own graph when a
-  # presentation is signed or verified, and a publicKeyMultibase key decoded from a DID document) and #854. NOT
+  # presentation is signed or verified, a publicKeyMultibase key decoded from a DID document, and a derived ecdsa-sd-2023 proof with mandatory quads verified) and #854. NOT
   # included: #868 (opt-in compact type_values; Accredify fixed its side), #857, #855, #856, #859, #703.
-  # Digests: verifier sha256:53cb935bf86c7f2f6f608604625731a57051d125cd78f6bef5676d6a403bb1ea,
-  #   apigw sha256:b116b20e9b9a5ab4ebe99a0ef42f43c286540268606fa46c52cc55f749b2d399,
-  #   issuer sha256:37f9206b685f8b0ed7ea695b5a0788e69dfd0d13da89352e829ef34ff7912488,
-  #   registry sha256:f7705934daba51929abe98d5311d0669c178e51acdb5b06a3d904470c1733032.
+  # Digests: verifier sha256:08433df5323d66e9dcba08ca292c5765942148ee5540a4f0ea4ba643f3adc707,
+  #   apigw sha256:e35d413894a008a394b1c55f865f2abccfae43c9524b45378f339f3a395a6b55,
+  #   issuer sha256:2e616989ac6388fccecb8a8d9635ba2725f9edbfd320a06f827fe213f2c3af03,
+  #   registry sha256:c5cdeee484ef20dca8bb4a9f871fea368f2feddb2236c07ac42c42517711567d.
   # Native libraries (Longfellow 495d704, Vega v0.0.7) are byte-identical to the previous pin's; circuit overlay on the
   # verifier unchanged (nym_auth-ssc.bin 1062842 B, nym_auth-vega-ssc.bin 12205144 B, checked at build time).
   # Synthetic data only: this build carries #854's auxiliary_data/lookup without an operator check and #850 accepting a
   # different wallet psc per issuance (open review threads); neither is reachable with gdc's config (no psc to_issuer).
-  # Rollback: local-1793776448 (before multibase key decoding), local-1793755360, local-1793751969, local-1793749811 or local-1793192393 (v11) for all four.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793780334
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793780334
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793780334
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793780334
+  # Rollback: local-1793780334 (before the ecdsa-sd mandatory-quad fix), local-1793776448, local-1793755360, local-1793751969, local-1793749811 or local-1793192393 (v11) for all four.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793837178
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793837178
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793837178
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793837178
   # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
   # vc-verifier remains available unchanged. Source: siros-verifier-core
   # d720bb19099dfa178545fe968d4362542f8392e9 (clean tree, 137 files).
