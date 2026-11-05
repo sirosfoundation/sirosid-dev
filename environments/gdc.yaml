@@ -159,7 +159,7 @@ images:
   #   rollback pins: local-1792625654 (1d0708b), local-1792564143 (9cb6e57, server-side encryption: works with the current Pixel APK),
   #           local-1792560364 (faa5e63), local-1792473614 (#469 only)
   #
-  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.1 (RELEASED, tag v0.26.1; 0.26.0 was commit 621b03f4)
+  # pdp (go-trust)   ghcr.io/sirosfoundation/go-trust:0.26.2 (RELEASED, tag v0.26.2; 0.26.1 = 56a33b5, 0.26.0 = 621b03f4)
   #   index digest sha256:73d994eaabcf27d68837c12ef42cbb16072c87562c6abe5cf7e2332a8068cf1e
   #   contains https://github.com/sirosfoundation/go-trust/pull/218 (merged): verifier_ids from the whitelist,
   #   system_cert_pool and mdoc_rical registries, carried through all strategies and composites. values.pdp.extraConfig
@@ -315,7 +315,10 @@ images:
   # 2026-11-04: 0.26.0 -> 0.26.1. The did:web registry returns publicKeyMultibase in trust_metadata (go-trust#227);
   # without it an issuer whose DID document uses Multikey / Ed25519VerificationKey2020 (Accredify) resolves to no key.
   # Also built with Go 1.27.3 (GO-2026-6809).
-  pdp: ghcr.io/sirosfoundation/go-trust:0.26.1
+  # 2026-11-05: 0.26.1 -> 0.26.2. The did:web registry matches a presented JWK against publicKeyMultibase methods too
+  # (go-trust#230); with only publicKeyJwk compared, key binding for an issuer publishing Multikey methods (Accredify) was
+  # denied even with its DID in trusted_issuers ("no matching verification method").
+  pdp: ghcr.io/sirosfoundation/go-trust:0.26.2
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
