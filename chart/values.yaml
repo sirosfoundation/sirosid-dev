@@ -346,6 +346,10 @@ verifier:
   #     log:
   #       level: debug
   extraConfig: {}
+  # VCTM documents for scopes that exist only in the verifier's own credential_metadata (set through extraConfig
+  # above), as {<name>: <object or JSON string>}. Each lands in the vctms ConfigMap as /vctms/<name>.json. vc loads a
+  # schema for every non-mdoc scope at startup, W3C ones included, and the verifier does not start without one.
+  extraVctms: {}
   # Example configuration for extra presentation request templates
   # presentationRequestTemplates:
   #   "demo_3-all":
