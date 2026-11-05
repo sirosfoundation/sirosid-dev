@@ -323,6 +323,10 @@ def use_credential_registry(config: dict, credential_types: dict, registries: li
             # org.iso.18013.5.1.mDL like the full mDL, and resolving it from
             # the registry would silently turn it back into the full one.
             continue
+        if meta.get("format") in ("ldp_vc", "vc+ld+json"):
+            # A W3C scope has no vct to resolve: a verifier-only scope (the Accredify button) names its DCQL type_values
+            # inline, in credential_type_values, and has no registry entry to swap in.
+            continue
         declared = credential_types.get(scope) or {}
         # Key off the declared format, not the scope name: using vct where a
         # doctype is wanted resolves nothing, silently.
