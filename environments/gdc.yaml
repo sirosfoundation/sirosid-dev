@@ -217,29 +217,30 @@ images:
   # The verifier config (verifier.nym_auth, zkp_req formats, presets, trust.pdp_url) is under values.verifier below.
   # A real wallet presentation is expected to fail proof verification until the verification time T is agreed between
   # wallet and verifier (spec decision pending); that is not a config problem.
-  # All four vc images below are ONE build, local-1793895170, from vc commit 7312c7dc2 (branch local/gdc-nymauth-v16, never
-  # pushed): the previous pin's build (local-1793837178, v15, vc commit 5410e9269) plus SUNET/vc#884 and nothing else.
-  # #884: common.jsonld_contexts - a startup policy (required | best_effort | lazy; the verifier defaults to best_effort,
-  # the issuer to required), retry with backoff, a refresh interval that keeps the last context that loaded, per-context
-  # sources (file or url), and a readiness probe "<service>.jsonld_contexts". An unreachable JSON-LD context at boot no
-  # longer panics the verifier: it starts, reports NOT READY naming the context, and keeps retrying. It also fixes json-gold
-  # corrupting a cached context that uses @import. The Accredify scope's context
-  # (https://schemas.accredify.io/idvc/individual-id/v1/context) is fetched through this.
-  # The previous pin's content is otherwise unchanged: upstream main 985245a21 with the open PRs #850 (+ Wicpar/vc#1 and #2),
-  # #832 (carries #827 #829 #830 #831), #840, #842, #828, #847, #877 and #854. NOT included: #868, #857, #855, #856, #859, #703.
-  # Digests: verifier sha256:6f519faa4b5c36c389204ccc85b25d50ac5e502a42cbd0eba9c9479dd261f042,
-  #   apigw sha256:2557cd2c2b794bb737b6790be772160bf115d02efabd29b1d12dd82247d0d20f,
-  #   issuer sha256:da1f68a4c0756c92edb17fe1b1d611fdbd654cdbc54339b52ca9cc741c2dac16,
-  #   registry sha256:4e66bc4de38a302ac119ed36073fe2f911ca9401787a428425861d79bbb63658.
+  # All four vc images below are ONE build, local-1793916292, from vc commit af8410794 (branch local/gdc-nymauth-v17, never
+  # pushed): the previous pin's build (local-1793895170, v16, vc commit 7312c7dc2) with SUNET/vc#877's head 005d326a7 merged in
+  # (the six #877 commits v16 lacked plus two new ones). The new ones: a holder's did:key / did:jwk is resolved locally on the
+  # session path (/verification/direct_post, which the verifier page's buttons use) as it already was on the OIDC path, so the
+  # holder key no longer goes to the PDP (v16 answered 500 "presentation is not bound to this session ... no registry returned
+  # positive match" to the Accredify wallet through a button). An issuer's key still goes to the PDP.
+  # v16 itself was v15 plus SUNET/vc#884 (common.jsonld_contexts: startup policy, retry, refresh, readiness probe
+  # "<service>.jsonld_contexts"; the verifier defaults to best_effort). This is the v15 lineage plus cherry-picks, NOT upstream
+  # main: it does not carry the newer upstream commits. Content otherwise as v15: upstream main 985245a21 with the open PRs
+  # #850 (+ Wicpar/vc#1 and #2), #832 (carries #827 #829 #830 #831), #840, #842, #828, #847, #877 and #854. NOT included:
+  # #868, #857, #855, #856, #859, #703.
+  # Digests: verifier sha256:6434f2218b0f8d7a6034fdbf62f270152e8965ba3a5b40d187cbed70f0a4c5cd,
+  #   apigw sha256:5e8a8349a799b82ca6d6013bc57d281ed8f72796e7d98082e98d19fed7793f93,
+  #   issuer sha256:acb9460b1cd3d68dd018cdf9304b417b0a9dd26f8e2c9844f80f3c0eb193f29b,
+  #   registry sha256:66ff7d0dc1c6721268f47beb25c7c27d1873a94aee29022b55f9e619ed3db2da.
   # Native libraries (Longfellow 495d704, Vega v0.0.7, zk-cred-bbs v0.0.7) and the circuit overlay (nym_auth-ssc.bin
-  # 1062842 B, nym_auth-vega-ssc.bin 12205144 B) are the same as v15's.
+  # 1062842 B, nym_auth-vega-ssc.bin 12205144 B) are the same as v15's; vc pulled both artifacts back out of the image.
   # Synthetic data only: this build carries #854's auxiliary_data/lookup without an operator check and #850 accepting a
   # different wallet psc per issuance (open review threads); neither is reachable with gdc's config (no psc to_issuer).
-  # Rollback: local-1793837178 (v15) or local-1793780334, local-1793776448, local-1793755360, local-1793751969, local-1793749811 or local-1793192393 (v11) for all four.
-  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793895170
-  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793895170
-  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793895170
-  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793895170
+  # Rollback: local-1793895170 (v16; its session path rejects a did:key holder) or local-1793837178 (v15) for all four.
+  vc-verifier: registry.fly.io/sirosid-gdc-vc-verifier:local-1793916292
+  vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793916292
+  vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793916292
+  vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793916292
   # Additional SD-JWT VC verifier with QR and DC API test UIs. This is additive:
   # vc-verifier remains available unchanged. Source: siros-verifier-core
   # d720bb19099dfa178545fe968d4362542f8392e9 (clean tree, 137 files).
