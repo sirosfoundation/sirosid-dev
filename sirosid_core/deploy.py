@@ -671,7 +671,11 @@ def deploy_component(ctx: DeployContext, comp: dict):
         (out_dir / "enginePdpToken").write_text(token)
         fly.import_secrets(app, {"ENGINE_PDP_TOKEN": token})
         deploy_args += [
-            "--env", "ENGINE_LISTEN_ADDR=0.0.0.0:8780",
+            # [::] not 0.0.0.0: wallet-proxy reaches the engine at its
+            # <app>.internal name, which resolves to the 6PN IPv6 address, and
+            # an IPv4-only bind refuses it (nginx: connect() failed (111:
+            # Connection refused) -> 502 on /wmp-engine/).
+            "--env", "ENGINE_LISTEN_ADDR=[::]:8780",
             # Trust: the engine appends /v1/evaluate to this.
             "--env", f"ENGINE_PDP_URL=http://{backend_http}",
             # Bearer validation: the JWKS over 6PN, the issuer as the AS
