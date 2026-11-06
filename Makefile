@@ -41,6 +41,7 @@ GITHUB_ORG ?= https://github.com/sirosfoundation
 # Workspace paths - defaults assume sibling directories
 FRONTEND_PATH ?= ../wallet-frontend
 BACKEND_PATH ?= ../go-wallet-backend
+WALLET_CORE_PATH ?= ../siros-wallet-core
 FACETEC_PATH ?= ../facetec-api
 GO_TRUST_PATH ?= ../go-trust
 CHART_PATH ?= chart
@@ -60,6 +61,7 @@ VC_GO_TRUST_COMPOSE := docker-compose.vc-go-trust.yml
 CONFORMANCE_COMPOSE := docker-compose.conformance.yml
 HTTP_TRANSPORT_COMPOSE := docker-compose.http-transport.yml
 WMP_TRANSPORT_COMPOSE := docker-compose.wmp-transport.yml
+WMP_ENGINE_COMPOSE := docker-compose.wmp-engine.yml
 R2PS_COMPOSE := docker-compose.r2ps.yml
 DOMAIN_COMPOSE := docker-compose.domain.yml
 TUNNEL_COMPOSE := docker-compose.tunnel.yml
@@ -105,6 +107,7 @@ VC ?=
 VERIFIER_IMPL ?= vc
 export VERIFIER_CORE_PATH ?= ../siros-verifier-core
 TRANSPORT ?=
+WMP_ENGINE ?=
 CONFORMANCE ?=
 R2PS ?=
 DOMAIN ?=
@@ -388,6 +391,16 @@ else
   _TRANSPORT_LABEL := WebSocket (default)
 endif
 
+# The Rust WMP engine (siros-wallet-core) as a NEW engine endpoint beside
+# the Go engine - the drop-in cloud engine for the native SDKs' remote
+# mode. Nothing about wallet-backend changes (docker-compose.wmp-engine.yml).
+ifneq ($(call _truthy,$(WMP_ENGINE)),)
+  COMPOSE_FILES += -f $(WMP_ENGINE_COMPOSE)
+  _WMP_ENGINE_LABEL := siros-wallet-core (WMP over HTTP+SSE, :8780)
+else
+  _WMP_ENGINE_LABEL := no (WMP_ENGINE=yes to add the Rust engine)
+endif
+
 # Conformance suite (implies VC + allow)
 ifneq ($(call _truthy,$(CONFORMANCE)),)
   # Ensure required overlays are present
@@ -482,7 +495,7 @@ _print-compose-files:
 
 plan: ## Show what `make up` would do with these options (compose files, storage, pre-flight) - takes the same flags as `make up`, plus ENV=<name>
 	@python3 scripts/stack.py plan $(if $(ENV),--env "$(ENV)") \
-		$(foreach v,PDP AS_RULES VC VERIFIER_IMPL TRANSPORT CONFORMANCE R2PS FACETEC DOMAIN TUNNELS GOLDEN DC_API REBUILD,$(if $($(v)),--set $(v)="$($(v))"))
+		$(foreach v,PDP AS_RULES VC VERIFIER_IMPL TRANSPORT WMP_ENGINE CONFORMANCE R2PS FACETEC DOMAIN TUNNELS GOLDEN DC_API REBUILD,$(if $($(v)),--set $(v)="$($(v))"))
 
 # =============================================================================
 # Help
@@ -594,6 +607,7 @@ help: ## Show this help
 	@echo "                     Adds issuer, verifier, apigw, registry, mongodb"
 	@echo ""
 	@echo "  $(YELLOW)TRANSPORT=$(NC)<websocket|wmp>"
+	@echo "  $(YELLOW)WMP_ENGINE=$(NC)<yes|no>          the Rust WMP engine as an additional endpoint (default: no)"
 	@echo "                     Select wallet transport mode"
 	@echo "                     default: websocket (http is deprecated)"
 	@echo ""
@@ -713,6 +727,7 @@ help: ## Show this help
 	@echo ""
 	@echo "  $(YELLOW)FRONTEND_PATH=$(NC)   wallet-frontend source  (default: $(GREEN)../wallet-frontend$(NC))"
 	@echo "  $(YELLOW)BACKEND_PATH=$(NC)    go-wallet-backend source (default: $(GREEN)../go-wallet-backend$(NC))"
+	@echo "  $(YELLOW)WALLET_CORE_PATH=$(NC) siros-wallet-core source, WMP_ENGINE= (default: $(GREEN)../siros-wallet-core$(NC))"
 	@echo "  $(YELLOW)VC_PATH=$(NC)          vc services source     (default: $(GREEN)../vc$(NC))"
 	@echo "  $(YELLOW)GO_TRUST_PATH=$(NC)    go-trust source        (default: $(GREEN)../go-trust$(NC))"
 	@echo "  $(YELLOW)FACETEC_PATH=$(NC)     facetec-api source     (default: $(GREEN)../facetec-api$(NC))"
@@ -777,7 +792,7 @@ build-info:
 
 CONFORMANCE_HOSTNAME := localhost.emobix.co.uk
 
-up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN=, AS_RULES= to configure)
+up: ## Start the stack (use PDP=, VC=, TRANSPORT=, CONFORMANCE=, GOLDEN=, AS_RULES=, WMP_ENGINE= to configure)
 	@# Ensure .well-known/assetlinks.json exists (Docker bind mount requires it)
 	@mkdir -p .well-known && [ -f .well-known/assetlinks.json ] || echo '[]' > .well-known/assetlinks.json
 	@# Ensure the shared e2e-test-network exists
@@ -890,6 +905,7 @@ endif
 	@echo "  VC services: $(_VC_LABEL)"
 	@echo "  Verifier:    $(VERIFIER_IMPL)"
 	@echo "  Transport:   $(_TRANSPORT_LABEL)"
+	@echo "  WMP engine:  $(_WMP_ENGINE_LABEL)"
 	@echo "  Conformance: $(_CONFORMANCE_LABEL)"
 	@echo "  R2PS:        $(_R2PS_LABEL)"
 	@echo "  Domain:      $(_DOMAIN_LABEL)"

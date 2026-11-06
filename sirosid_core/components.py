@@ -171,16 +171,43 @@ SIROS_VERIFIER_COMPONENT = {
     "checks": "/health",
 }
 
+# The Rust WMP engine (siros-wallet-core engine-server, the drop-in
+# `go-wallet-backend --mode=engine` replacement): the HTTP+SSE WMP binding
+# the native SDKs' remote mode speaks. Optional, enabled only by an explicit
+# image pin (like siros-verifier), so an environment opts in per redeploy -
+# environments/<env>.yaml's images: block is where a durable pin lives. No
+# `image` key on purpose: the gating guarantees spec.images carries one.
+WMP_ENGINE_COMPONENT = {
+    "name": "wmp-engine",
+    # Internal-only (6PN): the public path is wallet-proxy's /wmp-engine/
+    # location (fly_common.wallet_proxy_conf), never a port of its own.
+    "ports": [{"internal": 8780, "public": False}],
+    "checks": "/healthz",
+}
+
 
 def with_optional_components(components: list, images: dict) -> list:
     """Add image-gated components without changing the default component list."""
-    if "siros-verifier" not in images or any(c["name"] == "siros-verifier" for c in components):
-        return list(components)
-    out = []
-    for comp in components:
-        out.append(comp)
-        if comp["name"] == "pdp":
-            out.append(SIROS_VERIFIER_COMPONENT)
+    out = list(components)
+    if "siros-verifier" in images and not any(c["name"] == "siros-verifier" for c in out):
+        inserted = []
+        for comp in out:
+            inserted.append(comp)
+            if comp["name"] == "pdp":
+                inserted.append(SIROS_VERIFIER_COMPONENT)
+        out = inserted
+    # Before wallet-proxy: its nginx statically proxy_passes to this app's
+    # .internal address, and a static target that does not resolve stops nginx
+    # starting AT ALL (the same reason the conformance apps precede
+    # wallet-frontend in deploy_order) - so the engine's machine must be up
+    # first, which the deploy order (fly deploy blocks until healthy) gives.
+    if "wmp-engine" in images and not any(c["name"] == "wmp-engine" for c in out):
+        inserted = []
+        for comp in out:
+            if comp["name"] == "wallet-proxy":
+                inserted.append(WMP_ENGINE_COMPONENT)
+            inserted.append(comp)
+        out = inserted
     return out
 
 

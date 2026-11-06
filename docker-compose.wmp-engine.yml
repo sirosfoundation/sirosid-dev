@@ -1,0 +1,70 @@
+# Docker Compose overlay: the Rust WMP engine (siros-wallet-core) as a NEW
+# engine endpoint beside the Go engine.
+#
+# The drop-in cloud engine for the native SDKs' remote mode: the
+# siros-wallet-core engine-server, speaking the WMP HTTP+SSE binding
+# (POST /wmp, GET /wmp/events) instead of the Go engine's WebSocket.
+#
+# Nothing about wallet-backend changes: the engine is its own service,
+# and reaches the backend's existing routes as an HTTP client - the
+# /v1/evaluate trust proxy (its PDP) and the AS's JWKS. The Go engine
+# keeps its config and its port; the SDKs choose per connection.
+#
+# Usage:
+#   make up WMP_ENGINE=yes
+#   docker compose -f docker-compose.test.yml -f docker-compose.wmp-engine.yml up -d --build
+#
+# The SDK sample apps then point their WMP transports at:
+#   send URL:  http://localhost:8780/wmp
+#   SSE  URL:  http://localhost:8780/wmp/events
+# (through the tunnel gateway, the same paths under /wmp-engine/ - see
+# fixtures/tunnel-gateway.conf)
+#
+# Requires: ../siros-wallet-core checked out (override with
+# WALLET_CORE_PATH=<path>), built from its Dockerfile - a static musl
+# binary on distroless, so no healthcheck probe binary ships with it;
+# the engine binds and serves immediately.
+
+services:
+  wmp-engine:
+    build:
+      context: ${WALLET_CORE_PATH:-../siros-wallet-core}
+      dockerfile: Dockerfile
+    image: wmp-engine-e2e-test:local
+    container_name: wmp-engine-e2e-test
+    ports:
+      - "8780:8780"
+    environment:
+      # The container's configuration surface (Config::from_env): every
+      # ENGINE_* variable over the defaults.
+      - ENGINE_LISTEN_ADDR=0.0.0.0:8780
+      # The bearer the backend's proxy routes validate (the TAC gate:
+      # an AS-issued token with tac covering r) - minted with
+      # scripts/mint_engine_pdp_token.py from the AS signing key. Empty
+      # means no bearer: the routes 401 and the trust evaluation fails
+      # closed.
+      - ENGINE_PDP_TOKEN=${WMP_ENGINE_ENGINE_PDP_TOKEN:-}
+      # Trust through the backend's existing /v1/evaluate proxy route -
+      # whichever PDP mode `make up PDP=` selected (the go-trust
+      # services, the mock PDP, helm). The engine appends /v1/evaluate.
+      - ENGINE_PDP_URL=http://wallet-backend:8080
+      # Bearer-token validation against the backend's own AS: the JWKS
+      # is published under /auth/.well-known/ (go-wallet-backend
+      # internal/service/wallet_provider_jwks.go), and the `iss` claim
+      # is the AS's configured issuer - WALLET_AS_ISSUER, which the
+      # dev stack sets to its public origin (docker-compose.test.yml)
+      # and which differs from the container-internal URL the engine
+      # fetches the JWKS from. Audiences: the AS issues per client
+      # (wallet-frontend, wallet-backend, ...), so the dev engine
+      # accepts every audience - set-but-empty (the var is read even
+      # when empty).
+      - ENGINE_AS_EXTERNAL_URL=http://wallet-backend:8080
+      - ENGINE_AS_JWKS_URL=http://wallet-backend:8080/auth/.well-known/jwks.json
+      - ENGINE_AS_ISSUER=${WALLET_AS_ISSUER:-http://localhost:8080}
+      - ENGINE_AS_AUDIENCES=
+      # The docker network is plain http: the engine's own fetches
+      # (PDP proxy, AS JWKS, the VC issuer services an offer names)
+      # need it, exactly as the backend's WALLET_HTTP_CLIENT_ALLOW_HTTP.
+      - ENGINE_ALLOW_PLAINTEXT=true
+    networks:
+      - e2e-test-network

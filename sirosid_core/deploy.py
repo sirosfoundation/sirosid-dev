@@ -23,6 +23,7 @@ import yaml
 from .android import identities_from_entries
 from .assets import (assetlinks_json, mini_oidc_config, wallet_frontend_conf, wallet_frontend_dashboard_html,
                      wallet_proxy_conf, write_fly_toml)
+from .engine_pdp_token import mint_engine_pdp_token
 from .components import (CONFORMANCE_COMPONENTS, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
                          build_components, with_optional_components)
 from .fly import FlyClient, FlyDeployError, FlyError
@@ -638,10 +639,48 @@ def deploy_component(ctx: DeployContext, comp: dict):
             deploy_args += ["--file-local", f"/etc/wallet/assurance/{rules.name}={rules}"]
     elif name == "wallet-proxy":
         conf_path = out_dir / "wallet-proxy.conf"
-        conf_path.write_text(wallet_proxy_conf(env, naming))
+        conf_path.write_text(wallet_proxy_conf(env, naming, wmp_engine=("wmp-engine" in spec.images)))
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/etc/nginx/well-known/assetlinks.json={assetlinks_path}",
+        ]
+    elif name == "wmp-engine":
+        # The Rust WMP engine's deployment env (Config::from_env - see
+        # docker-compose.wmp-engine.yml's local counterpart): trust through
+        # wallet-backend's existing routes (its /v1/evaluate proxy, its AS's
+        # JWKS), never its own PDP or trust stack. The AS issuer is the
+        # wallet-proxy origin (render.py sets as.external_url to the same
+        # proxy_url the AS signs its tokens' iss with), and every audience is
+        # accepted (set-but-empty - the AS issues per client), exactly the
+        # local overlay's shape.
+        backend_http = naming.addr("wallet-backend", "http")
+        # The proxy routes' TAC bearer: an AS-issued token with tac
+        # covering r, minted from the environment's own AS signing key
+        # (pki_dir, the same key wallet-backend's asSigningKey secret
+        # came from - the JWKS verifies it). Minted once, cached as
+        # enginePdpToken (a declared state file), staged as a plain env
+        # var (flyctl secrets import: the value never lands on a command
+        # line, and the engine reads ENGINE_PDP_TOKEN directly - the
+        # base64/--file-secret path is for file-mounted secrets, not env
+        # ones). A redeploy mints fresh (the cached token's exp may have
+        # passed): the AS key is long-lived, the token is the deploy's.
+        token = mint_engine_pdp_token(
+            (pki_dir / "signing_ec_private.pem").read_text(),
+            issuer=f"https://{naming.host('wallet-proxy')}",
+        )
+        (out_dir / "enginePdpToken").write_text(token)
+        fly.import_secrets(app, {"ENGINE_PDP_TOKEN": token})
+        deploy_args += [
+            "--env", "ENGINE_LISTEN_ADDR=0.0.0.0:8780",
+            # Trust: the engine appends /v1/evaluate to this.
+            "--env", f"ENGINE_PDP_URL=http://{backend_http}",
+            # Bearer validation: the JWKS over 6PN, the issuer as the AS
+            # stamps it (the proxy origin), every audience.
+            "--env", f"ENGINE_AS_JWKS_URL=http://{backend_http}/auth/.well-known/jwks.json",
+            "--env", f"ENGINE_AS_ISSUER=https://{naming.host('wallet-proxy')}",
+            "--env", "ENGINE_AS_AUDIENCES=",
+            # The 6PN dials are plain http.
+            "--env", "ENGINE_ALLOW_PLAINTEXT=true",
         ]
     elif name == "wallet-frontend":
         conf_path = out_dir / "wallet-frontend.conf"

@@ -323,6 +323,18 @@ images:
   # (go-trust#230); with only publicKeyJwk compared, key binding for an issuer publishing Multikey methods (Accredify) was
   # denied even with its DID in trusted_issuers ("no matching verification method").
   pdp: ghcr.io/sirosfoundation/go-trust:0.26.2
+  # The Rust WMP engine (siros-wallet-core engine-server) - the drop-in
+  # `--mode=engine` replacement the native SDKs' remote mode speaks
+  # (HTTP+SSE through wallet-proxy's /wmp-engine/, like the local
+  # WMP_ENGINE=yes overlay). Image-gated optional component: THIS pin is
+  # what makes `make fly-up ENV=gdc` deploy it at all
+  # (components.with_optional_components). v0.1.2 is the first released
+  # tag whose run completed (the AAR/XCFramework/image publish). NOTE:
+  # ghcr.io/sirosfoundation/engine-server is currently PRIVATE - flip it to
+  # public in the package settings (like go-trust/wallet-frontend above)
+  # before the first `make fly-up ENV=gdc` that includes this pin, or Fly's
+  # image pull fails with "denied".
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.1.2
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11

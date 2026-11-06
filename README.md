@@ -136,10 +136,28 @@ interaction rules, and complete examples.
 make up                    # Default stack
 make up VC=yes             # Add VC services
 make up TRANSPORT=wmp      # Use WMP transport
+make up WMP_ENGINE=yes     # Add the Rust WMP engine (:8780) beside the Go engine
 make up CONFORMANCE=yes    # OpenID conformance suite
 make up DOMAIN=<host>.local VC=yes    # Custom domain for mobile
 make up GOLDEN=yes         # Pre-built images
 ```
+
+### The Rust WMP engine (`WMP_ENGINE=yes`)
+
+Adds the [siros-wallet-core](https://github.com/sirosfoundation/siros-wallet-core)
+engine-server as a **new** engine endpoint (`wmp-engine`, host port 8780) —
+the drop-in cloud engine for the native SDKs' remote mode, speaking WMP over
+HTTP+SSE where the Go engine speaks WebSocket. Nothing about `wallet-backend`
+changes: the engine reaches its existing routes as an HTTP client (the
+`/v1/evaluate` trust proxy, the AS's JWKS), so `PDP=` modes and the AS config
+apply to it unchanged. The SDK sample apps point their WMP transports at:
+
+- send URL: `http://localhost:8780/wmp`
+- SSE URL: `http://localhost:8780/wmp/events`
+
+(through the tunnel gateway, the same paths under `/wmp-engine/`). With
+`DOMAIN=`/`TUNNELS=yes`, use the stack's hostname instead of `localhost`.
+Built from `../siros-wallet-core` — `WALLET_CORE_PATH=<path>` overrides.
 
 For more examples and detailed explanations, see `make help`.
 
