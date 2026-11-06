@@ -638,10 +638,32 @@ def deploy_component(ctx: DeployContext, comp: dict):
             deploy_args += ["--file-local", f"/etc/wallet/assurance/{rules.name}={rules}"]
     elif name == "wallet-proxy":
         conf_path = out_dir / "wallet-proxy.conf"
-        conf_path.write_text(wallet_proxy_conf(env, naming))
+        conf_path.write_text(wallet_proxy_conf(env, naming, wmp_engine=("wmp-engine" in spec.images)))
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={conf_path}",
             "--file-local", f"/etc/nginx/well-known/assetlinks.json={assetlinks_path}",
+        ]
+    elif name == "wmp-engine":
+        # The Rust WMP engine's deployment env (Config::from_env - see
+        # docker-compose.wmp-engine.yml's local counterpart): trust through
+        # wallet-backend's existing routes (its /v1/evaluate proxy, its AS's
+        # JWKS), never its own PDP or trust stack. The AS issuer is the
+        # wallet-proxy origin (render.py sets as.external_url to the same
+        # proxy_url the AS signs its tokens' iss with), and every audience is
+        # accepted (set-but-empty - the AS issues per client), exactly the
+        # local overlay's shape.
+        backend_http = naming.addr("wallet-backend", "http")
+        deploy_args += [
+            "--env", "ENGINE_LISTEN_ADDR=0.0.0.0:8780",
+            # Trust: the engine appends /v1/evaluate to this.
+            "--env", f"ENGINE_PDP_URL=http://{backend_http}",
+            # Bearer validation: the JWKS over 6PN, the issuer as the AS
+            # stamps it (the proxy origin), every audience.
+            "--env", f"ENGINE_AS_JWKS_URL=http://{backend_http}/auth/.well-known/jwks.json",
+            "--env", f"ENGINE_AS_ISSUER=https://{naming.host('wallet-proxy')}",
+            "--env", "ENGINE_AS_AUDIENCES=",
+            # The 6PN dials are plain http.
+            "--env", "ENGINE_ALLOW_PLAINTEXT=true",
         ]
     elif name == "wallet-frontend":
         conf_path = out_dir / "wallet-frontend.conf"

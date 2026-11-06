@@ -202,11 +202,20 @@ rp:
 """
 
 
-def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
+def wallet_proxy_conf(env: str, naming: Naming = None, wmp_engine: bool = False) -> str:
     """Fly-hostname variant of fixtures/wallet-proxy.conf's first server block
     (assetlinks.json + proxy to wallet-backend) - the second block (Android
     issuer proxy via vc-proxy) is conformance-suite-only, not part of this
     deployment.
+
+    wmp_engine: carry the /wmp-engine/ location (the Rust WMP engine's
+    HTTP+SSE binding - docker-compose.wmp-engine.yml's local counterpart)
+    for an environment whose spec.images pins the component. Default False:
+    a location pointing at an app that does not exist would stop nginx
+    starting AT ALL (static proxy_pass resolves at startup), so it is only
+    ever emitted for a deployed engine - with_optional_components guarantees
+    the app exists (deploy order: the engine's machine is healthy before
+    wallet-proxy deploys).
 
     Does NOT serve apple-app-site-association (an earlier version of this
     function did) - iOS checks Associated Domains / passkey webcredentials at
@@ -248,17 +257,21 @@ def wallet_proxy_conf(env: str, naming: Naming = None) -> str:
     # wallet-proxy.internal:8090 until this was added.
     listen [::]:8090;
 
-{wallet_proxy_locations(naming)}}}
+{wallet_proxy_locations(naming, wmp_engine=wmp_engine)}}}
 """
 
 
 def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/well-known/assetlinks.json",
-                           forwarded_proto: str = "$scheme", real_ip: str = "$remote_addr") -> str:
+                           forwarded_proto: str = "$scheme", real_ip: str = "$remote_addr",
+                           wmp_engine: bool = False) -> str:
     """The body of wallet-proxy's server block (see wallet_proxy_conf): what the
     single-machine front nginx serves for the wallet-proxy host. forwarded_proto
     / real_ip: what goes upstream as X-Forwarded-Proto / X-Real-IP - nginx's own
     view by default (the apps layout, unchanged), the forwarding edge's headers
-    when the instance is only reachable through one (front_nginx_conf)."""
+    when the instance is only reachable through one (front_nginx_conf).
+
+    wmp_engine: the /wmp-engine/ location, for an environment whose spec.images
+    pins the component (see wallet_proxy_conf's doc for the gating reason)."""
     http, admin = naming.addr("wallet-backend", "http"), naming.addr("wallet-backend", "admin")
     engine = naming.addr("wallet-backend", "engine")
     return f"""    # Matches go-wallet-backend's own MaxBodySize (pkg/middleware/bodysize.go)
@@ -309,7 +322,29 @@ def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/we
         proxy_read_timeout 86400s;
         proxy_send_timeout 86400s;
     }}
-
+""" + (f"""
+    # The Rust WMP engine's HTTP+SSE binding (the drop-in --mode=engine
+    # replacement): POST /wmp and GET /wmp/events under the /wmp-engine/
+    # prefix, stripped like the API's own paths. The native SDKs' remote mode
+    # points here (siros-sdk-kotlin/swift's WmpEngineMode.HTTP_SSE - a local
+    # dev stack serves the same paths on http://<host>:8780 directly, this
+    # environment's wallets through this proxy). Buffering off: the SSE
+    # stream is the engine's messages (flow progress, sub-flow asks,
+    # completions with Last-Event-ID replay) and a buffered proxy would
+    # batch them; the 24h timeouts match the WebSocket location above, for
+    # the same long-lived-stream reason.
+    location /wmp-engine/ {{
+        rewrite ^/wmp-engine/(.*)$ /$1 break;
+        proxy_pass http://{naming.addr("wmp-engine")};
+        proxy_buffering off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP {real_ip};
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto {forwarded_proto};
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }}
+""" if wmp_engine else "") + f"""
     location / {{
         proxy_pass http://{http};
         proxy_set_header Host $host;

@@ -51,6 +51,11 @@ APPS_PORTS = {
     "pdp": {"http": 8080},
     "siros-verifier": {"http": 9001},
     "wallet-backend": {"http": 8080, "admin": 8081, "engine": 8082},
+    # The Rust WMP engine (image-gated, so absent from build_components'
+    # default table - see components.WMP_ENGINE_COMPONENT): the port is
+    # static (the engine's own default listen), unlike the chart-driven
+    # components above.
+    "wmp-engine": {"http": 8780},
     "wallet-proxy": {"http": 8090},
     "env-admin": {"http": 3002},
     "wallet-frontend": {"http": 80},
@@ -73,6 +78,7 @@ SINGLE_MACHINE_PORTS = {
     "vc-apigw": {"http": 8103},
     "pdp": {"http": 8104},
     "wallet-backend": {"http": 8110, "admin": 8111, "engine": 8112},
+    "wmp-engine": {"http": 8780},
     "wallet-frontend": {"http": 8120},
     "wallet-proxy": {"http": 8130},
     "env-admin": {"http": 3002},
