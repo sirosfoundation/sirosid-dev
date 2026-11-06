@@ -38,6 +38,12 @@ services:
       # The container's configuration surface (Config::from_env): every
       # ENGINE_* variable over the defaults.
       - ENGINE_LISTEN_ADDR=0.0.0.0:8780
+      # The bearer the backend's proxy routes validate (the TAC gate:
+      # an AS-issued token with tac covering r) - minted with
+      # scripts/mint_engine_pdp_token.py from the AS signing key. Empty
+      # means no bearer: the routes 401 and the trust evaluation fails
+      # closed.
+      - ENGINE_PDP_TOKEN=${WMP_ENGINE_ENGINE_PDP_TOKEN:-}
       # Trust through the backend's existing /v1/evaluate proxy route -
       # whichever PDP mode `make up PDP=` selected (the go-trust
       # services, the mock PDP, helm). The engine appends /v1/evaluate.

@@ -23,6 +23,7 @@ import yaml
 from .android import identities_from_entries
 from .assets import (assetlinks_json, mini_oidc_config, wallet_frontend_conf, wallet_frontend_dashboard_html,
                      wallet_proxy_conf, write_fly_toml)
+from .engine_pdp_token import mint_engine_pdp_token
 from .components import (CONFORMANCE_COMPONENTS, MINI_OIDC_APIGW_CLIENT_ID, MINI_OIDC_APIGW_CLIENT_SECRET,
                          build_components, with_optional_components)
 from .fly import FlyClient, FlyDeployError, FlyError
@@ -653,6 +654,22 @@ def deploy_component(ctx: DeployContext, comp: dict):
         # accepted (set-but-empty - the AS issues per client), exactly the
         # local overlay's shape.
         backend_http = naming.addr("wallet-backend", "http")
+        # The proxy routes' TAC bearer: an AS-issued token with tac
+        # covering r, minted from the environment's own AS signing key
+        # (pki_dir, the same key wallet-backend's asSigningKey secret
+        # came from - the JWKS verifies it). Minted once, cached as
+        # enginePdpToken (a declared state file), staged as a plain env
+        # var (flyctl secrets import: the value never lands on a command
+        # line, and the engine reads ENGINE_PDP_TOKEN directly - the
+        # base64/--file-secret path is for file-mounted secrets, not env
+        # ones). A redeploy mints fresh (the cached token's exp may have
+        # passed): the AS key is long-lived, the token is the deploy's.
+        token = mint_engine_pdp_token(
+            (pki_dir / "signing_ec_private.pem").read_text(),
+            issuer=f"https://{naming.host('wallet-proxy')}",
+        )
+        (out_dir / "enginePdpToken").write_text(token)
+        fly.import_secrets(app, {"ENGINE_PDP_TOKEN": token})
         deploy_args += [
             "--env", "ENGINE_LISTEN_ADDR=0.0.0.0:8780",
             # Trust: the engine appends /v1/evaluate to this.
