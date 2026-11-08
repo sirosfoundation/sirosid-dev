@@ -685,6 +685,15 @@ def deploy_component(ctx: DeployContext, comp: dict):
             "--env", "ENGINE_AS_AUDIENCES=",
             # The 6PN dials are plain http.
             "--env", "ENGINE_ALLOW_PLAINTEXT=true",
+            # W10 (engine-parity.md §8): this engine is the privacy-preserving
+            # REMOTE one - consume tenant-bound tokens (the AS's pseudonymous
+            # engine kind; the wallet's config.wmpTenantTokens selects it
+            # client-side), so the engine's session store, KV flow registry
+            # and logs attribute traffic to the tenant, never to a person.
+            # User-bound backend tokens still validate (a session keys
+            # tenant/subject) - only the attribution changes. The local
+            # compose keeps the default user mode.
+            "--env", "ENGINE_PRINCIPAL_MODE=tenant",
         ]
     elif name == "wallet-frontend":
         conf_path = out_dir / "wallet-frontend.conf"
