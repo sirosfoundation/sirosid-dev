@@ -923,8 +923,16 @@ pdp = "http://{naming.addr('pdp')}/evaluation"
 [service]
 public_url = "{url}"
 
+[definitions]
+# The reviewed definitions baked into the image (flows/ in the repo —
+# never a deploy-time file; the deployment selects the set by image
+# choice, same as the suites).
+dir = "/etc/siros-flow/flows"
+
 [signing]
-jwk_path = "/etc/siros-flow/signing.jwk"
+# The family's key shape: create-pki.sh's PKCS#8 EC P-256 PEM, mounted
+# from the Fly secret (jwk_path would expect JWK JSON).
+pem_path = "/etc/siros-flow/signing.pem"
 cert_chain_path = "/etc/siros-flow/verifier-chain.pem"
 
 [issuer]
@@ -935,8 +943,18 @@ integrator_key_path = "/etc/siros-flow/integrator.jwk"
 [embedded.issuer]
 url = "{url}"
 
+# The embedded issuer resolves its credential types from the SIROS
+# registry (the environment's own source of truth — the same registry
+# wallet-frontend loads its catalog from; EHIC and the PID generations
+# are published there). The mirror is the FULL schemas.json endpoint —
+# issuer-core appends only the pagination params.
+[embedded.catalog]
+mirrors = ["https://registry.siros.org/api/v1/schemas.json"]
+refresh_seconds = 300
+
 [embedded.signing]
-jwk_path = "/etc/siros-flow/issuer-signing.jwk"
+# The PEM (create-pki.sh's shape) — the app detects the PEM header.
+jwk_path = "/etc/siros-flow/issuer-signing.pem"
 
 [embedded.issuance]
 credential_validity_seconds = 3600

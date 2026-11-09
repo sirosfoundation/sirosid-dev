@@ -352,10 +352,12 @@ images:
   # siros-status-service replaces it by setting status_mode = service
   # + [embedded.status_service]). Nothing about this deployment
   # disables trust: the PDP is this environment's own go-trust.
-  # Pin provenance: docker build --network=host
+  # Pin provenance: docker build --network=host --no-cache
   #   -t registry.fly.io/sirosid-gdc-flow-core:local-<epoch> .
-  # from the sibling siros-flow-core checkout @ f56339d (2026-11-09).
-  # Digest: sha256:9e1f3e6e954745e7dee82e7c970f65a83a831686ff5ddf99219522e3c1c668d6.
+  # from the sibling siros-flow-core checkout @ f3f16df (2026-11-09);
+  # pinned dep issuer-core 9e36735 (the metadata skip/dedupe fixes the
+  # live registry catalog needed). Digest:
+  # sha256:824ba746c9bebb013e1ac58fe46060e1cda544a653a0e85ccff56b3552405ad3.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794646163
   wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.1.2
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
