@@ -1,0 +1,64 @@
+# siros-flow-core overlay for sirosid-dev
+#
+# The flow service (sirosfoundation/siros-flow-core) stands beside the
+# issuer stack: its presentation steps arm OID4VP requests (verifier
+# role), and its issuance steps drive the issuer's BACKEND session
+# API (the integrator role — RFC 7523, the same surface a portal
+# drives). The wallet sees only protocol surfaces.
+#
+# Usage (beside the issuer you want to drive):
+#   VC issuer:      docker compose -f docker-compose.test.yml \
+#                      -f docker-compose.vc-services.yml \
+#                      -f docker-compose.flow-core.yml up -d flow-core
+#   siros issuer:   docker compose -f docker-compose.test.yml \
+#                      -f docker-compose.siros-verifier.yml \
+#                      -f docker-compose.flow-core.yml up -d flow-core
+#
+# Local test only configuration:
+#   - The PDP permits every presentation trust decision (allow mode)
+#     — never prod.
+#   - The signing key is an ephemeral dev key (restarts rotate it).
+#
+# Prerequisites:
+#   - FLOW_CORE_ISSUER: which issuer backend the flow drives
+#     (default: the mock issuer at http://mock-issuer:9000; set to
+#     the vc-issuer backend or a siros-issuer deployment's backend
+#     URL).
+#   - The issuer's client registry must carry the flow's integrator
+#     identity (the fixtures render it: fixtures/rendered/...).
+
+services:
+  flow-core:
+    build:
+      context: ${FLOW_CORE_PATH:-../siros-flow-core}
+      dockerfile: Dockerfile
+    image: siros-flow-core:local
+    container_name: siros-flow-core
+    ports:
+      # Host and container ports match (the family rule: the
+      # response_uri the wallet sees must resolve from both sides).
+      - "9086:8080"
+    environment:
+      - FLOW_CORE_BIND=0.0.0.0:8080
+      # The externally visible base — the wallet reaches the
+      # response_uri over the host.
+      - FLOW_CORE_PUBLIC_URL=http://localhost:9086
+    volumes:
+      # The deployment's flow set over the image's (install another
+      # reviewed set by mounting its directory).
+      - ${FLOW_CORE_PATH:-../siros-flow-core}/flows:/etc/siros-flow/flows:ro
+      - ./fixtures/flow-core/config.toml:/etc/siros-flow/config.toml:ro
+      - ./fixtures/flow-core/integrator.jwk:/etc/siros-flow/integrator.jwk:ro
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/healthz"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - e2e-test-network
+
+networks:
+  e2e-test-network:
+    name: e2e-test-network
+    external: true

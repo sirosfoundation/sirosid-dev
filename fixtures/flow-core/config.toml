@@ -1,0 +1,26 @@
+# The flow service's config as the sirosid-dev deployment mounts it.
+# The issuer backend URL is rendered by the fixtures (mock / vc /
+# siros) — this example drives the mock issuer.
+
+[service]
+bind = "0.0.0.0:8080"
+public_url = "http://localhost:9086"
+
+[definitions]
+dir = "/etc/siros-flow/flows"
+
+[issuer]
+# The mock issuer's backend session API (mock-issuer:9000 serves
+# both surfaces in the e2e stack; a vc deployment renders the
+# apigw's prepare-issuance-equivalent URL here).
+backend_url = "http://mock-issuer:9000"
+audience = "http://localhost:9000"
+integrator_id = "https://flow.siros.org/"
+integrator_key_path = "/etc/siros-flow/integrator.jwk"
+
+# No pdp: LOCAL TEST ONLY — absent means fail-closed (every
+# presentation trust decision refuses). For the dev stack, render
+# the go-trust allow-mode URL here.
+
+presentation_ttl_seconds = 300
+retention_after_final_seconds = 3600
