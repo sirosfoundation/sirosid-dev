@@ -142,6 +142,8 @@ def generate_pki(ctx: DeployContext) -> Path:
         env_vars["SIGNING_CERT_VERIFIER_HOST"] = naming.host("vc-verifier")
     if "siros-verifier" in (getattr(ctx.spec, "images", {}) or {}):
         env_vars["SIROS_VERIFIER_HOST"] = naming.host("siros-verifier")
+    if "flow-core" in (getattr(ctx.spec, "images", {}) or {}):
+        env_vars["FLOW_CORE_HOST"] = naming.host("flow-core")
     fly.exec(["bash", "./create-pki.sh"], cwd=resources.fixtures, env=env_vars)
     return pki_dir
 
@@ -585,6 +587,43 @@ def deploy_component(ctx: DeployContext, comp: dict):
             "--file-secret", "/pki/verifier_ec_private.pem=vcSigningKey",
             "--file-local", f"/pki/verifier_ec_chain.pem={pki_dir / 'verifier_ec_chain.pem'}",
         ]
+    elif name == "flow-core":
+        # siros-flow-core (the general flow service): the additional
+        # trusted verifier AND issuer — one app, one port. Its
+        # presentation steps arm OID4VP requests signed by a DEDICATED
+        # leaf (flow_ec*, SAN = this app's host — the wallet/PDP trust
+        # that leaf, never the credential issuer's key); its embedded
+        # issuer signs credentials with its own SEPARATE key
+        # (flow_issuer_ec*). Both chain to the same per-environment
+        # rootCA, so a wallet that already trusts this environment
+        # trusts both.
+        fixture = resources.root / "fixtures" / "flow-core"
+        fly.ensure_secret(app, "flowVerifierKey", (pki_dir / "flow_ec_private.pem").read_text())
+        fly.ensure_secret(app, "flowIssuerKey", (pki_dir / "flow_issuer_ec_private.pem").read_text())
+        # The integrator key: the flow drives its own embedded issuer's
+        # backend API with its own identity (auto-registered on the
+        # embedded side); a fresh per-environment key, its public half
+        # rides the rendered config.
+        integrator_key_path = out_dir / "flow-integrator.jwk"
+        if not integrator_key_path.exists():
+            integrator_key_path.write_text(_fresh_flow_integrator_jwk())
+        fly.ensure_secret(app, "flowIntegratorKey", integrator_key_path.read_text())
+        # The rendered config: the definitions ship in the image
+        # (flows/ baked in); pdp points at THIS environment's go-trust
+        # (naming.addr — the 6PN address, like siros-verifier's PDP
+        # env); the embedded issuer's url/public_url is this app's own
+        # public URL (one URL, resolves from wallet AND network).
+        flow_config_path = out_dir / "flow-core.toml"
+        flow_config_path.write_text(_flow_core_config(naming))
+        deploy_args += [
+            "--file-local", f"/etc/siros-flow/config.toml={flow_config_path}",
+            "--file-secret", "/etc/siros-flow/signing.jwk=flowVerifierKey",
+            "--file-local", f"/etc/siros-flow/verifier-chain.pem={pki_dir / 'flow_ec_chain.pem'}",
+            "--file-secret", "/etc/siros-flow/issuer-signing.jwk=flowIssuerKey",
+            "--file-secret", "/etc/siros-flow/integrator.jwk=flowIntegratorKey",
+            "--env", "FLOW_CORE_BIND=0.0.0.0:8080",
+            "--env", f"FLOW_CORE_PUBLIC_URL={naming.url(name)}",
+        ]
     elif name == "wallet-backend":
         deploy_args += [
             "--file-local", f"/app/config.yaml={out_dir / 'wallet-backend.yaml'}",
@@ -849,6 +888,61 @@ def deploy_component(ctx: DeployContext, comp: dict):
         say(f"{name}: {naming.url(name)}")
 
 
+def _fresh_flow_integrator_jwk() -> str:
+    """A fresh EC P-256 integrator key for flow-core (RFC 7523 shape).
+
+    One per environment, persisted under fixtures/rendered/fly-<env>/
+    so a redeploy reuses it (the embedded issuer's client registry
+    knows this key — rotating it silently would break the flow's own
+    backend assertions).
+    """
+    import base64
+    import secrets
+    d = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+    return json.dumps({
+        "kty": "EC", "crv": "P-256", "d": d,
+        "kid": f"flow-integrator-{int(time.time())}", "alg": "ES256", "use": "sig",
+    })
+
+
+def _flow_core_config(naming: Naming) -> str:
+    """The flow-core config as this environment renders it.
+
+    The service runs its shipped definitions (flows/ baked into the
+    image — reviewed with the repo, not a deploy-time file); the PDP
+    is this environment's own go-trust over the 6PN address (real
+    trust, nothing disabled — the exact same decision surface the
+    vc-verifier and siros-verifier consult); the embedded issuer
+    serves on this app's public URL.
+    """
+    url = naming.url("flow-core")
+    return f"""# Rendered by fly-up for the {naming.env} environment (deploy.py).
+
+pdp = "http://{naming.addr('pdp')}/evaluation"
+
+[service]
+public_url = "{url}"
+
+[signing]
+jwk_path = "/etc/siros-flow/signing.jwk"
+cert_chain_path = "/etc/siros-flow/verifier-chain.pem"
+
+[issuer]
+status_mode = "local"
+integrator_id = "https://{naming.host('flow-core')}/integrator"
+integrator_key_path = "/etc/siros-flow/integrator.jwk"
+
+[embedded.issuer]
+url = "{url}"
+
+[embedded.signing]
+jwk_path = "/etc/siros-flow/issuer-signing.jwk"
+
+[embedded.issuance]
+credential_validity_seconds = 3600
+"""
+
+
 def register_vc_services(naming: Naming, admin_token: str, register, say=print, sleep=None, admin_url: str = "",
                          additional_verifiers: list = None):
     """Register this instance's vc-apigw and vc-verifier with wallet-backend's
@@ -985,14 +1079,22 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
     # a certificate reissue updates the trust identity atomically with the app.
     pki_dir = None
     trusted_verifiers = list(spec.trusted_verifiers)
-    if "siros-verifier" in spec.images:
+    if "siros-verifier" in spec.images or "flow-core" in spec.images:
         say("=== Generating per-environment PKI ===")
         pki_ctx = DeployContext(fly=fly, naming=naming, resources=resources, spec=spec, say=say,
                                 docs=[], out_dir=out_dir, mongo_password=mongo_password)
         pki_dir = generate_pki(pki_ctx)
-        identity = x509_hash_identity(pki_dir / "verifier_ec.crt")
-        if identity not in trusted_verifiers:
-            trusted_verifiers.append(identity)
+        # Both additional verifiers derive their x509_hash client
+        # identity from their OWN dedicated leaf; the deploy computes
+        # it (never hard-coded — reissuing a leaf changes it).
+        if "siros-verifier" in spec.images:
+            identity = x509_hash_identity(pki_dir / "verifier_ec.crt")
+            if identity not in trusted_verifiers:
+                trusted_verifiers.append(identity)
+        if "flow-core" in spec.images:
+            identity = x509_hash_identity(pki_dir / "flow_ec.crt")
+            if identity not in trusted_verifiers:
+                trusted_verifiers.append(identity)
 
     say(f"=== Rendering config for environment '{env}' ===")
     # docs is the full rendered manifest (not just wallet-backend/pdp) - reused
@@ -1055,6 +1157,9 @@ def deploy_instance(spec: InstanceSpec, fly: FlyClient, naming: Naming, resource
         say("=== Registering VC services with wallet-backend's default tenant ===")
         additional = ([{"name": "SIROS Verifier", "url": naming.url("siros-verifier")}]
                       if "siros-verifier" in spec.images else None)
+        if "flow-core" in spec.images:
+            additional = (additional or []) + [
+                {"name": "SIROS Flow Core", "url": naming.url("flow-core")}]
         register_vc_services(naming, result.admin_token, register, say, additional_verifiers=additional)
     for comp in all_components:
         if any(p["public"] for p in comp["ports"]):

@@ -263,6 +263,70 @@ EOF
     rm -f /tmp/verifier_ec.csr /tmp/verifier_ec.conf /tmp/verifier_ec.ext
 fi
 
+# Dedicated flow-core verifier key (siros-flow-core's OID4VP request
+# signing): its own identity, separate from both the credential issuer's
+# DS key and the siros-verifier's, chained to the SAME per-environment
+# rootCA so a wallet that already trusts this environment trusts it.
+if [ -n "${FLOW_CORE_HOST:-}" ]; then
+    if [ ! -f "${PKI_DIR}/flow_ec_private.pem" ]; then
+        echo "Generating dedicated EC P-256 flow-core verifier key pair..."
+        openssl ecparam -name prime256v1 -genkey -noout -out /tmp/flow_ec_raw.pem
+        openssl pkcs8 -topk8 -nocrypt -in /tmp/flow_ec_raw.pem -out "${PKI_DIR}/flow_ec_private.pem"
+        chmod a+r "${PKI_DIR}/flow_ec_private.pem"
+        rm -f /tmp/flow_ec_raw.pem
+    fi
+    flow_cert_current() {
+        [ -f "${PKI_DIR}/flow_ec.crt" ] || return 1
+        openssl x509 -in "${PKI_DIR}/flow_ec.crt" -noout -ext subjectAltName 2>/dev/null \
+            | grep -qE "(^|[ ,])DNS:${FLOW_CORE_HOST//./\\.}(,|$)" || return 1
+        return 0
+    }
+    if flow_cert_current; then
+        echo "EC flow-core verifier certificate already current, skipping."
+    else
+        echo "Issuing dedicated EC flow-core verifier certificate..."
+        cat > /tmp/flow_ec.conf <<EOF
+[req]
+default_bits       = 256
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+
+[dn]
+C  = SE
+ST  = Test
+L  = E2E Testing
+O  = Wallet E2E Test
+OU = SIROS Flow Core
+CN = E2E Test SIROS Flow Core
+EOF
+        cat > /tmp/flow_ec.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = ${FLOW_CORE_HOST}
+EOF
+        openssl req -new -key "${PKI_DIR}/flow_ec_private.pem" -out /tmp/flow_ec.csr -config /tmp/flow_ec.conf
+        openssl x509 -req -in /tmp/flow_ec.csr -CA "${PKI_DIR}/rootCA.crt" -CAkey "${PKI_DIR}/rootCA.key" \
+            -CAcreateserial -out "${PKI_DIR}/flow_ec.crt" -days 730 -sha256 -extfile /tmp/flow_ec.ext
+        cat "${PKI_DIR}/flow_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/flow_ec_chain.pem"
+        rm -f /tmp/flow_ec.csr /tmp/flow_ec.conf /tmp/flow_ec.ext
+    fi
+    # The embedded issuer's credential-signing key: SEPARATE identity
+    # (the siros-verifier rule — the request-signing key is never the
+    # credential-signing key).
+    if [ ! -f "${PKI_DIR}/flow_issuer_ec_private.pem" ]; then
+        echo "Generating EC P-256 flow-core issuer signing key..."
+        openssl ecparam -name prime256v1 -genkey -noout -out /tmp/flow_issuer_ec_raw.pem
+        openssl pkcs8 -topk8 -nocrypt -in /tmp/flow_issuer_ec_raw.pem -out "${PKI_DIR}/flow_issuer_ec_private.pem"
+        chmod a+r "${PKI_DIR}/flow_issuer_ec_private.pem"
+        rm -f /tmp/flow_issuer_ec_raw.pem
+    fi
+fi
+
 if [ -f "${PKI_DIR}/wallet_provider_ec_private.pem" ]; then
     echo "EC wallet-provider key pair already exists, skipping."
 else

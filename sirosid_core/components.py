@@ -171,6 +171,16 @@ SIROS_VERIFIER_COMPONENT = {
     "checks": "/health",
 }
 
+# Optional flow-core service (siros-flow-core: the general flow engine —
+# one more trusted verifier whose issuance steps drive a complete
+# embedded issuer; image-gated like siros-verifier so an environment
+# opts in per redeploy via its images: block).
+FLOW_CORE_COMPONENT = {
+    "name": "flow-core",
+    "ports": [{"internal": 8080, "public": True}],
+    "checks": "/healthz",
+}
+
 # The Rust WMP engine (siros-wallet-core engine-server, the drop-in
 # `go-wallet-backend --mode=engine` replacement): the HTTP+SSE WMP binding
 # the native SDKs' remote mode speaks. Optional, enabled only by an explicit
@@ -189,13 +199,15 @@ WMP_ENGINE_COMPONENT = {
 def with_optional_components(components: list, images: dict) -> list:
     """Add image-gated components without changing the default component list."""
     out = list(components)
-    if "siros-verifier" in images and not any(c["name"] == "siros-verifier" for c in out):
-        inserted = []
-        for comp in out:
-            inserted.append(comp)
-            if comp["name"] == "pdp":
-                inserted.append(SIROS_VERIFIER_COMPONENT)
-        out = inserted
+    for gate, component in (("siros-verifier", SIROS_VERIFIER_COMPONENT),
+                            ("flow-core", FLOW_CORE_COMPONENT)):
+        if gate in images and not any(c["name"] == component["name"] for c in out):
+            inserted = []
+            for comp in out:
+                inserted.append(comp)
+                if comp["name"] == "pdp":
+                    inserted.append(component)
+            out = inserted
     # Before wallet-proxy: its nginx statically proxy_passes to this app's
     # .internal address, and a static target that does not resolve stops nginx
     # starting AT ALL (the same reason the conformance apps precede
@@ -288,6 +300,7 @@ def component_names(include_conformance: bool = True) -> list:
     """Every component name, in deploy order. Needs no image pins."""
     names = [c["name"] for c in build_components("", "")]
     names.insert(names.index("pdp") + 1, SIROS_VERIFIER_COMPONENT["name"])
+    names.insert(names.index("siros-verifier") + 1, FLOW_CORE_COMPONENT["name"])
     if include_conformance:
         names += [c["name"] for c in CONFORMANCE_COMPONENTS]
     return names
