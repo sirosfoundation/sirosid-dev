@@ -354,11 +354,17 @@ images:
   # disables trust: the PDP is this environment's own go-trust.
   # Pin provenance: docker build --network=host --no-cache
   #   -t registry.fly.io/sirosid-gdc-flow-core:local-<epoch> .
-  # from the sibling siros-flow-core checkout @ f3f16df (2026-11-09);
-  # pinned dep issuer-core 9e36735 (the metadata skip/dedupe fixes the
-  # live registry catalog needed). Digest:
-  # sha256:824ba746c9bebb013e1ac58fe46060e1cda544a653a0e85ccff56b3552405ad3.
-  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794646163
+  # from the sibling siros-flow-core checkout @ 220bce7 (2026-11-10);
+  # pinned dep issuer-core 145eeef (the live gdc round trip forced:
+  # metadata skip/dedupe for the real registry catalog,
+  # /.well-known/jwt-vc-issuer SD-JWT VC discovery, the entity-keyed
+  # AuthZEN subject, x5c in issued SD-JWTs). LIVE PROVEN: the
+  # the_live_gdc_round_trip test (siros-flow-service, --ignored) runs
+  # the whole chain against this deployment — start → embedded-issuer
+  # PID → present → go-trust PERMIT (whitelist: pid-issuers) → EHIC
+  # issue/redeem/verify. Digest:
+  # sha256:db961e53bce79567cc3f776f0edad2f5139559790e9106736538ef32c82da037.
+  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794745000
   wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.1.2
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
@@ -374,6 +380,12 @@ images:
 # for the proximity-presentation test.
 trusted_issuers:
   - https://geneva2026.mdoc.online
+  # siros-flow-core's EMBEDDED issuer (the additional trusted issuer on this
+  # environment): its PIDs/EHICs carry iss = its public URL with the x5c
+  # chaining to this environment's rootCA (flow_issuer_ec_chain). Trusting
+  # it here is the PDP-whitelist mechanism, NOT a bypass: every presentation
+  # trust decision still runs through this environment's own go-trust.
+  - https://sirosid-gdc-flow-core.fly.dev
   # yitbarek's issuer. The issuer identity is the APIGW's public URL (its credential_issuer, with keys at
   # /.well-known/jwt-vc-issuer); there is no public ...-vc-issuer host (that app is internal), so trusting
   # it never resolved and the PDP could not fetch its keys.
@@ -563,6 +575,25 @@ values:
             description: "Verifier access (legacy action name): return the verified dNSName"
             constraints:
               return_verifier_ids: [x509_san_dns]
+      registries:
+        whitelist:
+          actions:
+            # siros-issuer-core's issuance trust query (design §11):
+            # the AuthZEN action the FLOW-CORE embedded issuer (and any
+            # future issuer-core deployment on this environment) sends
+            # for backend session creation — subject = the integrator
+            # identity, which the flow service sets to its own URL,
+            # already a pid-issuer. Deep-merged over the default
+            # whitelist's action map; everything else unchanged.
+            issue: pid-issuers
+            # siros-verifier-core's presented-credential trust query
+            # (Mode B / the flow's presentation step): the AuthZEN action
+            # name is the ROLE — "issuer" for a presented sd-jwt's
+            # issuer (the query the flow sends when it verifies the
+            # deployment's own PID). Same pid-issuers list: a credential
+            # the environment trusts its issuers to ISSUE is trusted
+            # when PRESENTED back to it.
+            issuer: pid-issuers
     # Resolve entities identified by did:web, so a presentation from a wallet
     # to - or an issuer identified by - a did:web subject can be evaluated at
     # all. Additive: it registers one more resolver alongside the whitelist and

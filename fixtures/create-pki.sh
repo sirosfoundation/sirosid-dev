@@ -325,6 +325,41 @@ EOF
         chmod a+r "${PKI_DIR}/flow_issuer_ec_private.pem"
         rm -f /tmp/flow_issuer_ec_raw.pem
     fi
+    # Its leaf: x5c-carried in every credential the embedded issuer
+    # signs (verifier-core resolves the issuer keys from it; the chain
+    # to this environment's rootCA is what a trusting wallet verifies).
+    if [ ! -f "${PKI_DIR}/flow_issuer_ec.crt" ]; then
+        echo "Issuing EC flow-core embedded-issuer certificate..."
+        cat > /tmp/flow_issuer_ec.conf <<EOF
+[req]
+default_bits       = 256
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+
+[dn]
+C  = SE
+ST  = Test
+L  = E2E Testing
+O  = Wallet E2E Test
+OU = SIROS Flow Core Issuer
+CN = E2E Test SIROS Flow Core Issuer
+EOF
+        cat > /tmp/flow_issuer_ec.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = ${FLOW_CORE_HOST}
+EOF
+        openssl req -new -key "${PKI_DIR}/flow_issuer_ec_private.pem" -out /tmp/flow_issuer_ec.csr -config /tmp/flow_issuer_ec.conf
+        openssl x509 -req -in /tmp/flow_issuer_ec.csr -CA "${PKI_DIR}/rootCA.crt" -CAkey "${PKI_DIR}/rootCA.key" \
+            -CAcreateserial -out "${PKI_DIR}/flow_issuer_ec.crt" -days 730 -sha256 -extfile /tmp/flow_issuer_ec.ext
+        cat "${PKI_DIR}/flow_issuer_ec.crt" "${PKI_DIR}/rootCA.crt" > "${PKI_DIR}/flow_issuer_ec_chain.pem"
+        rm -f /tmp/flow_issuer_ec.csr /tmp/flow_issuer_ec.conf /tmp/flow_issuer_ec.ext
+    fi
 fi
 
 if [ -f "${PKI_DIR}/wallet_provider_ec_private.pem" ]; then

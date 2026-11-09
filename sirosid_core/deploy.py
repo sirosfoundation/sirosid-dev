@@ -604,10 +604,6 @@ def deploy_component(ctx: DeployContext, comp: dict):
         # backend API with its own identity (auto-registered on the
         # embedded side); a fresh per-environment key, its public half
         # rides the rendered config.
-        integrator_key_path = out_dir / "flow-integrator.jwk"
-        if not integrator_key_path.exists():
-            integrator_key_path.write_text(_fresh_flow_integrator_jwk())
-        fly.ensure_secret(app, "flowIntegratorKey", integrator_key_path.read_text())
         # The rendered config: the definitions ship in the image
         # (flows/ baked in); pdp points at THIS environment's go-trust
         # (naming.addr — the 6PN address, like siros-verifier's PDP
@@ -617,10 +613,12 @@ def deploy_component(ctx: DeployContext, comp: dict):
         flow_config_path.write_text(_flow_core_config(naming))
         deploy_args += [
             "--file-local", f"/etc/siros-flow/config.toml={flow_config_path}",
-            "--file-secret", "/etc/siros-flow/signing.jwk=flowVerifierKey",
+            "--file-secret", "/etc/siros-flow/signing.pem=flowVerifierKey",
             "--file-local", f"/etc/siros-flow/verifier-chain.pem={pki_dir / 'flow_ec_chain.pem'}",
-            "--file-secret", "/etc/siros-flow/issuer-signing.jwk=flowIssuerKey",
-            "--file-secret", "/etc/siros-flow/integrator.jwk=flowIntegratorKey",
+            "--file-secret", "/etc/siros-flow/issuer-signing.pem=flowIssuerKey",
+            # The embedded issuer's x5c (its credentials carry the chain —
+            # what a trusting wallet/verifier resolves the issuer keys from).
+            "--file-local", f"/etc/siros-flow/issuer-chain.pem={pki_dir / 'flow_issuer_ec_chain.pem'}",
             "--env", "FLOW_CORE_BIND=0.0.0.0:8080",
             "--env", f"FLOW_CORE_PUBLIC_URL={naming.url(name)}",
         ]
@@ -889,18 +887,28 @@ def deploy_component(ctx: DeployContext, comp: dict):
 
 
 def _fresh_flow_integrator_jwk() -> str:
-    """A fresh EC P-256 integrator key for flow-core (RFC 7523 shape).
+    """A fresh EC P-256 integrator key for flow-core (RFC 7523 shape,
+    COMPLETE JWK — the public x/y members included: jose-rs signs from
+    the file and demands them).
 
     One per environment, persisted under fixtures/rendered/fly-<env>/
     so a redeploy reuses it (the embedded issuer's client registry
     knows this key — rotating it silently would break the flow's own
     backend assertions).
     """
-    import base64
-    import secrets
-    d = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode().rstrip("=")
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+    import base64 as b64mod
+
+    def b64u(b):
+        return b64mod.urlsafe_b64encode(b).decode().rstrip("=")
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    d = key.private_numbers().private_value.to_bytes(32, "big")
+    point = key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
     return json.dumps({
-        "kty": "EC", "crv": "P-256", "d": d,
+        "kty": "EC", "crv": "P-256",
+        "d": b64u(d), "x": b64u(point[1:33]), "y": b64u(point[33:]),
         "kid": f"flow-integrator-{int(time.time())}", "alg": "ES256", "use": "sig",
     })
 
@@ -937,8 +945,14 @@ cert_chain_path = "/etc/siros-flow/verifier-chain.pem"
 
 [issuer]
 status_mode = "local"
-integrator_id = "https://{naming.host('flow-core')}/integrator"
-integrator_key_path = "/etc/siros-flow/integrator.jwk"
+# The integrator identity the flow's issuance steps present to the embedded
+# issuer backend: the deployment's OWN URL — the identity the PDP whitelists
+# as a pid-issuer. ONE deployment, ONE key: the integrator key IS the
+# embedded issuer's credential-signing key (both roles are the same party —
+# the deployment — so the PDP's entity-to-key binding, resolved from the
+# issuer's own JWKS, matches the backend assertion's key).
+integrator_id = "{naming.url('flow-core')}"
+integrator_key_path = "/etc/siros-flow/issuer-signing.pem"
 
 [embedded.issuer]
 url = "{url}"
@@ -955,6 +969,15 @@ refresh_seconds = 300
 [embedded.signing]
 # The PEM (create-pki.sh's shape) — the app detects the PEM header.
 jwk_path = "/etc/siros-flow/issuer-signing.pem"
+# The embedded issuer's x5c chain (its credentials carry it; a trusting
+# wallet resolves the issuer keys from the leaf).
+cert_chain_path = "/etc/siros-flow/issuer-chain.pem"
+
+# The dev wallet client (LOCAL TEST ONLY — the suite-shaped fixture the
+# conformance stacks register; the token endpoint demands client auth).
+[embedded.authorization.clients.suite-wallet]
+jwks = [{{ kty = "EC", x = "MpY3glbcq9njtQLM1hCREOrfQqPgOKyGOl7xkMwHsSI", y = "ZDT-zr7lt2R12MaFbXuapq4eXS5hprKjegb5yq3UlXE", crv = "P-256", kid = "test-client-key-1", alg = "ES256", use = "sig" }}]
+allow_any_redirect_uri = false
 
 [embedded.issuance]
 credential_validity_seconds = 3600
