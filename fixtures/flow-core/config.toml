@@ -24,3 +24,12 @@ integrator_key_path = "/etc/siros-flow/integrator.jwk"
 
 presentation_ttl_seconds = 300
 retention_after_final_seconds = 3600
+
+# The token plugin the shipped flow 4 (token-sourced-attestation)
+# references. The compose stack's mini-oidc mints a fresh key every
+# boot — discovery (jwks_uri, fetched + cached), never a static pin.
+[[plugins.token]]
+name = "idp"
+issuer = "http://mini-oidc:9005"
+jwks_uri = "http://mini-oidc:9005/jwks"
+audience = "http://localhost:9086"

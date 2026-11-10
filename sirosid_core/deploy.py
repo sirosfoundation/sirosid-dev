@@ -943,6 +943,16 @@ dir = "/etc/siros-flow/flows"
 pem_path = "/etc/siros-flow/signing.pem"
 cert_chain_path = "/etc/siros-flow/verifier-chain.pem"
 
+# The token plugin the shipped flow 4 (token-sourced-attestation)
+# references: the environment's asserting party. The mini-oidc mints a
+# FRESH signing key every boot, so it can never be a static pin —
+# discovery (jwks_uri, fetched + cached) is the only honest wiring.
+[[plugins.token]]
+name = "idp"
+issuer = "{naming.url('mini-oidc')}"
+jwks_uri = "{naming.url('mini-oidc')}/jwks"
+audience = "{url}"
+
 [issuer]
 status_mode = "local"
 # The integrator identity the flow's issuance steps present to the embedded
