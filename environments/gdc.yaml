@@ -329,17 +329,24 @@ images:
   # WMP_ENGINE=yes overlay). Image-gated optional component: THIS pin is
   # what makes `make fly-up ENV=gdc` deploy it at all
   # (components.with_optional_components).
-  # Source: ghcr.io/sirosfoundation/engine-server:v0.1.2 (public, the first
-  # released tag whose run completed), linux/amd64 manifest
-  # sha256:3fe3677901f8206798587633a3e8544c5df40306d6e4838cf180dbf53533772b,
+  # 2026-11-10: 0.1.2 -> 0.2.1. The chain-complete release: the OIDF
+  # wallet conformance suites (VCI incl. batch issuance + VP) green
+  # against the raw engine, the tenant-bound principal mode
+  # (ENGINE_PRINCIPAL_MODE=tenant - this env's overlay sets it; the
+  # deployed image READS it for the first time), the pseudonymous engine
+  # tokens (W10), the batch fresh-keys contract, the #540 fix (the
+  # application/jwt signer chain reaches the PDP), and the first release
+  # whose conformance verdict rides its own release assets.
+  # Source: ghcr.io/sirosfoundation/engine-server:v0.2.1 (public), linux/amd64
+  # manifest sha256:03a4fd2f58be8467d15ca165e704bb2b2887974a61cf46a98e02217f0b533db1,
   # MIRRORED unchanged into the Fly registry (no build):
-  #   docker pull ghcr.io/sirosfoundation/engine-server@sha256:3fe36779...
-  #   docker tag  ... registry.fly.io/sirosid-gdc-wmp-engine:v0.1.2 && docker push ...
-  # Why: flyctl deploy -i ghcr.io/sirosfoundation/engine-server:v0.1.2 (or the
+  #   docker pull ghcr.io/sirosfoundation/engine-server@sha256:03a4fd2f...
+  #   docker tag  ... registry.fly.io/sirosid-gdc-wmp-engine:v0.2.1 && docker push ...
+  # Why: flyctl deploy -i ghcr.io/sirosfoundation/engine-server:v0.2.1 (or the
   # @sha256 form) fails here with "failed to fetch an image ... server returned
   # a non-200 status code: 500" from Fly's image lookup, three times, while the
   # image itself pulls anonymously; the Fly-registry copy deploys. Mirrored
-  # digest in the Fly registry: sha256:52b482e024d1dfd46f5bca04610a6627dd7f093ffd2b317f8ee9d5f6a861386e.
+  # digest in the Fly registry: sha256:edbda4d8987ae3d786c24d836e739765836d69c80fa853967744764bcb017fb1.
   # siros-flow-core (the general flow service): the additional trusted
   # verifier AND issuer, one app, one port (port 8080 published). Its
   # presentation steps arm OID4VP requests signed by a dedicated leaf
@@ -365,7 +372,7 @@ images:
   # issue/redeem/verify. Digest:
   # sha256:db961e53bce79567cc3f776f0edad2f5139559790e9106736538ef32c82da037.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794745000
-  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.1.2
+  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.1
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
