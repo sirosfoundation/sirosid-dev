@@ -361,8 +361,15 @@ images:
   # disables trust: the PDP is this environment's own go-trust.
   # Pin provenance: docker build --network=host --no-cache
   #   -t registry.fly.io/sirosid-gdc-flow-core:local-<epoch> .
-  # from the sibling siros-flow-core checkout @ the vocabulary
-  # closure (2026-11-10, post-wallet-drill: the notify step kind with
+  # from the sibling siros-flow-core checkout @ the plain-mode pass
+  # (2026-11-10: the plain direct_post response mode — per-step
+  # opt-in, .jwt the default — landing the shipped
+  # ehic-pid-presentation-plain twin as the drill's vehicle against
+  # the CURRENT wallet pair; deps: issuer-core f9ff25d, verifier-core
+  # dfe710e8 (wallet-drill/plain-direct-post: the plain request
+  # without JARM params, the family handover, the clear-form response
+  # path). Before that, the vocabulary closure (2026-11-10,
+  # post-wallet-drill: the notify step kind with
   # the SSE event stream, flow 4 SHIPPED with its idp token plugin
   # wired to the mini-oidc by JWKS discovery — the [[plugins.token]]
   # stanza in deploy.py's render — and the recorded digest fixtures;
@@ -391,8 +398,8 @@ images:
   # the whole chain against this deployment — start → embedded-issuer
   # PID → present → go-trust PERMIT (whitelist: pid-issuers) → EHIC
   # issue/redeem/verify. Digest:
-  # sha256:d92f654755210cb7ba062853b2f1e7852ad8f9b3443e8ad5e7ba51bf8c8367e2.
-  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794854000
+  # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
+  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
   wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.1
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
