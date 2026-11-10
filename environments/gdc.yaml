@@ -361,17 +361,18 @@ images:
   # disables trust: the PDP is this environment's own go-trust.
   # Pin provenance: docker build --network=host --no-cache
   #   -t registry.fly.io/sirosid-gdc-flow-core:local-<epoch> .
-  # from the sibling siros-flow-core checkout @ 220bce7 (2026-11-10);
-  # pinned dep issuer-core 145eeef (the live gdc round trip forced:
-  # metadata skip/dedupe for the real registry catalog,
-  # /.well-known/jwt-vc-issuer SD-JWT VC discovery, the entity-keyed
-  # AuthZEN subject, x5c in issued SD-JWTs). LIVE PROVEN: the
+  # from the sibling siros-flow-core checkout @ 0d1f7ed (2026-11-10);
+  # pinned dep issuer-core 145eeef. Carries the P-bw2/P-bw3 landings
+  # (the multi-credential presentation + bind-vocabulary closure, the
+  # DC API carrier, the token/fetch plugin surface) — the shipped
+  # flows/ set is unchanged, so the deployment boots identically;
+  # the live round trip remains the standing oracle. LIVE PROVEN: the
   # the_live_gdc_round_trip test (siros-flow-service, --ignored) runs
   # the whole chain against this deployment — start → embedded-issuer
   # PID → present → go-trust PERMIT (whitelist: pid-issuers) → EHIC
   # issue/redeem/verify. Digest:
-  # sha256:db961e53bce79567cc3f776f0edad2f5139559790e9106736538ef32c82da037.
-  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794745000
+  # sha256:2669af6798933c2011a49caf2980bc9d0e04b47d0b3a51babc763618e9c1bff6.
+  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794794000
   wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.1
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
