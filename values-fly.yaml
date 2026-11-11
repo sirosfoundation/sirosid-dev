@@ -162,7 +162,7 @@ images:
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here. (Chart's own pin is still 0.9.0 as of this
   # commit, so it has not caught up.)
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.20.7"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.29.1"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
@@ -301,7 +301,8 @@ images:
   #   0.22.1  the SSRF address guard on POST /helper/get-cert (#358), and a
   #        recover() registered before the flow_id log truncation so a panic
   #        in handleFlowStart is caught rather than taking the process (#357)
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.22.1"
+  #   0.25.1  the current release (2026-11-11); 0.23.0-0.25.0 in between
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.1"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
