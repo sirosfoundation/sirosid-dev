@@ -403,7 +403,18 @@ images:
   wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.1
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
-  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
+  # wallet-frontend: the RELEASED sirosid flavor is 0.5.0-1-sirosid.11 (rollback pin:
+  #   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11).
+  # The deployed pin is the client-held-response-encryption BRANCH build
+  # (feat/client-held-response-encryption @ 8a9ede184, carrying release/sirosid),
+  # published through the repo's own docker-build-publish workflow as
+  # sirosid-rc-encryption.1 (run 42989910947) — deployed so the wallet drill's
+  # .jwt vehicle runs end-to-end: this frontend answers sign_presentation with
+  # response_jwe (the .jwt mode the deployed pair's engine requires). The .11
+  # frontend could not (its sign handler returns only vpToken — gdc.yaml's
+  # wallet-backend note documents the gap). Re-pin to the released sirosid image
+  # when the response-encryption work ships in one.
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.1
   #   mini-oidc 0.0.6 is the newest release (the values-fly.yaml pin).
   # env-admin 0.1.2 adds additive-verifier re-registration after storage resets.
   # Built from a clean sirosid-dev tree at 0bf082dc2c4691843d8af572ecd60869b2d675ef.
