@@ -411,7 +411,12 @@ images:
   # issue/redeem/verify. Digest:
   # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
-  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.1
+  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:main-1794395355
+  #   wallet-core main @ 36f8e32 (2026-11-11): the OID4VP link parsing (host'd queries,
+  #   query-less links, the fetchable-URI guard - the on-device GDC presentation fixes) +
+  #   the AuthZEN resource.key array shape (the proxy bind), both unreleased at v0.2.1.
+  #   Re-pin to the released engine-server image once wallet-core v0.2.2 is cut.
+  #   Previous pin: v0.2.1 (sha256:03a4fd2f… upstream / edbda4d8… in the Fly registry).
   #   wallet-frontend: 0.5.0-1-sirosid.10 -> .11, the newest sirosid-flavoured image that is published
   #     (the v0.5.0-sirosid.12/.13 git tags have no image; v0.6.0 is the main line, not this flavour).
   # wallet-frontend: the RELEASED sirosid flavor is 0.5.0-1-sirosid.11 (rollback pin:
