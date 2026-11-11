@@ -306,7 +306,10 @@ images:
   # NOT configured here: server.external_urls.engine_url, so /.well-known/wmp-configuration returns 503 (startup warns),
   # and the wallet-proxy routes only /api/v2/wallet to the engine port, so the discovery path is not routed either.
   # Re-pin to the released go-wallet-backend image once those PRs are merged and released.
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150
+  # 2026-11-11: RE-PINNED to the released go-wallet-backend 0.25.1 (tag v0.25.1 = 905be87c0), as the note above asked. #469 and #471
+  # are merged and released; #163 (WMP bridge) and #472 (sign-stage refusal) were CLOSED unmerged, so they are no longer in this image.
+  # Rollback: registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150 (the integration-12 local build, engine d7d11ac).
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.1
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in

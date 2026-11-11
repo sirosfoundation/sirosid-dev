@@ -47,7 +47,7 @@ services:
     # (go-trust#159), and building from a sibling checkout would silently pick
     # up whatever that checkout happens to be on - reproducing the very bug
     # this overlay is meant to exercise past.
-    image: ghcr.io/sirosfoundation/go-trust:0.20.6
+    image: ghcr.io/sirosfoundation/go-trust:0.29.1
     container_name: go-trust-wrpac-e2e-test
     ports:
       - "9099:6001"

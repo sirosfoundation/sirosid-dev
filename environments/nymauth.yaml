@@ -43,8 +43,8 @@ images:
   vc-apigw: registry.fly.io/sirosid-gdc-vc-apigw:local-1793192393            # see gdc.yaml PIN PROVENANCE
   vc-issuer: registry.fly.io/sirosid-gdc-vc-issuer:local-1793192393
   vc-registry: registry.fly.io/sirosid-gdc-vc-registry:local-1793192393
-  wallet-backend: registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150  # engine d7d11ac (integration 12)
-  pdp: ghcr.io/sirosfoundation/go-trust:0.26.0                               # released; verifier_ids (go-trust#218)
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.1                          # released (was the local integration-12 build local-1793194150)
+  pdp: ghcr.io/sirosfoundation/go-trust:0.29.1                               # released (was 0.26.0; verifier_ids go-trust#218 is in it)
   wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11
 
 # Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
