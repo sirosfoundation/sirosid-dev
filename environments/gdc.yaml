@@ -322,7 +322,15 @@ images:
   # 2026-11-05: 0.26.1 -> 0.26.2. The did:web registry matches a presented JWK against publicKeyMultibase methods too
   # (go-trust#230); with only publicKeyJwk compared, key binding for an issuer publishing Multikey methods (Accredify) was
   # denied even with its DID in trusted_issuers ("no matching verification method").
-  pdp: ghcr.io/sirosfoundation/go-trust:0.26.2
+  # 0.29.1 (2026-11-11, go-trust#246, the #245 fix): the whitelist registry's
+  # JWKS load is CONCURRENT (bounded, refreshConcurrency=8) with per-entity
+  # publishing, failed entities retry on a short startup backoff instead of
+  # closing until the next 5-minute tick, the no-keys-cached denial carries
+  # could-not-evaluate (evaluation_status), and non-HTTP(S) entity ids
+  # (x509_hash:/did:web:) are skipped in Refresh (never fetchable — the
+  # permanent log noise + cold-boot timeout chain from the #245 live repro).
+  # Previous: 0.26.2 (verifier_ids from the whitelist, #218).
+  pdp: ghcr.io/sirosfoundation/go-trust:0.29.1
   # The Rust WMP engine (siros-wallet-core engine-server) - the drop-in
   # `--mode=engine` replacement the native SDKs' remote mode speaks
   # (HTTP+SSE through wallet-proxy's /wmp-engine/, like the local
