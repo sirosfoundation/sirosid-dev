@@ -504,7 +504,7 @@ images:
   issuerCore: "ghcr.io/sirosfoundation/vc/issuer:0.7.0-sirosid.1"
   verifier: "ghcr.io/sirosfoundation/vc/verifier:0.7.0-sirosid.1"
   walletAdmin: "ghcr.io/sirosfoundation/go-wallet-admin:0.12.0"
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.1"
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.2"
   walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.11"
   pdp: "ghcr.io/sirosfoundation/go-trust:0.29.1"
   walletFrontendNginx: "ghcr.io/nginx/nginx-unprivileged:1.31.2-alpine"
