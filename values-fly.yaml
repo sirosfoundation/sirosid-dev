@@ -301,8 +301,8 @@ images:
   #   0.22.1  the SSRF address guard on POST /helper/get-cert (#358), and a
   #        recover() registered before the flow_id log truncation so a panic
   #        in handleFlowStart is caught rather than taking the process (#357)
-  #   0.25.1  the current release (2026-11-11); 0.23.0-0.25.0 in between
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.1"
+  #   0.25.2  the current release (2026-11-11); 0.23.0-0.25.1 in between
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.2"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
