@@ -248,7 +248,11 @@ images:
   # artifacts excluded): d8f2cf8438b2155ef8cd9fb59edd9afc085b7affa8e5821ff9586cbc1fd3c9a1.
   # Image digest sha256:391ca2bfcd16eb283893c2dbbeb0c729b587973622b50fe35399e95784b24552.
   # Build: docker build -t registry.fly.io/sirosid-gdc-siros-verifier:local-<epoch> .
-  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:local-1793576205
+  # 2026-11-11: re-pinned to the released siros-verifier-core v0.1.2 (ghcr.io/sirosfoundation/siros-verifier-core:0.1.2,
+  # amd64 manifest sha256:39f17c1dd5096e8af4b575046a1e6217ef1edd11c9597815fa04e79e0611a5f5), mirrored into the Fly registry
+  # because Fly's image lookup answers 500 for the release's OCI index (same as the wmp-engine image). No build.
+  # Rollback: registry.fly.io/sirosid-gdc-siros-verifier:local-1793576205 (the d720bb1 local build above).
+  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:v0.1.2
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
