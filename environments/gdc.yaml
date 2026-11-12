@@ -696,20 +696,6 @@ values:
             # registry's /statuslists/1 and beyond) is a NEW subject and
             # needs its own entry — the PDP's denial message quotes the exact
             # string to paste.
-            #
-            # NOTE the second half: go-trust's whitelist binds a SUPPLIED key
-            # against keys it discovers for the entity itself (JWKS fetched
-            # from {entity}/.well-known/... under the LIST URI, cached per
-            # entity, fingerprint-matched at evaluation) - membership alone
-            # never admits a jwk-typed resource. The registry publishes no
-            # discoverable endpoint today (all five probed 2026-11-12:
-            # /statuslists/0/.well-known/{jwks.json,jwt-vc-issuer} and the
-            # origin variants all 404), so until the registry serves its
-            # status-list signing keys discoverably (the vc-side feature,
-            # SUNET/vc#<tbd>), evaluations for this entry deny with
-            # "no keys cached for entity" - past membership, still short of
-            # the bind. The entry is correct and required either way: the
-            # membership check runs first and denies without it.
             status-list-signer: status-list-signers
           lists:
             status-list-signers:
