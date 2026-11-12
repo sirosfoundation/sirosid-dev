@@ -337,6 +337,15 @@ def wallet_proxy_locations(naming: Naming, assetlinks_path: str = "/etc/nginx/we
         rewrite ^/wmp-engine/(.*)$ /$1 break;
         proxy_pass http://{naming.addr("wmp-engine")};
         proxy_buffering off;
+        # SSE needs HTTP/1.1 to the upstream: without it nginx speaks
+        # HTTP/1.0 (Connection: close, no chunked-transfer awareness)
+        # and the engine's axum SSE events after the first chunk get lost
+        # in the encoding mismatch - the match ask arrives, the progress
+        # and the completion never do (found on-device: every cross-device
+        # presentation's decline reached the verifier but the wallet sat
+        # at "Contacting verifier" forever).
+        proxy_http_version 1.1;
+        proxy_set_header Connection '';
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP {real_ip};
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
