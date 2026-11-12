@@ -251,18 +251,8 @@ images:
   # 2026-11-11: re-pinned to the released siros-verifier-core v0.1.2 (ghcr.io/sirosfoundation/siros-verifier-core:0.1.2,
   # amd64 manifest sha256:39f17c1dd5096e8af4b575046a1e6217ef1edd11c9597815fa04e79e0611a5f5), mirrored into the Fly registry
   # because Fly's image lookup answers 500 for the release's OCI index (same as the wmp-engine image). No build.
-  # 2026-11-12: re-pinned to the released siros-verifier-core v0.1.3 — the GDC interop release carrying #47 (the
-  # claim-label fix) and #49 (the status-list interop fix; this config's status_list_key_source = "x5c-or-jwk" is the
-  # #49 deployment opt-in — the registry's status lists embed their signer as a JOSE jwk with no x5c chain, which the
-  # v0.1.2 default x5c-only resolution rejects, the v0.1.2 deployment failing every cross-device presentation of a
-  # credential with a status reference with 400 invalid_status_list). Source image
-  # ghcr.io/sirosfoundation/siros-verifier-core@sha256:b6ed61ce15babbcd42c7614030e610a444388a221b8c68a6be15bd8b26f5bb59
-  # (release-verified: non-root 10001:10001, signed SBOMs, OIDF conformance 14/14), mirrored into the Fly registry as
-  # digest sha256:3cea7944f0bb609ac348098d02602215333d871adc3161312e332d62f2c13fbe. No build.
-  # Rollback: revert BOTH the image and the config together — registry.fly.io/sirosid-gdc-siros-verifier:v0.1.2 AND the
-  # removal of status_list_key_source (the key does not exist before v0.1.3; its deny-unknown-fields parser fails at
-  # startup on the v0.1.2 image). The image and the config move as one unit in both directions.
-  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:v0.1.3
+  # Rollback: registry.fly.io/sirosid-gdc-siros-verifier:local-1793576205 (the d720bb1 local build above).
+  siros-verifier: registry.fly.io/sirosid-gdc-siros-verifier:v0.1.2
 
   # Pinned here rather than in values-fly.yaml because that file is shared by
   # every Fly environment and this is gdc's pin, not a vetted default for all
