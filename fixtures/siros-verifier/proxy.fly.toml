@@ -65,6 +65,13 @@ name = "vp"
   receipt_audience = "vp"
   max_receipt_ttl_secs = 300
   role = "pid-provider"
+  # The GDC registry's status-list tokens embed the signer as a JOSE `jwk`
+  # with no certificate chain (the IETF Token Status List shape), which the
+  # default "x5c" policy refuses. "x5c-or-jwk" accepts the x5c leaf when a
+  # token carries a chain and the embedded key otherwise; the strict binding
+  # rules (sub == the referenced URI, iat/exp, signature) and the go-trust
+  # signer gate still apply.
+  status_list_key_source = "x5c-or-jwk"
   request_ttl_secs = 300
   subject_pointer = "/personal_administrative_number"
   dcql = { credentials = [
