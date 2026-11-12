@@ -348,7 +348,8 @@ images:
   # (x509_hash:/did:web:) are skipped in Refresh (never fetchable — the
   # permanent log noise + cold-boot timeout chain from the #245 live repro).
   # Previous: 0.26.2 (verifier_ids from the whitelist, #218).
-  pdp: ghcr.io/sirosfoundation/go-trust:0.29.1
+  # 2026-11-12: 0.29.1 -> 0.29.2 (latest release; same deploy as the status-list-signers whitelist, #143).
+  pdp: ghcr.io/sirosfoundation/go-trust:0.29.2
   # The Rust WMP engine (siros-wallet-core engine-server) - the drop-in
   # `--mode=engine` replacement the native SDKs' remote mode speaks
   # (HTTP+SSE through wallet-proxy's /wmp-engine/, like the local
