@@ -675,6 +675,32 @@ values:
             # the environment trusts its issuers to ISSUE is trusted
             # when PRESENTED back to it.
             issuer: pid-issuers
+            # siros-verifier-core's status-list signer trust query
+            # (siros-verifier-core #49/#48): after the verifier verifies a
+            # status-list token's signature and its sub binding, go-trust
+            # decides whether its signer may speak for that list — action
+            # "status-list-signer", subject = the status list's own URI
+            # (the token's sub, which the credential's status reference
+            # names), evidence = the signer's embedded JWK (the registry's
+            # status lists carry no x5c chain). Without this mapping the
+            # action has no list and every evaluation denies with
+            # "no registry returned positive match" — observed live on
+            # 2026-11-12, the first post-v0.1.3-re-pin drill stopping at the
+            # (correct, descriptive) 403 status_list_signer_not_trusted:
+            #   trust decision: deny, reason="no registry returned positive match",
+            #   action="status-list-signer", resource_type="jwk",
+            #   subject_id="https://sirosid-gdc-vc-registry.fly.dev/statuslists/0"
+            # The list carries the exact subject the query sends: the status
+            # list's full URI, pasted from that denial. A NEW list (the
+            # registry's /statuslists/1 and beyond) is a NEW subject and
+            # needs its own entry — the PDP's denial message quotes the exact
+            # string to paste.
+            status-list-signer: status-list-signers
+          lists:
+            status-list-signers:
+              # The registry's status list, exact subject URI as sent by the
+              # verifier's trust query (the token's sub == the list's URI).
+              - https://sirosid-gdc-vc-registry.fly.dev/statuslists/0
     # Resolve entities identified by did:web, so a presentation from a wallet
     # to - or an issuer identified by - a did:web subject can be evaluated at
     # all. Additive: it registers one more resolver alongside the whitelist and
