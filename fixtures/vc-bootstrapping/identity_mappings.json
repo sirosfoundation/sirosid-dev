@@ -82,5 +82,17 @@
       },
       "created_at": "0001-01-01T00:00:00Z"
     }
+  ],
+  "carsten-004": [
+    {
+      "authentic_source_person_id": "carsten-004",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Carsten",
+        "family_name": "Stöcker",
+        "birth_date": "1973-05-18"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
   ]
 }
