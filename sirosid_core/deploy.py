@@ -550,6 +550,11 @@ def deploy_component(ctx: DeployContext, comp: dict):
         for k, v in mini_oidc_env(naming).items():
             deploy_args += ["--env", f"{k}={v}"]
         deploy_args += ["--file-local", f"/etc/mini-oidc/configs/config.production.yaml={config_path}"]
+        # mini-oidc reads one users file, baked into its image. An environment
+        # with its own test users ships the whole file over it.
+        users_path = resources.root / "fixtures" / "mini-oidc" / f"users-{env}.yaml"
+        if users_path.exists():
+            deploy_args += ["--file-local", f"/etc/mini-oidc/users.yaml={users_path}"]
     elif name == "vc-registry":
         deploy_args += _vc_service_files(ctx, app, "vc-registry", metadata=False)
     elif name == "vc-issuer":
