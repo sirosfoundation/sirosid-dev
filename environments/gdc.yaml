@@ -478,6 +478,13 @@ trusted_issuers:
   # The did:web registry (values.pdp.extraRegistries.didweb) supplies its keys; this entry authorizes the identity.
   # Synthetic demo data only.
   - did:web:vc.infocomm-media-development-au.demo.nexus.uat.accredify.io:organizations:a03de350-d707-41bc-8bc4-0c924ca68baa
+  # Spherity's EUDI/EBW OID4VCI issuer (api.oid.spherity.dev), added 2026-11-13 for the sd-jwt
+  # credential offer interop test (com.spherity.ebwoid-sd-jwt, a pre-authorized_code offer). The
+  # offer's credential_issuer names the tenant-scoped path (the .../oid4vci/<tenant-id> form),
+  # and its metadata is served from that same URL — trust it exactly as named, no origin
+  # normalization (a per-tenant issuer identity; another tenant's URL is a different subject).
+  # The whitelist authorizes the identity; the issuer's own JWKS/metadata supplies its keys.
+  - https://api.oid.spherity.dev/oid4vci/019818a4-2bbc-72e1-9d49-5a9f98f8b694
 
 # Every OpenID4VP verifier used for interop testing so far - each needs its
 # own reader-CA root below (ISO 18013-5 out-of-band trust convention, not a
