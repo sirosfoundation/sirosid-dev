@@ -549,6 +549,17 @@ trusted_verifiers:
   # The plain origin as well, which is what an unsigned DC API request reduces
   # to - that path carries no signing certificate and so no DID.
   - https://acra.uat.accredify.io
+  # Spherity's EUDI/EBW PID verifier (api.oid.spherity.dev), added 2026-11-13.
+  # Its request object (an x509_hash client_id, request_uri under
+  # https://api.oid.spherity.dev/oid4vp/<id>/jar/<id>) is signed with a leaf
+  # whose SAN is api.oid.spherity.dev (O=Spherity GmbH, issued by "EUDI Sandbox
+  # Issuing CA - G1" under "EUDI Sandbox Root CA - G1"); the hash below is that
+  # leaf's SHA-256, matching the client_id, and is the PDP's own denial
+  # (action credential-verifier, resource x5c) pasted verbatim. Hash-pinning is
+  # the trust decision, so no reader-CA root is added. The origin is the form a
+  # SAN-scheme or unsigned request would normalize to.
+  - x509_hash:pZXrwB5ZSeg5l7sEQji3SHC6vlxy20wMjYbgqIXbP4c
+  - https://api.oid.spherity.dev
 trusted_verifier_roots:
   - fixtures/trusted-roots/multipaz-reader-ca.pem
   - fixtures/trusted-roots/siros-multipaz-verifier-reader-ca.pem
