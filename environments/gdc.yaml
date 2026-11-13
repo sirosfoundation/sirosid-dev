@@ -610,6 +610,26 @@ rical_root_cert: fixtures/trusted-roots/geneva2026-rical-root.pem
 # environments/README.md. Anything the chart can express is reachable here
 # without a code change anywhere else.
 values:
+  # A PID with the vct urn:eudi:pid:1, for verifiers that request it and not the
+  # ARF-versioned urn (Spherity's EU Business Wallet PID verifier lists
+  # urn:eudi:pid:1 among its vct_values; a credential of pid_1_8's
+  # urn:eudi:pid:arf-1.8:1 matches none of them). Resolved from the SIROS registry
+  # (credential_registries above), where urn:eudi:pid:1 is webuild-consortium's
+  # pid.vctm.json: the ds002 PID Rulebook, which also makes
+  # attestation_legal_category and nonce mandatory - the document carries both.
+  # Only carsten-004 has a document. No `_offer` twin: allowPreauthOffer below
+  # mints offers against the base scope. Deliberately gdc-only: the vendored
+  # environments have no VCTM for this vct.
+  features:
+    credentialTypes:
+      pid_eudi:
+        vct: "urn:eudi:pid:1"
+        format: dc+sd-jwt
+        issuance:
+          authProvider: oidc
+          source: datastore
+          authOptions:
+            claims: [given_name, family_name]
   walletBackend:
     # go-wallet-backend assurance engine (integration 7, #481). SIMULATION policy: a client that CLAIMS security_properties.plugin
     # = "soft" is granted the highest key-storage and user-authentication level, so any client gets "high" here. NEVER in
@@ -638,7 +658,20 @@ values:
     # a base-scope mint fails with invalid_scope), and #840's startup guard needs api_auth.jwks (or oidc) AND the admin UI
     # off or oidc enabled. gdc: api_auth.jwks.enable true and admin_ui_enable false (its default), so the guard passes.
     allowPreauthOffer: true
+    datastoreImport:
+      documents:
+        pid_eudi: {file: fixtures/vc-bootstrapping/pid_eudi.json}
     apigw:
+      extraConfig:
+        apigw:
+          delivery:
+            openid4vci:
+              clients:
+                # The client the wallets use may only request the scopes listed on it (values-base.yaml), and a list here
+                # REPLACES that one rather than extending it: pid_eudi is added, everything else stays. Without it the
+                # PAR is refused ("scope pid_eudi is not allowed for client e2e-test-client") and the wallet gets a 401.
+                e2e-test-client:
+                  scopes: [pid, pid_1_5, pid_1_8, pid_eudi, diploma, ehic, mdl, mdl_zk4, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
       # nym_auth's Credential Auxiliary Data (SUNET/vc#850; the integration build pinned above): ssc is a commitment to an
       # opening the issuer derives from a per-environment secret (generated once, PERMANENT: replacing it gives every
       # person a new pseudonym) and delivers to the wallet in the ENCRYPTED Credential Response, which REQUIRES the

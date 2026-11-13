@@ -892,7 +892,11 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                             **({"BBS_SECRET_KEY": bbs_secret_key} if bbs_secret_key else {}),
                         },
                         env=env, mongo_password=mongo_password,
-                        credential_types=(base.get("features") or {}).get("credentialTypes") or {},
+                        # values-base's types plus the ones this environment declares itself
+                        # (values.features.credentialTypes), so a type only one environment
+                        # issues can be resolved from a registry too.
+                        credential_types={**((base.get("features") or {}).get("credentialTypes") or {}),
+                                          **(((env_values or {}).get("features") or {}).get("credentialTypes") or {})},
                         credential_registries=credential_registries, naming=naming, say=say, warn=warn,
                         # fly: this ENVIRONMENT's own directory (a seed secret must not be shared between environments
                         # deployed from one checkout); compose: one local stack, the shared secrets dir
