@@ -662,6 +662,16 @@ values:
       documents:
         pid_eudi: {file: fixtures/vc-bootstrapping/pid_eudi.json}
     apigw:
+      extraConfig:
+        apigw:
+          delivery:
+            openid4vci:
+              clients:
+                # The client the wallets use may only request the scopes listed on it (values-base.yaml), and a list here
+                # REPLACES that one rather than extending it: pid_eudi is added, everything else stays. Without it the
+                # PAR is refused ("scope pid_eudi is not allowed for client e2e-test-client") and the wallet gets a 401.
+                e2e-test-client:
+                  scopes: [pid, pid_1_5, pid_1_8, pid_eudi, diploma, ehic, mdl, mdl_zk4, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
       # nym_auth's Credential Auxiliary Data (SUNET/vc#850; the integration build pinned above): ssc is a commitment to an
       # opening the issuer derives from a per-environment secret (generated once, PERMANENT: replacing it gives every
       # person a new pseudonym) and delivers to the wallet in the ENCRYPTED Credential Response, which REQUIRES the
