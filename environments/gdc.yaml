@@ -427,7 +427,7 @@ images:
   # issue/redeem/verify. Digest:
   # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.5
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.6
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
