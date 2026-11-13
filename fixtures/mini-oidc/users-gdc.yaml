@@ -1,0 +1,479 @@
+# gdc's mini-oidc users (synthetic data only), shipped over the image's own
+# /etc/mini-oidc/users.yaml by `make fly-up ENV=gdc` (sirosid_core/deploy.py:
+# fixtures/mini-oidc/users-<env>.yaml, when present). mini-oidc reads ONE
+# users file, so this is the image's users.yaml (ghcr.io/sirosfoundation/
+# mini-oidc:0.0.6, identical to mini-oidc main) PLUS the users below; when the
+# image's users change, merge them in here.
+#
+# Added for gdc:
+#   carsten-004  Carsten Stöcker, born 1973-05-18 (a PID test subject)
+
+# Users configuration for mini-oidc-provider.
+# Authentication is done by selecting a user from a dropdown — no passwords.
+
+users:
+  # --- Natural persons (no company affiliation) ---
+
+  - sub: "alice-001"
+    given_name: "Alice"
+    family_name: "Wonderland"
+    name: "Alice Wonderland"
+    email: "alice@example.com"
+    birthdate: "1990-01-15"
+    place_of_birth: "Stockholm"
+    nationalities: ["SE"]
+    issuing_authority: "Swedish Tax Agency"
+    issuing_country: "SE"
+    ehic:
+      personal_administrative_number: "SE-19900115-0001"
+      document_number: "SE-EHIC-0000000001"
+      issuing_country: "SE"
+      issuing_authority:
+        id: "SE:FK"
+        name: "Försäkringskassan"
+      authentic_source:
+        id: "SE:FK"
+        name: "Försäkringskassan"
+      date_of_issuance: "2025-01-15"
+      date_of_expiry: "2035-01-15"
+      starting_date: "2025-01-15"
+      ending_date: "2035-01-15"
+  - sub: "bob-002"
+    given_name: "Bob"
+    family_name: "Builder"
+    name: "Bob Builder"
+    email: "bob@example.com"
+    birthdate: "1985-06-20"
+    place_of_birth: "Göteborg"
+    nationalities: ["SE"]
+    issuing_authority: "Swedish Tax Agency"
+    issuing_country: "SE"
+    ehic:
+      personal_administrative_number: "SE-19850620-0002"
+      document_number: "SE-EHIC-0000000002"
+      issuing_country: "SE"
+      issuing_authority:
+        id: "SE:FK"
+        name: "Försäkringskassan"
+      authentic_source:
+        id: "SE:FK"
+        name: "Försäkringskassan"
+      date_of_issuance: "2024-06-20"
+      date_of_expiry: "2034-06-20"
+      starting_date: "2024-06-20"
+      ending_date: "2034-06-20"
+  - sub: "carol-003"
+    given_name: "Carol"
+    family_name: "Danvers"
+    name: "Carol Danvers"
+    email: "carol@example.com"
+    birthdate: "1978-11-03"
+    place_of_birth: "Malmö"
+    nationalities: ["SE", "US"]
+    issuing_authority: "Swedish Tax Agency"
+    issuing_country: "SE"
+
+  # --- Legal representatives (sole signatory of a company) ---
+    ehic:
+      personal_administrative_number: "SE-19781103-0003"
+      document_number: "SE-EHIC-0000000003"
+      issuing_country: "SE"
+      issuing_authority:
+        id: "SE:FK"
+        name: "Försäkringskassan"
+      authentic_source:
+        id: "SE:FK"
+        name: "Försäkringskassan"
+      date_of_issuance: "2023-11-03"
+      date_of_expiry: "2033-11-03"
+      starting_date: "2023-11-03"
+      ending_date: "2033-11-03"
+  - sub: "carsten-004"
+    given_name: "Carsten"
+    family_name: "Stöcker"
+    name: "Carsten Stöcker"
+    birthdate: "1973-05-18"
+    # Not supplied with the request: placeholders so the PID has the claims
+    # mini-oidc's pid scopes release (it writes only non-empty values).
+    place_of_birth: "Berlin"
+    nationalities: ["DE"]
+    issuing_authority: "Test Issuing Authority"
+    issuing_country: "DE"
+  - sub: "erik-010"
+    given_name: "Erik"
+    family_name: "Lindström"
+    name: "Erik Lindström"
+    email: "erik.lindstrom@nordictech.example.com"
+    birthdate: "1975-03-22"
+    place_of_birth: "Uppsala"
+    nationalities: ["SE"]
+    issuing_authority: "Swedish Tax Agency"
+    issuing_country: "SE"
+    role: "CEO"
+    representation_type: "sole"
+    employee_id: "EMP-SE-00001"
+    organisation:
+      name: "Nordic Tech Solutions AB"
+      euid: "SEBOLAG.5591234567"
+      vat_id: "SE559123456701"
+      legal_form: "AB"
+      country: "SE"
+      registration_date: "2015-06-01"
+      status: "active"
+      activity_code: "62.01"
+      activity_description: "Computer programming activities"
+      registered_address:
+        full_address: "Sveavägen 42, 111 34 Stockholm, Sweden"
+        thoroughfare: "Sveavägen"
+        locator_designator: "42"
+        post_code: "111 34"
+        post_name: "Stockholm"
+        admin_unit_l1: "SE"
+        admin_unit_l2: "Stockholm"
+    # EU Business Wallet attestations (WE BUILD ds001/ds004), released
+    # verbatim under the scope named by the key - see users.go Attestations.
+    attestations:
+      ebw_oid:
+        id: "SEBOLAG.5591234567"
+        name: "Nordic Tech Solutions AB"
+        attestation_legal_category: "PUB-EAA"
+        issuing_authority: "Bolagsverket"
+        issuing_country: "SE"
+        date_of_expiry: "2027-12-31"
+        trust_anchor: "https://trust.example.org/anchors/se/bolagsverket"
+      eucc:
+        legal_person_name: "Nordic Tech Solutions AB"
+        legal_person_id: "SEBOLAG.5591234567"
+        legal_form_type: "Aktiebolag (AB)"
+        registration_member_state: "SE"
+        registered_address:
+          full_address: "Sveavägen 42, 111 34 Stockholm, Sweden"
+          thorough_fare: "Sveavägen"
+          locator_designator: "42"
+          post_code: "111 34"
+          post_name: "Stockholm"
+          admin_unit_level_1: "SE"
+          admin_unit_level_2: "Stockholm"
+        registration_date: "2015-06-01"
+        legal_person_status: "active"
+        legal_person_activity:
+          code: "62.01"
+          description: "Computer programming activities"
+        legal_representative:
+          - "Erik Lindström"
+        share_capital:
+          amount: "500000"
+          currency: "SEK"
+        digital_contact_point:
+          email: "info@nordictech.example.com"
+          website: "https://nordictech.example.com"
+        issuing_authority: "Bolagsverket"
+        issuing_authority_id: "SE:BOLAGSVERKET"
+        issuing_country: "SE"
+        issuing_jurisdiction: "SE"
+        issuance_date: "2026-01-15T09:00:00Z"
+        authentic_source_id: "SE:BOLAGSVERKET"
+        authentic_source_name: "Bolagsverket"
+        attestation_legal_category: "PUB-EAA"
+        trust_anchor: "https://trust.example.org/anchors/se/bolagsverket"
+
+  # --- Joint representative (one of two signatories) ---
+
+  - sub: "maria-011"
+    given_name: "Maria"
+    family_name: "Schneider"
+    name: "Maria Schneider"
+    email: "maria.schneider@gruenberg-gmbh.example.com"
+    birthdate: "1982-09-14"
+    place_of_birth: "Berlin"
+    nationalities: ["DE"]
+    issuing_authority: "Bundesdruckerei"
+    issuing_country: "DE"
+    role: "CFO"
+    representation_type: "joint"
+    employee_id: "EMP-DE-00042"
+    organisation:
+      name: "Grünberg Consulting GmbH"
+      euid: "DEHRB.B123456"
+      lei: "529900T8BM49AURSDO55"
+      vat_id: "DE312345678"
+      tax_id: "27/123/45678"
+      legal_form: "GmbH"
+      country: "DE"
+      registration_date: "2010-02-15"
+      status: "active"
+      activity_code: "70.22"
+      activity_description: "Business and other management consultancy"
+      registered_address:
+        full_address: "Friedrichstraße 100, 10117 Berlin, Germany"
+        thoroughfare: "Friedrichstraße"
+        locator_designator: "100"
+        post_code: "10117"
+        post_name: "Berlin"
+        admin_unit_l1: "DE"
+        admin_unit_l2: "Berlin"
+    # EU Business Wallet attestations - see erik-010 for the mechanism.
+    attestations:
+      ebw_oid:
+        id: "DEHRB.B123456"
+        name: "Grünberg Consulting GmbH"
+        attestation_legal_category: "PUB-EAA"
+        issuing_authority: "Amtsgericht Charlottenburg (Handelsregister)"
+        issuing_country: "DE"
+        date_of_expiry: "2027-06-30"
+        trust_anchor: "https://trust.example.org/anchors/de/handelsregister"
+      eucc:
+        legal_person_name: "Grünberg Consulting GmbH"
+        legal_person_id: "DEHRB.B123456"
+        legal_form_type: "Gesellschaft mit beschränkter Haftung (GmbH)"
+        registration_member_state: "DE"
+        registered_address:
+          full_address: "Friedrichstraße 100, 10117 Berlin, Germany"
+          thorough_fare: "Friedrichstraße"
+          locator_designator: "100"
+          post_code: "10117"
+          post_name: "Berlin"
+          admin_unit_level_1: "DE"
+          admin_unit_level_2: "Berlin"
+        registration_date: "2010-02-15"
+        legal_person_status: "active"
+        legal_person_activity:
+          code: "70.22"
+          description: "Business and other management consultancy"
+        legal_representative:
+          - "Maria Schneider"
+          - "Thomas Grünberg"
+        share_capital:
+          amount: "25000"
+          currency: "EUR"
+        digital_contact_point:
+          email: "kontakt@gruenberg-gmbh.example.com"
+          website: "https://gruenberg-gmbh.example.com"
+        issuing_authority: "Amtsgericht Charlottenburg (Handelsregister)"
+        issuing_authority_id: "DE:AG-CHARLOTTENBURG"
+        issuing_country: "DE"
+        issuing_jurisdiction: "DE-BE"
+        issuance_date: "2026-01-20T10:30:00Z"
+        authentic_source_id: "DE:HANDELSREGISTER"
+        authentic_source_name: "Handelsregister"
+        attestation_legal_category: "PUB-EAA"
+        trust_anchor: "https://trust.example.org/anchors/de/handelsregister"
+
+  # --- Employee / contact person (no signing authority) ---
+
+  - sub: "jan-012"
+    given_name: "Jan"
+    family_name: "Kowalski"
+    name: "Jan Kowalski"
+    email: "jan.kowalski@gruenberg-gmbh.example.com"
+    birthdate: "1993-07-08"
+    place_of_birth: "Warsaw"
+    nationalities: ["PL"]
+    issuing_authority: "Bundesdruckerei"
+    issuing_country: "DE"
+    role: "Sales Manager"
+    employee_id: "EMP-DE-00089"
+    organisation:
+      name: "Grünberg Consulting GmbH"
+      euid: "DEHRB.B123456"
+      lei: "529900T8BM49AURSDO55"
+      vat_id: "DE312345678"
+      legal_form: "GmbH"
+      country: "DE"
+      registration_date: "2010-02-15"
+      status: "active"
+      registered_address:
+        full_address: "Friedrichstraße 100, 10117 Berlin, Germany"
+        thoroughfare: "Friedrichstraße"
+        locator_designator: "100"
+        post_code: "10117"
+        post_name: "Berlin"
+        admin_unit_l1: "DE"
+        admin_unit_l2: "Berlin"
+    # Jan has no signing authority of his own: he holds the company's EUCC
+    # and a Power of Attorney granted by Maria (the CFO) for procurement.
+    attestations:
+      eucc:
+        legal_person_name: "Grünberg Consulting GmbH"
+        legal_person_id: "DEHRB.B123456"
+        legal_form_type: "Gesellschaft mit beschränkter Haftung (GmbH)"
+        registration_member_state: "DE"
+        registered_address:
+          full_address: "Friedrichstraße 100, 10117 Berlin, Germany"
+          thorough_fare: "Friedrichstraße"
+          locator_designator: "100"
+          post_code: "10117"
+          post_name: "Berlin"
+          admin_unit_level_1: "DE"
+          admin_unit_level_2: "Berlin"
+        registration_date: "2010-02-15"
+        legal_person_status: "active"
+        legal_person_activity:
+          code: "70.22"
+          description: "Business and other management consultancy"
+        legal_representative:
+          - "Maria Schneider"
+          - "Thomas Grünberg"
+        share_capital:
+          amount: "25000"
+          currency: "EUR"
+        digital_contact_point:
+          email: "kontakt@gruenberg-gmbh.example.com"
+          website: "https://gruenberg-gmbh.example.com"
+        issuing_authority: "Amtsgericht Charlottenburg (Handelsregister)"
+        issuing_authority_id: "DE:AG-CHARLOTTENBURG"
+        issuing_country: "DE"
+        issuing_jurisdiction: "DE-BE"
+        issuance_date: "2026-01-20T10:30:00Z"
+        authentic_source_id: "DE:HANDELSREGISTER"
+        authentic_source_name: "Handelsregister"
+        attestation_legal_category: "PUB-EAA"
+        trust_anchor: "https://trust.example.org/anchors/de/handelsregister"
+      eu_poa:
+        attestation_legal_category: "QEAA"
+        issuing_authority: "Notariat Berlin-Mitte"
+        issuing_country: "DE"
+        date_of_execution: "2026-02-01"
+        euid_reference: "DEHRB.B123456"
+        principal_full_name: "Maria Schneider"
+        principal_date_of_birth: "1982-09-14"
+        principal_place_of_birth: "Berlin"
+        principal_identification_document_kind: "national_id_card"
+        principal_identification_document_number: "L01X00T47"
+        principal_full_address: "Kastanienallee 12, 10435 Berlin, Germany"
+        company_statutory_full_name: "Grünberg Consulting GmbH"
+        company_business_register_name: "Handelsregister Amtsgericht Charlottenburg"
+        company_business_register_location: "Berlin"
+        company_kind_of_legal_entity: "GmbH"
+        company_jurisdiction: "DE"
+        company_registered_office: "Friedrichstraße 100, 10117 Berlin, Germany"
+        attorney_full_name: "Jan Kowalski"
+        attorney_date_of_birth: "1993-07-08"
+        attorney_place_of_birth: "Warsaw"
+        attorney_identification_document_kind: "passport"
+        attorney_identification_document_number: "ZS0123456"
+        attorney_full_address: "Prenzlauer Allee 200, 10405 Berlin, Germany"
+        scope_of_representation_powers:
+          - "Conclusion of purchase and service contracts up to EUR 50,000"
+          - "Signing of tender documents and supplier registrations"
+        scope_of_representation_power_of_substitution: "not_allowed"
+        validity_period_valid_from: "2026-02-01"
+        validity_period_valid_until: "2027-01-31"
+        applicable_law_jurisdiction: "DE"
+        signing_place: "Berlin"
+        signing_date: "2026-02-01"
+        trust_anchor: "https://trust.example.org/anchors/de/notariat"
+
+  # --- Representative of a French company (sole trader / power of attorney) ---
+
+  - sub: "sophie-013"
+    given_name: "Sophie"
+    family_name: "Dubois"
+    name: "Sophie Dubois"
+    email: "sophie@transport-dubois.example.com"
+    birthdate: "1988-12-01"
+    place_of_birth: "Lyon"
+    nationalities: ["FR"]
+    issuing_authority: "ANTS"
+    issuing_country: "FR"
+    role: "Gérant"
+    representation_type: "sole"
+    employee_id: "EMP-FR-00001"
+    organisation:
+      name: "Transport Dubois SARL"
+      euid: "FRRCS.Lyon.B987654321"
+      vat_id: "FR82987654321"
+      legal_form: "SARL"
+      country: "FR"
+      registration_date: "2018-11-20"
+      status: "active"
+      activity_code: "49.41"
+      activity_description: "Freight transport by road"
+      registered_address:
+        full_address: "15 Rue de la République, 69002 Lyon, France"
+        thoroughfare: "Rue de la République"
+        locator_designator: "15"
+        post_code: "69002"
+        post_name: "Lyon"
+        admin_unit_l1: "FR"
+        admin_unit_l2: "Auvergne-Rhône-Alpes"
+    # Sophie is the sole manager of Transport Dubois SARL and also holds a
+    # Power of Attorney from her co-founder for the company's banking.
+    attestations:
+      ebw_oid:
+        id: "FRRCS.Lyon.B987654321"
+        name: "Transport Dubois SARL"
+        attestation_legal_category: "PUB-EAA"
+        issuing_authority: "Greffe du Tribunal de Commerce de Lyon"
+        issuing_country: "FR"
+        date_of_expiry: "2027-11-20"
+        trust_anchor: "https://trust.example.org/anchors/fr/infogreffe"
+      eucc:
+        legal_person_name: "Transport Dubois SARL"
+        legal_person_id: "FRRCS.Lyon.B987654321"
+        legal_form_type: "Société à responsabilité limitée (SARL)"
+        registration_member_state: "FR"
+        registered_address:
+          full_address: "15 Rue de la République, 69002 Lyon, France"
+          thorough_fare: "Rue de la République"
+          locator_designator: "15"
+          post_code: "69002"
+          post_name: "Lyon"
+          admin_unit_level_1: "FR"
+          admin_unit_level_2: "Auvergne-Rhône-Alpes"
+        registration_date: "2018-11-20"
+        legal_person_status: "active"
+        legal_person_activity:
+          code: "49.41"
+          description: "Freight transport by road"
+        legal_representative:
+          - "Sophie Dubois"
+        share_capital:
+          amount: "10000"
+          currency: "EUR"
+        digital_contact_point:
+          email: "contact@transport-dubois.example.com"
+          website: "https://transport-dubois.example.com"
+        issuing_authority: "Greffe du Tribunal de Commerce de Lyon"
+        issuing_authority_id: "FR:GREFFE-LYON"
+        issuing_country: "FR"
+        issuing_jurisdiction: "FR"
+        issuance_date: "2026-01-10T08:15:00Z"
+        authentic_source_id: "FR:INFOGREFFE"
+        authentic_source_name: "Infogreffe"
+        attestation_legal_category: "PUB-EAA"
+        trust_anchor: "https://trust.example.org/anchors/fr/infogreffe"
+      eu_poa:
+        attestation_legal_category: "QEAA"
+        issuing_authority: "Chambre des Notaires du Rhône"
+        issuing_country: "FR"
+        date_of_execution: "2026-01-12"
+        euid_reference: "FRRCS.Lyon.B987654321"
+        principal_full_name: "Pierre Dubois"
+        principal_date_of_birth: "1960-04-02"
+        principal_place_of_birth: "Villeurbanne"
+        principal_identification_document_kind: "national_id_card"
+        principal_identification_document_number: "690012345678"
+        principal_full_address: "8 Quai Saint-Antoine, 69002 Lyon, France"
+        company_statutory_full_name: "Transport Dubois SARL"
+        company_business_register_name: "Registre du Commerce et des Sociétés de Lyon"
+        company_business_register_location: "Lyon"
+        company_kind_of_legal_entity: "SARL"
+        company_jurisdiction: "FR"
+        company_registered_office: "15 Rue de la République, 69002 Lyon, France"
+        attorney_full_name: "Sophie Dubois"
+        attorney_date_of_birth: "1988-12-01"
+        attorney_place_of_birth: "Lyon"
+        attorney_identification_document_kind: "passport"
+        attorney_identification_document_number: "21AB45678"
+        attorney_full_address: "22 Rue Garibaldi, 69006 Lyon, France"
+        scope_of_representation_powers:
+          - "Opening and operating the company's bank accounts"
+          - "Signing loan and leasing agreements for vehicles"
+        scope_of_representation_power_of_substitution: "limited"
+        validity_period_valid_from: "2026-01-12"
+        validity_period_valid_until: "2028-01-11"
+        applicable_law_jurisdiction: "FR"
+        signing_place: "Lyon"
+        signing_date: "2026-01-12"
+        trust_anchor: "https://trust.example.org/anchors/fr/notaires"
