@@ -579,6 +579,8 @@ def deploy_component(ctx: DeployContext, comp: dict):
         # the CRL and the status list, as static files behind the fly app's
         # own HTTPS - which is also the base URL burned into every issued
         # certificate at mint time (fixtures/make-wrpac-fixtures.sh).
+        # Fly's --file-local takes FILES only, so every published file is
+        # mounted individually into the nginx document root.
         registrar_dir = resources.root / "fixtures" / "wrpac-fly" / "deployment" / "public"
         if not (registrar_dir / "lote.json").exists():
             raise DeployError(
@@ -588,8 +590,10 @@ def deploy_component(ctx: DeployContext, comp: dict):
             )
         deploy_args += [
             "--file-local", f"/etc/nginx/conf.d/default.conf={resources.root / 'fixtures' / 'wrpac-registrar.conf'}",
-            "--file-local", f"/usr/share/nginx/html={registrar_dir}",
         ]
+        for published in sorted(registrar_dir.iterdir()):
+            if published.is_file():
+                deploy_args += ["--file-local", f"/usr/share/nginx/html/{published.name}={published}"]
     elif name == "siros-verifier":
         # The default fixture is shared by every environment; an environment
         # that needs its own verifier config (the WRPAC drill's intermediary
