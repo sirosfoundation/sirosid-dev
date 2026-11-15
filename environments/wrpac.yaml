@@ -58,8 +58,14 @@ values:
           enabled: true
           name: wrpac-registrar
           description: The WRPAC drill's registrar trust anchors (ETSI TS 119 612)
+          # The INTERNAL 6PN address: inside Fly's private network the public
+          # *.fly.dev names do not resolve (the PDP's boot failed on exactly
+          # that), so the list fetch targets the registrar's internal host.
+          # The TSL's own contents still reference the public URLs - the
+          # wallet-facing half (CRL, status list) is fetched over the public
+          # internet where those resolve.
           tsl_urls:
-            - https://sirosid-wrpac-registrar.fly.dev/tsl.xml
+            - http://sirosid-wrpac-wrpac-registrar.internal:8080/tsl.xml
           allow_network_access: true
           fetch_timeout: 10s
           # Same reasoning as the local stack (fixtures/go-trust-wrpac.yaml):
