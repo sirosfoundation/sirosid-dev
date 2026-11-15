@@ -78,7 +78,20 @@ values:
           # unfiltered pool, so an ordinary access-certificate holder cannot
           # self-sign registration claims here.
           wrprc_service_types:
+            # BOTH service types: the registrar's cert (the WRPRC's x5c leaf)
+            # ISSUES FROM the Access CA, and the leaf-only chain needs the CA
+            # in the anchor pool to verify. A leaf with the CA absent anchors
+            # nothing ("certificate signed by unknown authority").
             - https://uri.etsi.org/19475/Svctype/WRPRegistrationCertificateProvider
+            - https://uri.etsi.org/19475/Svctype/WRPAccessCertificateProvider
+          # The tool emits the ETSI-canonical status URI (http, no trailing
+          # slash); g119612 v0.8.3's default policy constant is the https
+          # trailing-slash form, so the pool build rejects every service
+          # with "status is not recognized or granted" unless the statuses
+          # are supplied explicitly. Verified locally: with this list the
+          # WRPRC anchors and the intermediated presentation binds.
+          wrprc_service_statuses:
+            - http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted
         always_trusted:
           enabled: true
           name: always-trusted
