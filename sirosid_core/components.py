@@ -171,6 +171,21 @@ SIROS_VERIFIER_COMPONENT = {
     "checks": "/health",
 }
 
+# Optional WRPAC/WRPRC registrar (ETSI TS 119 475 / 119 411-8), enabled only by
+# an explicit `wrpac-registrar` image pin like siros-verifier. Serves a
+# siros-wrpac-tool deployment's published public/ directory (the LoTE, the
+# TSL, the register, the CRL and the status list) as static files - nginx,
+# exactly the local docker-compose.wrpac.yml shape. Inserted BEFORE pdp so
+# the registrar is up before the PDP's configured list sources are fetched.
+WRPAC_REGISTRAR_COMPONENT = {
+    "name": "wrpac-registrar",
+    "image": "nginx:alpine",
+    "ports": [{"internal": 8080, "public": True}],
+    # Not just "is it up": /lote.json specifically, so an empty served
+    # directory cannot look healthy and silently fail every list fetch.
+    "checks": "/lote.json",
+}
+
 # Optional flow-core service (siros-flow-core: the general flow engine —
 # one more trusted verifier whose issuance steps drive a complete
 # embedded issuer; image-gated like siros-verifier so an environment
@@ -199,6 +214,15 @@ WMP_ENGINE_COMPONENT = {
 def with_optional_components(components: list, images: dict) -> list:
     """Add image-gated components without changing the default component list."""
     out = list(components)
+    # wrpac-registrar goes BEFORE pdp (its list sources are fetched at pdp
+    # startup); the verifiers go AFTER pdp (their trust gate points at it).
+    if "wrpac-registrar" in images and not any(c["name"] == "wrpac-registrar" for c in out):
+        inserted = []
+        for comp in out:
+            if comp["name"] == "pdp":
+                inserted.append(WRPAC_REGISTRAR_COMPONENT)
+            inserted.append(comp)
+        out = inserted
     for gate, component in (("siros-verifier", SIROS_VERIFIER_COMPONENT),
                             ("flow-core", FLOW_CORE_COMPONENT)):
         if gate in images and not any(c["name"] == component["name"] for c in out):

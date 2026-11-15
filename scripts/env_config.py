@@ -117,7 +117,7 @@ SIROSID_DEV_ROOT = Path(__file__).resolve().parent.parent
 _LIST_KEYS = ("trusted_issuers", "trusted_verifiers", "trusted_verifier_roots", "zk_circuits_sources",
               "credential_registries", "android_apps")
 _BOOL_KEYS = ("conformance", "wallet_attestation")
-_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file", "app_prefix", "host_pattern")
+_STR_KEYS = ("rical_provider_url", "rical_root_cert", "dc_api_enable", "region", "bbs_secret_key_file", "bbs_public_key_file", "app_prefix", "host_pattern", "siros_verifier_fixture")
 _KNOWN_KEYS = frozenset(_LIST_KEYS + _BOOL_KEYS + _STR_KEYS + ("images", "values", "local"))
 
 
