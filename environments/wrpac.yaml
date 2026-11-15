@@ -96,6 +96,18 @@ values:
           enabled: true
           name: always-trusted
           description: "Status-list signer only (policies below); answers yes to everything it is asked"
+        # The whitelist's action map, deep-merged over the chart's default
+        # (same as gdc): the chart maps pid-provider/credential-issuer/
+        # verifier/credential-verifier but NOT the actions go-wallet-backend's
+        # engine actually sends - 'issuer' for its OID4VCI issuer-trust query
+        # (found live: every PID issuance failed 'untrusted issuer' until
+        # this) and 'issue' for the embedded flow-core issuer. Same
+        # pid-issuers list: a credential this environment trusts its issuers
+        # to ISSUE is trusted when PRESENTED back to it.
+        whitelist:
+          actions:
+            issue: pid-issuers
+            issuer: pid-issuers
       policies:
         default_policy: default
         policies:
