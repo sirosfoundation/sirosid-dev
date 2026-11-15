@@ -40,7 +40,7 @@ images:
   # wrprc_service_types, allow_intermediaries, the presentation binding, the
   # exact-path grants). Image ghcr.io/sirosfoundation/go-trust:0.30.0,
   # digest-pull verified. No build.
-  pdp: ghcr.io/sirosfoundation/go-trust:0.29.2
+  pdp: ghcr.io/sirosfoundation/go-trust:0.30.0
 
   # The registrar component (nginx serving the minted deployment's public/
   # directory; docker-compose.wrpac.yml's shape). Any nginx works - the
