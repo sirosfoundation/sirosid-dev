@@ -115,6 +115,7 @@ values:
             description: "Everything but the status-list signer: the real registries only, never always-trusted"
             registries:
               - sirosid-wrpac Fly whitelist
+              - sirosid-wrpac mDOC IACA registry
               - wrpac-registrar
           status-list-signer:
             description: "Status-list signer: allow-all until the vc registry serves discoverable signing keys (same as gdc)"
@@ -123,6 +124,7 @@ values:
             description: "Verifier access: the WRPAC drill - intermediated presentations admitted, the WRPRC evaluated"
             registries:
               - sirosid-wrpac Fly whitelist
+              - sirosid-wrpac mDOC IACA registry
               - wrpac-registrar
             # ETSI TS 119 475 Table 10: the WRPRC this verifier's requests
             # carry names the acting intermediary (this deployment), so the
@@ -135,6 +137,7 @@ values:
             description: "Verifier access (legacy action name): same as credential-verifier"
             registries:
               - sirosid-wrpac Fly whitelist
+              - sirosid-wrpac mDOC IACA registry
               - wrpac-registrar
             etsi:
               allow_intermediaries: true
