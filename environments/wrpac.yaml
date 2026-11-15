@@ -99,19 +99,19 @@ values:
             registries:
               - sirosid-wrpac Fly whitelist
               - wrpac-registrar
-            constraints:
-              etsi:
-                # ETSI TS 119 475 Table 10: the WRPRC this verifier's requests
-                # carry names the acting intermediary (this deployment), so
-                # the presentation binding is against its own WRPAC's org id.
-                allow_intermediaries: true
+            # ETSI TS 119 475 Table 10: the WRPRC this verifier's requests
+            # carry names the acting intermediary (this deployment), so the
+            # presentation binding is against its own WRPAC's org id. NOTE the
+            # nesting: etsi is a sibling of constraints (PolicyConfig.ETSI),
+            # not under it - under constraints the key is silently dropped.
+            etsi:
+              allow_intermediaries: true
           verifier:
             description: "Verifier access (legacy action name): same as credential-verifier"
             registries:
               - sirosid-wrpac Fly whitelist
               - wrpac-registrar
-            constraints:
-              etsi:
-                allow_intermediaries: true
+            etsi:
+              allow_intermediaries: true
       # The drill has no nym_auth/ZKP and no local builds: everything else
       # rides the shared values-fly.yaml defaults.
