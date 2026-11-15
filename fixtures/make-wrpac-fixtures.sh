@@ -104,6 +104,7 @@ organization: Fronted RP Test AB
 identifier: NTRSE-WRPAC-FRONTED
 country: SE
 support_uri: https://fronted-rp.example.test/support
+privacy_policy_uri: https://fronted-rp.example.test/privacy
 csr: fronted-rp.csr
 presents_through: NTRSE-WRPAC-INTERMEDIARY
 entitlements:
