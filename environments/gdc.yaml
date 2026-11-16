@@ -446,7 +446,12 @@ images:
   # refuses the authorization_code grant without it), found via the
   # wallet-frontend wasm integration. Fly-registry digest
   # sha256:082e5f414bf68ab1c6a6c8e076e49fe075bbd49da86b7471f435295db70de529.
-  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.16
+  # 2026-11-16c: v0.2.16 -> v0.2.17 (6346016): the second #11 sweep regression
+  # fixed - CredentialResponse lost its credentials[] batch member and the
+  # fallback reading credentials[0] into credential (SUNET's GDC apigw
+  # answers single-credential requests with the batch shape). Fly-registry
+  # digest sha256:2004098b3aaf84002ee13d1bba1e12847a9412d5562771869e513313cc946f66.
+  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.17
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
