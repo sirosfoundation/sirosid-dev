@@ -441,7 +441,12 @@ images:
   #   docker pull ghcr.io/sirosfoundation/engine-server:v0.2.15
   #   docker tag ... registry.fly.io/sirosid-gdc-wmp-engine:v0.2.15 && docker push
   # Fly-registry digest sha256:0cd5e26171435f2f5eaef33332b37792f9a10cb61a2536763acac04c47a40913.
-  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.15
+  # 2026-11-16b: v0.2.15 -> v0.2.16 (9596d5c): the #11 merge sweep regression
+  # fixed - the code-for-token POST lost its client_id form member (apigw
+  # refuses the authorization_code grant without it), found via the
+  # wallet-frontend wasm integration. Fly-registry digest
+  # sha256:082e5f414bf68ab1c6a6c8e076e49fe075bbd49da86b7471f435295db70de529.
+  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.16
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
