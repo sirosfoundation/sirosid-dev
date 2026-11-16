@@ -47,6 +47,21 @@ images:
   # served CONTENT is the mint, not the server.
   wrpac-registrar: nginx:alpine
 
+  # 2026-11-16: the wallet pair's response-encryption contract, pinned as one
+  # unit. The deployed go-wallet-backend 0.25.2 (the client-held response
+  # encryption era, 31409eae) requires the wallet client to answer
+  # sign_presentation with response_jwe for direct_post.jwt and refuses a
+  # plain vp_token ("the client answered with a vp_token instead of
+  # response_jwe" - the live failure of every drill presentation's last hop).
+  # The released wallet-frontend (0.5.0-1-sirosid.10, this env's former
+  # default; the .11 flavor likewise) signs vpToken only. Same fix as the
+  # gdc template: the feat/client-held-response-encryption branch build
+  # (8a9ede184, published as sirosid-rc-encryption.1) answers with
+  # response_jwe. Re-pin both to released images when the
+  # client-held-response-encryption work ships in one.
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.1
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.2
+
 values:
   pdp:
     extraConfig:
