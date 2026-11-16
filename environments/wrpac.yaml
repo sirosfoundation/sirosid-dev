@@ -62,11 +62,16 @@ images:
   #     {"error":"malformed","error_description":"invalid response"} because
   #     OpenID4VP 1.0 §8.1 requires the object form keyed by credential query
   #     id. Found by the drill; fixed in wallet-frontend PR #460
-  #     (fix/jarm-vp-token-dcql-object @ 19a11dbd, mirroring the engine's own
-  #     buildDCQLVPToken), published as sirosid-rc-encryption.2.
+  #     (fix/jarm-vp-token-dcql-object, mirroring the engine's own
+  #     buildDCQLVPToken), published as sirosid-rc-encryption.2 - and, after
+  #     the live drill exposed the SAME bug on the DC-API companion path
+  #     (the QR/link callback's own duplicated encryption, where a
+  #     JSON-quoted token parses back to a bare string), the .3 build
+  #     (1cee5395) wraps every client response site with the shared
+  #     restructureDcqlVpToken.
   # Re-pin both to released images when the client-held-response-encryption
   # work (PR #394 + #460) ships in one.
-  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.2
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.3
   wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.2
 
 values:
