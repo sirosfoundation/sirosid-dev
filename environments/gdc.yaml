@@ -427,18 +427,21 @@ images:
   # issue/redeem/verify. Digest:
   # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
-  # 2026-11-16: v0.2.9 -> v0.2.11 (the UA fix: engine-adapter-server's
+  # 2026-11-16: v0.2.9 -> v0.2.15 (the UA fix: engine-adapter-server's
   # reqwest client identifies itself; a UA-less request reads as a bot to
   # verifier-side WAFs and accredify's UAT answered 403 to the
-  # request-object fetch, found on-device). Also carries the jarm
-  # 400-body diagnostic. v0.2.11 pushed to ghcr by the release
-  # workflow; MIRRORED into the Fly registry (the same 500-on-ghcr
-  # lookup as before):
-  #   docker pull ghcr.io/sirosfoundation/engine-server:v0.2.11
-  #   docker tag ... registry.fly.io/sirosid-gdc-wmp-engine:v0.2.11 && docker push
-  # ghcr source digest sha256:bf1a2f0df5ae965df5bfa3b45a9dcc768a6191e1dcb95a01d4f03262ba5063bc;
-  # Fly-registry digest sha256:b3febdb0a339f137924ed0e2fa56c82c313d4e7fcbe93e0ea85ab6ca9ecbaf83.
-  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.11
+  # request-object fetch, found on-device). Also carries the
+  # frontend-shaped DID resolve (NO resource_type on the wire - the
+  # wallet-backend proxy 403'd the bespoke did_document type; the
+  # wallet FRONTEND's own resolve shape is what works) and the jarm
+  # 400-body diagnostic. The URN-spelling vct shim that briefly rode
+  # v0.2.13/v0.2.14 is REVERTED upstream (wallet-core cbe5654): vct is a
+  # case-sensitive identifier, the issuer-side fix is Spherity's to make
+  # (corrected vct or aka_vcts), and the wallet does not paper over it.
+  #   docker pull ghcr.io/sirosfoundation/engine-server:v0.2.15
+  #   docker tag ... registry.fly.io/sirosid-gdc-wmp-engine:v0.2.15 && docker push
+  # Fly-registry digest sha256:0cd5e26171435f2f5eaef33332b37792f9a10cb61a2536763acac04c47a40913.
+  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.15
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
@@ -567,6 +570,19 @@ trusted_verifiers:
   # The plain origin as well, which is what an unsigned DC API request reduces
   # to - that path carries no signing certificate and so no DID.
   - https://acra.uat.accredify.io
+  # 2026-11-16: Accredify's ACRA UAT verifier now also signs requests with a
+  # NEW leaf key and identifies by x509_hash (it did not on 2026-09-17 - the
+  # did:web entries above covered it then). The hash is the PDP's own denial
+  # pasted verbatim (action credential-verifier, resource x5c):
+  #
+  #   whitelist denied request subject=x509_hash:e5a4_tJ4DqV3NfqxF_cvAgkb22eS_LZ4jmEOAE1ADKc
+  #     reason="subject not in whitelist for action 'credential-verifier'"
+  #
+  # x509_hash: subjects are compared un-normalized (unlike the SAN/URI forms
+  # which reduce to https://<host> first), so the entry must be this exact
+  # string. Hash-pinning is the trust decision for this scheme: no reader-CA
+  # root, no chain validation (go-trust skips it deliberately).
+  - x509_hash:e5a4_tJ4DqV3NfqxF_cvAgkb22eS_LZ4jmEOAE1ADKc
   # Spherity's EUDI/EBW PID verifier (api.oid.spherity.dev), added 2026-11-13.
   # Its request object (an x509_hash client_id, request_uri under
   # https://api.oid.spherity.dev/oid4vp/<id>/jar/<id>) is signed with a leaf
