@@ -405,6 +405,56 @@ EOF
     rm -f /tmp/wallet_provider_ec.csr /tmp/wallet_provider_ec.conf /tmp/wallet_provider_ec.ext
 fi
 
+# The wallet-provider leaf's SAN (ETSI-model WIAs): an ETSI-shape WIA
+# identifies its wallet provider by the x5c LEAF's SAN (DNS name first), and
+# issuers on the Rust stack (siros-issuer-core's wallet_attestation) fail
+# closed with "x5c leaf has no SAN or CN to derive issuer identity" when the
+# leaf carries neither - the leaf above was SAN-less, so every ETSI-shape WIA
+# from this environment's backend was unidentifiable to a Rust-stack issuer.
+# Re-issued from the SAME key and CA when WALLET_PROVIDER_SAN_HOST is set and
+# the SAN is missing (deploy.py sets it to the wallet-proxy host); vc's
+# x5c-based trust is unaffected (same key, same root, a SAN added).
+if [ -n "${WALLET_PROVIDER_SAN_HOST:-}" ] && [ -f "${PKI_DIR}/wallet_provider_ec_private.pem" ]; then
+    wallet_provider_san_current() {
+        [ -f "${PKI_DIR}/wallet_provider_ec.crt" ] || return 1
+        openssl x509 -in "${PKI_DIR}/wallet_provider_ec.crt" -noout -ext subjectAltName 2>/dev/null \
+            | grep -qE "(^|[ ,])DNS:${WALLET_PROVIDER_SAN_HOST//./\\.}(,|$)"
+    }
+    if wallet_provider_san_current; then
+        echo "Wallet-provider certificate SAN already current, skipping."
+    else
+        echo "Re-issuing wallet-provider certificate with SAN '${WALLET_PROVIDER_SAN_HOST}' (same key and CA)..."
+        cat > /tmp/wallet_provider_ec.conf <<EOF
+[req]
+default_bits       = 256
+prompt             = no
+default_md         = sha256
+distinguished_name = dn
+
+[dn]
+C  = SE
+ST = Test
+L  = E2E Testing
+O  = Wallet E2E Test
+OU = Wallet Provider Key Attestation
+CN = E2E Test Wallet Provider
+EOF
+        cat > /tmp/wallet_provider_ec.ext <<EOF
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, nonRepudiation
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = ${WALLET_PROVIDER_SAN_HOST}
+EOF
+        openssl req -new -key "${PKI_DIR}/wallet_provider_ec_private.pem" -out /tmp/wallet_provider_ec.csr -config /tmp/wallet_provider_ec.conf
+        openssl x509 -req -in /tmp/wallet_provider_ec.csr -CA "${PKI_DIR}/rootCA.crt" -CAkey "${PKI_DIR}/rootCA.key" \
+            -CAcreateserial -out "${PKI_DIR}/wallet_provider_ec.crt" -days 730 -sha256 -extfile /tmp/wallet_provider_ec.ext
+        rm -f /tmp/wallet_provider_ec.csr /tmp/wallet_provider_ec.ext
+    fi
+fi
+
 if [ -f "${PKI_DIR}/proxy_server.key" ]; then
     echo "TLS proxy server certificate already exists, skipping."
 else

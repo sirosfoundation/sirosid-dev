@@ -144,6 +144,10 @@ def generate_pki(ctx: DeployContext) -> Path:
         env_vars["SIROS_VERIFIER_HOST"] = naming.host("siros-verifier")
     if "flow-core" in (getattr(ctx.spec, "images", {}) or {}):
         env_vars["FLOW_CORE_HOST"] = naming.host("flow-core")
+    # The wallet-provider leaf's SAN (ETSI-model WIAs identify the provider by
+    # the x5c leaf's SAN; the leaf was SAN-less, so ETSI-shape WIAs were
+    # unidentifiable - see create-pki.sh's WALLET_PROVIDER_SAN_HOST block).
+    env_vars["WALLET_PROVIDER_SAN_HOST"] = naming.host("wallet-proxy")
     fly.exec(["bash", "./create-pki.sh"], cwd=resources.fixtures, env=env_vars)
     return pki_dir
 

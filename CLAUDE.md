@@ -634,6 +634,27 @@ actually published before pinning it; `gh api .../packages/.../versions`
 needs a `read:packages` token scope a default `gh auth login` session may not
 have.
 
+**A wallet's token request is refused by a Rust-stack issuer
+(siros-issuer-core) with `invalid_client: "x5c leaf has no SAN or CN to
+derive issuer identity"`:** an ETSI-shape WIA (OAuth-Client-Attestation with
+an `x5c` chain — what go-wallet-backend's WIA service mints) identifies its
+wallet provider by the **leaf's SAN**, and this repo's PKI minted the
+wallet-provider leaf SAN-less (a human-readable CN only). Fixed by
+`WALLET_PROVIDER_SAN_HOST` (deploy.py sets it to the wallet-proxy host;
+create-pki.sh re-issues the leaf from the same key and CA with the SAN
+added — PR #158). Two companions to remember when a *cross-environment*
+issuer trusts these WIAs: the wallet-provider identity the issuer derives
+is the **bare hostname** from the SAN, so the receiving environment's
+PDP wallet-providers whitelist needs the bare-host entry too (go-trust
+normalizes only `x509_san_dns:`-prefixed subjects, not bare hostnames);
+and a wallet caches its WIA until expiry, so after re-issuing the leaf
+the wallet needs a restart (or its WIA's TTL to lapse) before its token
+requests carry the new chain. Captured verbatim on the realeyes demo by
+tcpdump-ing the issuer machine (fly terminates TLS at the edge — port
+8080 on the machine is plain HTTP, so `apt-get install -y tcpdump` over
+`flyctl ssh console` shows the full WIA/PoP headers and the issuer's
+error_description).
+
 **wallet-backend crash-loops with `Failed to load backend configuration`
 after bumping `images.walletBackend` past go-wallet-backend v0.10.0, if
 the chart's wallet-backend template sets `wallet_provider.wia.enabled:
