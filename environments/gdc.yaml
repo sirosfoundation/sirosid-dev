@@ -546,6 +546,17 @@ trusted_verifiers:
   # leaf; the private key remains the separate verifier key, not the issuer's.
   - https://sirosid-gdc-siros-verifier.fly.dev
   - x509_hash:cIPUuz0YSWx4RxTKJXF3VCCh2oWL3HD2Knjjgd_vKRo
+  # The realeyes demonstrator's Rust verifier (siros-verifier-core, a SEPARATE
+  # environment): a wallet homed HERE presents its nym_auth zkp_req proofs
+  # there. Same both-forms rule as above: zkp_req identifies as
+  # x509_san_dns:sirosid-realeyes-siros-verifier.fly.dev (normalized to the
+  # https origin below), the other formats as the leaf hash (the realeyes
+  # environment's dedicated verifier leaf, DNS SAN = its host). Its request-
+  # signing chain roots in the realeyes test CA, already pooled via
+  # trusted_verifier_roots (PR #154). See
+  # https://github.com/sirosfoundation/sirosid-realeyes (docs/REALEYES-DEMO.md).
+  - https://sirosid-realeyes-siros-verifier.fly.dev
+  - x509_hash:TrhyRrx0e5w8ZjagnWbAB0OgbWmWPAZZ8oIswFD0gaQ
   # Accredify's ACRA UAT verifier, added 2026-09-17 for interop testing.
   #
   # It identifies itself with did:web, confirmed from its own DID document at
