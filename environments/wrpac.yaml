@@ -69,7 +69,7 @@ images:
   #     restructureDcqlVpToken.
   # Re-pin both to released images when the client-held-response-encryption
   # work (PR #394 + #460) ships in one.
-  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.3
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.4
   wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.2
 
 values:
