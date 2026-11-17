@@ -427,7 +427,17 @@ images:
   # issue/redeem/verify. Digest:
   # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.9
+  # 2026-11-17: v0.2.9 -> v0.2.21 (siros-wallet-core v0.2.21, PRs #46/#47/#49):
+  # #49 closes wallet-core#48 — a flow.start naming a gone session now answers
+  # -31000 (session not found), not -31005, so wallets self-heal after an engine
+  # restart instead of showing "Capability not supported" (proven live on this
+  # environment: an engine machine restart at 16:45 orphaned every connected
+  # wallet's session, and the sample app's "Session not found" recovery never
+  # triggered). Also carries #28/#46, the multi-credential SET. The direct
+  # ghcr pin deploys (the v0.2.1 note's Fly-registry-500 problem did not
+  # reproduce for this deploy attempt; the OCI index manifest
+  # sha256:6d9bda38… inspected cleanly). Rollback: v0.2.9.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.21
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
