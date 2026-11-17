@@ -437,7 +437,17 @@ images:
   # ghcr pin deploys (the v0.2.1 note's Fly-registry-500 problem did not
   # reproduce for this deploy attempt; the OCI index manifest
   # sha256:6d9bda38… inspected cleanly). Rollback: v0.2.9.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.21
+  # 2026-11-17: v0.2.21 -> v0.2.23 (wallet-core v0.2.23, PR #54 closing #53):
+  # the engine's encryption_config_for now reads the ISSUER-LEVEL
+  # credential_response_encryption (OpenID4VCI 1.0 Final §12.2.4's shape)
+  # with the per-credential draft form as override — the realeyes demo's
+  # issuer publishes only the issuer-level member, so the engine
+  # negotiated "no mutually supported alg/enc pair" and its #51 delivery
+  # gate refused, despite both sides supporting ECDH-ES×A128GCM. Deployed
+  # via the per-run IMAGES override at 23:53 UTC (machine digest
+  # verified 5f5c5ccf…); this PR makes the pin durable. v0.2.22 (the #51
+  # delivery gate) rode the same window. Rollback: v0.2.21.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.23
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
