@@ -22,7 +22,7 @@ region: arn
 siros_verifier_fixture: siros-verifier-wrpac
 
 images:
-  # 2026-11-17: the v0.1.5 release (the JWT-VC kid/JWKS issuer profile #62,
+  # 2026-11-17: the v0.1.6 release (adds the vertical checkbox layout) (the JWT-VC kid/JWKS issuer profile #62,
   # the checkbox claim picker #63, both found live in the WRPAC drill #39).
   # Source image
   # ghcr.io/sirosfoundation/siros-verifier-core@sha256:2f43baeaab3919d625a5ffe990d41721ab8f8939ae2e320c2e55108302e9c82a
@@ -30,9 +30,9 @@ images:
   # conformance 14/14 — the fifth one-pass, Android AAR on GitHub Packages
   # with the Central mirror deferred to the Dec 1 quota reset), mirrored
   # into the Fly registry as
-  # digest sha256:2da95f83ad89ab045cbe9ebedd07f791b7925375f8446afde47b56fa0cdf6bb4. No build.
+  # digest sha256:0a1b1e444beaa6eec95e64e1e5cc05551fbee7b1ca5ef2ce0875a4c0e6b89687. No build.
   # Rollback: v0.1.4 (sha256:0b37dba7…) together with the pre-checkbox UI.
-  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.5
+  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.6
 
   # 2026-11-15: go-trust v0.30.0 (tag 4419437, the #257 WRPRC evaluation:
   # wrprc_service_types, allow_intermediaries, the presentation binding, the
