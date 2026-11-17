@@ -22,19 +22,17 @@ region: arn
 siros_verifier_fixture: siros-verifier-wrpac
 
 images:
-  # 2026-11-15: the WRPAC drill release (siros-verifier-core v0.1.4) - the
-  # #39 core increments (#57 the WRPRC carrier, #58 the intermediary signing:
-  # wrprc_path/verifier_info_path, the fail-fast startup validation, the
-  # 472-2 members armed) plus #59 (the response-path telemetry). Source image
-  # ghcr.io/sirosfoundation/siros-verifier-core@sha256:067e15dca2d6fbe4ad211e17da83b087b95bdc1c8b43b87e9bf2001a1dea1f17
-  # (release-verified: non-root 10001:10001, signed SBOMs cosign-verified,
-  # OIDF conformance 14/14), mirrored into the Fly registry as
-  # digest sha256:0b37dba7f0e50a5e9f3315adb5fb9fab75776fc406858ff495315b99b6864047. No build.
-  # Rollback: this environment is a drill - make fly-down ENV=wrpac and
-  # re-run fixtures/make-wrpac-fixtures.sh on the next setup rather than
-  # rolling the image back (the config and the image move as one unit because
-  # wrprc_path does not exist before v0.1.4; the parser fails at startup).
-  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.4
+  # 2026-11-17: the v0.1.5 release (the JWT-VC kid/JWKS issuer profile #62,
+  # the checkbox claim picker #63, both found live in the WRPAC drill #39).
+  # Source image
+  # ghcr.io/sirosfoundation/siros-verifier-core@sha256:2f43baeaab3919d625a5ffe990d41721ab8f8939ae2e320c2e55108302e9c82a
+  # (release-verified: signed tag 560b6f58, SBOMs cosign-verified, OIDF
+  # conformance 14/14 — the fifth one-pass, Android AAR on GitHub Packages
+  # with the Central mirror deferred to the Dec 1 quota reset), mirrored
+  # into the Fly registry as
+  # digest sha256:2da95f83ad89ab045cbe9ebedd07f791b7925375f8446afde47b56fa0cdf6bb4. No build.
+  # Rollback: v0.1.4 (sha256:0b37dba7…) together with the pre-checkbox UI.
+  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.5
 
   # 2026-11-15: go-trust v0.30.0 (tag 4419437, the #257 WRPRC evaluation:
   # wrprc_service_types, allow_intermediaries, the presentation binding, the
