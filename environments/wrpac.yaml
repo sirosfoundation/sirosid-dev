@@ -32,7 +32,7 @@ images:
   # into the Fly registry as
   # digest sha256:0a1b1e444beaa6eec95e64e1e5cc05551fbee7b1ca5ef2ce0875a4c0e6b89687. No build.
   # Rollback: v0.1.4 (sha256:0b37dba7…) together with the pre-checkbox UI.
-  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.6
+  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.7
 
   # 2026-11-15: go-trust v0.30.0 (tag 4419437, the #257 WRPRC evaluation:
   # wrprc_service_types, allow_intermediaries, the presentation binding, the
