@@ -494,7 +494,13 @@ images:
   # answered MALFORMED after credential_received — the realeyes demo's
   # double symptom, first Rust-engine batch issuance through the strict
   # decode. Rollback: v0.2.24.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.25
+  # 2026-11-18c: v0.2.25 -> v0.2.26 (wallet-core v0.2.26, tag bb12d23):
+  # #60/#61 — the notification forward logs its endpoint and outcome (the
+  # HTTP status on a non-2xx, the transport error class on a send failure):
+  # the forward_failed after every phone-scan issuance was invisible from
+  # both ends. Diagnostic release - the next phone scan names the issuer's
+  # actual answer. Rollback: v0.2.25.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.26
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
