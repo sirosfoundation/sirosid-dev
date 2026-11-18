@@ -455,7 +455,38 @@ images:
   # callback (wallet-frontend's issuance proofs bind to the wallet's WSCD
   # key). Fly-registry digest
   # sha256:6b72f4de4f29e09e1a9ad5bb2d1d440575c17cd6d12ec0fd8f5d38dc81851775.
-  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.18
+  # 2026-11-17: v0.2.18 -> v0.2.21 (siros-wallet-core v0.2.21, PRs #46/#47/#49):
+  # #49 closes wallet-core#48 — a flow.start naming a gone session now answers
+  # -31000 (session not found), not -31005, so wallets self-heal after an engine
+  # restart instead of showing "Capability not supported" (proven live on this
+  # environment: an engine machine restart at 16:45 orphaned every connected
+  # wallet's session, and the sample app's "Session not found" recovery never
+  # triggered). Also carries #28/#46, the multi-credential SET. The direct
+  # ghcr pin deploys (the v0.2.1 note's Fly-registry-500 problem did not
+  # reproduce for this deploy attempt; the OCI index manifest
+  # sha256:6d9bda38… inspected cleanly). Rollback: v0.2.9.
+  # 2026-11-17b: v0.2.21 -> v0.2.23 (wallet-core v0.2.23, PR #54 closing #53):
+  # the engine's encryption_config_for now reads the ISSUER-LEVEL
+  # credential_response_encryption (OpenID4VCI 1.0 Final §12.2.4's shape)
+  # with the per-credential draft form as override — the realeyes demo's
+  # issuer publishes only the issuer-level member, so the engine
+  # negotiated "no mutually supported alg/enc pair" and its #51 delivery
+  # gate refused, despite both sides supporting ECDH-ES×A128GCM. Deployed
+  # via the per-run IMAGES override at 23:53 UTC (machine digest
+  # verified 5f5c5ccf…); PR #159 made the pin durable. v0.2.22 (the #51
+  # delivery gate) rode the same window. Rollback: v0.2.21.
+  # 2026-11-18: v0.2.23 -> v0.2.24 (wallet-core v0.2.24, tag 296bee7): #55 —
+  # the encrypted batch fill (credentials[0].credential -> credential) with
+  # the §7.1 plain-secret gate scoped to plain answers only, the realeyes
+  # demo's 604-char-completion "no credential" repro's fix; #56 — every
+  # configuration's sign/signing-key ask names its
+  # credential_configuration_id (go-wallet-backend#558's twin). NOTE: the
+  # #159 v0.2.23 pin block was lost in #153's merge resolution and is
+  # RESTORED here; the pin spelling returns to the direct ghcr deploy.
+  # Rollback: v0.2.21 (the last verified-good rollback with #159's chain
+  # restored; v0.2.18's Fly-registry mirror remains pushable if ghcr
+  # refuses again).
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.24
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
