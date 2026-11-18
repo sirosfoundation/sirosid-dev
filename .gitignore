@@ -87,3 +87,14 @@ fixtures/wrpac-clients/*.issued/
 
 # nym_auth circuit artifact (decompressed, ~1 MB): a build input for dockerfiles/verifier-nymauth.Dockerfile
 fixtures/nym-auth-circuits/*.bin
+
+# The WRPAC drill's registrar deployment (fixtures/make-wrpac-fixtures.sh):
+# the Access CA and registrar keys under wrpac-fly/deployment are the
+# environment's trust anchor material - never committed. The STAGED verifier
+# fixture (fixtures/siros-verifier-wrpac) carries the intermediary's request
+# key, so its secret halves are ignored too; everything else in the fixture
+# (proxy.fly.toml, attributes.toml, verifier-info.json) is committed.
+fixtures/wrpac-fly/deployment/
+fixtures/wrpac-fly/specs/
+fixtures/wrpac-fly/intermediary/
+fixtures/siros-verifier-wrpac/request_key.pem

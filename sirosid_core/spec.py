@@ -60,6 +60,11 @@ class InstanceSpec:
     # these itself and must not let a user's saved config choose them.
     app_prefix: str = "sirosid"
     host_pattern: str = "{app}.fly.dev"
+    # Per-environment siros-verifier fixture directory (under fixtures/),
+    # for environments whose verifier config differs from the shared default
+    # (the WRPAC drill's intermediary deployment). Empty = the shared
+    # fixtures/siros-verifier.
+    siros_verifier_fixture: str = ""
     # Scale to zero as a unit. When set, no machine wakes itself on traffic: only
     # start_instance() brings the instance up (see lifecycle.py for why per-app
     # autostop cannot work for this stack). A hosted service sets this; the CLI
@@ -123,7 +128,7 @@ class InstanceSpec:
                  "trusted_issuers": list, "trusted_verifiers": list, "trusted_verifier_roots": list,
                  "zk_circuits_sources": list, "credential_registries": list, "android_apps": list,
                  "env": str, "region": str, "rical_provider_url": str, "rical_root_pem": str,
-                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "scale_to_zero": bool, "env_admin": bool,
+                 "dc_api_enable": str, "bbs_secret_key": str, "app_prefix": str, "host_pattern": str, "siros_verifier_fixture": str, "scale_to_zero": bool, "env_admin": bool,
                  "layout": str, "public_ips": bool}
         for key, value in data.items():
             if not isinstance(value, kinds[key]):

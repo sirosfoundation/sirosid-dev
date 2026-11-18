@@ -254,6 +254,7 @@ def _spec_from_args(args, env_cfg) -> InstanceSpec:
         bbs_secret_key=bbs_secret_key or "",
         app_prefix=args.app_prefix or env_cfg["app_prefix"] or "sirosid",
         host_pattern=host_pattern,
+        siros_verifier_fixture=env_cfg["siros_verifier_fixture"],
         scale_to_zero=bool(args.scale_to_zero),
         # env-admin restarts per-app machines with per-app deploy tokens; a
         # single machine has neither, so the layout implies --no-env-admin.

@@ -573,8 +573,35 @@ def deploy_component(ctx: DeployContext, comp: dict):
         # wallet-backend and vc) addresses it on 8080. Found by running 0.25.0 with the rendered config.
         deploy_args += ["--env", "GT_HOST=0.0.0.0", "--env", "GT_PORT=8080",
                         "--file-local", f"/main-config/config.yaml={out_dir / 'pdp.yaml'}"]
+    elif name == "wrpac-registrar":
+        # Serves a siros-wrpac-tool deployment's published public/ directory
+        # (docker-compose.wrpac.yml's shape): the LoTE, the TSL, the register,
+        # the CRL and the status list, as static files behind the fly app's
+        # own HTTPS - which is also the base URL burned into every issued
+        # certificate at mint time (fixtures/make-wrpac-fixtures.sh).
+        # Fly's --file-local takes FILES only, so every published file is
+        # mounted individually into the nginx document root.
+        registrar_dir = resources.root / "fixtures" / "wrpac-fly" / "deployment" / "public"
+        if not (registrar_dir / "lote.json").exists():
+            raise DeployError(
+                f"{registrar_dir} does not exist or has no lote.json - run "
+                "fixtures/make-wrpac-fixtures.sh first (it mints the deployment "
+                "with --base-url https://" + naming.host("wrpac-registrar") + ")"
+            )
+        deploy_args += [
+            "--file-local", f"/etc/nginx/conf.d/default.conf={resources.root / 'fixtures' / 'wrpac-registrar.conf'}",
+        ]
+        for published in sorted(registrar_dir.iterdir()):
+            if published.is_file():
+                deploy_args += ["--file-local", f"/usr/share/nginx/html/{published.name}={published}"]
     elif name == "siros-verifier":
-        fixture = resources.root / "fixtures" / "siros-verifier"
+        # The default fixture is shared by every environment; an environment
+        # that needs its own verifier config (the WRPAC drill's intermediary
+        # members, its request-signing WRPAC) points siros_verifier_fixture at
+        # a sibling directory with the same file layout.
+        fixture = resources.root / "fixtures" / (spec.siros_verifier_fixture or "siros-verifier")
+        if not (fixture / "proxy.fly.toml").exists():
+            raise DeployError(f"{fixture} has no proxy.fly.toml - fixtures/siros-verifier is the template")
         fly.ensure_secret(app, "vcSigningKey", (pki_dir / "verifier_ec_private.pem").read_text())
         mongo_user_password = persistent_secret(out_dir, "sirosVerifierMongoPassword")
         ensure_siros_verifier_mongo_user(fly, naming, mongo_user_password)
@@ -596,6 +623,25 @@ def deploy_component(ctx: DeployContext, comp: dict):
             "--file-secret", "/pki/verifier_ec_private.pem=vcSigningKey",
             "--file-local", f"/pki/verifier_ec_chain.pem={pki_dir / 'verifier_ec_chain.pem'}",
         ]
+        # The WRPAC drill fixture: the fronted RP's WRPRC + the registrar's
+        # B.2 dataset (armed as the 472-2 s6.3.2.2 verifier_info members) and
+        # the INTERMEDIARY's WRPAC key/chain (the request-signing pair - the
+        # deployment IS the intermediary). Mounted only when the fixture
+        # carries them, so the default environments are unchanged.
+        for fixture_file, mount_path, secret in (
+            ("wrprc.jwt", "/etc/siros-verifier/wrprc.jwt", None),
+            ("verifier-info.json", "/etc/siros-verifier/verifier-info.json", None),
+            ("request_key.pem", "/pki/request_key.pem", "wrpacRequestKey"),
+            ("request_chain.pem", "/pki/request_chain.pem", None),
+        ):
+            path = fixture / fixture_file
+            if not path.exists():
+                continue
+            if secret:
+                fly.ensure_secret(app, secret, path.read_text())
+                deploy_args += ["--file-secret", f"{mount_path}={secret}"]
+            else:
+                deploy_args += ["--file-local", f"{mount_path}={path}"]
     elif name == "flow-core":
         # siros-flow-core (the general flow service): the additional
         # trusted verifier AND issuer — one app, one port. Its

@@ -427,27 +427,35 @@ images:
   # issue/redeem/verify. Digest:
   # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
   flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
-  # 2026-11-17: v0.2.9 -> v0.2.21 (siros-wallet-core v0.2.21, PRs #46/#47/#49):
-  # #49 closes wallet-core#48 — a flow.start naming a gone session now answers
-  # -31000 (session not found), not -31005, so wallets self-heal after an engine
-  # restart instead of showing "Capability not supported" (proven live on this
-  # environment: an engine machine restart at 16:45 orphaned every connected
-  # wallet's session, and the sample app's "Session not found" recovery never
-  # triggered). Also carries #28/#46, the multi-credential SET. The direct
-  # ghcr pin deploys (the v0.2.1 note's Fly-registry-500 problem did not
-  # reproduce for this deploy attempt; the OCI index manifest
-  # sha256:6d9bda38… inspected cleanly). Rollback: v0.2.9.
-  # 2026-11-17: v0.2.21 -> v0.2.23 (wallet-core v0.2.23, PR #54 closing #53):
-  # the engine's encryption_config_for now reads the ISSUER-LEVEL
-  # credential_response_encryption (OpenID4VCI 1.0 Final §12.2.4's shape)
-  # with the per-credential draft form as override — the realeyes demo's
-  # issuer publishes only the issuer-level member, so the engine
-  # negotiated "no mutually supported alg/enc pair" and its #51 delivery
-  # gate refused, despite both sides supporting ECDH-ES×A128GCM. Deployed
-  # via the per-run IMAGES override at 23:53 UTC (machine digest
-  # verified 5f5c5ccf…); this PR makes the pin durable. v0.2.22 (the #51
-  # delivery gate) rode the same window. Rollback: v0.2.21.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.23
+  # 2026-11-16: v0.2.9 -> v0.2.15 (the UA fix: engine-adapter-server's
+  # reqwest client identifies itself; a UA-less request reads as a bot to
+  # verifier-side WAFs and accredify's UAT answered 403 to the
+  # request-object fetch, found on-device). Also carries the
+  # frontend-shaped DID resolve (NO resource_type on the wire - the
+  # wallet-backend proxy 403'd the bespoke did_document type; the
+  # wallet FRONTEND's own resolve shape is what works) and the jarm
+  # 400-body diagnostic. The URN-spelling vct shim that briefly rode
+  # v0.2.13/v0.2.14 is REVERTED upstream (wallet-core cbe5654): vct is a
+  # case-sensitive identifier, the issuer-side fix is Spherity's to make
+  # (corrected vct or aka_vcts), and the wallet does not paper over it.
+  #   docker pull ghcr.io/sirosfoundation/engine-server:v0.2.15
+  #   docker tag ... registry.fly.io/sirosid-gdc-wmp-engine:v0.2.15 && docker push
+  # Fly-registry digest sha256:0cd5e26171435f2f5eaef33332b37792f9a10cb61a2536763acac04c47a40913.
+  # 2026-11-16b: v0.2.15 -> v0.2.16 (9596d5c): the #11 merge sweep regression
+  # fixed - the code-for-token POST lost its client_id form member (apigw
+  # refuses the authorization_code grant without it), found via the
+  # wallet-frontend wasm integration. Fly-registry digest
+  # sha256:082e5f414bf68ab1c6a6c8e076e49fe075bbd49da86b7471f435295db70de529.
+  # 2026-11-16c: v0.2.16 -> v0.2.17 (6346016): the second #11 sweep regression
+  # fixed - CredentialResponse lost its credentials[] batch member and the
+  # fallback reading credentials[0] into credential (SUNET's GDC apigw
+  # answers single-credential requests with the batch shape). Fly-registry
+  # digest sha256:2004098b3aaf84002ee13d1bba1e12847a9412d5562771869e513313cc946f66.
+  # 2026-11-16d: v0.2.17 -> v0.2.18 (94ec225): the wasm signingKey host
+  # callback (wallet-frontend's issuance proofs bind to the wallet's WSCD
+  # key). Fly-registry digest
+  # sha256:6b72f4de4f29e09e1a9ad5bb2d1d440575c17cd6d12ec0fd8f5d38dc81851775.
+  wmp-engine: registry.fly.io/sirosid-gdc-wmp-engine:v0.2.18
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
@@ -488,17 +496,6 @@ trusted_issuers:
   # it here is the PDP-whitelist mechanism, NOT a bypass: every presentation
   # trust decision still runs through this environment's own go-trust.
   - https://sirosid-gdc-flow-core.fly.dev
-  # The realeyes demonstrator's Rust nym_auth issuer (siros-issuer-core), a
-  # SEPARATE environment (sirosid-realeyes-*): a wallet homed HERE (gdc) scans
-  # its pre-authorized offers and the engine evaluates the offer's issuer
-  # against THIS environment's PDP at acceptance time. Its Document Signer
-  # chain roots in the realeyes environment's test CA, committed beside this
-  # change (fixtures/trusted-roots/sirosid-realeyes-test-ca.pem) and pooled
-  # via trusted_verifier_roots below, exactly like the multipaz/geneva interop
-  # roots. Same mechanism, not a bypass: mdociaca still chain-validates the
-  # DS certificate under action mdoc-issuer. See
-  # https://github.com/sirosfoundation/sirosid-realeyes (docs/REALEYES-DEMO.md).
-  - https://sirosid-realeyes-siros-issuer.fly.dev
   # yitbarek's issuer. The issuer identity is the APIGW's public URL (its credential_issuer, with keys at
   # /.well-known/jwt-vc-issuer); there is no public ...-vc-issuer host (that app is internal), so trusting
   # it never resolved and the PDP could not fetch its keys.
@@ -587,6 +584,19 @@ trusted_verifiers:
   # The plain origin as well, which is what an unsigned DC API request reduces
   # to - that path carries no signing certificate and so no DID.
   - https://acra.uat.accredify.io
+  # 2026-11-16: Accredify's ACRA UAT verifier now also signs requests with a
+  # NEW leaf key and identifies by x509_hash (it did not on 2026-09-17 - the
+  # did:web entries above covered it then). The hash is the PDP's own denial
+  # pasted verbatim (action credential-verifier, resource x5c):
+  #
+  #   whitelist denied request subject=x509_hash:e5a4_tJ4DqV3NfqxF_cvAgkb22eS_LZ4jmEOAE1ADKc
+  #     reason="subject not in whitelist for action 'credential-verifier'"
+  #
+  # x509_hash: subjects are compared un-normalized (unlike the SAN/URI forms
+  # which reduce to https://<host> first), so the entry must be this exact
+  # string. Hash-pinning is the trust decision for this scheme: no reader-CA
+  # root, no chain validation (go-trust skips it deliberately).
+  - x509_hash:e5a4_tJ4DqV3NfqxF_cvAgkb22eS_LZ4jmEOAE1ADKc
   # Spherity's EUDI/EBW PID verifier (api.oid.spherity.dev), added 2026-11-13.
   # Its request object (an x509_hash client_id, request_uri under
   # https://api.oid.spherity.dev/oid4vp/<id>/jar/<id>) is signed with a leaf
@@ -605,12 +615,6 @@ trusted_verifier_roots:
   # gdc's persisted test CA, needed for the SIROS verifier's x509_san_dns
   # requests. Hash-pinned requests do not use chain validation; SAN requests do.
   - fixtures/trusted-roots/sirosid-gdc-test-ca.pem
-  # The realeyes environment's test CA: its nym_auth issuer's Document Signer
-  # chain (x5c in the credentials it issues to wallets homed here) roots in
-  # it, and mdociaca chain-validates under action mdoc-issuer from the same
-  # merged root pool. Vendored from sirosid-realeyes' per-environment PKI
-  # (fixtures/rendered/fly-realeyes/vc-pki/rootCA.crt).
-  - fixtures/trusted-roots/sirosid-realeyes-test-ca.pem
 
 # Vega's r12 circuit isn't published to the default zk-circuits.fly.dev
 # catalog yet (pending expert review) - this is where it actually lives.

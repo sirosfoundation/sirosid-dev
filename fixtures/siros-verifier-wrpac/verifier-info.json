@@ -1,0 +1,23 @@
+{
+  "identifier": [
+    {
+      "type": "ntr",
+      "identifier": "NTRSE-WRPAC-FRONTED"
+    }
+  ],
+  "srvDescription": [
+    {
+      "lang": "sv",
+      "content": "WRPAC-drillens frontade part"
+    }
+  ],
+  "registryURI": "https://sirosid-wrpac-registrar.fly.dev/register.json",
+  "intendedUseIdentifier": "urn:siros:wrpac-drill:pid-verification",
+  "purpose": [
+    {
+      "lang": "sv",
+      "content": "Verifiera identitet"
+    }
+  ],
+  "policyURI": "https://fronted-rp.example.test/privacy"
+}

@@ -1,0 +1,170 @@
+# Persisted config for `make fly-up ENV=wrpac` - see scripts/env_config.py's
+# module doc for the full schema/precedence. Update this file (not just the
+# CLI flags) whenever wrpac's intended state changes.
+#
+# The WRPRC/WRPAC intermediary environment (siros-verifier-core#39, increment
+# 4): a fully isolated drill deployment of the ETSI TS 119 475 intermediary
+# model, sharing NOTHING with gdc - its own apps (sirosid-wrpac-*), its own
+# PKI, its own Mongo. The verifier deployment IS the intermediary: it signs
+# request objects with its own WRPAC (ETSI TS 119 411-8, issued by the drill's
+# Access CA) while arming the fronted RP's registration certificate and the
+# registrar's dataset (the 472-2 s6.3.2.2 verifier_info members).
+#
+# Prerequisite: fixtures/make-wrpac-fixtures.sh (mints the registrar
+# deployment under fixtures/wrpac-fly/ with --base-url pointing at this
+# environment's wrpac-registrar app, and stages the verifier's fixture).
+
+region: arn
+
+# The verifier's deployment-specific config lives in this fixture, not the
+# shared fixtures/siros-verifier: the intermediary members
+# (wrprc_path/verifier_info_path) and the WRPAC request-signing pair.
+siros_verifier_fixture: siros-verifier-wrpac
+
+images:
+  # 2026-11-17: the v0.1.6 release (adds the vertical checkbox layout) (the JWT-VC kid/JWKS issuer profile #62,
+  # the checkbox claim picker #63, both found live in the WRPAC drill #39).
+  # Source image
+  # ghcr.io/sirosfoundation/siros-verifier-core@sha256:2f43baeaab3919d625a5ffe990d41721ab8f8939ae2e320c2e55108302e9c82a
+  # (release-verified: signed tag 560b6f58, SBOMs cosign-verified, OIDF
+  # conformance 14/14 — the fifth one-pass, Android AAR on GitHub Packages
+  # with the Central mirror deferred to the Dec 1 quota reset), mirrored
+  # into the Fly registry as
+  # digest sha256:0a1b1e444beaa6eec95e64e1e5cc05551fbee7b1ca5ef2ce0875a4c0e6b89687. No build.
+  # Rollback: v0.1.4 (sha256:0b37dba7…) together with the pre-checkbox UI.
+  siros-verifier: registry.fly.io/sirosid-wrpac-siros-verifier:v0.1.7
+
+  # 2026-11-15: go-trust v0.30.0 (tag 4419437, the #257 WRPRC evaluation:
+  # wrprc_service_types, allow_intermediaries, the presentation binding, the
+  # exact-path grants). Image ghcr.io/sirosfoundation/go-trust:0.30.0,
+  # digest-pull verified. No build.
+  pdp: ghcr.io/sirosfoundation/go-trust:0.30.0
+
+  # The registrar component (nginx serving the minted deployment's public/
+  # directory; docker-compose.wrpac.yml's shape). Any nginx works - the
+  # served CONTENT is the mint, not the server.
+  wrpac-registrar: nginx:alpine
+
+  # 2026-11-16: the wallet pair's response-encryption contract, pinned as one
+  # unit. The deployed go-wallet-backend 0.25.2 (the client-held response
+  # encryption era, 31409eae) requires the wallet client to answer
+  # sign_presentation with response_jwe for direct_post.jwt and refuses a
+  # plain vp_token ("the client answered with a vp_token instead of
+  # response_jwe" - the live failure of every drill presentation's last hop).
+  # The released wallet-frontend (0.5.0-1-sirosid.10, this env's former
+  # default; the .11 flavor likewise) signs vpToken only. The fix pair, both
+  # proven live in this drill:
+  #   - sirosid-rc-encryption.1 (8a9ede184, gdc's pin): the client-held
+  #     response_jwe, which exposed the LAST gap - the plaintext carried the
+  #     bare vp_token string, rejected by siros-verifier-core v0.1.4 as
+  #     {"error":"malformed","error_description":"invalid response"} because
+  #     OpenID4VP 1.0 §8.1 requires the object form keyed by credential query
+  #     id. Found by the drill; fixed in wallet-frontend PR #460
+  #     (fix/jarm-vp-token-dcql-object, mirroring the engine's own
+  #     buildDCQLVPToken), published as sirosid-rc-encryption.2 - and, after
+  #     the live drill exposed the SAME bug on the DC-API companion path
+  #     (the QR/link callback's own duplicated encryption, where a
+  #     JSON-quoted token parses back to a bare string), the .3 build
+  #     (1cee5395) wraps every client response site with the shared
+  #     restructureDcqlVpToken.
+  # Re-pin both to released images when the client-held-response-encryption
+  # work (PR #394 + #460) ships in one.
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.4
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.2
+
+values:
+  pdp:
+    extraConfig:
+      # The drill's trust surface: the registrar's published lists and the
+      # WRPRC evaluation policies. The chart's whitelist renders this
+      # environment's own vc-services URLs ("sirosid-wrpac Fly whitelist").
+      registries:
+        etsi:
+          enabled: true
+          name: wrpac-registrar
+          description: The WRPAC drill's registrar trust anchors (ETSI TS 119 612)
+          # The INTERNAL 6PN address: inside Fly's private network the public
+          # *.fly.dev names do not resolve (the PDP's boot failed on exactly
+          # that), so the list fetch targets the registrar's internal host.
+          # The TSL's own contents still reference the public URLs - the
+          # wallet-facing half (CRL, status list) is fetched over the public
+          # internet where those resolve.
+          tsl_urls:
+            - http://sirosid-wrpac-wrpac-registrar.internal:8080/tsl.xml
+          allow_network_access: true
+          fetch_timeout: 10s
+          # Same reasoning as the local stack (fixtures/go-trust-wrpac.yaml):
+          # the drill's Access CA is regenerated per setup and there is
+          # nowhere independent to anchor it. A real deployment must set
+          # this true.
+          require_signature: false
+          # The WRPRC registrar anchors (go-trust #257): exactly the services
+          # the tool lists with the RegistrationCertProvider type - never the
+          # unfiltered pool, so an ordinary access-certificate holder cannot
+          # self-sign registration claims here.
+          wrprc_service_types:
+            # BOTH service types: the registrar's cert (the WRPRC's x5c leaf)
+            # ISSUES FROM the Access CA, and the leaf-only chain needs the CA
+            # in the anchor pool to verify. A leaf with the CA absent anchors
+            # nothing ("certificate signed by unknown authority").
+            - https://uri.etsi.org/19475/Svctype/WRPRegistrationCertificateProvider
+            - https://uri.etsi.org/19475/Svctype/WRPAccessCertificateProvider
+          # The tool emits the ETSI-canonical status URI (http, no trailing
+          # slash); g119612 v0.8.3's default policy constant is the https
+          # trailing-slash form, so the pool build rejects every service
+          # with "status is not recognized or granted" unless the statuses
+          # are supplied explicitly. Verified locally: with this list the
+          # WRPRC anchors and the intermediated presentation binds.
+          wrprc_service_statuses:
+            - http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted
+        always_trusted:
+          enabled: true
+          name: always-trusted
+          description: "Status-list signer only (policies below); answers yes to everything it is asked"
+        # The whitelist's action map, deep-merged over the chart's default
+        # (same as gdc): the chart maps pid-provider/credential-issuer/
+        # verifier/credential-verifier but NOT the actions go-wallet-backend's
+        # engine actually sends - 'issuer' for its OID4VCI issuer-trust query
+        # (found live: every PID issuance failed 'untrusted issuer' until
+        # this) and 'issue' for the embedded flow-core issuer. Same
+        # pid-issuers list: a credential this environment trusts its issuers
+        # to ISSUE is trusted when PRESENTED back to it.
+        whitelist:
+          actions:
+            issue: pid-issuers
+            issuer: pid-issuers
+      policies:
+        default_policy: default
+        policies:
+          default:
+            description: "Everything but the status-list signer: the real registries only, never always-trusted"
+            registries:
+              - sirosid-wrpac Fly whitelist
+              - sirosid-wrpac mDOC IACA registry
+              - wrpac-registrar
+          status-list-signer:
+            description: "Status-list signer: allow-all until the vc registry serves discoverable signing keys (same as gdc)"
+            registries: [always-trusted]
+          credential-verifier:
+            description: "Verifier access: the WRPAC drill - intermediated presentations admitted, the WRPRC evaluated"
+            registries:
+              - sirosid-wrpac Fly whitelist
+              - sirosid-wrpac mDOC IACA registry
+              - wrpac-registrar
+            # ETSI TS 119 475 Table 10: the WRPRC this verifier's requests
+            # carry names the acting intermediary (this deployment), so the
+            # presentation binding is against its own WRPAC's org id. NOTE the
+            # nesting: etsi is a sibling of constraints (PolicyConfig.ETSI),
+            # not under it - under constraints the key is silently dropped.
+            etsi:
+              allow_intermediaries: true
+          verifier:
+            description: "Verifier access (legacy action name): same as credential-verifier"
+            registries:
+              - sirosid-wrpac Fly whitelist
+              - sirosid-wrpac mDOC IACA registry
+              - wrpac-registrar
+            etsi:
+              allow_intermediaries: true
+      # The drill has no nym_auth/ZKP and no local builds: everything else
+      # rides the shared values-fly.yaml defaults.
