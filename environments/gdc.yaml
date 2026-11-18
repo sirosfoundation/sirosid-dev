@@ -500,7 +500,14 @@ images:
   # the forward_failed after every phone-scan issuance was invisible from
   # both ends. Diagnostic release - the next phone scan names the issuer's
   # actual answer. Rollback: v0.2.25.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.26
+  # 2026-11-18d: v0.2.26 -> v0.2.27 (wallet-core v0.2.27, tag 7269d7e2):
+  # #60/#63 — the wallet's notification flow is the single §10 sender:
+  # the issuance path's own best-effort send double-delivered with the
+  # wallet's flow, the issuer answered 409 illegal_transition to the second
+  # (v0.2.26's diagnostic named it), and the wallet's flow reported
+  # forward_failed after every phone-scan issuance. The double-send is
+  # removed; carries v0.2.26's forward diagnostics. Rollback: v0.2.26.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.27
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
