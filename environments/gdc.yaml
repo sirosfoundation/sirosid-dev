@@ -486,7 +486,15 @@ images:
   # Rollback: v0.2.21 (the last verified-good rollback with #159's chain
   # restored; v0.2.18's Fly-registry mirror remains pushable if ghcr
   # refuses again).
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.24
+  # 2026-11-18b: v0.2.24 -> v0.2.25 (wallet-core v0.2.25, tag 677e3d2):
+  # #57/#58 — the completion entries carry their format (the Final §7.2.2
+  # member, credentials[0].format filled by the batch fill): the SDK
+  # v0.23.5 batch decode (#419, the Go engine's CredentialResult shape)
+  # required format with no default, so every Rust-engine batch issuance
+  # answered MALFORMED after credential_received — the realeyes demo's
+  # double symptom, first Rust-engine batch issuance through the strict
+  # decode. Rollback: v0.2.24.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.25
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
