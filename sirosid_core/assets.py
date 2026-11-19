@@ -557,6 +557,23 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
         add_header Cache-Control "no-store" always;
     }}
 """) if env_admin else ""
+
+    # The mini-wallet entrypoint (dashboard/mini-wallet.html): the (a)
+    # deployment - this app's host IS the WebAuthn RP, so the adopt's
+    # passkey ceremony completes on this origin, and the wallet-backend
+    # rides the same-origin proxy above (the AS at /auth, the
+    # private-data at /user/session, the evaluations at /v1). The page
+    # allows the library CDN and the wasm the engine instantiates; an
+    # environment that vendors the assets mounts them over the URLs and
+    # can drop the CDN sources.
+    MINI_WALLET_LOCATION = """
+    location = /mini-wallet {
+        default_type text/html;
+        alias /usr/share/nginx/mini-wallet.html;
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; frame-ancestors 'none'" always;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+    }
+"""
     return f"""server {{
     listen {naming.listen("wallet-frontend")};
     absolute_redirect off;
@@ -640,6 +657,7 @@ def wallet_frontend_conf(env: str, conformance: bool = False, naming: Naming = N
     location / {{
         try_files $uri /index.html;
     }}
+{MINI_WALLET_LOCATION}
 }}
 """
 

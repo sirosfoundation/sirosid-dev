@@ -1,0 +1,135 @@
+<!doctype html>
+<!-- The mini-wallet entrypoint — the (a) deployment: this page serves from
+     the wallet's own origin (the wallet-frontend app, whose host is the
+     WebAuthn RP), so the adopt's passkey ceremony completes here.
+
+     The page is the generic entry, nothing environment-specific: it hosts
+     @sirosfoundation/mini-wallet (the npm package siros-wallet-core#67
+     publishes) over the published wasm engine, receives a credential by
+     its offer URI, and drives the adopt/onboard/set-passkey/move arc as
+     the library's modal — through THIS origin's same-origin proxy to the
+     wallet-backend (the AS at /auth, the private-data at /user/session,
+     the PDP-proxy at /v1 — the nginx location block this page rides).
+
+     The library loads from the CDN by package name — the page works the
+     day the package publishes, and an environment that prefers vendored
+     assets mounts them over these URLs (the CSP below already allows
+     'self'). -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The mini-wallet</title>
+<style>
+  body { font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; color: #16202b; background: #f7f8fa; margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+  main { flex: 1; width: 100%; max-width: 640px; margin: 0 auto; padding: 40px 20px; }
+  h1 { font-size: 1.45rem; margin: 0 0 6px; }
+  .lede { color: #4a5563; margin: 0 0 28px; }
+  .card { background: #fff; border: 1px solid #cfd6e0; border-radius: 12px; padding: 20px; margin: 14px 0; }
+  .card h2 { font-size: 1rem; margin: 0 0 10px; }
+  input { font: inherit; width: 100%; padding: 10px 12px; border: 1px solid #cfd6e0; border-radius: 8px; box-sizing: border-box; }
+  .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+  button { font: inherit; border: none; border-radius: 8px; padding: 10px 20px; cursor: pointer; background: #e7edf7; color: #16202b; }
+  button.go { background: #1a4fd0; color: #fff; font-weight: 600; }
+  button:disabled { opacity: .5; cursor: default; }
+  .status { margin: 10px 0 0; color: #4a5563; font-size: .92rem; min-height: 1.4em; }
+  .list { list-style: none; padding: 0; margin: 12px 0 0; }
+  .list li { padding: 8px 0; border-top: 1px solid #eef1f5; color: #4a5563; font-size: .92rem; }
+  #keep .card-note { color: #4a5563; font-size: .9rem; margin: 4px 0 12px; }
+</style>
+<main>
+  <h1>The mini-wallet</h1>
+  <p class="lede">A wallet for this page: receive a credential now — no
+  signup — and keep it forever once you set a passkey. Your keys and
+  your data stay under the passkey; the wallet's trust is this
+  deployment's policy.</p>
+
+  <section class="card" id="receive">
+    <h2>Receive a credential</h2>
+    <input id="offer" placeholder="The credential offer URI" spellcheck="false">
+    <div class="row">
+      <button id="btn-receive" class="go" disabled>Receive</button>
+    </div>
+    <p class="status" id="receive-status"></p>
+    <ul class="list" id="credentials"></ul>
+  </section>
+
+  <section class="card" id="keep" hidden>
+    <h2>Keep it — a permanent wallet</h2>
+    <p class="card-note">Your credential moves into this deployment's
+    wallet, unlocked by a passkey you set now.</p>
+    <div class="row">
+      <button id="btn-adopt" class="go">Set a passkey &amp; move it</button>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+  // The library by package name (the CDN resolves the published
+  // versions): the mini-wallet and the wasm engine it runs.
+  import { MiniWallet, LocalStorageWalletStorage, AlwaysTrustedPlugin, GoWalletBackendTarget }
+    from "https://cdn.jsdelivr.net/npm/@sirosfoundation/mini-wallet@0.1/+esm";
+  import init, { WasmEngine }
+    from "https://cdn.jsdelivr.net/npm/@sirosfoundation/siros-wallet-core@0.2/+esm";
+
+  const $ = (id) => document.getElementById(id);
+  const say = (id, text) => { $(id).textContent = text; };
+
+  // The wallet: the storage unencrypted until the passkey wraps it (the
+  // adopt), the engine module injected (the page loaded it), the trust
+  // layer the deployment's PDP-proxy once the backend configuration ships
+  // its pre-registration token (go-wallet-backend#566) — the demo shim
+  // until then.
+  const wallet = new MiniWallet({
+    storage: new LocalStorageWalletStorage("mini-wallet"),
+    pdp: new AlwaysTrustedPlugin(),
+    engine: { init, WasmEngine },
+    wasmUrl: "https://cdn.jsdelivr.net/npm/@sirosfoundation/siros-wallet-core@0.2/dist/engine_adapter_wasm_bg.wasm",
+    ui: { consent: async () => ({ consented: true }) },
+    onEvent: (e) => {
+      if (e.type === "credential-received") refresh();
+      if (e.type === "flow-error") say("receive-status", e.message);
+    },
+  });
+
+  async function refresh() {
+    const list = await wallet.credentials();
+    $("credentials").replaceChildren(...list.map((c) => {
+      const li = document.createElement("li");
+      li.textContent = `${c.format} · ${c.configurationId ?? ""} · received ${new Date(c.receivedAtUnix * 1000).toLocaleString()}`;
+      return li;
+    }));
+    $("keep").hidden = list.length === 0;
+  }
+  await refresh();
+
+  $("offer").addEventListener("input", (e) => { $("btn-receive").disabled = !e.target.value.trim(); });
+  $("btn-receive").addEventListener("click", async () => {
+    $("btn-receive").disabled = true;
+    say("receive-status", "Receiving…");
+    try {
+      await wallet.receiveCredential($("offer").value.trim());
+      say("receive-status", "Received — it's in this page's wallet.");
+      await refresh();
+    } catch (e) {
+      say("receive-status", e?.data?.reason ?? e.message ?? String(e));
+    } finally {
+      $("btn-receive").disabled = false;
+    }
+  });
+
+  // The adopt: the onboard/set-passkey/move arc as the library's modal.
+  // The backend is THIS origin's (the same-origin proxy carries the AS,
+  // the private-data, and — once #566 ships — the evaluations' token).
+  $("btn-adopt").addEventListener("click", async () => {
+    try {
+      const report = await wallet.adopt({
+        target: new GoWalletBackendTarget(window.location.origin, "default"),
+        modal: true,
+        ui: { ask: async () => true, create: (options) => navigator.credentials.create(options) },
+      });
+      if (report?.failed) say("receive-status", `The move failed at ${report.failed} — this page's wallet is untouched.`);
+      else if (report) { say("receive-status", `Moved to your wallet (account ${report.account}).`); await refresh(); }
+    } catch (e) {
+      say("receive-status", e?.message ?? String(e));
+    }
+  });
+</script>
