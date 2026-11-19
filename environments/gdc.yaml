@@ -537,7 +537,16 @@ images:
   # #72 round 2/#75 — the refusal body log (opt-in): the machine env sets
   # ENGINE_LOG_REFUSAL_BODIES=1 so the NEXT scan names Spherity's refusal
   # body (the 400 of the 19:19 scan). Diagnostic deployment. Rollback: v0.2.30.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.31
+  # 2026-11-19e: v0.2.31 -> v0.2.32 (wallet-core v0.2.32, tag 74eeec5):
+  # #72 round 3 — §11.3 REQUEST-BODY ENCRYPTION to the full spec (jwks /
+  # jwks_uri, alg_values_supported honored, encryption_required
+  # fail-closed, application/jwt wire type, the deferred request too):
+  # Spherity demands the request itself encrypted
+  # (invalid_encryption_parameters, the 20:13 scan's body log). The key
+  # asks ride the 90s DELIVERY bound (the transport-blackout class). The
+  # Kotlin side maps the engine's virtual client-auth kid to the
+  # instance key. Rollback: v0.2.31.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.32
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
