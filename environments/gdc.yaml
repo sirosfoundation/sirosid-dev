@@ -594,7 +594,17 @@ images:
   # frontend could not (its sign handler returns only vpToken — gdc.yaml's
   # wallet-backend note documents the gap). Re-pin to the released sirosid image
   # when the response-encryption work ships in one.
-  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.1
+  # 2026-11-20: rc-encryption.1 -> 0.7.0 (the full release, 2026-11-18).
+  # The RC build (v0.7.0-beta.4-era) is stale against the backend 0.25.2's
+  # token policy: post-login the /issuer/all + /verifier/all listings 403
+  # and the WS relay token never establishes - "No transport available
+  # for credential issuance", so a cross-environment offer link (the
+  # realeyes demo's) cannot run. v0.7.0 carries the matching line: PR #394
+  # (the wallet holds the OID4VCI response-encryption key, the engine
+  # relays ciphertext only - the wallet-core #59/#69 era), #184 (the
+  # credential_accepted notifications), #469 (the multi-configuration
+  # issuance). Found driving the realeyes web-wallet handover.
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.7.0
   #   mini-oidc 0.0.6 is the newest release (the values-fly.yaml pin).
   # env-admin 0.1.2 adds additive-verifier re-registration after storage resets.
   # Built from a clean sirosid-dev tree at 0bf082dc2c4691843d8af572ecd60869b2d675ef.
