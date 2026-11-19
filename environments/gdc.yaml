@@ -507,7 +507,16 @@ images:
   # (v0.2.26's diagnostic named it), and the wallet's flow reported
   # forward_failed after every phone-scan issuance. The double-send is
   # removed; carries v0.2.26's forward diagnostics. Rollback: v0.2.26.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.27
+  # 2026-11-19: v0.2.27 -> v0.2.28 (wallet-core v0.2.28, tag ed8f6a14):
+  # #59/#69 — the response-encryption key is CLIENT-HELD (the host answers
+  # the key ask with the public JWK and opens the relayed JWE itself; the
+  # engine-held pair is the legacy fallback), and the completion relays the
+  # response-level credential_metadata (the ssc seed-delivery path) +
+  # credential_response_encrypted flag per entry — the realeyes demo's
+  # presentation PROOF_FAILED was exactly this gap (the seed never reached
+  # the wallet through the server engine). Also carries the #66 parity docs
+  # (#68). Rollback: v0.2.27.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.28
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
