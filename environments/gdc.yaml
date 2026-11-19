@@ -546,7 +546,14 @@ images:
   # asks ride the 90s DELIVERY bound (the transport-blackout class). The
   # Kotlin side maps the engine's virtual client-auth kid to the
   # instance key. Rollback: v0.2.31.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.32
+  # 2026-11-19f: v0.2.32 -> v0.2.33 (wallet-core v0.2.33, tag 74eeec5): the
+  # SPEC-COMPLETE cut of v0.2.32's first §11.3 release (0.2.32's npm
+  # package was the initial implementation; npm refuses re-publishing a
+  # version, so the audited, full-spec build rides 0.2.33 - jwks_uri,
+  # alg_values_supported honored, encryption_required fail-closed, the
+  # deferred request, four regression guards). Same tree as the 0.2.32
+  # tag (74eeec5). Rollback: v0.2.31.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.33
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
