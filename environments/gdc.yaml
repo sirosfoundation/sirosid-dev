@@ -533,7 +533,11 @@ images:
   # window (behind-window answers 410 → resume). Also: the refusal status
   # logs before the non-200 branch. RETEST NEEDS A FRESH QR (the diagnosis
   # scan's code is spent). Rollback: v0.2.29.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.30
+  # 2026-11-19d: v0.2.30 -> v0.2.31 (wallet-core v0.2.31, tag 966ebd4c):
+  # #72 round 2/#75 — the refusal body log (opt-in): the machine env sets
+  # ENGINE_LOG_REFUSAL_BODIES=1 so the NEXT scan names Spherity's refusal
+  # body (the 400 of the 19:19 scan). Diagnostic deployment. Rollback: v0.2.30.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.31
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
