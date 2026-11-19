@@ -571,7 +571,17 @@ images:
   # truth wrongly applied to the request's offer). The §11.3 request
   # encryption of the same scan WORKED (the refusal changed) - one
   # member deeper each scan. Rollback: v0.2.33.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.34
+  # 2026-11-20: v0.2.34 -> v0.3.0 (wallet-core v0.3.0, tag 81da080b): the
+  # MINOR line under the pre-#77 engine - W2W arrives. #77/#79: POST
+  # /wmp/invitation (mint, sign, store single-use, answer the
+  # wmp://invite?data= URI) + the consume path (session_create +
+  # invitation_nonce, every failure -31002) + the message surface
+  # (deliver/ack/poll/status, the per-session mailbox AND the outbox push).
+  # #65/#78: the shared outbox trait, the Valkey backend for
+  # multi-replica. #80: the null invitation_nonce params acceptance (the
+  # live Invalid-params regression of 2026-11-20, hardened
+  # engine-side). All additive - no breaking change. Rollback: v0.2.34.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.0
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
