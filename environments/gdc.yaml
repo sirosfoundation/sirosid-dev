@@ -523,7 +523,17 @@ images:
   # PASSES in the harness - the stall is a divergence, not the path). Also
   # carries #71 (the ask carries the negotiated §7.3 pair). The next phone
   # scan names the stall point. Rollback: v0.2.28.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.29
+  # 2026-11-19c: v0.2.29 -> v0.2.30 (wallet-core v0.2.30, tag b30fbdf6):
+  # #72/#74 — THE LOST-ASK ROOT CAUSE: the black-holed first SSE stream
+  # carried no lastEventId, the reconnect's replay(0) answered 'go live',
+  # and the early child-ask starts streamed into the dead pipe were
+  # dropped — the attestation ask's timeout sent the credential request
+  # WITHOUT the client attestation, the issuer refused, and the single-use
+  # pre-authorized code burnt. replay(0) now replays the whole retained
+  # window (behind-window answers 410 → resume). Also: the refusal status
+  # logs before the non-200 branch. RETEST NEEDS A FRESH QR (the diagnosis
+  # scan's code is spent). Rollback: v0.2.29.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.30
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
