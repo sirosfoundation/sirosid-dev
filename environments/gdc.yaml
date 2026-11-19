@@ -553,7 +553,14 @@ images:
   # alg_values_supported honored, encryption_required fail-closed, the
   # deferred request, four regression guards). Same tree as the 0.2.32
   # tag (74eeec5). Rollback: v0.2.31.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.33
+  # 2026-11-19g: v0.2.33 -> v0.2.34 (wallet-core v0.2.34, tag 5b82923):
+  # #72 round 4 — the §7.3 offer carries its alg ON THE WIRE (Spherity's
+  # 20:42 refusal: "Unsupported credential_response_encryption alg:
+  # <missing>. Supported: ECDH-ES" — the earlier skip was the response's
+  # truth wrongly applied to the request's offer). The §11.3 request
+  # encryption of the same scan WORKED (the refusal changed) - one
+  # member deeper each scan. Rollback: v0.2.33.
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.2.34
   #   wallet-core v0.2.2 (tagged 2026-11-12, the released engine-server image; the first
   #   wmp-engine pin on the release track rather than a fly-registry main build): the
   #   OID4VP link parsing (host'd queries, query-less links, the fetchable-URI guard) +
