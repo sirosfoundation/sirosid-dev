@@ -324,7 +324,7 @@ images:
   # are merged and released; #163 (WMP bridge) and #472 (sign-stage refusal) were CLOSED unmerged, so they are no longer in this image.
   # Rollback: registry.fly.io/sirosid-gdc-wallet-backend:local-1793194150 (the integration-12 local build, engine d7d11ac).
   # 2026-11-11: bumped from 0.25.1 to the 0.25.2 release.
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.2
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.5
   # previous pins: faa5e63 = local-1792560364; PR 469 only = local-1792473614
 
   # The rest of the SIROS components, at the last RELEASED version as of 2026-10-08. Pinned here, not in
@@ -349,7 +349,7 @@ images:
   # permanent log noise + cold-boot timeout chain from the #245 live repro).
   # Previous: 0.26.2 (verifier_ids from the whitelist, #218).
   # 2026-11-12: 0.29.1 -> 0.29.2 (latest release; same deploy as the status-list-signers whitelist, #143).
-  pdp: ghcr.io/sirosfoundation/go-trust:0.29.2
+  pdp: ghcr.io/sirosfoundation/go-trust:0.31.0
   # The Rust WMP engine (siros-wallet-core engine-server) - the drop-in
   # `--mode=engine` replacement the native SDKs' remote mode speaks
   # (HTTP+SSE through wallet-proxy's /wmp-engine/, like the local

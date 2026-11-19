@@ -38,7 +38,7 @@ images:
   # wrprc_service_types, allow_intermediaries, the presentation binding, the
   # exact-path grants). Image ghcr.io/sirosfoundation/go-trust:0.30.0,
   # digest-pull verified. No build.
-  pdp: ghcr.io/sirosfoundation/go-trust:0.30.0
+  pdp: ghcr.io/sirosfoundation/go-trust:0.31.0
 
   # The registrar component (nginx serving the minted deployment's public/
   # directory; docker-compose.wrpac.yml's shape). Any nginx works - the
@@ -69,8 +69,8 @@ images:
   #     restructureDcqlVpToken.
   # Re-pin both to released images when the client-held-response-encryption
   # work (PR #394 + #460) ships in one.
-  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:sirosid-rc-encryption.4
-  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.2
+  wallet-frontend: ghcr.io/sirosfoundation/wallet-frontend:0.7.0
+  wallet-backend: ghcr.io/sirosfoundation/go-wallet-backend:0.25.5
 
 values:
   pdp:

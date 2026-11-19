@@ -162,7 +162,7 @@ images:
   # pdp should be sourced from the chart like every other component, with
   # zero special-casing here. (Chart's own pin is still 0.9.0 as of this
   # commit, so it has not caught up.)
-  pdp: "ghcr.io/sirosfoundation/go-trust:0.29.2"
+  pdp: "ghcr.io/sirosfoundation/go-trust:0.31.0"
 
   # siros-id-stack's own images.walletBackend pin (values.yaml)
   # is 0.6.1, well behind the wallet-provider Key Attestation work this repo
@@ -302,7 +302,7 @@ images:
   #        recover() registered before the flow_id log truncation so a panic
   #        in handleFlowStart is caught rather than taking the process (#357)
   #   0.25.2  the current release (2026-11-11); 0.23.0-0.25.1 in between
-  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.2"
+  walletBackend: "ghcr.io/sirosfoundation/go-wallet-backend:0.25.5"
 
   # siros-id-stack's own vc.* pins (values.yaml) are still
   # v0.6.5-sirosid.4, well behind the mdoc/BLE proximity and DC API fixes
@@ -337,7 +337,7 @@ images:
   # release tag rather than an unstable-<sha> build: same reproducibility,
   # reviewable release. GHCR drops the git tag's "v" prefix, so
   # v0.5.0-1-sirosid.10 publishes as 0.5.0-1-sirosid.10.
-  walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:0.5.0-1-sirosid.10"
+  walletFrontendConfig: "ghcr.io/sirosfoundation/wallet-frontend:0.7.0"
 
   # mini-oidc is NOT part of the siros-id-stack chart (it's a sirosid-dev
   # testing-only component), so unlike every pin above it isn't consumed via
