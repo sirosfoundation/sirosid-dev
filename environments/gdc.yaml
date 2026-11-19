@@ -426,7 +426,18 @@ images:
   # PID → present → go-trust PERMIT (whitelist: pid-issuers) → EHIC
   # issue/redeem/verify. Digest:
   # sha256:f1a3c1ddc968025d7287cac8aba15de3df4da3300c60b64777a8c75d714c699a.
-  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1794902000
+  # 2026-11-19 (redeployed by machine update, config preserved): the
+  # whole dependency graph moves to RELEASED VERSIONS (flow-core #3,
+  # squash f9bb6a5c): verifier-core v0.1.8 (the tag — the release the
+  # evidence attests: image digest 1ed9ff87, SBOMs cosign-verified,
+  # OIDF conformance 14/14 the eighth consecutive one-pass; carries #70
+  # the pluggable config + #71 the plain direct_post mode the gdc
+  # drill's vehicle needs) and issuer-core v0.2.3 (the pins-only tag
+  # #36 — its own verifier pin is the same v0.1.8; jumps #34 the ARF
+  # disclosure policy — the embedded issuer's state carries the absent
+  # closed-set default — and #35 the OTel spine). Digest:
+  # sha256:071418bb4eaa34dbd6ab0a27fde4c1df90cc0150dca34d0b78a99754b153b7e0.
+  flow-core: registry.fly.io/sirosid-gdc-flow-core:local-1795117651
   # 2026-11-16: v0.2.9 -> v0.2.15 (the UA fix: engine-adapter-server's
   # reqwest client identifies itself; a UA-less request reads as a bot to
   # verifier-side WAFs and accredify's UAT answered 403 to the
