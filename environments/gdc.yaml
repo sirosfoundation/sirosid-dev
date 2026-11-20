@@ -581,7 +581,14 @@ images:
   # multi-replica. #80: the null invitation_nonce params acceptance (the
   # live Invalid-params regression of 2026-11-20, hardened
   # engine-side). All additive - no breaking change. Rollback: v0.2.34.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.1
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.2
+  # 2026-11-20c: v0.3.1 -> v0.3.2 (wallet-core v0.3.2, tag 58af0b7x):
+  # #83 - the MCP tool surface: tools/list + tools/call on the registry's
+  # custom-method dispatch, behind the session's negotiated mcp capability
+  # (both sides must offer; ENGINE_MCP_TOOLS, default on); the wallet.debug
+  # toolset. #84 - the group join: the join invitation (purpose + session_id
+  # on the signed payload), the GroupRegistry, the in-group fan-out. The
+  # Madrid interop Level-0/3 engine pieces. Rollback: v0.3.1.
   # 2026-11-20b: v0.3.0 -> v0.3.1 (wallet-core v0.3.1, tag a1f01683):
   # #82 - the completion carries the flow-level credential_issuer (the Go
   # SendFlowComplete parity): the SDK's advertisement lookup keyed on it,
