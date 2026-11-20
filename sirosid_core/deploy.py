@@ -777,6 +777,17 @@ def deploy_component(ctx: DeployContext, comp: dict):
             "--env", "ENGINE_AS_AUDIENCES=",
             # The 6PN dials are plain http.
             "--env", "ENGINE_ALLOW_PLAINTEXT=true",
+            # Issue #77: the provider's public base URL - the invitation
+            # endpoint's provider field (the counterparty's discovery
+            # resolves against it) AND the endpoint's own config gate:
+            # unset, POST /wmp/invitation answers -32601 "the invitation
+            # endpoint is not configured" (found live 2026-11-20 - the
+            # QR never created until this was set). The wallet-proxy's
+            # /wmp-engine/ location IS the engine's public origin.
+            "--env", f"ENGINE_PUBLIC_URL=https://{naming.host('wallet-proxy')}/wmp-engine",
+            # Issue #72's diagnostic (the refusal-body log) rides the same
+            # env block: the credential path's refusals name their body.
+            "--env", "ENGINE_LOG_REFUSAL_BODIES=1",
             # W10 (engine-parity.md §8): this engine is the privacy-preserving
             # REMOTE one - consume tenant-bound tokens (the AS's pseudonymous
             # engine kind; the wallet's config.wmpTenantTokens selects it
