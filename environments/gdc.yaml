@@ -581,8 +581,18 @@ images:
   # multi-replica. #80: the null invitation_nonce params acceptance (the
   # live Invalid-params regression of 2026-11-20, hardened
   # engine-side). All additive - no breaking change. Rollback: v0.2.34.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.2
-  # 2026-11-20c: v0.3.1 -> v0.3.2 (wallet-core v0.3.2, tag 58af0b7x):
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.3
+  # 2026-11-21a: v0.3.2 -> v0.3.3 (wallet-core v0.3.3):
+# #85 - the well-known discovery document (CS-15 7.2): the
+# engine serves /.well-known/wmp-configuration - the versions,
+# the endpoints, the supported capabilities (flows + mcp +
+# messaging + resolve), the security modes. #86 - the MLS
+# engine: the OpenMLS 0.8.3-backed MlsProvider (wmp-mls), the
+# mls feature (off by default; ENGINE_MCP_TOOLS carries the
+# MCP surface), the handler bridge, the Madrid test plan.
+# Deployed live 2026-11-21 (the well-known route answers through
+# the proxy). Rollback: v0.3.2.
+# 2026-11-20c: v0.3.1 -> v0.3.2 (wallet-core v0.3.2, tag 58af0b7x):
   # #83 - the MCP tool surface: tools/list + tools/call on the registry's
   # custom-method dispatch, behind the session's negotiated mcp capability
   # (both sides must offer; ENGINE_MCP_TOOLS, default on); the wallet.debug
