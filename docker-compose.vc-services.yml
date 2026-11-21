@@ -97,6 +97,13 @@ services:
     build:
       context: ${VC_PATH:-../vc}
       dockerfile: dockerfiles/worker
+      # The verifier binary is built with the zknative tag and dynamically
+      # links libzk_cred_longfellow.so, so it needs vc's runtime-verifier
+      # stage, which copies that library in. Without an explicit target the
+      # build takes the LAST stage, `runtime`, which is the plain one -
+      # ordered last in vc's dockerfile so a bare build of a non-verifier
+      # service does not select the verifier variant.
+      target: runtime-verifier
       args:
         SERVICE_NAME: verifier
     image: vc-verifier-e2e-test:local
