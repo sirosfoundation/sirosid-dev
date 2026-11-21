@@ -861,6 +861,10 @@ endif
 		echo "$(YELLOW)Building gobuild base image (ensures Go toolchain matches ../vc/go.mod)...$(NC)"; \
 		docker build --quiet --tag docker.sunet.se/iam_vc/gobuild:local \
 			--file "$$_VC_DIR/dockerfiles/gobuild" "$$_VC_DIR" >/dev/null
+	@# Build the probe the vc services' healthchecks run: vc's
+	@# dockerfiles/worker runtime stage is distroless, so there is no curl
+	@# inside those containers.
+	@$(MAKE) --no-print-directory healthcheck-bin
 	@# Render every vc service's config from the in-repo chart, the same
 	@# way PDP=helm already renders wallet-backend's and the PDP's. This
 	@# replaced fixtures/vc-config.yaml and the four mechanically-patched
@@ -1313,6 +1317,23 @@ vc-config-parity: ## Render chart/ for compose + fly-gdc and diff against fixtur
 	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
 	python3 scripts/vc-config-parity.py --chart-dir "$(CHART_PATH)" $(PARITY_ARGS)
 
+# fixtures/bin/healthcheck - the probe docker-compose.vc-services.yml runs
+# as each vc service's healthcheck. vc builds every service from
+# dockerfiles/worker, whose runtime stage is gcr.io/distroless/cc-debian12:
+# no shell, no curl, so a ["CMD", "curl", ...] healthcheck cannot execute
+# and the container never reports healthy. Built for the Docker daemon's
+# own OS/arch so it still runs when the daemon is a different platform.
+healthcheck-bin: ## Build fixtures/bin/healthcheck (static probe for the distroless vc images)
+	@command -v go >/dev/null 2>&1 || { echo "$(RED)Error: go not found - needed to build fixtures/bin/healthcheck$(NC)"; exit 1; }
+	@_OS=$$(docker version --format '{{.Server.Os}}' 2>/dev/null || echo linux); \
+	_ARCH=$$(docker version --format '{{.Server.Arch}}' 2>/dev/null || echo amd64); \
+	if [ ! -x fixtures/bin/healthcheck ] || [ tools/healthcheck/main.go -nt fixtures/bin/healthcheck ]; then \
+		echo "$(YELLOW)Building healthcheck probe for $$_OS/$$_ARCH...$(NC)"; \
+		mkdir -p fixtures/bin; \
+		( cd tools/healthcheck && CGO_ENABLED=0 GOOS="$$_OS" GOARCH="$$_ARCH" GOWORK=off \
+			go build -trimpath -ldflags '-w -s' -o ../../fixtures/bin/healthcheck . ) || exit 1; \
+		chmod 0755 fixtures/bin/healthcheck; \
+	fi
 render-helm-config: ## Render wallet-backend/PDP/vc-services config from the in-repo chart (chart/) (ANDROID_APPS=pkg=fingerprint,... adds debug/Play Store keys; ENV=<name> layers environments/<name>.yaml)
 	@command -v helm >/dev/null 2>&1 || { echo "$(RED)Error: helm not found - this renders config via 'helm template' - https://helm.sh/docs/intro/install/$(NC)"; exit 1; }
 	@_HASHES=$$(python3 scripts/android_apps.py --apk-key-hashes $(if $(ANDROID_APPS),--android-app "$(ANDROID_APPS)") 2>/dev/null); \

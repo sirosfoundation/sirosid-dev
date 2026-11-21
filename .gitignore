@@ -98,3 +98,6 @@ fixtures/wrpac-fly/deployment/
 fixtures/wrpac-fly/specs/
 fixtures/wrpac-fly/intermediary/
 fixtures/siros-verifier-wrpac/request_key.pem
+
+# Built by `make healthcheck-bin` for the distroless vc images (tools/healthcheck).
+fixtures/bin/
