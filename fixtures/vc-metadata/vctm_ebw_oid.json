@@ -1,12 +1,20 @@
 {
   "vct": "uri:eu.ebw.oid.1",
-  "name": "ds001 - European Business Wallet – Owner Identification Data (EBW-OID) – SD-JWT VC payload",
+  "name": "ds001 - European Business Wallet \u2013 Owner Identification Data (EBW-OID) \u2013 SD-JWT VC payload",
   "description": "Schema for the SD-JWT VC payload of an EBW-OID as defined in the ds001 EBW-OID Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing.",
   "display": [
     {
       "locale": "en-US",
-      "name": "European Business Wallet – Owner Identification Data (EBW-OID)",
-      "description": "Schema for the SD-JWT VC payload of an EBW-OID as defined in the ds001 EBW-OID Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing."
+      "name": "European Business Wallet \u2013 Owner Identification Data (EBW-OID)",
+      "description": "Schema for the SD-JWT VC payload of an EBW-OID as defined in the ds001 EBW-OID Rulebook (Chapter 3.2). This models the JSON claims set prior to SD-JWT disclosure/packing.",
+      "rendering": {
+        "svg_templates": [
+          {
+            "uri": "https://registry.siros.org/webuild-consortium/ebwoid-svg_template.svg",
+            "uri#integrity": "sha256-7xDPD7b8iGiDd+JsAjMfFmuM2vJlDHNIZi37jGVRkMk="
+          }
+        ]
+      }
     }
   ],
   "claims": [
@@ -21,7 +29,8 @@
         }
       ],
       "description": "EUID where available, otherwise a similar constructed, unique per issuer identifier.",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "id"
     },
     {
       "path": [
@@ -34,7 +43,8 @@
         }
       ],
       "description": "The legal category of the attestation.",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "attestation_legal_category"
     },
     {
       "path": [
@@ -47,7 +57,8 @@
         }
       ],
       "description": "Name of the administrative authority, Commission (for Union entities), or QTSP issuing the EAA/QEAA; or ISO 3166-1 alpha-2 where applicable.",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "issuing_authority"
     },
     {
       "path": [
@@ -60,7 +71,8 @@
         }
       ],
       "description": "Official name of the EBW owner (economic operator or public sector body).",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "name"
     },
     {
       "path": [
@@ -72,7 +84,8 @@
           "label": "Date Of Expiry"
         }
       ],
-      "description": "Administrative expiry date following ISO 8601."
+      "description": "Administrative expiry date following ISO 8601.",
+      "svg_id": "date_of_expiry"
     },
     {
       "path": [
@@ -84,8 +97,9 @@
           "label": "Issuing Country"
         }
       ],
-      "description": "ISO 3166-1 alpha-2 code of the provider’s country/territory.",
-      "mandatory": true
+      "description": "ISO 3166-1 alpha-2 code of the provider\u2019s country/territory.",
+      "mandatory": true,
+      "svg_id": "issuing_country"
     },
     {
       "path": [
@@ -97,7 +111,8 @@
           "label": "Trust Anchor"
         }
       ],
-      "description": "URL at which a machine-readable version of the trust anchor to be used for verifying the EBW-OID can be found or looked up."
+      "description": "URL at which a machine-readable version of the trust anchor to be used for verifying the EBW-OID can be found or looked up.",
+      "svg_id": "trust_anchor"
     }
   ]
 }

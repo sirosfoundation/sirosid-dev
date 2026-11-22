@@ -11,7 +11,13 @@
         "simple": {
           "background_color": "#4C1D95",
           "text_color": "#FFFFFF"
-        }
+        },
+        "svg_templates": [
+          {
+            "uri": "https://registry.siros.org/webuild-consortium/vat-id-svg_template.svg",
+            "uri#integrity": "sha256-JOOUg68o08nvZ22bFfuJdeVZOD0LC0LIIvInVx3qLss="
+          }
+        ]
       }
     }
   ],

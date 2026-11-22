@@ -11,7 +11,13 @@
         "simple": {
           "background_color": "#0C4A6E",
           "text_color": "#FFFFFF"
-        }
+        },
+        "svg_templates": [
+          {
+            "uri": "https://registry.siros.org/webuild-consortium/e-receipt-svg_template.svg",
+            "uri#integrity": "sha256-pPhyY9K/8ZQ5h40fwxp9/EWaHDG8vkP5gjWrGmvZCZE="
+          }
+        ]
       }
     }
   ],

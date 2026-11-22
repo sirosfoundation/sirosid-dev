@@ -6,7 +6,15 @@
     {
       "locale": "en-US",
       "name": "EU Company Certificate",
-      "description": "Schema for EU Company Certificate - EWC WP3"
+      "description": "Schema for EU Company Certificate - EWC WP3",
+      "rendering": {
+        "svg_templates": [
+          {
+            "uri": "https://registry.siros.org/webuild-consortium/eucc-svg_template.svg",
+            "uri#integrity": "sha256-PZY8qYU3hFExRbyjPpcz/GKCmvbgaQoiWX6YlYPdNUo="
+          }
+        ]
+      }
     }
   ],
   "claims": [
@@ -21,7 +29,8 @@
           "label": "Locator Designator"
         }
       ],
-      "description": "A number or a sequence of characters that uniquely identifies the locator within the relevant scope."
+      "description": "A number or a sequence of characters that uniquely identifies the locator within the relevant scope.",
+      "svg_id": "locator_designator"
     },
     {
       "path": [
@@ -34,7 +43,8 @@
           "label": "Post Code"
         }
       ],
-      "description": "The code created and maintained for postal purposes to identify a subdivision of addresses and postal delivery points."
+      "description": "The code created and maintained for postal purposes to identify a subdivision of addresses and postal delivery points.",
+      "svg_id": "post_code"
     },
     {
       "path": [
@@ -47,7 +57,8 @@
           "label": "Post Name"
         }
       ],
-      "description": "A name created and maintained for postal purposes to identify a subdivision of addresses and postal delivery points."
+      "description": "A name created and maintained for postal purposes to identify a subdivision of addresses and postal delivery points.",
+      "svg_id": "post_name"
     },
     {
       "path": [
@@ -60,7 +71,8 @@
           "label": "Locator Name"
         }
       ],
-      "description": "Proper noun(s) applied to the real world entity identified by the locator. The locator name could be the name of the property or complex, of the building or part of the building, or it could be the name of a room inside a building."
+      "description": "Proper noun(s) applied to the real world entity identified by the locator. The locator name could be the name of the property or complex, of the building or part of the building, or it could be the name of a room inside a building.",
+      "svg_id": "locator_name"
     },
     {
       "path": [
@@ -73,7 +85,8 @@
           "label": "Thorough Fare"
         }
       ],
-      "description": "The name of a passage or way through from one location to another."
+      "description": "The name of a passage or way through from one location to another.",
+      "svg_id": "thorough_fare"
     },
     {
       "path": [
@@ -86,7 +99,8 @@
           "label": "Post Office Box"
         }
       ],
-      "description": "A location designator for a postal delivery point at a post office, usually a number."
+      "description": "A location designator for a postal delivery point at a post office, usually a number.",
+      "svg_id": "post_office_box"
     },
     {
       "path": [
@@ -99,7 +113,8 @@
           "label": "Admin Unit Level 1"
         }
       ],
-      "description": "The uppermost administrative unit for the address, almost always a country."
+      "description": "The uppermost administrative unit for the address, almost always a country.",
+      "svg_id": "admin_unit_level_1"
     },
     {
       "path": [
@@ -112,7 +127,8 @@
           "label": "Admin Unit Level 2"
         }
       ],
-      "description": "The name of a secondary level/region of the address, usually a county, state or other such area that typically encompasses several localities."
+      "description": "The name of a secondary level/region of the address, usually a county, state or other such area that typically encompasses several localities.",
+      "svg_id": "admin_unit_level_2"
     },
     {
       "path": [
@@ -125,7 +141,8 @@
           "label": "Care Of"
         }
       ],
-      "description": "Used when an address is at the address of another person or legal entity."
+      "description": "Used when an address is at the address of another person or legal entity.",
+      "svg_id": "care_of"
     },
     {
       "path": [
@@ -138,7 +155,8 @@
           "label": "Full Address"
         }
       ],
-      "description": "The complete address written as a string, separated with \";\"."
+      "description": "The complete address written as a string, separated with \";\".",
+      "svg_id": "full_address"
     },
     {
       "path": [
@@ -163,7 +181,8 @@
           "label": "Legal Person Duration"
         }
       ],
-      "description": "Duration of the company, where its duration is limited"
+      "description": "Duration of the company, where its duration is limited",
+      "svg_id": "legal_person_duration"
     },
     {
       "path": [
@@ -176,7 +195,8 @@
         }
       ],
       "description": "Name of issuer from the MS that issued the ODI instance",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "issuing_authority"
     },
     {
       "path": [
@@ -189,7 +209,8 @@
         }
       ],
       "description": "Name of issuer from the MS that issued the ODI instance",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "authentic_source_name"
     },
     {
       "path": [
@@ -201,7 +222,8 @@
           "label": "Attestation Legal Category"
         }
       ],
-      "description": "Legal category of the attestation."
+      "description": "Legal category of the attestation.",
+      "svg_id": "attestation_legal_category"
     },
     {
       "path": [
@@ -214,7 +236,8 @@
         }
       ],
       "description": "Legal form of the company",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "legal_form_type"
     },
     {
       "path": [
@@ -227,7 +250,8 @@
           "label": "Amount"
         }
       ],
-      "description": "Amount of the capital subscribed"
+      "description": "Amount of the capital subscribed",
+      "svg_id": "amount"
     },
     {
       "path": [
@@ -240,7 +264,8 @@
           "label": "Currency"
         }
       ],
-      "description": "Currency code used of the capital subscribed, as defined in ISO 4217:2015"
+      "description": "Currency code used of the capital subscribed, as defined in ISO 4217:2015",
+      "svg_id": "currency"
     },
     {
       "path": [
@@ -265,7 +290,8 @@
         }
       ],
       "description": "Member State where the company is registered, Alpha-2 country code, as defined in ISO 3166-1",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "registration_member_state"
     },
     {
       "path": [
@@ -278,7 +304,8 @@
         }
       ],
       "description": "Status of the company as defined in national law and where recorded in the national register",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "legal_person_status"
     },
     {
       "path": [
@@ -291,7 +318,8 @@
         }
       ],
       "description": "Information about any person authorized by the company to represent it alone or jointly",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "legal_representative"
     },
     {
       "path": [
@@ -304,7 +332,8 @@
         }
       ],
       "description": "Date and possibly time of issuance",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "issuance_date"
     },
     {
       "path": [
@@ -317,7 +346,8 @@
         }
       ],
       "description": "Date of registration of the company",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "registration_date"
     },
     {
       "path": [
@@ -330,7 +360,8 @@
           "label": "Code"
         }
       ],
-      "description": "Legal person activity NACE code"
+      "description": "Legal person activity NACE code",
+      "svg_id": "code"
     },
     {
       "path": [
@@ -343,7 +374,8 @@
           "label": "Description"
         }
       ],
-      "description": "Short description of the legal person activity"
+      "description": "Short description of the legal person activity",
+      "svg_id": "description"
     },
     {
       "path": [
@@ -369,7 +401,8 @@
           "label": "Email"
         }
       ],
-      "description": "Details of the company email"
+      "description": "Details of the company email",
+      "svg_id": "email"
     },
     {
       "path": [
@@ -382,7 +415,8 @@
           "label": "Website"
         }
       ],
-      "description": "Details of the company website"
+      "description": "Details of the company website",
+      "svg_id": "website"
     },
     {
       "path": [
@@ -407,7 +441,8 @@
         }
       ],
       "description": "ODI Id of the issuing authority. (Business register identifier for BRIS)",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "authentic_source_id"
     },
     {
       "path": [
@@ -420,7 +455,8 @@
         }
       ],
       "description": "Official current legal person name as registered in the business register.",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "legal_person_name"
     },
     {
       "path": [
@@ -433,7 +469,8 @@
         }
       ],
       "description": "Unique id for organisations in EUID structure",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "legal_person_id"
     },
     {
       "path": [
@@ -446,7 +483,8 @@
         }
       ],
       "description": "ODI Id of the issuing authority. (Business register identifier for BRIS)",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "issuing_authority_id"
     },
     {
       "path": [
@@ -459,7 +497,8 @@
         }
       ],
       "description": "Alpha-2 country code, as defined in ISO 3166-1, of the issuing country or territory.",
-      "mandatory": true
+      "mandatory": true,
+      "svg_id": "issuing_country"
     },
     {
       "path": [
@@ -471,7 +510,8 @@
           "label": "Issuing Jurisdiction"
         }
       ],
-      "description": "As defined in ISO 3166-2:2020, of the issuing country or territory."
+      "description": "As defined in ISO 3166-2:2020, of the issuing country or territory.",
+      "svg_id": "issuing_jurisdiction"
     },
     {
       "path": [
@@ -483,7 +523,8 @@
           "label": "Trust Anchor"
         }
       ],
-      "description": "URL of machine‑readable trust anchor as per Annex V/VII point h)."
+      "description": "URL of machine\u2011readable trust anchor as per Annex V/VII point h).",
+      "svg_id": "trust_anchor"
     }
   ]
 }
