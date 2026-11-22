@@ -1,5 +1,6 @@
 # EU Business Wallet presentation requests - the WE BUILD attestations this
-# stack issues (values-base.yaml credentialTypes ebw_oid/eucc/eu_poa/iban_ov).
+# stack issues (values-base.yaml credentialTypes ebw_oid/eucc/eu_poa/iban_ov,
+# and the PA4 three: vat_id/einvoice/ereceipt).
 #
 # As with eudi_pid.yaml, every vct and claim path here must match what is
 # actually issued: the VCTMs in fixtures/vc-metadata/vctm_{ebw_oid,eucc,eu_poa,iban_ov}.json
@@ -129,4 +130,120 @@ templates:
       bank_account: "bank_account"
       account_ownership: "account_ownership"
       account_provider: "account_provider"
+    enabled: true
+
+  # ---------------------------------------------------------------- PA4 ----
+  # The three PA4 attestations. Each request is a real counterparty check
+  # rather than "give me everything", because what a verifier may leave out
+  # is the part worth demonstrating.
+
+  - id: "vat_id_registration"
+    name: "VAT Identification - Registration Check"
+    description: "Whether a VAT number is valid, whose it is, and whether it covers EU cross-border trade"
+    version: "1.0"
+    oidc_scopes:
+      - "vat_id"
+    dcql:
+      credentials:
+        - id: "vat_id"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "uri:eu.eudi.vat.2"
+          claims:
+            # rb-vat-id 5.1 puts these in plain text - the VAT number and the
+            # name it belongs to cannot be withheld from anyone holding the
+            # attestation at all.
+            - path: ["administrative_unit", "vat_id"]
+            - path: ["administrative_unit", "name"]
+            - path: ["administrative_unit", "registered_eu_cross_border_transactions"]
+            # Disclosable, so the holder decides. Asking for it here is what
+            # makes the consent screen show a real choice.
+            - path: ["administrative_unit", "organisation_type"]
+            - path: ["issuer", "vat_id_authentic_source"]
+            - path: ["issuer", "authentic_source_country"]
+    claim_mappings:
+      administrative_unit: "administrative_unit"
+      issuer: "issuer"
+    enabled: true
+
+  - id: "einvoice_payable"
+    name: "eInvoice - Payable Check"
+    description: "Who invoiced whom, for how much, and whether the invoice is still open"
+    version: "1.0"
+    oidc_scopes:
+      - "einvoice"
+    dcql:
+      credentials:
+        - id: "einvoice"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "eu.we-build:einvoice:1"
+          claims:
+            - path: ["invoiceNumber"]
+            - path: ["issueDate"]
+            - path: ["amountDueForPayment"]
+            - path: ["InvoiceCurrencyCode"]
+            - path: ["invoiceTotalVatAmount"]
+            - path: ["invoiceLifecycleStatus"]
+            - path: ["seller", "name"]
+            - path: ["seller", "vat"]
+            - path: ["buyer", "name"]
+            - path: ["buyer", "vat"]
+            # paymentInstructions is deliberately NOT requested. rb-eInvoice 5
+            # is the only MUST row in the table: the issuer SHALL make it
+            # selectively disclosable "so payment details can be withheld
+            # where not required". A payable check is exactly that case.
+    claim_mappings:
+      seller: "seller"
+      buyer: "buyer"
+      invoiceNumber: "invoice_number"
+      issueDate: "issue_date"
+      amountDueForPayment: "amount_due"
+      InvoiceCurrencyCode: "currency"
+      invoiceTotalVatAmount: "vat_total"
+      invoiceLifecycleStatus: "status"
+    enabled: true
+
+  - id: "ereceipt_expense_claim"
+    name: "eReceipt - Expense Claim"
+    description: "A receipt submitted to an expense system: what was spent, when, and the VAT to reclaim"
+    version: "1.0"
+    oidc_scopes:
+      - "ereceipt"
+    dcql:
+      credentials:
+        - id: "ereceipt"
+          format: "dc+sd-jwt"
+          meta:
+            vct_values:
+              - "eu.we-build.ereceipt.1"
+          claims:
+            - path: ["receipt_number"]
+            - path: ["receipt_timestamp"]
+            - path: ["type"]
+            - path: ["currency_iso_code"]
+            - path: ["total_price_inc_vat"]
+            - path: ["total_price_exc_vat"]
+            - path: ["total_vat_amount"]
+            # The whole merchant object, because merchant.name does not exist
+            # as a claim: `merchant` is a $ref in the schema and the generator
+            # does not resolve one, so there is nothing finer to ask for.
+            # sirosfoundation/registry-cli#63.
+            - path: ["merchant"]
+            # products and vats are MUST-disclosable per rb-e-receipt 3. An
+            # expense system wants the line items; a VAT-only check would ask
+            # for vats alone, which is the privacy case the rulebook is for.
+            - path: ["vats"]
+    claim_mappings:
+      receipt_number: "receipt_number"
+      receipt_timestamp: "receipt_timestamp"
+      type: "receipt_type"
+      currency_iso_code: "currency"
+      total_price_inc_vat: "total_inc_vat"
+      total_price_exc_vat: "total_exc_vat"
+      total_vat_amount: "vat_amount"
+      merchant: "merchant"
+      vats: "vat_breakdown"
     enabled: true

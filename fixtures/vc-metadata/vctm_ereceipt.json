@@ -1,0 +1,278 @@
+{
+  "vct": "eu.we-build.ereceipt.1",
+  "name": "WE BUILD eReceipt SD-JWT VC payload (vct eu.we-build.ereceipt.1)",
+  "description": "SD-JWT VC payload schema for the WE BUILD eReceipt attestation. Implements Chapters 2 and 3 of the rb-e-receipt Rulebook v2.0 (22 June 2026): the mandatory, optional and conditional attributes, the Section 2.8 code lists and the Section 3.2 SD-JWT VC encoding. The Section 3.2.5 illustrative example is published unchanged as the sample under sample-data/.",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "eReceipt",
+      "description": "A till receipt issued by a merchant after a payment, presentable to an expense system, accounting tool or tax authority.",
+      "rendering": {
+        "simple": {
+          "background_color": "#0C4A6E",
+          "text_color": "#FFFFFF"
+        }
+      }
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "attachments"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attachments"
+        }
+      ],
+      "svg_id": "attachments"
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation category"
+        }
+      ],
+      "mandatory": true,
+      "sd": "never",
+      "svg_id": "attestation_legal_category"
+    },
+    {
+      "path": [
+        "cryptographically_bound_to"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Cryptographically bound to"
+        }
+      ],
+      "svg_id": "cryptographically_bound_to"
+    },
+    {
+      "path": [
+        "currency_iso_code"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Currency"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "currency_iso_code"
+    },
+    {
+      "path": [
+        "custom_attributes"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Custom attributes"
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "custom_attributes"
+    },
+    {
+      "path": [
+        "free_text"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Note"
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "free_text"
+    },
+    {
+      "path": [
+        "journey"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Journey"
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "journey"
+    },
+    {
+      "path": [
+        "merchant"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Merchant"
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed",
+      "svg_id": "merchant"
+    },
+    {
+      "path": [
+        "original_receipt_number"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Original receipt number"
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "original_receipt_number"
+    },
+    {
+      "path": [
+        "payments"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Payments"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "payments"
+    },
+    {
+      "path": [
+        "products"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Line items"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "products"
+    },
+    {
+      "path": [
+        "receipt_number"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Receipt number"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "receipt_number"
+    },
+    {
+      "path": [
+        "receipt_timestamp"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Date and time"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "receipt_timestamp"
+    },
+    {
+      "path": [
+        "total_price_exc_vat"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Total excluding VAT"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "total_price_exc_vat"
+    },
+    {
+      "path": [
+        "total_price_inc_vat"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Total including VAT"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "total_price_inc_vat"
+    },
+    {
+      "path": [
+        "total_vat_amount"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "VAT amount"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "total_vat_amount"
+    },
+    {
+      "path": [
+        "type"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Receipt type"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "type"
+    },
+    {
+      "path": [
+        "vats"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "VAT breakdown"
+        }
+      ],
+      "mandatory": true,
+      "sd": "always",
+      "svg_id": "vats"
+    },
+    {
+      "path": [
+        "verifications"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Technical proof"
+        }
+      ],
+      "mandatory": true,
+      "sd": "never",
+      "svg_id": "verifications"
+    }
+  ]
+}
