@@ -24,6 +24,22 @@ services:
   # together with this one; the `depends_on: mongodb` entries below resolve
   # across files.
 
+  # Copies the static healthcheck binary into the vc-healthcheck volume. The
+  # SUNET/vc runtime image is distroless: no shell and no curl, so a compose
+  # healthcheck can only run a binary that is mounted in. The vc services
+  # wait for this to complete, then run /hc/healthcheck <port> /health.
+  vc-healthcheck:
+    build:
+      context: ./mocks/healthcheck
+    image: vc-healthcheck-e2e-test:local
+    container_name: vc-healthcheck-e2e
+    command: ["cp", "/healthcheck", "/hc/healthcheck"]
+    volumes:
+      - vc-healthcheck:/hc
+    restart: "no"
+    networks:
+      - e2e-test-network
+
   # VC Registry - Token status lists and revocation
   # Required by issuer for credential status management
   vc-registry:
@@ -42,16 +58,19 @@ services:
       - "9004:9004"     # HTTP API
       - "9094:8090"     # gRPC for inter-service communication
     volumes:
+      - vc-healthcheck:/hc:ro
       - ./fixtures/rendered/vc-registry.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
+      vc-healthcheck:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9004/health"]
+      test: ["CMD", "/hc/healthcheck", "9004", "/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -72,6 +91,7 @@ services:
       - "9000:8081"     # HTTP API (OpenID4VCI endpoints)
       - "9190:8090"     # gRPC for apigw communication
     volumes:
+      - vc-healthcheck:/hc:ro
       - ./fixtures/rendered/vc-issuer.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
@@ -79,12 +99,14 @@ services:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
+      vc-healthcheck:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
       vc-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
+      test: ["CMD", "/hc/healthcheck", "8081", "/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -109,6 +131,7 @@ services:
       - "9001:9001"     # HTTP API (OpenID4VP + OIDC endpoints)
       - "9091:8090"     # gRPC
     volumes:
+      - vc-healthcheck:/hc:ro
       - ./fixtures/rendered/vc-verifier.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
@@ -120,10 +143,12 @@ services:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
+      vc-healthcheck:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9001/health"]
+      test: ["CMD", "/hc/healthcheck", "9001", "/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -153,6 +178,7 @@ services:
       # it mounts the base config (addr :8080) and fronts apigw with vc-proxy.
       - "9003:9003"     # HTTP API (OAuth2/OpenID4VCI endpoints)
     volumes:
+      - vc-healthcheck:/hc:ro
       - ./fixtures/rendered/vc-apigw.yaml:/config.yaml:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
@@ -170,6 +196,8 @@ services:
       - VC_CONFIG_YAML=/config.yaml
       - SSL_CERT_FILE=/pki/rootCA.crt
     depends_on:
+      vc-healthcheck:
+        condition: service_completed_successfully
       mongodb:
         condition: service_healthy
       vc-issuer:
@@ -177,7 +205,7 @@ services:
       vc-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9003/health"]
+      test: ["CMD", "/hc/healthcheck", "9003", "/health"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -251,6 +279,9 @@ services:
       e2e-test-network:
         aliases:
           - mini-oidc-rp.localhost
+
+volumes:
+  vc-healthcheck:
 
 networks:
   e2e-test-network:
