@@ -785,6 +785,17 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
         values_files.append(env_values_path)
 
     manifest = helm_template(chart_dir, values_files, namespace if target == "compose" else (naming.label() if naming else f"sirosid-{env}"))
+
+    # The same layering helm just did, in Python, for the one thing the chart
+    # cannot do itself. vc_render.apply_extra_config merges each vc service's
+    # extraConfig block into its rendered config, and those blocks are spread
+    # across the target's overlay (ports, gRPC peers) as well as the base
+    # (certs, OIDC clients). Reading only one of them silently loses the rest:
+    # vc-registry then listens on the chart's :8080 while everything here
+    # addresses it at :9004. See sirosfoundation/siros-id-stack#31.
+    layered_values = {}
+    for values_file in values_files:
+        vc_render.deep_merge(layered_values, yaml.safe_load(Path(values_file).read_text()) or {})
     docs = load_manifest_docs(manifest)
 
     # --- wallet-backend ---
@@ -900,7 +911,8 @@ def render(target: str, chart_dir: Path, env: str = None, android_apk_key_hashes
                         credential_registries=credential_registries, naming=naming, say=say, warn=warn,
                         # fly: this ENVIRONMENT's own directory (a seed secret must not be shared between environments
                         # deployed from one checkout); compose: one local stack, the shared secrets dir
-                        state_dir=(out_dir / state_mod.VC_SECRETS_DIR) if target == "fly" else None)
+                        state_dir=(out_dir / state_mod.VC_SECRETS_DIR) if target == "fly" else None,
+                        values=layered_values)
 
     if target == "compose":
         # --- secrets (mirrors config/secret_generator_template.yaml's randAlphaNum 32) ---
