@@ -257,6 +257,53 @@ def patch_vc_compose(config: dict, plain_http_hosts: set) -> dict:
     return config
 
 
+# Where each vc service's extraConfig block lives in the values tree.
+VC_EXTRA_CONFIG_PATHS = {
+    "issuer-apigw-main": ("issuer", "apigw"),
+    "issuer-core-main": ("issuer", "core"),
+    "issuer-registry-main": ("issuer", "registry"),
+    "verifier-main": ("verifier",),
+}
+
+
+def apply_extra_config(config: dict, cm_name: str, values: dict) -> dict:
+    """Merge a vc service's `extraConfig` block into its rendered config.
+
+    The chart is written for Kubernetes and points at paths only a cluster
+    provides - cert-manager secrets at /sign-cert and /sign-cert-chain, mTLS
+    between the gRPC services. values-dev.yaml and values-fly.yaml carry an
+    `extraConfig` block per service to replace those with what compose and Fly
+    actually mount, and vc panics at startup without them:
+
+      panic: failed to load Token Status List signing key: failed to load key
+      from any source: failed to read key file /sign-cert/tls.key
+
+    The chart has no `extraConfig` support on `main` - grep its templates and
+    values.yaml and the key appears nowhere - so every one of those blocks is
+    read by nothing and silently dropped. Applying them here is what makes the
+    values files mean what they say, and keeps one definition of them for
+    whenever the chart grows the hatch itself
+    (sirosfoundation/siros-id-stack#31).
+
+    Ordering matters: this must run BEFORE apply_secrets, whose last act is to
+    drop `common.secret_file_path` because nothing mounts one here and vc
+    errors on a path it cannot read. Two of these blocks set that key -
+    correct for the cluster the chart targets - so merging them afterwards
+    puts it straight back and the service dies on
+
+      cannot stat secrets file: /secrets/secrets.yaml
+    """
+    path = VC_EXTRA_CONFIG_PATHS.get(cm_name)
+    if not path:
+        return config
+
+    node = values
+    for segment in path:
+        node = (node or {}).get(segment) or {}
+    extra = node.get("extraConfig")
+    return deep_merge(config, extra) if extra else config
+
+
 def strip_unrenderable(config: dict) -> dict:
     """Drop what the chart renders for a Kubernetes deployment that vc then
     refuses to start without the rest of that deployment.
@@ -561,7 +608,8 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
               plain_http_hosts: set = None, secret_overrides: dict = None,
               env: str = None, mongo_password: str = None,
               credential_types: dict = None, credential_registries: list = None,
-              naming: Naming = None, say=print, warn=None, state_dir: Path = None) -> None:
+              naming: Naming = None, say=print, warn=None, state_dir: Path = None,
+              values: dict = None) -> None:
     """Extract every vc service's config plus the directories it mounts."""
     for cm_name, filename in VC_CONFIGMAPS.items():
         config = yaml.safe_load(extract_configmap_data(docs, cm_name)["config.yaml"])
@@ -570,6 +618,7 @@ def render_vc(docs: list, out_dir: Path, target: str, secrets_dir: Path, gen_sec
         # issuer-core is the one service with no mongo of its own.
         if (config.get("common") or {}).get("mongo"):
             config = patch_vc_mongo(config, target, env, mongo_password, naming, warn)
+        config = apply_extra_config(config, cm_name, values or {})
         config = apply_secrets(docs, cm_name, config, secrets_dir, gen_secret, secret_overrides,
                                state_dir=state_dir, world_readable=(target == "compose"))
         if target == "fly":
