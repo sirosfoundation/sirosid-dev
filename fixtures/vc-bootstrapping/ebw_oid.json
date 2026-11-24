@@ -31,7 +31,7 @@
     ],
     "document_data": {
       "id": "DEHRB.B123456",
-      "name": "Grünberg Consulting GmbH",
+      "name": "Gr\u00fcnberg Consulting GmbH",
       "attestation_legal_category": "PUB-EAA",
       "issuing_authority": "Amtsgericht Charlottenburg (Handelsregister)",
       "issuing_country": "DE",
@@ -57,6 +57,26 @@
       "issuing_country": "FR",
       "date_of_expiry": "2027-11-20",
       "trust_anchor": "https://trust.example.org/anchors/fr/infogreffe"
+    }
+  },
+  "siros-014": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ebw_oid",
+      "document_id": "document_id_ebw_oid_siros-014",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "siros-014"
+    ],
+    "document_data": {
+      "id": "SEBOLAG.5595421925",
+      "name": "SIROS Foundation AB",
+      "attestation_legal_category": "PUB-EAA",
+      "issuing_authority": "Bolagsverket",
+      "issuing_country": "SE",
+      "date_of_expiry": "2027-12-31",
+      "trust_anchor": "https://trust.example.org/anchors/se/bolagsverket"
     }
   }
 }

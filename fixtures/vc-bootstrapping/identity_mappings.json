@@ -41,7 +41,7 @@
       "authentic_source": "mini-oidc",
       "attributes": {
         "given_name": "Erik",
-        "family_name": "Lindström",
+        "family_name": "Lindstr\u00f6m",
         "birth_date": "1975-03-22"
       },
       "created_at": "0001-01-01T00:00:00Z"
@@ -89,8 +89,20 @@
       "authentic_source": "mini-oidc",
       "attributes": {
         "given_name": "Carsten",
-        "family_name": "Stöcker",
+        "family_name": "St\u00f6cker",
         "birth_date": "1973-05-18"
+      },
+      "created_at": "0001-01-01T00:00:00Z"
+    }
+  ],
+  "siros-014": [
+    {
+      "authentic_source_person_id": "siros-014",
+      "authentic_source": "mini-oidc",
+      "attributes": {
+        "given_name": "Siros",
+        "family_name": "Demo",
+        "birth_date": "1975-03-22"
       },
       "created_at": "0001-01-01T00:00:00Z"
     }

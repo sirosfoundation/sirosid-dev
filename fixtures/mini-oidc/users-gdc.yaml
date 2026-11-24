@@ -179,6 +179,86 @@ users:
 
   # --- Joint representative (one of two signatories) ---
 
+- sub: "siros-014"
+    given_name: "Siros"
+    family_name: "Demo"
+    name: "Siros Demo"
+    email: "siros.demo@siros.example.com"
+    birthdate: "1975-03-22"
+    place_of_birth: "Uppsala"
+    nationalities: ["SE"]
+    issuing_authority: "Swedish Tax Agency"
+    issuing_country: "SE"
+    role: "CEO"
+    representation_type: "sole"
+    employee_id: "EMP-SE-00014"
+    organisation:
+      name: "SIROS Foundation AB"
+      euid: "SEBOLAG.5595421925"
+      vat_id: "SE559542192501"
+      legal_form: "AB"
+      country: "SE"
+      registration_date: "2015-06-01"
+      status: "active"
+      activity_code: "62.01"
+      activity_description: "Computer programming activities"
+      registered_address:
+        full_address: "Sveavägen 42, 111 34 Stockholm, Sweden"
+        thoroughfare: "Sveavägen"
+        locator_designator: "42"
+        post_code: "111 34"
+        post_name: "Stockholm"
+        admin_unit_l1: "SE"
+        admin_unit_l2: "Stockholm"
+    # EU Business Wallet attestations (WE BUILD ds001/ds004), released
+    # verbatim under the scope named by the key - see users.go Attestations.
+    attestations:
+      ebw_oid:
+        id: "SEBOLAG.5595421925"
+        name: "SIROS Foundation AB"
+        attestation_legal_category: "PUB-EAA"
+        issuing_authority: "Bolagsverket"
+        issuing_country: "SE"
+        date_of_expiry: "2027-12-31"
+        trust_anchor: "https://trust.example.org/anchors/se/bolagsverket"
+      eucc:
+        legal_person_name: "SIROS Foundation AB"
+        legal_person_id: "SEBOLAG.5595421925"
+        legal_form_type: "Aktiebolag (AB)"
+        registration_member_state: "SE"
+        registered_address:
+          full_address: "Sveavägen 42, 111 34 Stockholm, Sweden"
+          thorough_fare: "Sveavägen"
+          locator_designator: "42"
+          post_code: "111 34"
+          post_name: "Stockholm"
+          admin_unit_level_1: "SE"
+          admin_unit_level_2: "Stockholm"
+        registration_date: "2015-06-01"
+        legal_person_status: "active"
+        legal_person_activity:
+          code: "62.01"
+          description: "Computer programming activities"
+        legal_representative:
+          - "Siros Demo"
+        share_capital:
+          amount: "500000"
+          currency: "SEK"
+        digital_contact_point:
+          email: "info@nordictech.example.com"
+          website: "https://nordictech.example.com"
+        issuing_authority: "Bolagsverket"
+        issuing_authority_id: "SE:BOLAGSVERKET"
+        issuing_country: "SE"
+        issuing_jurisdiction: "SE"
+        issuance_date: "2026-01-15T09:00:00Z"
+        authentic_source_id: "SE:BOLAGSVERKET"
+        authentic_source_name: "Bolagsverket"
+        attestation_legal_category: "PUB-EAA"
+        trust_anchor: "https://trust.example.org/anchors/se/bolagsverket"
+
+  # --- Joint representative (one of two signatories) ---
+
   - sub: "maria-011"
     given_name: "Maria"
     family_name: "Schneider"
