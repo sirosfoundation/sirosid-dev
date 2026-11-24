@@ -31,5 +31,21 @@
       "age_over_18": true,
       "pseudonym_seed": "Ym9iLTAwMi1wc2V1ZG9ueW0tc2VlZC0wMDAwMDAwMA=="
     }
+  },
+  "siros-014": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "pid_mdoc",
+      "document_id": "document_id_pid_mdoc_siros-014",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "siros-014"
+    ],
+    "document_data": {
+      "family_name": "Demo",
+      "given_name": "Siros",
+      "age_over_18": true
+    }
   }
 }
