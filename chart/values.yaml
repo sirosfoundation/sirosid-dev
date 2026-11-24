@@ -136,7 +136,56 @@ pdp:
   # (policies, always/never-trusted, OIDFed trust anchors, cache TTLs,
   # additional_trusted_roots) without hand-writing all of extraRegistries.
   # A list here REPLACES the list it merges over.
-  extraConfig: {}
+  #
+  # The Cleverbase erds-wb ONBOARDING verifier (CS-15 8.2's identity
+  # proofing): the x509_hash subject their authorization request names,
+  # plus the trust_x509_via_system_ca flip - the pinned-hash allow is
+  # the trust for x509_hash (the client_id IS the leaf SHA-256, the
+  # binding check proves the presented certificate is the one named;
+  # chain validation is skipped for the scheme by design). Found live:
+  # the onboarding presentation refused untrusted_verifier - the PDP's
+  # static verifiers list matched nothing.
+  extraConfig:
+    registries:
+      whitelist:
+        # The system-CA fallback for x509_schemes (go-trust
+        # WhitelistConfig.TrustX509ViaSystemCA): whitelisted
+        # x509_hash/san identities with no JWKS endpoint evaluate via
+        # the certificate binding.
+        trust_x509_via_system_ca: true
+        lists:
+          # A list REPLACES the base: the pid-issuers ride too.
+          pid-issuers:
+            - "https://sirosid-gdc-vc-apigw.fly.dev"
+            - "https://geneva2026.mdoc.online"
+            - "https://sirosid-realeyes-siros-issuer.fly.dev"
+            - "https://sirosid-gdc-flow-core.fly.dev"
+            - "https://sirosid-yitbarek-vc-apigw.fly.dev"
+            - "did:web:vc.infocomm-media-development-au.demo.nexus.uat.accredify.io:organizations:a03de350-d707-41bc-8bc4-0c924ca68baa"
+            - "https://api.oid.spherity.dev/oid4vci/019818a4-2bbc-72e1-9d49-5a9f98f8b694"
+          # A list REPLACES the base - so the base's entries ride here
+          # too (the issuer/verifier hosts the template renders) plus
+          # the hash-identified external verifiers.
+          verifiers:
+            - "https://sirosid-gdc-vc-apigw.fly.dev"
+            - "https://sirosid-gdc-vc-verifier.fly.dev"
+            - "https://verifier.multipaz.org"
+            - "https://siros-multipaz-verifier.fly.dev"
+            - "https://geneva2026.mdoc.online"
+            - "https://sirosid-yitbarek-vc-verifier.fly.dev"
+            - "https://digital-credentials.dev"
+            - "x509_hash:f1drGLOIT4kDBlJVsD-_33igSf5uwRnq3yO2NvcXEW0"
+            - "https://sirosid-realeyes-siros-verifier.fly.dev"
+            - "x509_hash:TrhyRrx0e5w8ZjagnWbAB0OgbWmWPAZZ8oIswFD0gaQ"
+            - "https://sirosid-gdc-siros-verifier.fly.dev"
+            - "x509_hash:cIPUuz0YSWx4RxTKJXF3VCCh2oWL3HD2Knjjgd_vKRo"
+            - "did:web:acra.uat.accredify.io"
+            - "https://acra.uat.accredify.io"
+            - "x509_hash:e5a4_tJ4DqV3NfqxF_cvAgkb22eS_LZ4jmEOAE1ADKc"
+            - "x509_hash:pZXrwB5ZSeg5l7sEQji3SHC6vlxy20wMjYbgqIXbP4c"
+            - "https://api.oid.spherity.dev"
+            - "x509_hash:2nKZMd8sdr2PgLELPxVmUPERlgvJjjCxWg--2mn-4OU"
+            - "x509_hash:Kh5otZVorg9029W8m40wPRa0azxV8f-rA7NNI8_HgVY"
 
 issuer:
   # max 1MB in total, use the API if you need more, since the feature is for quick testing.
