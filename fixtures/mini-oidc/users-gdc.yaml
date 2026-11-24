@@ -179,7 +179,7 @@ users:
 
   # --- Joint representative (one of two signatories) ---
 
-- sub: "siros-014"
+  - sub: "siros-014"
     given_name: "Siros"
     family_name: "Demo"
     name: "Siros Demo"
