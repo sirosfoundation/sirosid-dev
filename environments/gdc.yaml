@@ -581,7 +581,16 @@ images:
   # multi-replica. #80: the null invitation_nonce params acceptance (the
   # live Invalid-params regression of 2026-11-20, hardened
   # engine-side). All additive - no breaking change. Rollback: v0.2.34.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.8
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.9
+  # 2026-11-24b (Madrid): v0.3.8 -> v0.3.9 (wallet-core #106, closes #105) -
+  # the authorization answer's state correlation: the EBW-OID issuance
+  # with PID authentication died at the credential step (flow.action
+  # failed: Method not found) because the openid4vp login is its own
+  # flow here and the oid4vp family refuses every action, while the Go
+  # engine ran login + issuance as one flow. The handoff now writes a
+  # state->flow index beside the stash and the runtime routes an
+  # authorization_complete to the owner the state names. FFI unchanged
+  # from v0.3.8 (the Kotlin re-pin is siros-sdk-kotlin#438).
   # 2026-11-24 (Madrid): v0.3.3 -> v0.3.8 (wallet-core v0.3.8, the fully-
   # symmetric artifact release): #96 (the iOS targets + bindgen carry mls),
   # #98 (the bindgen LIBRARY builds with mls - the flag was on the wrong
