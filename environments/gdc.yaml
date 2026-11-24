@@ -581,7 +581,17 @@ images:
   # multi-replica. #80: the null invitation_nonce params acceptance (the
   # live Invalid-params regression of 2026-11-20, hardened
   # engine-side). All additive - no breaking change. Rollback: v0.2.34.
-  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.3
+  wmp-engine: ghcr.io/sirosfoundation/engine-server:v0.3.8
+  # 2026-11-24 (Madrid): v0.3.3 -> v0.3.8 (wallet-core v0.3.8, the fully-
+  # symmetric artifact release): #96 (the iOS targets + bindgen carry mls),
+  # #98 (the bindgen LIBRARY builds with mls - the flag was on the wrong
+  # cargo run), #101 (the invitation JWKS route + invitation_jwks in the
+  # well-known) - AAR/XCFramework binary + headers + bindings all carry
+  # MLS. LESSON LIVE TODAY: every fly-up redeploys THIS pin - three
+  # env redeploys kept downgrading the live engine to v0.3.3, and
+  # /wmp/jwks 404'd (the route is v0.3.8-only) with the MLS surface gone
+  # mid-Echo-test. AUTH_TYPE_X5C + session_authenticate (CS-15 9.2) ride
+  # on this version. Rollback: v0.3.3.
   # 2026-11-21a: v0.3.2 -> v0.3.3 (wallet-core v0.3.3):
 # #85 - the well-known discovery document (CS-15 7.2): the
 # engine serves /.well-known/wmp-configuration - the versions,
