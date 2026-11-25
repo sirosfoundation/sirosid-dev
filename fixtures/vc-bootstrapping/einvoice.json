@@ -1,0 +1,119 @@
+{
+  "erik-010": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "einvoice",
+      "document_id": "document_id_einvoice_erik-010",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "erik-010"
+    ],
+    "document_data": {
+      "attestation_legal_category": "non-qualified-EAA",
+      "invoicePayloadHash": "sha256:9f2c8b1e7d43a0c5f6e9b2d1a4c7e0f3b6d9a2c5e8f1b4d7a0c3e6f9b2d5a8c1",
+      "invoiceNumber": "INV-2026-01017",
+      "issueDate": "2026-10-02",
+      "seller": {
+        "name": "Nordlys Kontorsservice AB",
+        "identifier": {
+          "euid": "SE556998877601"
+        },
+        "vat": "SE556998877601",
+        "country": "SE"
+      },
+      "amountDueForPayment": "14250.00",
+      "invoiceTotalVatAmount": "2850.00",
+      "InvoiceCurrencyCode": "EUR"
+    }
+  },
+  "maria-011": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "einvoice",
+      "document_id": "document_id_einvoice_maria-011",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "maria-011"
+    ],
+    "document_data": {
+      "attestation_legal_category": "non-qualified-EAA",
+      "invoicePayloadHash": "sha256:9f2c8b1e7d43a0c5f6e9b2d1a4c7e0f3b6d9a2c5e8f1b4d7a0c3e6f9b2d5a8c1",
+      "invoiceNumber": "INV-2026-01117",
+      "issueDate": "2026-10-02",
+      "seller": {
+        "name": "Westfalen Palettenwerk GmbH",
+        "identifier": {
+          "euid": "DE811234567"
+        },
+        "vat": "DE811234567",
+        "country": "DE"
+      },
+      "amountDueForPayment": "14250.00",
+      "invoiceTotalVatAmount": "2850.00",
+      "InvoiceCurrencyCode": "EUR"
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "einvoice",
+      "document_id": "document_id_einvoice_sophie-013-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "attestation_legal_category": "non-qualified-EAA",
+      "invoicePayloadHash": "sha256:9f2c8b1e7d43a0c5f6e9b2d1a4c7e0f3b6d9a2c5e8f1b4d7a0c3e6f9b2d5a8c1",
+      "invoiceNumber": "INV-2026-01317",
+      "issueDate": "2026-10-02",
+      "seller": {
+        "name": "Pneus Rhône SAS",
+        "identifier": {
+          "euid": "FR44112233445"
+        },
+        "vat": "FR44112233445",
+        "country": "FR"
+      },
+      "amountDueForPayment": "14250.00",
+      "invoiceTotalVatAmount": "2850.00",
+      "InvoiceCurrencyCode": "EUR",
+      "cryptographically_bound_to": "uri:eu.ebw.oid.1",
+      "invoiceFormat": "EN16931",
+      "buyer": {
+        "name": "Transport Dubois SARL",
+        "identifier": {
+          "euid": "FRRCS.B987654321"
+        },
+        "vat": "FR32987654321",
+        "country": "FR"
+      },
+      "BuyerElectronicAddress": "0009:FR32987654321",
+      "taxSubtotal": [
+        {
+          "taxCategoryCode": "S",
+          "taxableAmount": "11400.00",
+          "taxPercent": "25",
+          "taxAmount": "2850.00"
+        }
+      ],
+      "paymentInstructions": {
+        "paymentMeansCode": "58",
+        "paymentMeansText": "SEPA Credit Transfer",
+        "paymentAccountIdentifier": "NL91ABNA0417164300"
+      },
+      "evidenceReferences": [
+        {
+          "evidenceReferencesType": "purchase_order",
+          "evidenceUri": "https://erp.example.org/documents/po-2026-000045",
+          "evidenceHash": "sha256:3a7c9e1b5d8f2a4c6e0b3d7f9a1c5e8b2d4f6a0c3e7b9d1f5a8c2e6b0d4f7a3c"
+        }
+      ],
+      "precedingInvoiceReference": "INV-2026-000001",
+      "invoiceLifecycleStatus": "active"
+    }
+  }
+}

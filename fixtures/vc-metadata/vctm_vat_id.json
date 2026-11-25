@@ -1,0 +1,247 @@
+{
+  "vct": "uri:eu.eudi.vat.2",
+  "name": "EUDI VAT ID Attestation",
+  "description": "The VAT-ID attestation is an official document issued by a recognised authority, such as the Tax Administration, that verifies the validity of a VAT-ID. This attestation serves as proof of the company\u2019s or administrative unit\u2019s VAT-ID and its corresponding validity period. It contains only information directly related to the VAT-ID. The VAT-ID attestation can be utilised by a company to substantiate its identity and ownership of the provided VAT-ID. The recipient of the attestation can trust its authenticity, eliminating the need for external verification through the VAT Information Exchange System (VIES) or the request for a physical VAT-ID Certificate.",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "VAT Identification",
+      "description": "Confirms a VAT identification number and the organisation it belongs to, as held by the tax administration.",
+      "rendering": {
+        "simple": {
+          "background_color": "#4C1D95",
+          "text_color": "#FFFFFF"
+        },
+        "svg_templates": [
+          {
+            "uri": "https://registry.siros.org/webuild-consortium/vat-id-svg_template.svg",
+            "uri#integrity": "sha256-JOOUg68o08nvZ22bFfuJdeVZOD0LC0LIIvInVx3qLss="
+          }
+        ]
+      }
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "administrative_unit",
+        "address"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Registered address",
+          "description": "Registered address of the economic operator."
+        }
+      ],
+      "sd": "always",
+      "svg_id": "address"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "economic_activity"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Economic activity",
+          "description": "Economic activity classifications associated with the operator."
+        }
+      ],
+      "sd": "always",
+      "svg_id": "economic_activity"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "economic_operator"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Economic operator",
+          "description": "Legal entity or natural person holding the VAT registration."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "economic_operator"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Registered name",
+          "description": "Official name associated with the VAT registration."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "name"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "organisation_type"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Organisation type",
+          "description": "Legal form of the organisation."
+        }
+      ],
+      "sd": "always",
+      "svg_id": "organisation_type"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "registered_eu_cross_border_transactions"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Registered for EU cross-border transactions",
+          "description": "Indicates whether the operator is registered for EU cross-border transactions."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "registered_eu_cross_border_transactions"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "validity_period"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Validity period",
+          "description": "Period during which the VAT registration is valid."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "validity_period"
+    },
+    {
+      "path": [
+        "administrative_unit",
+        "vat_id"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "VAT identification number",
+          "description": "VAT identification number assigned to the economic operator."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "vat_id"
+    },
+    {
+      "path": [
+        "administrative_unit"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Administrative unit",
+          "description": "Administrative unit that uses the VAT-ID"
+        }
+      ],
+      "mandatory": true
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation category",
+          "description": "Legal category of the attestation issuer."
+        }
+      ],
+      "mandatory": true,
+      "sd": "never",
+      "svg_id": "attestation_legal_category"
+    },
+    {
+      "path": [
+        "issuer",
+        "authentic_source_country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Authentic source country",
+          "description": "ISO 3166-1 alpha-2 country code of the authentic source."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "authentic_source_country"
+    },
+    {
+      "path": [
+        "issuer",
+        "location_status"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Location status",
+          "description": "URI where the VAT registration status can be verified."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "location_status"
+    },
+    {
+      "path": [
+        "issuer",
+        "vat_id_authentic_source"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Authentic source",
+          "description": "Authoritative source maintaining VAT registration information."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "vat_id_authentic_source"
+    },
+    {
+      "path": [
+        "issuer"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issuer",
+          "description": "Information about the authority that issues the attestation."
+        }
+      ],
+      "mandatory": true
+    },
+    {
+      "path": [
+        "trust_anchor"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Trust anchor",
+          "description": "Trust anchor URI used to validate the attestation chain."
+        }
+      ],
+      "mandatory": true,
+      "sd": "never",
+      "svg_id": "trust_anchor"
+    }
+  ]
+}

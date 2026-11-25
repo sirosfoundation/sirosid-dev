@@ -60,11 +60,17 @@ mandatory ones):
 | `eu_poa_offer` | dc+sd-jwt | as `eu_poa` | as `eu_poa` |
 | `iban_ov_offer` | dc+sd-jwt | as `iban_ov` | as `iban_ov` |
 | `nym_auth_offer` | mso_mdoc | as `nym_auth` | as `nym_auth` |
+| `vat_id_offer` | dc+sd-jwt | as `vat_id` | as `vat_id` |
+| `einvoice_offer` | dc+sd-jwt | as `einvoice` | as `einvoice` |
+| `ereceipt_offer` | dc+sd-jwt | as `ereceipt` | as `ereceipt` |
 | `ebw_oid` | dc+sd-jwt | erik-010, maria-011 | sophie-013 |
 | `eucc` | dc+sd-jwt | erik-010, maria-011, jan-012 | sophie-013 |
 | `eu_poa` | dc+sd-jwt | jan-012 | sophie-013 |
 | `iban_ov` | dc+sd-jwt | erik-010, maria-011, jan-012 | sophie-013 |
 | `nym_auth` | mso_mdoc | alice-001, bob-002 | carol-003 |
+| `vat_id` | dc+sd-jwt | erik-010, maria-011 | sophie-013 |
+| `einvoice` | dc+sd-jwt | erik-010, maria-011 | sophie-013 |
+| `ereceipt` | dc+sd-jwt | erik-010, maria-011 | sophie-013 |
 
 `mdl_zk4` is the 4-claim mDL for Vega ZK tests; its `-full` document (bob-002) fills all four circuit
 slots. `siros_id` is defined, but is not in the scope list of the OAuth client the wallet uses, so

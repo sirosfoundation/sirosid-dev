@@ -1,0 +1,382 @@
+{
+  "vct": "eu.we-build:einvoice:1",
+  "name": "WE BUILD eInvoice Attestation",
+  "description": "JSON Schema for the SD-JWT VC claims set of the eInvoice attestation (vct: eu.we-build:einvoice:1)",
+  "display": [
+    {
+      "locale": "en-US",
+      "name": "eInvoice",
+      "description": "An invoice from a seller to a buyer, carried in the wallet and presentable without contacting the seller.",
+      "rendering": {
+        "simple": {
+          "background_color": "#7C2D12",
+          "text_color": "#FFFFFF"
+        },
+        "svg_templates": [
+          {
+            "uri": "https://registry.siros.org/webuild-consortium/eInvoice-svg_template.svg",
+            "uri#integrity": "sha256-caF+npMu0LvNyd7TtDaywptVpC76eLFaFpeRDHOVoxE="
+          }
+        ]
+      }
+    }
+  ],
+  "claims": [
+    {
+      "path": [
+        "BuyerElectronicAddress"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Buyer electronic address",
+          "description": "EN 16931 BT-49. Address/endpoint identifier for delivery/receipt handling. Section 2.3."
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "BuyerElectronicAddress"
+    },
+    {
+      "path": [
+        "InvoiceCurrencyCode"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Currency",
+          "description": "EN 16931 BT-5. ISO 4217 invoice currency code. Section 2.2."
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed",
+      "svg_id": "InvoiceCurrencyCode"
+    },
+    {
+      "path": [
+        "amountDueForPayment"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Amount due",
+          "description": "EN 16931 BT-115. Total payable amount. Section 2.2."
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed",
+      "svg_id": "amountDueForPayment"
+    },
+    {
+      "path": [
+        "attestation_legal_category"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Attestation category",
+          "description": "Legal category of the attestation. For this rulebook profile the exact value SHALL be `non-qualified-EAA`. Section 2.1."
+        }
+      ],
+      "mandatory": true,
+      "sd": "never",
+      "svg_id": "attestation_legal_category"
+    },
+    {
+      "path": [
+        "buyer",
+        "country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Buyer country",
+          "description": "EN 16931 BT-40 (seller)/BT-55 (buyer). ISO 3166-1 alpha-2 country code."
+        }
+      ],
+      "svg_id": "buyer_country"
+    },
+    {
+      "path": [
+        "buyer",
+        "identifier"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Buyer identifier",
+          "description": "Legal-entity identifiers; at least euid SHALL be present."
+        }
+      ],
+      "svg_id": "buyer_identifier"
+    },
+    {
+      "path": [
+        "buyer",
+        "name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Buyer",
+          "description": "EN 16931 BT-27 (seller)/BT-44 (buyer). Registered legal name."
+        }
+      ],
+      "svg_id": "buyer_name"
+    },
+    {
+      "path": [
+        "buyer",
+        "vat"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Buyer VAT number",
+          "description": "EN 16931 BT-31 (seller)/BT-48 (buyer). VAT/tax registration identifier."
+        }
+      ],
+      "svg_id": "buyer_vat"
+    },
+    {
+      "path": [
+        "buyer"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Buyer",
+          "description": "The Buyer (relying party). Optional as a whole; if present, all members SHALL be present. v0.8: replaces the flat buyer* claims."
+        }
+      ],
+      "sd": "allowed"
+    },
+    {
+      "path": [
+        "cryptographically_bound_to"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Cryptographically bound to",
+          "description": "vct of the Supplier's EBWOID attestation on the same Wallet Unit to which this attestation is bound. RECOMMENDED. Section 2.6 / Chapter 4."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "cryptographically_bound_to"
+    },
+    {
+      "path": [
+        "evidenceReferences"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Evidence references",
+          "description": "References to supporting evidence items (e.g. purchase order, delivery note). Section 2.3/2.4."
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "evidenceReferences"
+    },
+    {
+      "path": [
+        "invoiceFormat"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Invoice format",
+          "description": "Identifier of the invoice representation/profile used for the payload. Code list, Section 2.8."
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "invoiceFormat"
+    },
+    {
+      "path": [
+        "invoiceLifecycleStatus"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Status",
+          "description": "Business lifecycle status for corrections, cancellations and credit notes. If omitted, the lifecycle status SHALL be interpreted as `active`. Distinct from the registered `status` metadata claim used for Token Status List revocation. Sections 2.3, 2.8 and IR-EI-09."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "invoiceLifecycleStatus"
+    },
+    {
+      "path": [
+        "invoiceNumber"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Invoice number",
+          "description": "EN 16931 BT-1. Invoice identifier, unique for the Supplier within the duplicate-detection window (IR-EI-04). Section 2.2."
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed",
+      "svg_id": "invoiceNumber"
+    },
+    {
+      "path": [
+        "invoicePayloadHash"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Payload hash",
+          "description": "Hash of the canonicalized invoice payload; binds the attestation to the external EN 16931 / Peppol BIS invoice (IR-EI-03). Section 2.2. NOTE: canonicalization method and hash algorithm are OPEN pending WP4 confirmation; sha256 assumed here."
+        }
+      ],
+      "mandatory": true,
+      "sd": "never",
+      "svg_id": "invoicePayloadHash"
+    },
+    {
+      "path": [
+        "invoiceTotalVatAmount"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "VAT total",
+          "description": "EN 16931 BT-110. Total VAT amount for this invoice; SHALL equal the sum of taxSubtotal.taxAmount when taxSubtotal is present (IR-EI-07). Section 2.2."
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed",
+      "svg_id": "invoiceTotalVatAmount"
+    },
+    {
+      "path": [
+        "issueDate"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Issued",
+          "description": "EN 16931 BT-2. Invoice issue date (RFC 3339 full-date). Section 2.2."
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed",
+      "svg_id": "issueDate"
+    },
+    {
+      "path": [
+        "paymentInstructions"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Payment instructions",
+          "description": "EN 16931 BG-16. Payment-related information. Contains sensitive payment data; issuer MUST make selectively disclosable. Section 2.3/2.4/3.2."
+        }
+      ],
+      "sd": "always",
+      "svg_id": "paymentInstructions"
+    },
+    {
+      "path": [
+        "precedingInvoiceReference"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Preceding invoice",
+          "description": "EN 16931 BT-25. Identifier of the original or preceding invoice. SHALL be present when invoiceLifecycleStatus is corrected, cancelled or credited; MAY be omitted when the lifecycle status is active or omitted. Section 2.4 and IR-EI-09."
+        }
+      ],
+      "sd": "never",
+      "svg_id": "precedingInvoiceReference"
+    },
+    {
+      "path": [
+        "seller",
+        "country"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Seller country",
+          "description": "EN 16931 BT-40 (seller)/BT-55 (buyer). ISO 3166-1 alpha-2 country code."
+        }
+      ],
+      "svg_id": "seller_country"
+    },
+    {
+      "path": [
+        "seller",
+        "identifier"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Seller identifier",
+          "description": "Legal-entity identifiers; at least euid SHALL be present."
+        }
+      ],
+      "svg_id": "seller_identifier"
+    },
+    {
+      "path": [
+        "seller",
+        "name"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Seller",
+          "description": "EN 16931 BT-27 (seller)/BT-44 (buyer). Registered legal name."
+        }
+      ],
+      "svg_id": "seller_name"
+    },
+    {
+      "path": [
+        "seller",
+        "vat"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Seller VAT number",
+          "description": "EN 16931 BT-31 (seller)/BT-48 (buyer). VAT/tax registration identifier."
+        }
+      ],
+      "svg_id": "seller_vat"
+    },
+    {
+      "path": [
+        "seller"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Seller",
+          "description": "The Supplier (issuer). Mandatory. v0.8: replaces the flat seller* claims."
+        }
+      ],
+      "mandatory": true,
+      "sd": "allowed"
+    },
+    {
+      "path": [
+        "taxSubtotal"
+      ],
+      "display": [
+        {
+          "locale": "en-US",
+          "label": "Tax subtotal",
+          "description": "EN 16931 BG-23. VAT breakdown, one entry per tax category/rate. Section 2.3/2.4."
+        }
+      ],
+      "sd": "allowed",
+      "svg_id": "taxSubtotal"
+    }
+  ]
+}

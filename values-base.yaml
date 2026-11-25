@@ -216,6 +216,33 @@ features:
       issuance:
         authProvider: preauth
         source: datastore
+    # The PA4 three, offerable the same way - `make datastore-offer
+    # SCOPE=vat_id_offer` mints a pre-authorized offer a wallet on another
+    # device can scan, with no session of its own.
+    vat_id_offer:
+      metadataFrom: vat_id
+      vct: "uri:eu.eudi.vat.2"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_vat_id.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    einvoice_offer:
+      metadataFrom: einvoice
+      vct: "eu.we-build:einvoice:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_einvoice.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
+    ereceipt_offer:
+      metadataFrom: ereceipt
+      vct: "eu.we-build.ereceipt.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_ereceipt.json}
+      issuance:
+        authProvider: preauth
+        source: datastore
     nym_auth_offer:
       metadataFrom: nym_auth
       vct: "eu.europa.ec.eudi.nym_auth.1"
@@ -310,6 +337,54 @@ features:
       vct: "eu.we-build.iban-ov.1"
       format: dc+sd-jwt
       vctm: {file: fixtures/vc-metadata/vctm_iban_ov.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
+    vat_id:
+      # VAT Identification (WE BUILD rb-vat-id) - the tax administration's
+      # confirmation that a VAT number is valid and whose it is. Same
+      # PID-authenticated datastore pattern as the four above.
+      vct: "uri:eu.eudi.vat.2"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_vat_id.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
+    einvoice:
+      # eInvoice (WE BUILD rb-eInvoice) - an invoice from a seller to a buyer;
+      # the holder is the buyer.
+      vct: "eu.we-build:einvoice:1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_einvoice.json}
+      issuance:
+        authProvider: openid4vp
+        source: datastore
+        authOptions:
+          scopes:
+            pid_1_8:
+              claims: [given_name, family_name, birthdate]
+            pid_1_5:
+              claims: [given_name, family_name, birthdate]
+    ereceipt:
+      # eReceipt (WE BUILD rb-e-receipt) - a till receipt. Issued here from
+      # the datastore like every other type, which is not how a real eReceipt
+      # is issued: rb-e-receipt 1 has it minted by a merchant or its PSP after
+      # a payment. sirosfoundation/siros-id-stack#29.
+      vct: "eu.we-build.ereceipt.1"
+      format: dc+sd-jwt
+      vctm: {file: fixtures/vc-metadata/vctm_ereceipt.json}
       issuance:
         authProvider: openid4vp
         source: datastore
@@ -550,6 +625,11 @@ issuer:
   # the `-full` document per scope; giving a holder two documents of the same
   # scope would make issuance ambiguous. See README.md, "Synthetic test data".
   datastoreImport:
+    # Every document under fixtures/vc-bootstrapping carries
+    # meta.authentic_source "mini-oidc", and vc requires each datastore scope
+    # to name the source its identity lookup matches against, so one default
+    # covers the lot. tests/test_fixture_integrity.py is what keeps that true.
+    authenticSource: mini-oidc
     documents:
       diploma: {file: fixtures/vc-bootstrapping/diploma.json}
       pid_1_8: {file: fixtures/vc-bootstrapping/pid_1_8.json}
@@ -570,6 +650,10 @@ issuer:
       eucc: {file: fixtures/vc-bootstrapping/eucc.json}
       eu_poa: {file: fixtures/vc-bootstrapping/eu_poa.json}
       iban_ov: {file: fixtures/vc-bootstrapping/iban_ov.json}
+      # The PA4 attestations, same PID-authenticated pattern as the four above.
+      vat_id: {file: fixtures/vc-bootstrapping/vat_id.json}
+      einvoice: {file: fixtures/vc-bootstrapping/einvoice.json}
+      ereceipt: {file: fixtures/vc-bootstrapping/ereceipt.json}
       # One per natural person; PID/mDL/Photo ID-authenticated (see
       # features.credentialTypes.nym_auth). README.md lists the test seeds.
       nym_auth: {file: fixtures/vc-bootstrapping/nym_auth.json}
@@ -580,6 +664,9 @@ issuer:
       eucc_offer: {file: fixtures/vc-bootstrapping/eucc_offer.json}
       eu_poa_offer: {file: fixtures/vc-bootstrapping/eu_poa_offer.json}
       iban_ov_offer: {file: fixtures/vc-bootstrapping/iban_ov_offer.json}
+      vat_id_offer: {file: fixtures/vc-bootstrapping/vat_id_offer.json}
+      einvoice_offer: {file: fixtures/vc-bootstrapping/einvoice_offer.json}
+      ereceipt_offer: {file: fixtures/vc-bootstrapping/ereceipt_offer.json}
       nym_auth_offer: {file: fixtures/vc-bootstrapping/nym_auth_offer.json}
 
   apigw:
@@ -649,11 +736,11 @@ issuer:
                 redirect_uri:
                   - "siros-sample://callback"
                   - "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, mdl_zk4, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth, vat_id, einvoice, ereceipt]
               e2e-test-client-2:
                 type: public
                 redirect_uri: "http://localhost:3000/id/default/cb"
-                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth]
+                scopes: [pid, pid_1_5, pid_1_8, diploma, ehic, mdl, pid_mdoc, pid_mdoc_id, photoid, ebw_oid, eucc, eu_poa, iban_ov, nym_auth, vat_id, einvoice, ereceipt]
         data_sources:
           assertion:
             scopes:

@@ -1,0 +1,135 @@
+{
+  "erik-010": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "vat_id_offer",
+      "document_id": "document_id_vat_id_offer_erik-010",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "erik-010"
+    ],
+    "document_data": {
+      "attestation_legal_category": "PuB-EAA",
+      "administrative_unit": {
+        "vat_id": "SE559123456701",
+        "name": "Nordic Tech Solutions AB",
+        "registered_eu_cross_border_transactions": true,
+        "organisation_type": "Aktiebolag (AB)",
+        "validity_period": [
+          {
+            "start_date": "2020-01-15",
+            "end_date": "2027-12-31"
+          }
+        ],
+        "economic_operator": {
+          "legal_person": {
+            "legal_identifier": "SEBOLAG.5591234567",
+            "legal_name": "Nordic Tech Solutions AB"
+          }
+        }
+      },
+      "issuer": {
+        "authentic_source_country": "SE",
+        "vat_id_authentic_source": "Skatteverket"
+      },
+      "trust_anchor": "https://trust.example.org/anchors/se/vat"
+    }
+  },
+  "maria-011": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "vat_id_offer",
+      "document_id": "document_id_vat_id_offer_maria-011",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "maria-011"
+    ],
+    "document_data": {
+      "attestation_legal_category": "PuB-EAA",
+      "administrative_unit": {
+        "vat_id": "DE123456789",
+        "name": "Gr\u00fcnberg Consulting GmbH",
+        "registered_eu_cross_border_transactions": true,
+        "organisation_type": "Gesellschaft mit beschr\u00e4nkter Haftung (GmbH)",
+        "validity_period": [
+          {
+            "start_date": "2020-01-15",
+            "end_date": "2027-12-31"
+          }
+        ],
+        "economic_operator": {
+          "legal_person": {
+            "legal_identifier": "DEHRB.B123456",
+            "legal_name": "Gr\u00fcnberg Consulting GmbH"
+          }
+        }
+      },
+      "issuer": {
+        "authentic_source_country": "DE",
+        "vat_id_authentic_source": "Bundeszentralamt f\u00fcr Steuern"
+      },
+      "trust_anchor": "https://trust.example.org/anchors/de/vat"
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "vat_id_offer",
+      "document_id": "document_id_vat_id_offer_sophie-013-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "attestation_legal_category": "PuB-EAA",
+      "administrative_unit": {
+        "vat_id": "FR32987654321",
+        "name": "Transport Dubois SARL",
+        "registered_eu_cross_border_transactions": true,
+        "organisation_type": "Soci\u00e9t\u00e9 \u00e0 responsabilit\u00e9 limit\u00e9e (SARL)",
+        "validity_period": [
+          {
+            "start_date": "2020-01-15",
+            "end_date": "2027-12-31"
+          }
+        ],
+        "economic_operator": {
+          "legal_person": {
+            "legal_identifier": "FRRCS.B987654321",
+            "legal_name": "Transport Dubois SARL"
+          }
+        },
+        "address": {
+          "thoroughfare": "Rue de la R\u00e9publique",
+          "location_designator": "8",
+          "post_code": "69002",
+          "post_name": "Lyon",
+          "admin_unit_l1": "Auvergne-Rh\u00f4ne-Alpes",
+          "admin_unit_l2": "Rh\u00f4ne"
+        },
+        "economic_activity": [
+          {
+            "nomenclature": "NACE",
+            "nomenclature_version": "Rev 2.1",
+            "id": "62.01",
+            "description": [
+              {
+                "language": "en-GB",
+                "value": "Computer programming activities"
+              }
+            ]
+          }
+        ]
+      },
+      "issuer": {
+        "authentic_source_country": "FR",
+        "vat_id_authentic_source": "Direction g\u00e9n\u00e9rale des Finances publiques",
+        "location_status": "https://vat.example.fr/status/FR32987654321"
+      },
+      "trust_anchor": "https://trust.example.org/anchors/fr/vat"
+    }
+  }
+}
