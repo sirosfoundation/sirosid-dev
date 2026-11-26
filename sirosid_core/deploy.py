@@ -822,6 +822,12 @@ def deploy_component(ctx: DeployContext, comp: dict):
         if spec.env_admin:
             # The Storage card - the very same file the local dashboard mounts.
             deploy_args += ["--file-local", f"/usr/share/nginx/storage-card.js={resources.root / 'dashboard' / 'storage-card.js'}"]
+        # The mini-wallet entrypoint (dashboard/mini-wallet.html): the
+        # (a) deployment's page - the wallet-frontend's host is the
+        # WebAuthn RP, so the adopt's passkey ceremony completes on this
+        # origin. Served at /mini-wallet by the nginx location the conf
+        # generator splices (assets.py's MINI_WALLET_LOCATION).
+        deploy_args += ["--file-local", f"/usr/share/nginx/mini-wallet.html={resources.root / 'dashboard' / 'mini-wallet.html'}"]
         deploy_args += _wallet_frontend_env(ctx, android_identities)
     elif name == "conformance-server":
         deploy_args += [
