@@ -214,13 +214,15 @@ users:
     # verbatim under the scope named by the key - see users.go Attestations.
     attestations:
       ebw_oid:
-        id: "SEBOLAG.5595421925"
+        # The EUID (the rulebook's primary form, DS001 EBW-OID 3.2), in the same
+        # ISO 6523 form as the wmp.sender: the CS-15 Interface-4 check compares them.
+        id: "ebcore:iso6523:0007:5595421925"
         name: "SIROS Foundation AB"
         attestation_legal_category: "PUB-EAA"
         issuing_authority: "Bolagsverket"
         issuing_country: "SE"
         date_of_expiry: "2027-12-31"
-        trust_anchor: "https://trust.example.org/anchors/se/bolagsverket"
+        trust_anchor: "https://sirosid-gdc-trust-list.fly.dev/gdc/tl.xml"
       eucc:
         legal_person_name: "SIROS Foundation AB"
         legal_person_id: "SEBOLAG.5595421925"

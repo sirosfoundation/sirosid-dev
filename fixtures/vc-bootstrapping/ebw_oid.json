@@ -70,13 +70,13 @@
       "siros-014"
     ],
     "document_data": {
-      "id": "SEBOLAG.5595421925",
+      "id": "ebcore:iso6523:0007:5595421925",
       "name": "SIROS Foundation AB",
       "attestation_legal_category": "PUB-EAA",
       "issuing_authority": "Bolagsverket",
       "issuing_country": "SE",
       "date_of_expiry": "2027-12-31",
-      "trust_anchor": "https://trust.example.org/anchors/se/bolagsverket"
+      "trust_anchor": "https://sirosid-gdc-trust-list.fly.dev/gdc/tl.xml"
     }
   }
 }
