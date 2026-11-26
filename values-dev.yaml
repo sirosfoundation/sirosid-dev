@@ -105,7 +105,11 @@ pdp:
   # compose service URLs (both container-internal and host-mapped forms, matching
   # mock-trust-pdp's existing TRUSTED_ISSUERS/TRUSTED_VERIFIERS in docker-compose.test.yml).
   default_whitelist: false
-  externalUrl: "http://go-trust-config:6001"
+  # The chart's server.port is 8080 and compose maps 9098:8080, so 6001 was a
+  # port nothing has ever listened on here: wallet-backend reads this value as
+  # its pdp_url and every trust evaluation failed with "connection refused",
+  # which surfaces in the wallet as "No matching issuers found".
+  externalUrl: "http://go-trust-config:8080"
   extraRegistries:
     whitelist:
       enabled: true
@@ -116,18 +120,32 @@ pdp:
       # "testing only" per its own comment) - without this, every whitelisted
       # entity fails key discovery and ends up with 0 usable issuers/verifiers.
       allow_http: true
+      # The entry that matters is the one that appears as the credential's
+      # `iss`, i.e. each service's PUBLIC url - vc-apigw.localhost:9003, not
+      # an internal address that merely resolves. Without it the wallet gets
+      # "signed metadata from untrusted issuer rejected" and shows no issuers
+      # at all, which reads as a missing issuer rather than a trust decision.
+      # The :8080 forms are the chart's in-cluster ports; values-dev's own
+      # extraConfig moves these services to 9003/9004/9001, so the container
+      # forms are listed at both.
       lists:
         pid-issuers:
           - http://vc-issuer:8080
           - http://localhost:9000
           - http://vc-apigw:8080
+          - http://vc-apigw:9003
+          - http://vc-apigw.localhost:9003
           - http://localhost:9003
         verifiers:
           - http://vc-issuer:8080
           - http://localhost:9000
           - http://vc-apigw:8080
+          - http://vc-apigw:9003
+          - http://vc-apigw.localhost:9003
           - http://localhost:9003
           - http://vc-verifier:8080
+          - http://vc-verifier:9001
+          - http://vc-verifier.localhost:9001
           - http://localhost:9001
       actions:
         pid-provider: pid-issuers

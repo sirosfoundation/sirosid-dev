@@ -1,0 +1,277 @@
+{
+  "erik-010": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ereceipt_offer",
+      "document_id": "document_id_ereceipt_offer_erik-010",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "erik-010"
+    ],
+    "document_data": {
+      "attestation_legal_category": "non-qualified-EAA",
+      "type": "PURCHASE",
+      "receipt_number": "R-2026-10-02-erik-010",
+      "receipt_timestamp": "2026-10-02T12:41:08Z",
+      "currency_iso_code": "EUR",
+      "total_price_exc_vat": 2840,
+      "total_vat_amount": 710,
+      "total_price_inc_vat": 3550,
+      "merchant": {
+        "name": "Kaf\u00e9 Bokbindaren AB",
+        "company_id": "SE5569123456",
+        "branch": {
+          "id": "BR-001",
+          "pos_id": "POS-03",
+          "name": "Kaf\u00e9 Bokbindaren AB"
+        },
+        "address": {
+          "street_address": "Drottninggatan 71",
+          "city": "Stockholm",
+          "zip_code": "111 36",
+          "country": "SE"
+        }
+      },
+      "products": [
+        {
+          "name": "Lunch, team of four",
+          "quantity": "4",
+          "quantity_code": "H87",
+          "unit_price_inc_vat": 700,
+          "total_amount_exc_vat": 2240,
+          "total_amount_inc_vat": 2800,
+          "vats": [
+            {
+              "vat_rate": "25",
+              "vat_amount": 560,
+              "total_amount_exc_vat": 2240,
+              "total_amount_inc_vat": 2800
+            }
+          ]
+        }
+      ],
+      "vats": [
+        {
+          "vat_rate": "25",
+          "total_vat_amount": 710,
+          "total_amount_exc_vat": 2840,
+          "total_amount_inc_vat": 3550
+        }
+      ],
+      "payments": [
+        {
+          "type": "CARD",
+          "amount": 3550
+        }
+      ],
+      "verifications": [
+        {
+          "type": "EMV",
+          "version": "1.0",
+          "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdemoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+          "transaction_id": "TXN-2026-10-02-erik-010"
+        }
+      ]
+    }
+  },
+  "maria-011": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ereceipt_offer",
+      "document_id": "document_id_ereceipt_offer_maria-011",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "maria-011"
+    ],
+    "document_data": {
+      "attestation_legal_category": "non-qualified-EAA",
+      "type": "PURCHASE",
+      "receipt_number": "R-2026-10-02-maria-011",
+      "receipt_timestamp": "2026-10-02T12:41:08Z",
+      "currency_iso_code": "EUR",
+      "total_price_exc_vat": 2840,
+      "total_vat_amount": 710,
+      "total_price_inc_vat": 3550,
+      "merchant": {
+        "name": "Kantine Charlottenburg GmbH",
+        "company_id": "DE290112233",
+        "branch": {
+          "id": "BR-001",
+          "pos_id": "POS-03",
+          "name": "Kantine Charlottenburg GmbH"
+        },
+        "address": {
+          "street_address": "Kantstra\u00dfe 17",
+          "city": "Berlin",
+          "zip_code": "10623",
+          "country": "DE"
+        }
+      },
+      "products": [
+        {
+          "name": "Lunch, team of four",
+          "quantity": "4",
+          "quantity_code": "H87",
+          "unit_price_inc_vat": 700,
+          "total_amount_exc_vat": 2240,
+          "total_amount_inc_vat": 2800,
+          "vats": [
+            {
+              "vat_rate": "25",
+              "vat_amount": 560,
+              "total_amount_exc_vat": 2240,
+              "total_amount_inc_vat": 2800
+            }
+          ]
+        }
+      ],
+      "vats": [
+        {
+          "vat_rate": "25",
+          "total_vat_amount": 710,
+          "total_amount_exc_vat": 2840,
+          "total_amount_inc_vat": 3550
+        }
+      ],
+      "payments": [
+        {
+          "type": "CARD",
+          "amount": 3550
+        }
+      ],
+      "verifications": [
+        {
+          "type": "EMV",
+          "version": "1.0",
+          "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdemoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+          "transaction_id": "TXN-2026-10-02-maria-011"
+        }
+      ]
+    }
+  },
+  "sophie-013": {
+    "meta": {
+      "authentic_source": "mini-oidc",
+      "scope": "ereceipt_offer",
+      "document_id": "document_id_ereceipt_offer_sophie-013-full",
+      "created_at": "0001-01-01T00:00:00Z"
+    },
+    "identity_mapping_ids": [
+      "sophie-013"
+    ],
+    "document_data": {
+      "attestation_legal_category": "non-qualified-EAA",
+      "type": "PURCHASE",
+      "receipt_number": "R-2026-10-02-sophie-013",
+      "receipt_timestamp": "2026-10-02T12:41:08Z",
+      "currency_iso_code": "EUR",
+      "total_price_exc_vat": 2840,
+      "total_vat_amount": 710,
+      "total_price_inc_vat": 3550,
+      "merchant": {
+        "name": "Brasserie des Terreaux SARL",
+        "company_id": "FR12345678901",
+        "branch": {
+          "id": "BR-001",
+          "pos_id": "POS-03",
+          "name": "Brasserie des Terreaux SARL",
+          "sub_name": "Terrace"
+        },
+        "address": {
+          "street_address": "Place des Terreaux 4",
+          "city": "Lyon",
+          "zip_code": "69001",
+          "country": "FR"
+        }
+      },
+      "products": [
+        {
+          "name": "Lunch, team of four",
+          "quantity": "4",
+          "quantity_code": "H87",
+          "unit_price_inc_vat": 700,
+          "total_amount_exc_vat": 2240,
+          "total_amount_inc_vat": 2800,
+          "vats": [
+            {
+              "vat_rate": "25",
+              "vat_amount": 560,
+              "total_amount_exc_vat": 2240,
+              "total_amount_inc_vat": 2800
+            }
+          ],
+          "categorization": {
+            "category": "F&B",
+            "department": "Restaurant"
+          }
+        }
+      ],
+      "vats": [
+        {
+          "vat_rate": "25",
+          "total_vat_amount": 710,
+          "total_amount_exc_vat": 2840,
+          "total_amount_inc_vat": 3550,
+          "vat_code": "S"
+        }
+      ],
+      "payments": [
+        {
+          "type": "CARD",
+          "amount": 3550,
+          "attributes": {
+            "masked_pan": "411111******1111",
+            "authorization_code": "AB12CD"
+          }
+        }
+      ],
+      "verifications": [
+        {
+          "type": "EMV",
+          "version": "1.0",
+          "public_key": "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEdemoAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+          "transaction_id": "TXN-2026-10-02-sophie-013"
+        }
+      ],
+      "original_receipt_number": "R-2026-09-30-000044",
+      "free_text": "Client lunch",
+      "cryptographically_bound_to": "uri:eu.ebw.oid.1",
+      "journey": {
+        "type": "TRAIN",
+        "id": "TGV-6612",
+        "distance": "462",
+        "duration": "PT1H58M",
+        "co2_emissions": "2.1",
+        "origin": {
+          "name": "Lyon Part-Dieu",
+          "city": "Lyon",
+          "country": "FR",
+          "datetime": "2026-10-02T07:12:00Z"
+        },
+        "destination": {
+          "name": "Paris Gare de Lyon",
+          "city": "Paris",
+          "country": "FR",
+          "datetime": "2026-10-02T09:10:00Z"
+        }
+      },
+      "attachments": [
+        {
+          "type": "QRCODE",
+          "kind": "TICKET",
+          "title": "Boarding pass",
+          "data": "TUVTU0FHRQ==",
+          "description": "Scan at the gate",
+          "valid_until": "2026-10-03T00:00:00Z"
+        }
+      ],
+      "custom_attributes": [
+        {
+          "loyalty_tier": "gold"
+        }
+      ]
+    }
+  }
+}

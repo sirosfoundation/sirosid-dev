@@ -282,6 +282,44 @@ services:
     networks:
       - e2e-test-network
 
+  # Mock Seller - issues a WE BUILD eReceipt after a payment.
+  #
+  # PA4 makes the Seller the eReceipt issuer (rb-e-receipt 1: issued by a
+  # merchant or its PSP to the customer's wallet AFTER a payment). Every
+  # other credential here comes from a document pre-seeded in the datastore,
+  # which is a register lookup; a receipt is not one. See
+  # sirosfoundation/siros-id-stack#29 and mocks/seller/README.md.
+  mock-seller:
+    build:
+      context: ./mocks/seller
+      dockerfile: Dockerfile
+    image: mock-seller-e2e-test:local
+    container_name: mock-seller-e2e-test
+    ports:
+      - "9012:9012"
+    environment:
+      - PORT=9012
+      # apigw publishes on the compose network under this alias; the config
+      # file's own public_url is the host-facing one.
+      - APIGW_URL=http://vc-apigw:9003
+      # The browser wallet cannot follow openid-credential-offer://, so the
+      # receipt page also links the offer into the web wallet directly.
+      # This URL is the one the operator's browser uses, not a container one.
+      - WALLET_URL=http://localhost:3000
+    volumes:
+      # The admin API's signing key, and the config that says which issuer,
+      # audience and subject it has to be minted for. Read-only: the seller
+      # mints tokens, it never writes either.
+      - ./fixtures/rendered-secrets/apiAuthKey.pem:/secrets/apiAuthKey.pem:ro
+      - ./fixtures/rendered/vc-apigw.yaml:/apigw/vc-apigw.yaml:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9012/health"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - e2e-test-network
+
 networks:
   e2e-test-network:
     name: e2e-test-network

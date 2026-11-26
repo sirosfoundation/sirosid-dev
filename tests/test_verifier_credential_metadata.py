@@ -68,7 +68,7 @@ class VerifierHidesOfferTwins(unittest.TestCase):
         """The verifier's picker iterates common.credential_metadata wholesale; this is the count it renders."""
         twins = [k for k in self.apigw if k.endswith("_offer")]
         self.assertEqual(len(self.verifier), len(self.apigw) - len(twins))
-        self.assertEqual(len(self.verifier), 15, "28 entries minus the 13 twins")
+        self.assertEqual(len(self.verifier), 18, "34 entries minus the 16 twins")
 
 
 @NEEDS
