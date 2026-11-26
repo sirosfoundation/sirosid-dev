@@ -863,6 +863,23 @@ values:
   # environments have no VCTM for this vct.
   features:
     credentialTypes:
+      # The registry renamed the WE BUILD IBAN-OV type's vct from
+      # eu.we-build.iban-ov.1 to eu.we-build:iban-ov:1 (2026-11-26: apigw panicked at
+      # start, "failed to resolve vct eu.we-build.iban-ov.1 ... not found"). gdc resolves
+      # SD-JWT types by vct from registry.siros.org, so it follows the registry. Same
+      # definition as values-base.yaml's iban_ov otherwise (an env type REPLACES it).
+      iban_ov:
+        vct: "eu.we-build:iban-ov:1"
+        format: dc+sd-jwt
+        issuance:
+          authProvider: openid4vp
+          source: datastore
+          authOptions:
+            scopes:
+              pid_1_8:
+                claims: [given_name, family_name, birthdate]
+              pid_1_5:
+                claims: [given_name, family_name, birthdate]
       pid_eudi:
         vct: "urn:eudi:pid:1"
         format: dc+sd-jwt
