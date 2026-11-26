@@ -43,6 +43,7 @@ services:
       - "9094:8090"     # gRPC for inter-service communication
     volumes:
       - ./fixtures/rendered/vc-registry.yaml:/config.yaml:ro
+      - ./fixtures/bin/healthcheck:/healthcheck:ro
       - ./fixtures/vc-pki:/pki:ro
     environment:
       - VC_CONFIG_YAML=/config.yaml
@@ -51,7 +52,7 @@ services:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9004/health"]
+      test: ["CMD", "/healthcheck", "9004"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -73,6 +74,7 @@ services:
       - "9190:8090"     # gRPC for apigw communication
     volumes:
       - ./fixtures/rendered/vc-issuer.yaml:/config.yaml:ro
+      - ./fixtures/bin/healthcheck:/healthcheck:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
     environment:
@@ -84,7 +86,7 @@ services:
       vc-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:8081/health"]
+      test: ["CMD", "/healthcheck", "8081"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -110,6 +112,7 @@ services:
       - "9091:8090"     # gRPC
     volumes:
       - ./fixtures/rendered/vc-verifier.yaml:/config.yaml:ro
+      - ./fixtures/bin/healthcheck:/healthcheck:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
       - ./fixtures/rendered/pres-reqs:/pres-reqs:ro
@@ -123,7 +126,7 @@ services:
       mongodb:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9001/health"]
+      test: ["CMD", "/healthcheck", "9001"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -154,6 +157,7 @@ services:
       - "9003:9003"     # HTTP API (OAuth2/OpenID4VCI endpoints)
     volumes:
       - ./fixtures/rendered/vc-apigw.yaml:/config.yaml:ro
+      - ./fixtures/bin/healthcheck:/healthcheck:ro
       - ./fixtures/vc-pki:/pki:ro
       - ./fixtures/rendered/vctms:/vctms:ro
       - ./fixtures/rendered/documents:/documents:ro
@@ -177,7 +181,7 @@ services:
       vc-registry:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:9003/health"]
+      test: ["CMD", "/healthcheck", "9003"]
       interval: 5s
       timeout: 5s
       retries: 10
